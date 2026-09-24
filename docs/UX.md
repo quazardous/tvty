@@ -12,10 +12,11 @@ such; open points are listed at the end.
   (unread, a decision waiting for you, the critical ticket, a human awaited).
 - A project shows the sum of its terminals' alerts, so a collapsed project
   still says it needs you.
-- Each loop's **claude-loop bar** — what its pane analyser sees of Claude:
-  the state as the bar's colour, 🧠 working / 💤 idle, ▶ autonomous / ⏸
-  held, 웃 a human, the counters — is redrawn small under its name, with the
-  state colour as an accent on the left, and on its cards.
+- Each agent shows its **Claude's state**, as aiball centralises it (not
+  read from tmux: the day loops run without tmux, nothing changes): a colour
+  beside its name — blue working, grey idle, violet starting, none offline —
+  and a line under it: who drives (▶ the loop on its own, ‖ held, ✎ a human
+  typing), the state, for how long. The same line is on its cards.
 
 ## Two ways to switch
 

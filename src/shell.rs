@@ -11,7 +11,6 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, TicketRow};
-use crate::bar;
 use crate::events;
 use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
@@ -64,9 +63,7 @@ pub struct Shell {
     waiting: Option<HashSet<(u64, Wait)>>,
     /// Counts terminal switches: each one replays the slide.
     switches: usize,
-    /// Each loop's tmux bar, by session: Claude's state as its pane
-    /// analyser sees it. Read with the sessions, every few seconds.
-    bars: HashMap<String, Vec<bar::Segment>>,
+
     focus: FocusHandle,
     /// Wakes the refresh loop before its next tick.
     refresh_now: futures::channel::mpsc::UnboundedSender<()>,
@@ -184,7 +181,7 @@ impl Shell {
             needs: Vec::new(),
             waiting: None,
             switches: 0,
-            bars: HashMap::new(),
+
             focus: cx.focus_handle(),
             refresh_now,
         };
@@ -229,16 +226,8 @@ impl Shell {
                         break;
                     }
                 }
-                let bars = cx.background_executor().spawn(async { sessions::bars() }).await;
-                if this
-                    .update(cx, |shell, cx| {
-                        if shell.bars != bars {
-                            shell.bars = bars;
-                            cx.notify();
-                        }
-                    })
-                    .is_err()
-                {
+                // Redraw now and then: the states say for how long.
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
                     break;
                 }
                 let timer = cx.background_executor().timer(SESSIONS_EVERY).fuse();
@@ -756,8 +745,7 @@ impl Shell {
                 let selected = self.selected.as_deref() == Some(session.as_str());
                 let open = self.terminals.contains_key(&session);
                 let alerts = self.alerts_of(&project.name, terminal.agent.as_deref());
-                let segments = self.bars.get(&session);
-                let state = segments.and_then(|s| bar::state_colour(s));
+                let state = terminal.status.as_ref().and_then(|s| s.colour());
                 list = list.child(
                     div()
                         .id(SharedString::from(format!("terminal-{session}")))
@@ -769,7 +757,7 @@ impl Shell {
                         .cursor_pointer()
                         .when(selected, |d| d.bg(rgb(0x37373d)).text_color(rgb(0xffffff)))
                         .when(!selected, |d| d.hover(|d| d.bg(rgb(0x2a2d2e))))
-                        // The loop's state colour, as its tmux bar shows it.
+                        // The loop's state colour: working, idle, starting.
                         .child(
                             div()
                                 .w(px(3.))
@@ -794,7 +782,7 @@ impl Shell {
                                         .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                                         .child(alerts.badges()),
                                 )
-                                .when_some(segments, |d, segments| d.child(bar::view(segments))),
+                                .when_some(terminal.status.as_ref(), |d, status| d.child(status.line())),
                         )
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.select(session.clone(), window, cx)
@@ -999,8 +987,8 @@ impl Shell {
                     .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                     .child(alerts.badges()),
             )
-            .when_some(self.bars.get(session), |d, segments| {
-                d.child(div().px_1().pb_1().bg(rgb(0x2d2d2d)).child(bar::view(segments)))
+            .when_some(terminal.status.as_ref(), |d, status| {
+                d.child(div().px_2().pb_1().bg(rgb(0x2d2d2d)).child(status.line()))
             })
             .child(
                 div()

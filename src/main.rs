@@ -2,13 +2,13 @@
 //! agents, their terminals grouped by project and their tickets beside.
 
 mod aiball;
-mod bar;
 mod events;
 mod panel;
 mod sessions;
 mod settings;
 mod shell;
 mod stats;
+mod status;
 mod terminal;
 
 use gpui_kit::*;

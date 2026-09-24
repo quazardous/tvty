@@ -17,6 +17,18 @@ pub struct Terminal {
     pub label: String,
     /// The aiball agent running in it, if any.
     pub agent: Option<String>,
+    /// Its Claude's state, as aiball has it.
+    pub status: Option<Status>,
+}
+
+/// A loop's Claude, as aiball centralises it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Status {
+    pub state: String,
+    /// When it entered that state, in seconds since the epoch.
+    pub since: Option<u64>,
+    pub driver: String,
+    pub online: bool,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -95,6 +107,14 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
             session,
             label,
             agent: agent.map(|c| c.consumer_id.clone()),
+            status: agent.and_then(|c| {
+                Some(Status {
+                    state: c.state.clone()?,
+                    since: c.state_since.as_deref().and_then(crate::status::parse_time),
+                    driver: c.state_human_word.clone().unwrap_or_default(),
+                    online: c.present.unwrap_or(false),
+                })
+            }),
         });
     }
     // Plain tmux sessions last: the projects are what tvty is for.
@@ -138,29 +158,6 @@ pub fn tmux_sessions() -> Vec<(String, String)> {
         .lines()
         .filter_map(|line| line.split_once('\t'))
         .map(|(name, path)| (name.to_string(), path.to_string()))
-        .collect()
-}
-
-/// Each claude-loop session's tmux bar, expanded by tmux itself (sessions
-/// without a styled bar — plain tmux — are left out).
-pub fn bars() -> HashMap<String, Vec<crate::bar::Segment>> {
-    let Ok(output) = Command::new("tmux")
-        .args(["ls", "-F", "#{session_name}\t#{status-fg}\t#{status-bg}\t#{T:status-left}"])
-        .env_remove("TMUX")
-        .output()
-    else {
-        return HashMap::new();
-    };
-    String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter_map(|line| {
-            let mut fields = line.splitn(4, '\t');
-            let (name, fg, bg, left) = (fields.next()?, fields.next()?, fields.next()?, fields.next()?);
-            left.contains("#[").then(|| {
-                let segments = crate::bar::parse(left, crate::bar::colour(fg), crate::bar::colour(bg));
-                (name.to_string(), segments)
-            })
-        })
         .collect()
 }
 

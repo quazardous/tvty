@@ -27,6 +27,14 @@ pub struct Consumer {
     pub cwd: Option<String>,
     pub project: Option<String>,
     pub last_seen_at: Option<String>,
+    /// A loop's Claude: `busy`, `idle` or `boot`, as its loop pushes it.
+    pub state: Option<String>,
+    pub state_since: Option<String>,
+    /// Who drives it: `loop` (autonomous), `wait` (held), `stop` (a human is
+    /// typing), `boot`.
+    pub state_human_word: Option<String>,
+    /// The loop is connected to aiball right now.
+    pub present: Option<bool>,
 }
 
 /// A row of a ticket listing, seen by [`Aiball::user`].
