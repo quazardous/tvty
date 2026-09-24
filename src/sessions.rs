@@ -141,6 +141,29 @@ pub fn tmux_sessions() -> Vec<(String, String)> {
         .collect()
 }
 
+/// Each claude-loop session's tmux bar, expanded by tmux itself (sessions
+/// without a styled bar — plain tmux — are left out).
+pub fn bars() -> HashMap<String, Vec<crate::bar::Segment>> {
+    let Ok(output) = Command::new("tmux")
+        .args(["ls", "-F", "#{session_name}\t#{status-fg}\t#{status-bg}\t#{T:status-left}"])
+        .env_remove("TMUX")
+        .output()
+    else {
+        return HashMap::new();
+    };
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut fields = line.splitn(4, '\t');
+            let (name, fg, bg, left) = (fields.next()?, fields.next()?, fields.next()?, fields.next()?);
+            left.contains("#[").then(|| {
+                let segments = crate::bar::parse(left, crate::bar::colour(fg), crate::bar::colour(bg));
+                (name.to_string(), segments)
+            })
+        })
+        .collect()
+}
+
 /// A pane's screen as `tmux capture-pane -e` prints it, colours included.
 pub struct Capture {
     pub columns: usize,

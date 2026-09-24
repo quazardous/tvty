@@ -12,6 +12,10 @@ such; open points are listed at the end.
   (unread, a decision waiting for you, the critical ticket, a human awaited).
 - A project shows the sum of its terminals' alerts, so a collapsed project
   still says it needs you.
+- Each loop's **claude-loop bar** — what its pane analyser sees of Claude:
+  the state as the bar's colour, 🧠 working / 💤 idle, ▶ autonomous / ⏸
+  held, 웃 a human, the counters — is redrawn small under its name, with the
+  state colour as an accent on the left, and on its cards.
 
 ## Two ways to switch
 

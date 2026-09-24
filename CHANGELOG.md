@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open a ticket to read its thread, accept or reject the pending plan or
   resolution, and reply — without leaving the terminal.
 - The mouse wheel scrolls back through the agent's history.
+- Each agent's Claude state at a glance: its claude-loop bar — the state
+  colour, working or idle, autonomous or held, the counters — is redrawn
+  small under its name and on its cards.
 - Switch terminals like alt-tab, as a portfolio: hold ctrl and tap tab, the
   window dims and the terminals come forward as live thumbnails grouped by
   project; release to switch.

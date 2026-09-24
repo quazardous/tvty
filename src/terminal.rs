@@ -22,9 +22,9 @@ use gpui_kit::*;
 
 use crate::stats;
 
-const FONT_FAMILY: &str = "Source Code Pro";
+pub const FONT_FAMILY: &str = "Source Code Pro";
 /// Tried in order for glyphs the main font lacks (emoji, CJK, symbols).
-const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
+pub const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
 const FONT_SIZE: f32 = 14.;
 const LINE_HEIGHT: f32 = 1.3;
 const SELECTION: Rgb = Rgb { r: 0x26, g: 0x4f, b: 0x78 };
@@ -793,6 +793,12 @@ fn to_hsla(rgb: Rgb) -> Hsla {
 
 /// The palette when the program did not set a color: a dark theme, the
 /// xterm 6x6x6 cube and gray ramp for indexes 16..=255.
+/// An xterm palette entry as `0xRRGGBB`, the way tvty draws it.
+pub fn xterm_rgb(index: usize) -> u32 {
+    let rgb = default_rgb(index);
+    (rgb.r as u32) << 16 | (rgb.g as u32) << 8 | rgb.b as u32
+}
+
 fn default_rgb(index: usize) -> Rgb {
     const ANSI: [u32; 16] = [
         0x1e1e1e, 0xf14c4c, 0x23d18b, 0xf5f543, 0x3b8eea, 0xd670d6, 0x29b8db, 0xcccccc, //
