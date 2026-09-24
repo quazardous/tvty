@@ -21,6 +21,9 @@ use crate::terminal::{Snapshot, TerminalView};
 const SESSIONS_EVERY: Duration = Duration::from_secs(3);
 /// How often the board is read when aiball's live feed is down.
 const POLL_EVERY: Duration = Duration::from_secs(5);
+/// The shortest time between two reads of the board: bursts of events are
+/// read at once, and aiball — one request at a time — is not flooded.
+const READ_GAP: Duration = Duration::from_secs(1);
 /// How often the board is read anyway, feed or not.
 const REREAD_EVERY: Duration = Duration::from_secs(60);
 /// How often the gallery's thumbnails are captured while it is open.
@@ -66,7 +69,7 @@ pub struct Shell {
 
     focus: FocusHandle,
     /// Wakes the refresh loop before its next tick.
-    refresh_now: futures::channel::mpsc::UnboundedSender<()>,
+    refresh_now: futures::channel::mpsc::UnboundedSender<events::Change>,
 }
 
 struct Gallery {
@@ -154,13 +157,20 @@ impl Shell {
         let aiball = Aiball::from_env();
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
         cx.subscribe(&panel, |shell, _, _: &BoardChanged, _| {
-            let _ = shell.refresh_now.unbounded_send(());
+            // A gesture moved the selected terminal's project.
+            let change = shell
+                .selected
+                .as_deref()
+                .and_then(|s| shell.terminal_of(s))
+                .map(|(project, _)| events::Change::Project(project.to_string()))
+                .unwrap_or(events::Change::All);
+            let _ = shell.refresh_now.unbounded_send(change);
         })
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
             .detach();
 
-        let (refresh_now, wake) = futures::channel::mpsc::unbounded::<()>();
+        let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
         Self::refresh_loop(aiball.clone(), feed, wake, cx);
 
@@ -197,30 +207,50 @@ impl Shell {
     fn refresh_loop(
         mut reader: Aiball,
         feed: events::Feed,
-        mut wake: futures::channel::mpsc::UnboundedReceiver<()>,
+        mut wake: futures::channel::mpsc::UnboundedReceiver<events::Change>,
         cx: &mut Context<Self>,
     ) {
         cx.spawn(async move |this, cx| {
             use futures::{FutureExt as _, StreamExt as _};
             let mut known = Vec::new();
+            let mut board = Board::default();
             let mut read_at = Instant::now();
-            let mut full = true;
+            let mut full_at = Instant::now();
+            let mut changes = sessions::Changes {
+                all: true,
+                ..Default::default()
+            };
             loop {
-                if full {
-                    let (next, board, now) = cx
+                if !changes.is_empty() {
+                    // Bursts come in one read, at most one read a second.
+                    let wait = READ_GAP.saturating_sub(read_at.elapsed());
+                    if !changes.all && !wait.is_zero() {
+                        cx.background_executor().timer(wait).await;
+                        while let Ok(change) = wake.try_recv() {
+                            add(&mut changes, change);
+                        }
+                    }
+                    let all = changes.all;
+                    let taken = std::mem::take(&mut changes);
+                    let previous = board.clone();
+                    let (next, read, now) = cx
                         .background_executor()
                         .spawn(async move {
                             let now = sessions::tmux_sessions();
-                            let board = sessions::discover(&mut reader);
-                            (reader, board, now)
+                            let read = sessions::update(&mut reader, &previous, &taken);
+                            (reader, read, now)
                         })
                         .await;
                     reader = next;
+                    board = read;
                     known = now;
                     read_at = Instant::now();
-                    let aiball = reader.clone();
+                    if all {
+                        full_at = read_at;
+                    }
+                    let (aiball, shown) = (reader.clone(), board.clone());
                     if this
-                        .update(cx, |shell, cx| shell.set_board(aiball, board, cx))
+                        .update(cx, |shell, cx| shell.set_board(aiball, shown, cx))
                         .is_err()
                     {
                         break;
@@ -232,24 +262,42 @@ impl Shell {
                 }
                 let timer = cx.background_executor().timer(SESSIONS_EVERY).fuse();
                 futures::pin_mut!(timer);
-                let woken = futures::select! {
-                    _ = timer => false,
-                    _ = wake.next() => true,
+                futures::select! {
+                    _ = timer => {}
+                    change = wake.next() => {
+                        if let Some(change) = change {
+                            add(&mut changes, change);
+                        }
+                    }
                 };
-                // A burst of events is one read.
-                while wake.try_recv().is_ok() {}
-                let since = read_at.elapsed();
-                full = woken || since >= REREAD_EVERY || (!feed.connected() && since >= POLL_EVERY);
-                if !full {
+                while let Ok(change) = wake.try_recv() {
+                    add(&mut changes, change);
+                }
+                let since = full_at.elapsed();
+                if since >= REREAD_EVERY || (!feed.connected() && since >= POLL_EVERY) {
+                    changes.all = true;
+                }
+                if changes.is_empty() {
                     let now = cx
                         .background_executor()
                         .spawn(async { sessions::tmux_sessions() })
                         .await;
-                    full = now != known;
+                    // New or gone sessions: group the terminals again.
+                    changes.consumers = now != known;
                 }
             }
         })
         .detach();
+
+        fn add(changes: &mut sessions::Changes, change: events::Change) {
+            match change {
+                events::Change::All => changes.all = true,
+                events::Change::Consumers => changes.consumers = true,
+                events::Change::Project(project) => {
+                    changes.projects.insert(project);
+                }
+            }
+        }
     }
 
     fn set_board(&mut self, aiball: Aiball, board: Board, cx: &mut Context<Self>) {

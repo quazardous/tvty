@@ -1,13 +1,46 @@
 //! aiball's live feed (`/ws`): every change on the board — a message
-//! posted, a decision taken, an agent's state — so tvty reads the board again
-//! when it moves instead of every few seconds. Read-only; aiball serves it on
-//! its TCP port only (`$AIBALL_URL`, default `http://127.0.0.1:7777`).
+//! posted, a decision taken, an agent's state — so tvty reads again what
+//! moved, when it moves, instead of everything every few seconds. Read-only;
+//! aiball serves it on its TCP port only (`$AIBALL_URL`, default
+//! `http://127.0.0.1:7777`).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use futures::channel::mpsc::UnboundedSender;
+use serde_json::Value;
+
+/// What an event says moved.
+#[derive(Debug)]
+pub enum Change {
+    /// A project's tickets.
+    Project(String),
+    /// The agents.
+    Consumers,
+    /// Something wider, or unknown: everything.
+    All,
+}
+
+impl Change {
+    fn of(event: &str) -> Option<Self> {
+        let event: Value = serde_json::from_str(event).ok()?;
+        let project = event
+            .pointer("/data/project")
+            .and_then(Value::as_str)
+            .map(|p| Change::Project(p.to_string()));
+        match event.get("type")?.as_str()? {
+            "hello" => None,
+            "consumer_changed" => Some(Change::Consumers),
+            "message_created" | "message_decided" | "message_edited" | "message_noted" => {
+                Some(project.unwrap_or(Change::All))
+            }
+            // Tags and rules do not change what tvty shows.
+            "message_tagged" | "tag_changed" | "rule_changed" | "automation_rule_changed" => None,
+            _ => Some(Change::All),
+        }
+    }
+}
 
 /// Whether the feed is up: while it is not, the board is polled.
 #[derive(Clone, Default)]
@@ -20,9 +53,9 @@ impl Feed {
         self.connected.load(Ordering::Relaxed)
     }
 
-    /// Listens on its own thread, sends `()` on every board event, and
+    /// Listens on its own thread, sends what each board event changed, and
     /// reconnects after a drop.
-    pub fn start(changed: UnboundedSender<()>) -> Self {
+    pub fn start(changed: UnboundedSender<Change>) -> Self {
         let feed = Self::default();
         let connected = feed.connected.clone();
         let url = ws_url();
@@ -35,15 +68,15 @@ impl Feed {
                             log::info!("aiball feed: connected to {url}");
                             connected.store(true, Ordering::Relaxed);
                             // Catch up on whatever changed while it was down.
-                            let _ = changed.unbounded_send(());
+                            let _ = changed.unbounded_send(Change::All);
                             while let Ok(message) = socket.read() {
                                 let tungstenite::Message::Text(text) = message else {
                                     continue;
                                 };
-                                if text.contains("\"type\":\"hello\"") {
+                                let Some(change) = Change::of(&text) else {
                                     continue;
-                                }
-                                if changed.unbounded_send(()).is_err() {
+                                };
+                                if changed.unbounded_send(change).is_err() {
                                     return; // the window is gone
                                 }
                             }

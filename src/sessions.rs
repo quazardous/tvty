@@ -3,7 +3,7 @@
 //! its directory, which gives it a project and a name; any other session
 //! lands in a "tmux" group. With them, the open tickets of each project.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
@@ -77,6 +77,64 @@ pub fn discover(aiball: &mut Aiball) -> Board {
         }
         if let Ok(Some(id)) = aiball.critical(&project.name) {
             board.critical.insert(project.name.clone(), id);
+        }
+    }
+    board
+}
+
+/// What moved on the board since the last read, from aiball's live feed.
+#[derive(Debug, Default)]
+pub struct Changes {
+    /// Read everything again.
+    pub all: bool,
+    /// The agents (their state, their directory) or the tmux sessions.
+    pub consumers: bool,
+    /// Projects whose tickets moved.
+    pub projects: HashSet<String>,
+}
+
+impl Changes {
+    pub fn is_empty(&self) -> bool {
+        !self.all && !self.consumers && self.projects.is_empty()
+    }
+}
+
+/// Blocking. Reads again only what moved: aiball serves one request at a
+/// time, and a project's open tickets can cost it a second.
+pub fn update(aiball: &mut Aiball, previous: &Board, changes: &Changes) -> Board {
+    if changes.all {
+        return discover(aiball);
+    }
+    let mut board = previous.clone();
+    if changes.consumers {
+        match aiball.consumers() {
+            Ok(consumers) => {
+                aiball.find_user(&consumers);
+                board.projects = group(tmux_sessions(), &consumers);
+            }
+            Err(error) => log::warn!("aiball: {error:#}"),
+        }
+    }
+    for project in board.projects.iter().filter(|p| p.on_board) {
+        let name = &project.name;
+        // A project newly shown has never been read.
+        if !changes.projects.contains(name) && board.tickets.contains_key(name) {
+            continue;
+        }
+        match aiball.open_tickets(name) {
+            Ok(tickets) => {
+                board.tickets.insert(name.clone(), tickets);
+            }
+            Err(error) => log::warn!("aiball: {error:#}"),
+        }
+        match aiball.critical(name) {
+            Ok(Some(id)) => {
+                board.critical.insert(name.clone(), id);
+            }
+            Ok(None) => {
+                board.critical.remove(name);
+            }
+            Err(_) => {}
         }
     }
     board
