@@ -4,7 +4,7 @@
 //! first) and the gallery (ctrl+shift+space, every terminal as a thumbnail).
 //! See docs/UX.md.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -56,6 +56,13 @@ pub struct Shell {
     thumbnails: HashMap<String, Snapshot>,
     /// A capture loop is running.
     capturing: bool,
+    /// What agents wait on from the user, newest last: the banner.
+    needs: Vec<Need>,
+    /// What was already waiting at the last read, so that only what is new
+    /// raises the banner. `None` before the first read.
+    waiting: Option<HashSet<(u64, Wait)>>,
+    /// Counts terminal switches: each one replays the slide.
+    switches: usize,
     focus: FocusHandle,
     /// Wakes the refresh loop before its next tick.
     refresh_now: futures::channel::mpsc::UnboundedSender<()>,
@@ -63,6 +70,22 @@ pub struct Shell {
 
 struct Gallery {
     filter: String,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum Wait {
+    Decision,
+    Unread,
+}
+
+/// Something new an agent waits on from the user.
+#[derive(Clone)]
+struct Need {
+    session: String,
+    agent: String,
+    ticket: u64,
+    title: String,
+    wait: Wait,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -154,6 +177,9 @@ impl Shell {
             gallery: None,
             thumbnails: HashMap::new(),
             capturing: false,
+            needs: Vec::new(),
+            waiting: None,
+            switches: 0,
             focus: cx.focus_handle(),
             refresh_now,
         };
@@ -224,9 +250,66 @@ impl Shell {
         self.aiball = aiball;
         if self.board != board {
             self.board = board;
+            self.update_needs();
             cx.notify();
         }
         self.sync_panel(cx);
+    }
+
+    /// Raises the banner for what newly waits on the user: a decision or
+    /// something unread on a ticket an agent with a terminal holds.
+    fn update_needs(&mut self) {
+        let mut now = HashSet::new();
+        let mut found = Vec::new();
+        for project in &self.board.projects {
+            for terminal in &project.terminals {
+                let Some(agent) = &terminal.agent else { continue };
+                let tickets = self.board.tickets.get(&project.name).into_iter().flatten();
+                for ticket in tickets.filter(|t| t.holder() == Some(agent.as_str())) {
+                    // One entry per ticket: a decision says more than "new".
+                    let wait = if ticket.pending_decision {
+                        Wait::Decision
+                    } else if ticket.unread {
+                        Wait::Unread
+                    } else {
+                        continue;
+                    };
+                    now.insert((ticket.id, wait));
+                    found.push(Need {
+                        session: terminal.session.clone(),
+                        agent: agent.clone(),
+                        ticket: ticket.id,
+                        title: ticket.title.clone(),
+                        wait,
+                    });
+                }
+            }
+        }
+        if let Some(before) = &self.waiting {
+            for need in found {
+                let key = (need.ticket, need.wait);
+                let shown = self.selected.as_deref() == Some(need.session.as_str());
+                if !before.contains(&key) && !shown {
+                    self.needs.retain(|n| n.ticket != need.ticket);
+                    self.needs.push(need);
+                }
+            }
+        }
+        // What no longer waits (decided, read) leaves the banner.
+        self.needs.retain(|n| now.contains(&(n.ticket, n.wait)));
+        self.waiting = Some(now);
+    }
+
+    /// Goes to what the banner shows: the agent's terminal, the panel open
+    /// on the ticket.
+    fn answer_need(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(need) = self.needs.pop() else { return };
+        self.select(need.session.clone(), window, cx);
+        if !self.settings.panel_open {
+            self.toggle_panel(cx);
+        }
+        self.panel.update(cx, |panel, cx| panel.open(need.ticket, cx));
+        cx.notify();
     }
 
     fn terminal_of(&self, session: &str) -> Option<(&str, &Terminal)> {
@@ -274,6 +357,10 @@ impl Shell {
             .clone();
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
+        if self.selected.as_deref() != Some(session.as_str()) {
+            self.switches += 1;
+        }
+        self.needs.retain(|n| n.session != session);
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
@@ -340,7 +427,9 @@ impl Shell {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
-        if m.control && key == "tab" {
+        if m.control && key == "enter" && !self.needs.is_empty() {
+            self.answer_need(window, cx);
+        } else if m.control && key == "tab" {
             self.step_slider(if m.shift { -1 } else { 1 }, cx);
         } else if m.control && m.shift && key == "space" {
             self.toggle_gallery(window, cx);
@@ -772,6 +861,69 @@ impl Shell {
             )
     }
 
+    /// The newest thing an agent waits on, over the top of the terminal.
+    fn banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        let need = self.needs.last()?;
+        let more = self.needs.len() - 1;
+        let what = match need.wait {
+            Wait::Decision => "a decision waits on",
+            Wait::Unread => "something new on",
+        };
+        let color = match need.wait {
+            Wait::Decision => DECISION,
+            Wait::Unread => UNREAD,
+        };
+        Some(
+            div()
+                .id(SharedString::from(format!("banner-{}-{:?}", need.ticket, need.wait as u8)))
+                .absolute()
+                .top_2()
+                .left_4()
+                .right_4()
+                .flex()
+                .items_center()
+                .gap_3()
+                .px_3()
+                .py_2()
+                .rounded_md()
+                .bg(rgb(0x1f2a36))
+                .border_1()
+                .border_color(rgb(color))
+                .shadow_lg()
+                .text_sm()
+                .cursor_pointer()
+                .child(dot(color))
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .child(format!("{} — {what} #{} {}", need.agent, need.ticket, need.title)),
+                )
+                .when(more > 0, |d| d.child(div().text_color(rgb(0x8a8a8a)).child(format!("+{more}"))))
+                .child(div().text_xs().text_color(rgb(0x8a8a8a)).child("ctrl+enter"))
+                .child(
+                    div()
+                        .id("banner-close")
+                        .px_1()
+                        .text_color(rgb(0x8a8a8a))
+                        .hover(|d| d.text_color(rgb(0xffffff)))
+                        .child("×")
+                        .on_click(cx.listener(|shell, _, _, cx| {
+                            cx.stop_propagation();
+                            shell.needs.pop();
+                            cx.notify();
+                        })),
+                )
+                .on_click(cx.listener(|shell, _, window, cx| shell.answer_need(window, cx)))
+                .with_animation(
+                    SharedString::from(format!("banner-in-{}-{}", need.ticket, need.wait as u8)),
+                    Animation::new(Duration::from_millis(220)).with_easing(|t| 1. - (1. - t).powi(3)),
+                    |banner, t| banner.opacity(t).top(px(8. - 16. * (1. - t))),
+                ),
+        )
+    }
+
     /// A terminal as a card: its name and alerts over a thumbnail.
     fn card(
         &self,
@@ -900,15 +1052,28 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
-            Some(terminal) => div().size_full().child(terminal.clone()),
+            // The terminal slides in on every switch. A relative offset, not a
+            // margin: the terminal keeps its size, so tmux is not resized.
+            Some(terminal) => div()
+                .relative()
+                .size_full()
+                .child(terminal.clone())
+                .with_animation(
+                    SharedString::from(format!("switch-{}", self.switches)),
+                    Animation::new(Duration::from_millis(240)).with_easing(|t| 1. - (1. - t).powi(3)),
+                    |d, t| d.left(px(60. * (1. - t))).opacity(0.25 + 0.75 * t),
+                )
+                .into_any_element(),
             None => div()
                 .size_full()
                 .flex()
                 .items_center()
                 .justify_center()
                 .text_color(rgb(0x808080))
-                .child("Pick a terminal on the left · ctrl+shift+space shows them all"),
+                .child("Pick a terminal on the left · ctrl+shift+space shows them all")
+                .into_any_element(),
         };
+        let banner = self.banner(cx);
         let left = if self.settings.sidebar_open {
             div()
                 .flex()
@@ -974,7 +1139,8 @@ impl Render for Shell {
                     .flex_1()
                     .h_full()
                     .min_w_0()
-                    .child(center),
+                    .child(center)
+                    .children(banner),
             )
             .child(right)
             .children(slider)

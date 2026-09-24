@@ -87,7 +87,7 @@ impl TicketPanel {
         }
     }
 
-    fn open(&mut self, ticket: u64, cx: &mut Context<Self>) {
+    pub fn open(&mut self, ticket: u64, cx: &mut Context<Self>) {
         self.detail = Some(Detail {
             ticket,
             thread: None,
