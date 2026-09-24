@@ -12,6 +12,8 @@ pub struct Settings {
     /// a third of the window.
     pub panel_width: Option<f32>,
     pub panel_open: bool,
+    /// The projects' list, on the left.
+    pub sidebar_open: bool,
 }
 
 impl Default for Settings {
@@ -19,6 +21,7 @@ impl Default for Settings {
         Self {
             panel_width: None,
             panel_open: true,
+            sidebar_open: true,
         }
     }
 }

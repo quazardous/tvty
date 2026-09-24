@@ -29,7 +29,10 @@ const THUMBNAILS_EVERY: Duration = Duration::from_millis(1500);
 const SIDEBAR_WIDTH: f32 = 220.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
-const COLLAPSED_WIDTH: f32 = 28.;
+/// A folded side: just enough for a few dots saying what waits.
+const FOLDED_WIDTH: f32 = 10.;
+/// The strip between a side and the terminal, holding the toggle grip.
+const EDGE_WIDTH: f32 = 8.;
 
 pub struct Shell {
     aiball: Aiball,
@@ -56,6 +59,16 @@ struct Gallery {
     thumbnails: HashMap<String, Snapshot>,
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Side {
+    Left,
+    Right,
+}
+
+const CRITICAL: u32 = 0xc72e0f;
+const DECISION: u32 = 0xcc6d00;
+const UNREAD: u32 = 0x3b8eea;
+
 /// What a set of tickets asks of the user.
 #[derive(Default)]
 struct Alerts {
@@ -75,14 +88,34 @@ impl Alerts {
         alerts
     }
 
+    /// One dot per kind of thing waiting, most pressing first.
+    fn colors(&self) -> Vec<u32> {
+        let mut colors = Vec::new();
+        if self.critical {
+            colors.push(CRITICAL);
+        }
+        if self.decisions > 0 {
+            colors.push(DECISION);
+        }
+        if self.unread > 0 {
+            colors.push(UNREAD);
+        }
+        colors
+    }
+
+    /// The most pressing thing waiting, if any.
+    fn color(&self) -> Option<u32> {
+        self.colors().first().copied()
+    }
+
     fn badges(&self) -> impl IntoElement + use<> {
         div()
             .flex()
             .items_center()
             .gap_1()
-            .when(self.critical, |d| d.child(pill("!", 0xc72e0f)))
-            .when(self.decisions > 0, |d| d.child(pill(self.decisions.to_string(), 0xcc6d00)))
-            .when(self.unread > 0, |d| d.child(pill(self.unread.to_string(), 0x3b8eea)))
+            .when(self.critical, |d| d.child(pill("!", CRITICAL)))
+            .when(self.decisions > 0, |d| d.child(pill(self.decisions.to_string(), DECISION)))
+            .when(self.unread > 0, |d| d.child(pill(self.unread.to_string(), UNREAD)))
     }
 }
 
@@ -250,6 +283,12 @@ impl Shell {
 
     // ── The panel ───────────────────────────────────────────────────────
 
+    fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
+        self.settings.sidebar_open = !self.settings.sidebar_open;
+        self.settings.save();
+        cx.notify();
+    }
+
     fn toggle_panel(&mut self, cx: &mut Context<Self>) {
         self.settings.panel_open = !self.settings.panel_open;
         self.settings.save();
@@ -258,7 +297,8 @@ impl Shell {
 
     fn panel_width(&self, window: &Window) -> f32 {
         let total = f32::from(window.viewport_size().width);
-        let max = (total - SIDEBAR_WIDTH - CENTER_MIN).max(PANEL_MIN);
+        let left = if self.settings.sidebar_open { SIDEBAR_WIDTH } else { FOLDED_WIDTH };
+        let max = (total - left - 2. * EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
         self.settings
             .panel_width
             .unwrap_or(total / 3.)
@@ -297,6 +337,8 @@ impl Shell {
             self.toggle_gallery(window, cx);
         } else if m.control && m.shift && key == "t" {
             self.toggle_panel(cx);
+        } else if m.control && m.shift && key == "b" {
+            self.toggle_sidebar(cx);
         } else if key == "escape" && (self.slider.is_some() || self.gallery.is_some()) {
             self.slider = None;
             self.close_gallery(window, cx);
@@ -447,6 +489,88 @@ impl Shell {
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
+
+    /// The strip between a side and the terminal: a grip that folds the
+    /// side away; on the right, the rest of it drags the panel's width.
+    fn edge(&self, side: Side, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let resizing = self.resizing;
+        div()
+            .id(match side {
+                Side::Left => "sidebar-edge",
+                Side::Right => "panel-edge",
+            })
+            .flex()
+            .items_center()
+            .justify_center()
+            .w(px(EDGE_WIDTH))
+            .flex_none()
+            .h_full()
+            .bg(rgb(0x1e1e1e))
+            .when(side == Side::Right, |d| {
+                d.cursor(CursorStyle::ResizeColumn)
+                    .when(resizing, |d| d.bg(rgb(0x2a3a4d)))
+                    .hover(|d| d.bg(rgb(0x2a3a4d)))
+                    .on_mouse_down(
+                        MouseButton::Left,
+                        cx.listener(|shell, _, _, cx| {
+                            shell.resizing = true;
+                            cx.notify();
+                        }),
+                    )
+            })
+            .child(
+                div()
+                    .id(match side {
+                        Side::Left => "sidebar-grip",
+                        Side::Right => "panel-grip",
+                    })
+                    .w(px(6.))
+                    .h(px(44.))
+                    .rounded_full()
+                    .bg(rgb(0x4a4a4a))
+                    .cursor_pointer()
+                    .hover(|d| d.bg(rgb(0x3b8eea)))
+                    // A press on the grip is a toggle, not the start of a drag.
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(cx.listener(move |shell, _, _, cx| match side {
+                        Side::Left => shell.toggle_sidebar(cx),
+                        Side::Right => shell.toggle_panel(cx),
+                    })),
+            )
+    }
+
+    /// A folded side: 10 pixels, a dot per thing waiting, a click unfolds.
+    fn folded(&self, side: Side, dots: Vec<u32>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id(match side {
+                Side::Left => "sidebar-folded",
+                Side::Right => "panel-folded",
+            })
+            .flex()
+            .flex_col()
+            .items_center()
+            .gap_1()
+            .pt_2()
+            .w(px(FOLDED_WIDTH))
+            .flex_none()
+            .h_full()
+            .bg(rgb(0x252526))
+            .map(|d| match side {
+                Side::Left => d.border_r_1(),
+                Side::Right => d.border_l_1(),
+            })
+            .border_color(rgb(0x3c3c3c))
+            .cursor_pointer()
+            .hover(|d| d.bg(rgb(0x2a3a4d)))
+            .children(
+                dots.into_iter()
+                    .map(|color| div().flex_none().size(px(6.)).rounded_full().bg(rgb(color))),
+            )
+            .on_click(cx.listener(move |shell, _, _, cx| match side {
+                Side::Left => shell.toggle_sidebar(cx),
+                Side::Right => shell.toggle_panel(cx),
+            }))
+    }
 
     fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut list = div()
@@ -690,62 +814,47 @@ impl Render for Shell {
                 .text_color(rgb(0x808080))
                 .child("Pick a terminal on the left · ctrl+shift+space shows them all"),
         };
-        let open = self.settings.panel_open;
-        let panel_width = self.panel_width(window);
-        let panel = if open {
+        let left = if self.settings.sidebar_open {
             div()
                 .flex()
                 .flex_none()
-                .w(px(panel_width))
                 .h_full()
-                // The edge to drag.
-                .child(
-                    div()
-                        .id("panel-edge")
-                        .w(px(5.))
-                        .h_full()
-                        .flex_none()
-                        .cursor(CursorStyle::ResizeColumn)
-                        .bg(if self.resizing { rgb(0x3b8eea) } else { rgb(0x2b2b2b) })
-                        .hover(|d| d.bg(rgb(0x3b8eea)))
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(|shell, _, _, cx| {
-                                shell.resizing = true;
-                                cx.notify();
-                            }),
-                        ),
-                )
+                .child(self.sidebar(cx))
+                .child(self.edge(Side::Left, cx))
+                .into_any_element()
+        } else {
+            let dots = self
+                .board
+                .projects
+                .iter()
+                .filter_map(|p| {
+                    let tickets = self.board.tickets.get(&p.name).into_iter().flatten();
+                    let alerts = Alerts::of(tickets, self.board.critical.get(&p.name).copied());
+                    alerts.color()
+                })
+                .collect();
+            self.folded(Side::Left, dots, cx).into_any_element()
+        };
+        let right = if self.settings.panel_open {
+            div()
+                .flex()
+                .flex_none()
+                .w(px(self.panel_width(window) + EDGE_WIDTH))
+                .h_full()
+                .child(self.edge(Side::Right, cx))
                 .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
                 .into_any_element()
         } else {
-            // Collapsed: a strip that still says what waits.
             let alerts = self
                 .selected
                 .as_deref()
                 .and_then(|s| self.terminal_of(s))
-                .map(|(project, terminal)| self.alerts_of(project, terminal.agent.as_deref()))
+                .map(|(project, _)| {
+                    let tickets = self.board.tickets.get(project).into_iter().flatten();
+                    Alerts::of(tickets, self.board.critical.get(project).copied())
+                })
                 .unwrap_or_default();
-            div()
-                .id("panel-collapsed")
-                .flex()
-                .flex_col()
-                .items_center()
-                .gap_2()
-                .pt_2()
-                .w(px(COLLAPSED_WIDTH))
-                .flex_none()
-                .h_full()
-                .bg(rgb(0x252526))
-                .border_l_1()
-                .border_color(rgb(0x3c3c3c))
-                .cursor_pointer()
-                .hover(|d| d.bg(rgb(0x2a2d2e)))
-                .child(div().text_color(rgb(0x3b8eea)).child("‹"))
-                .when(alerts.decisions > 0, |d| d.child(pill(alerts.decisions.to_string(), 0xcc6d00)))
-                .when(alerts.unread > 0, |d| d.child(pill(alerts.unread.to_string(), 0x3b8eea)))
-                .on_click(cx.listener(|shell, _, _, cx| shell.toggle_panel(cx)))
-                .into_any_element()
+            self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
         let slider = self.slider.map(|index| self.slider_strip(index));
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
@@ -763,7 +872,7 @@ impl Render for Shell {
             .bg(rgb(0x1e1e1e))
             .text_color(rgb(0xd4d4d4))
             .when(self.resizing, |d| d.cursor(CursorStyle::ResizeColumn))
-            .child(self.sidebar(cx))
+            .child(left)
             .child(
                 div()
                     .relative()
@@ -773,7 +882,7 @@ impl Render for Shell {
                     .child(center)
                     .children(slider),
             )
-            .child(panel)
+            .child(right)
             .children(gallery)
     }
 }

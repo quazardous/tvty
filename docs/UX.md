@@ -31,6 +31,15 @@ such; open points are listed at the end.
 - **Clicking a ticket opens its detail**: the thread, its decisions, the reply
   box.
 
+## Folding the sides
+
+Both sides — the projects' list and the ticket panel — fold with a **grip**
+on their edge (or their key, below) into a **10-pixel strip** that still
+shows what waits, as dots: red for the critical ticket, orange for a
+decision, blue for unread. On the left, one dot per project with something
+waiting; on the right, the selected terminal's project. A click on the
+strip unfolds it. Both states are remembered.
+
 ## Keys
 
 | Keys | |
@@ -38,6 +47,7 @@ such; open points are listed at the end.
 | ctrl+tab (shift: backwards) | the slider, most recent first; release ctrl to switch |
 | ctrl+shift+space | the gallery; type to filter, enter opens the first, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
+| ctrl+shift+b | fold / unfold the projects' list |
 
 Everything else goes to the terminal.
 

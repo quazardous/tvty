@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   most recent ones, release to switch.
 - See every terminal at once as live thumbnails (ctrl+shift+space), type to
   filter, enter to open — without resizing the agents' sessions.
-- Resize the ticket panel by its edge, fold it away (ctrl+shift+t); tvty
-  remembers both.
+- Resize the ticket panel by its edge. Fold either side away with the grip
+  on its edge (ctrl+shift+b, ctrl+shift+t) into a 10-pixel strip that still
+  shows what waits as coloured dots; tvty remembers it.
 - Tickets and alerts update as soon as something happens on the board.
