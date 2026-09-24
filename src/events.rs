@@ -54,7 +54,8 @@ impl Feed {
     }
 
     /// Listens on its own thread, sends what each board event changed, and
-    /// reconnects after a drop.
+    /// reconnects after a drop. Tries aiball's local socket first (trusted,
+    /// no token, like the API), then its TCP port.
     pub fn start(changed: UnboundedSender<Change>) -> Self {
         let feed = Self::default();
         let connected = feed.connected.clone();
@@ -63,30 +64,21 @@ impl Feed {
             .name("aiball-feed".into())
             .spawn(move || {
                 loop {
-                    match tungstenite::connect(&url) {
-                        Ok((mut socket, _)) => {
-                            log::info!("aiball feed: connected to {url}");
-                            connected.store(true, Ordering::Relaxed);
-                            // Catch up on whatever changed while it was down.
-                            let _ = changed.unbounded_send(Change::All);
-                            while let Ok(message) = socket.read() {
-                                let tungstenite::Message::Text(text) = message else {
-                                    continue;
-                                };
-                                let Some(change) = Change::of(&text) else {
-                                    continue;
-                                };
-                                if changed.unbounded_send(change).is_err() {
-                                    return; // the window is gone
+                    let alive = match connect_local() {
+                        Ok(socket) => listen(socket, "the local socket", &changed, &connected),
+                        Err(local) => {
+                            log::debug!("aiball feed: local socket: {local}");
+                            match tungstenite::connect(&url) {
+                                Ok((socket, _)) => listen(socket, &url, &changed, &connected),
+                                Err(error) => {
+                                    log::debug!("aiball feed: {url}: {error}");
+                                    true
                                 }
                             }
-                            connected.store(false, Ordering::Relaxed);
-                            log::info!("aiball feed: dropped");
                         }
-                        Err(error) => log::debug!("aiball feed: {error}"),
-                    }
-                    if changed.is_closed() {
-                        return;
+                    };
+                    if !alive || changed.is_closed() {
+                        return; // the window is gone
                     }
                     std::thread::sleep(Duration::from_secs(5));
                 }
@@ -94,6 +86,49 @@ impl Feed {
             .expect("failed to start the feed thread");
         feed
     }
+}
+
+/// Reads events until the connection drops; `false` once nobody listens.
+fn listen<S: std::io::Read + std::io::Write>(
+    mut socket: tungstenite::WebSocket<S>,
+    from: &str,
+    changed: &UnboundedSender<Change>,
+    connected: &AtomicBool,
+) -> bool {
+    log::info!("aiball feed: connected to {from}");
+    connected.store(true, Ordering::Relaxed);
+    // Catch up on whatever changed while it was down.
+    let _ = changed.unbounded_send(Change::All);
+    let mut alive = true;
+    while let Ok(message) = socket.read() {
+        let tungstenite::Message::Text(text) = message else {
+            continue;
+        };
+        let Some(change) = Change::of(&text) else {
+            continue;
+        };
+        if changed.unbounded_send(change).is_err() {
+            alive = false;
+            break;
+        }
+    }
+    connected.store(false, Ordering::Relaxed);
+    log::info!("aiball feed: dropped");
+    alive
+}
+
+/// `/ws` over aiball's local socket, where the same user is trusted.
+#[cfg(unix)]
+fn connect_local() -> anyhow::Result<tungstenite::WebSocket<std::os::unix::net::UnixStream>> {
+    let stream = std::os::unix::net::UnixStream::connect(crate::aiball::socket_path())?;
+    let (socket, _) = tungstenite::client("ws://aiball/ws", stream)
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+    Ok(socket)
+}
+
+#[cfg(not(unix))]
+fn connect_local() -> anyhow::Result<tungstenite::WebSocket<std::net::TcpStream>> {
+    anyhow::bail!("no local socket on this platform")
 }
 
 fn ws_url() -> String {

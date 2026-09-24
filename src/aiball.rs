@@ -125,17 +125,10 @@ impl Thread {
 }
 
 impl Aiball {
-    /// `$AIBALL_SOCK`, else aiball's default socket; acting as `$TVTY_USER`,
+    /// [`socket_path`]; acting as `$TVTY_USER`,
     /// else as the local owner until [`Aiball::find_user`] knows better.
     pub fn from_env() -> Self {
-        let socket = std::env::var("AIBALL_SOCK")
-            .ok()
-            .filter(|p| !p.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                let home = std::env::var("HOME").unwrap_or_default();
-                PathBuf::from(home).join(".local/share/aiball/sock")
-            });
+        let socket = socket_path();
         let user = std::env::var("TVTY_USER").unwrap_or_else(|_| "human".into());
         Self { socket, user }
     }
@@ -252,6 +245,18 @@ impl Aiball {
     fn request(&self, _: &str, _: &str, _: Option<Value>) -> anyhow::Result<String> {
         bail!("aiball's socket is Unix only for now")
     }
+}
+
+/// aiball's local socket: `$AIBALL_SOCK`, else its default place.
+pub fn socket_path() -> PathBuf {
+    std::env::var("AIBALL_SOCK")
+        .ok()
+        .filter(|p| !p.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            let home = std::env::var("HOME").unwrap_or_default();
+            PathBuf::from(home).join(".local/share/aiball/sock")
+        })
 }
 
 /// Percent-encodes a path segment or query value.
