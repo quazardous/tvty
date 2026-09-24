@@ -481,10 +481,9 @@ impl Shell {
 
     fn panel_width(&self, window: &Window) -> f32 {
         let total = Self::inner_width(window);
-        // The projects' list lies over the terminal: only its folded strip
-        // takes room from the layout.
-        let left = if self.settings.sidebar_open { 0. } else { FOLDED_WIDTH };
-        let max = (total - left - EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
+        // The projects' list lies over the terminal: only its strip takes
+        // room from the layout.
+        let max = (total - FOLDED_WIDTH - EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
         self.settings
             .panel_width
             .unwrap_or(total / 3.)
@@ -496,9 +495,10 @@ impl Shell {
         let x = f32::from(event.position.x);
         match self.resizing {
             None => return,
-            // The list starts where the frame's content does.
+            // The list starts after its strip, where the frame's content does.
             Some(Side::Left) => {
-                self.settings.sidebar_width = Some(x - f32::from(paddings.left) - EDGE_WIDTH / 2.)
+                self.settings.sidebar_width =
+                    Some(x - f32::from(paddings.left) - FOLDED_WIDTH - EDGE_WIDTH / 2.)
             }
             // The panel ends where the frame's content does.
             Some(Side::Right) => {
@@ -1510,8 +1510,8 @@ impl Render for Shell {
                 .into_any_element(),
         };
         let banner = self.banner(cx);
-        // Open, the projects' list lies over the terminal (see `overlay`
-        // below); folded, its strip takes its place in the layout.
+        // The strip stays in the layout, open or folded, so the terminal
+        // keeps its width; open, the projects' list lies over the terminal.
         let overlay = self.settings.sidebar_open.then(|| {
             div()
                 .absolute()
@@ -1524,9 +1524,7 @@ impl Render for Shell {
                 .child(self.sidebar(self.sidebar_width(window), cx))
                 .child(self.edge(Side::Left, cx))
         });
-        let left = if self.settings.sidebar_open {
-            None
-        } else {
+        let left = {
             let dots = self
                 .board
                 .projects
@@ -1537,7 +1535,7 @@ impl Render for Shell {
                     alerts.color()
                 })
                 .collect();
-            Some(self.folded(Side::Left, dots, cx).into_any_element())
+            self.folded(Side::Left, dots, cx)
         };
         let right = if self.settings.panel_open {
             div()
@@ -1583,7 +1581,7 @@ impl Render for Shell {
             .bg(p().bg)
             .text_color(p().text)
             .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
-            .children(left)
+            .child(left)
             .child(
                 div()
                     .relative()
