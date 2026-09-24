@@ -18,6 +18,8 @@ pub struct Settings {
     pub sidebar_width: Option<f32>,
     /// The colour theme's name; `None`: the kit's default dark theme.
     pub theme: Option<String>,
+    /// The terminals' own colour theme; `None`: the window's.
+    pub terminal_theme: Option<String>,
 }
 
 impl Default for Settings {
@@ -28,6 +30,7 @@ impl Default for Settings {
             sidebar_open: true,
             sidebar_width: None,
             theme: None,
+            terminal_theme: None,
         }
     }
 }

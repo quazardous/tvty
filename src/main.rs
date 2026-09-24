@@ -33,7 +33,8 @@ fn main() {
     // The kit's icons (the title bar's buttons among them) come from its assets.
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
-        theme::init(settings::Settings::load().theme.as_deref(), cx);
+        let settings = settings::Settings::load();
+        theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {

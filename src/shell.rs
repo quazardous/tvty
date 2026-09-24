@@ -820,41 +820,93 @@ impl Shell {
     }
 
     fn options_appearance(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let current = theme::current(cx);
-        let mut page = div().flex().flex_col().gap_1().max_w(px(640.)).child(option_note(
-            "Colour theme of the window and the terminals. Ctrl+Shift+K steps through them.",
-        ));
+        let window_theme = theme::current(cx);
+        let terminal_theme = theme::current_terminal();
+        let column = || div().flex().flex_col().gap_1().flex_1().min_w_0();
+        let window_list = self.theme_choices(
+            column().child(option_group("Window")),
+            "window",
+            Some(window_theme),
+            None,
+            cx,
+            |shell, name, window, cx| {
+                if let Some(name) = name {
+                    shell.set_theme(name, window, cx);
+                }
+            },
+        );
+        let terminal_list = self.theme_choices(
+            column().child(option_group("Terminal")),
+            "terminal",
+            terminal_theme,
+            Some("Same as the window"),
+            cx,
+            |shell, name, _, cx| shell.set_terminal_theme(name, cx),
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap_1()
+            .max_w(px(720.))
+            .child(option_note(
+                "The window's colour theme, and the terminals': the window's, or one of their own — a dark terminal in a light window. Ctrl+Shift+K steps through the window's.",
+            ))
+            .child(div().flex().gap_6().child(window_list).child(terminal_list))
+            .child(option_note(
+            "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
+        ))
+    }
+
+    /// The themes to pick from, dark ones first, appended to `page`; with a
+    /// `default` entry first when there may be no theme (`None`).
+    fn theme_choices(
+        &self,
+        mut page: Div,
+        id: &'static str,
+        chosen: Option<SharedString>,
+        default: Option<&'static str>,
+        cx: &mut Context<Self>,
+        pick: fn(&mut Self, Option<SharedString>, &mut Window, &mut Context<Self>),
+    ) -> Div {
+        let choice = |key: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
+            div()
+                .id(SharedString::from(format!("options-{id}-theme-{key}")))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .cursor_pointer()
+                .when(on, |d| d.bg(p().active))
+                .hover(|d| d.bg(p().hover))
+                .child(div().w(px(12.)).child(if on { "✓" } else { "" }))
+                .child(label)
+                .on_click(cx.listener(move |shell, _, window, cx| {
+                    pick(shell, value.clone(), window, cx);
+                    shell.options = Some(Section::Appearance);
+                }))
+        };
+        if let Some(label) = default {
+            page = page.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
+        }
         let mut last_dark = None;
         for (name, dark) in theme::names(cx) {
             if last_dark != Some(dark) {
                 last_dark = Some(dark);
-                page = page.child(option_group(if dark { "Dark" } else { "Light" }));
+                page = page.child(
+                    div()
+                        .px_3()
+                        .pt_2()
+                        .text_xs()
+                        .text_color(p().muted)
+                        .child(if dark { "Dark" } else { "Light" }),
+                );
             }
-            let chosen = name == current;
-            let pick = name.clone();
-            page = page.child(
-                div()
-                    .id(SharedString::from(format!("options-theme-{name}")))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .rounded_md()
-                    .cursor_pointer()
-                    .when(chosen, |d| d.bg(p().active))
-                    .hover(|d| d.bg(p().hover))
-                    .child(div().w(px(12.)).child(if chosen { "✓" } else { "" }))
-                    .child(name.clone())
-                    .on_click(cx.listener(move |shell, _, window, cx| {
-                        shell.set_theme(pick.clone(), window, cx);
-                        shell.options = Some(Section::Appearance);
-                    })),
-            );
+            let on = chosen.as_ref() == Some(&name);
+            page = page.child(choice(name.clone(), name.clone(), Some(name), on, cx));
         }
-        page.child(option_note(
-            "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
-        ))
+        page
     }
 
     fn options_layout(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -916,6 +968,10 @@ impl Shell {
                 if self.feed.connected() { "connected" } else { "down — the board is polled" }.to_string(),
             ),
             ("Theme", theme::current(cx).to_string()),
+            (
+                "Terminal theme",
+                theme::current_terminal().map_or("the window's".to_string(), |name| name.to_string()),
+            ),
             ("Settings and themes", config),
         ];
         let mut table = div().flex().flex_col().gap_1().max_w(px(720.));
@@ -943,6 +999,13 @@ impl Shell {
         self.settings.theme = Some(name.to_string());
         self.settings.save();
         self.theme_menu = false;
+        cx.notify();
+    }
+
+    fn set_terminal_theme(&mut self, name: Option<SharedString>, cx: &mut Context<Self>) {
+        theme::apply_terminal(name.as_deref(), cx);
+        self.settings.terminal_theme = name.map(|n| n.to_string());
+        self.settings.save();
         cx.notify();
     }
 

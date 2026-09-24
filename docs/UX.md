@@ -88,10 +88,14 @@ through them with ctrl+shift+k; it is remembered. Six theme sets are bundled
 (light and dark variants, see `themes/`), and any gpui-component theme file
 dropped in `~/.config/tvty/themes/` joins the list.
 
+The terminals can have a theme of their own — a dark terminal in a light
+window, as many like it: in the options' Appearance, next to the window's
+theme. By default they follow the window's.
+
 ## Options
 
 A full page (⚙ in the title bar, or ctrl+,) with its sections on the left:
-Appearance (the colour theme), Layout (the sides: folded or not, their
+Appearance (the window's and the terminals' colour themes), Layout (the sides: folded or not, their
 widths, reset), Keyboard shortcuts (all of them, from the one list in
 `src/options.rs`), About (version, aiball's socket, who tvty acts as, the
 live feed, where settings and themes live). Esc closes it.
