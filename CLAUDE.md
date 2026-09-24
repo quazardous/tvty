@@ -14,7 +14,10 @@ fix, again. Never ask david to "try it" — show him a screenshot you took.
 - Stack (decided): Rust, **GPUI** (Zed's UI toolkit) + gpui-kit widgets,
   `alacritty_terminal` for emulation. Each terminal runs `tmux attach` (Linux)
   or `psmux attach` (Windows) on an agent's claude-loop session.
-- aiball is the engine: tvty only talks to its API. aiball's source is next
+- aiball is the engine: tvty only talks to its API. **tvty reads aiball, not
+  tmux**: agents' state, tickets, alerts come from aiball (which centralises
+  them); tmux only shows the terminals, and anything tvty takes from tmux
+  must be rewireable to aiball the day loops run without it. aiball's source is next
   door (`../aiball`); change it through a ticket on its project, not from here.
 
 ## The test loop — wbox
