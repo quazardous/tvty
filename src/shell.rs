@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use gpui_kit::component::{TitleBar, window_border, window_paddings};
+
 use crate::aiball::{Aiball, TicketRow};
 use crate::events;
 use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
@@ -446,7 +448,8 @@ impl Shell {
     }
 
     fn panel_width(&self, window: &Window) -> f32 {
-        let total = f32::from(window.viewport_size().width);
+        let paddings = window_paddings(window);
+        let total = f32::from(window.viewport_size().width - paddings.left - paddings.right);
         let left = if self.settings.sidebar_open { SIDEBAR_WIDTH } else { FOLDED_WIDTH };
         let max = (total - left - 2. * EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
         self.settings
@@ -459,8 +462,9 @@ impl Shell {
         if !self.resizing {
             return;
         }
-        let total = f32::from(window.viewport_size().width);
-        self.settings.panel_width = Some(total - f32::from(event.position.x));
+        // The panel ends where the frame's content does, inside its shadow.
+        let right = f32::from(window.viewport_size().width - window_paddings(window).right);
+        self.settings.panel_width = Some(right - f32::from(event.position.x));
         cx.notify();
     }
 
@@ -1200,7 +1204,11 @@ impl Render for Shell {
         let slider = self.slider.map(|index| self.portfolio(index));
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
-        div()
+        let title = match self.selected.as_deref().and_then(|s| self.terminal_of(s)) {
+            Some((project, terminal)) => format!("tvty — {project} · {}", terminal.label),
+            None => "tvty".to_string(),
+        };
+        let body = div()
             .id("shell")
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(Self::on_key))
@@ -1209,7 +1217,9 @@ impl Render for Shell {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .relative()
             .flex()
-            .size_full()
+            .w_full()
+            .flex_1()
+            .min_h_0()
             .bg(rgb(0x1e1e1e))
             .text_color(rgb(0xd4d4d4))
             .when(self.resizing, |d| d.cursor(CursorStyle::ResizeColumn))
@@ -1225,6 +1235,27 @@ impl Render for Shell {
             )
             .child(right)
             .children(slider)
-            .children(gallery)
+            .children(gallery);
+
+        // The window draws its own frame: GNOME leaves decorations to the
+        // application (as with VS Code or Zed). The title bar moves the window
+        // and carries its buttons; the border resizes it.
+        window_border().child(
+            div()
+                .flex()
+                .flex_col()
+                .size_full()
+                .bg(rgb(0x1e1e1e))
+                .child(
+                    TitleBar::new().child(
+                        div()
+                            .text_sm()
+                            .text_color(rgb(0xb0b0b0))
+                            .truncate()
+                            .child(title),
+                    ),
+                )
+                .child(body),
+        )
     }
 }

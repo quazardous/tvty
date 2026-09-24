@@ -22,7 +22,8 @@ fn main() {
     // `tvty [SESSION]`: open that tmux session at start.
     let selected = std::env::args().nth(1);
 
-    gpui_kit::application().run(move |cx| {
+    // The kit's icons (the title bar's buttons among them) come from its assets.
+    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
         cx.spawn(async move |cx| {
@@ -30,9 +31,12 @@ fn main() {
                 WindowOptions {
                     titlebar: Some(TitlebarOptions {
                         title: Some("tvty".into()),
-                        ..Default::default()
+                        ..gpui_kit::component::TitleBar::title_bar_options()
                     }),
-                    ..Default::default()
+                    // Draw our own frame everywhere: GNOME would draw none, and
+                    // the same frame on GNOME, KDE and the rest looks the same.
+                    window_decorations: Some(WindowDecorations::Client),
+                    ..gpui_kit::component::TitleBar::window_options()
                 },
                 |window, cx| {
                     let view = cx.new(|cx| shell::Shell::new(selected, window, cx));

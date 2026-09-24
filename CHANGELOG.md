@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- tvty draws its own window frame — a title bar to move it, with minimize,
+  maximize and close, and edges to resize it — so it can be handled on GNOME,
+  which leaves decorations to applications, and looks the same elsewhere.
 - A window with your agents' terminals on the left, grouped by project, the
   selected one in the middle, and its project's tickets on the right.
 - Terminals attach to the agents' tmux sessions, render colours, styles, wide
