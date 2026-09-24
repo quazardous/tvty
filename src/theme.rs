@@ -8,6 +8,7 @@
 use std::path::PathBuf;
 use std::sync::{LazyLock, RwLock};
 
+use gpui_kit::component::scroll::ScrollbarMode;
 use gpui_kit::component::{Theme, ThemeMode, ThemeRegistry};
 use gpui_kit::*;
 
@@ -160,6 +161,8 @@ pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     Theme::change(mode, window, cx);
     // The kit's monospace font, where it uses one, is the terminal's.
     Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
+    // Scrollbars stay visible: they say where a long list stands.
+    Theme::set_scrollbar_mode(ScrollbarMode::Always, cx);
     let theme = Theme::global(cx);
     *PALETTE.write().unwrap() = palette_of(theme);
     *TERMINAL.write().unwrap() = terminal_colours(cx);

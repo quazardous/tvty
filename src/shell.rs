@@ -14,6 +14,7 @@ use gpui_kit::component::{TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
 use crate::theme::{self, p};
+use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
@@ -794,7 +795,6 @@ impl Shell {
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .overflow_y_scroll()
                     .p_6()
                     .child(
                         div()
@@ -815,7 +815,8 @@ impl Shell {
                                     .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
                             ),
                     )
-                    .child(content),
+                    .child(content)
+                    .overflow_y_scrollbar(),
             )
     }
 
@@ -1037,7 +1038,6 @@ impl Shell {
             .right_2()
             .w(px(240.))
             .max_h(px(420.))
-            .overflow_y_scroll()
             .py_1()
             .rounded_md()
             .bg(p().surface)
@@ -1079,7 +1079,7 @@ impl Shell {
                     })),
             );
         }
-        list
+        list.overflow_y_scrollbar()
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
@@ -1173,7 +1173,6 @@ impl Shell {
             .flex_none()
             .h_full()
             .py_2()
-            .overflow_y_scroll()
             .bg(p().surface)
             .text_sm();
         if self.board.projects.is_empty() {
@@ -1254,7 +1253,7 @@ impl Shell {
                 );
             }
         }
-        list
+        list.overflow_y_scrollbar()
     }
 
     /// The slider as a portfolio: the window fades behind, and the groups of
@@ -1476,8 +1475,7 @@ impl Shell {
             .gap_y_4()
             .p_4()
             .flex_1()
-            .min_h_0()
-            .overflow_y_scroll();
+            .min_h_0();
         for project in &self.board.projects {
             let terminals: Vec<&Terminal> = project
                 .terminals
@@ -1544,7 +1542,7 @@ impl Shell {
                             }),
                     ),
             )
-            .child(body)
+            .child(body.overflow_y_scrollbar())
     }
 }
 

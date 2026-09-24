@@ -12,6 +12,7 @@ use gpui_kit::*;
 use crate::aiball::{Aiball, Thread, TicketRow};
 use crate::rowstate::{self, Glyph, RowState, Stripe, Turn};
 use crate::theme::p;
+use gpui_kit::component::scroll::ScrollableElement as _;
 
 /// Something changed on the board: the shell should read it again.
 pub struct BoardChanged;
@@ -226,7 +227,6 @@ impl TicketPanel {
             .flex_col()
             .flex_1()
             .min_h_0()
-            .overflow_y_scroll()
             .pb_2();
         let mut band = None;
         for (state, ticket) in rows {
@@ -239,7 +239,7 @@ impl TicketPanel {
         if self.tickets.is_empty() {
             list = list.child(hint("No open ticket."));
         }
-        list.into_any_element()
+        list.overflow_y_scrollbar().into_any_element()
     }
 
     /// One ticket: a stripe for whose turn, one state glyph, the title
@@ -374,7 +374,6 @@ impl TicketPanel {
             .flex_col()
             .flex_1()
             .min_h_0()
-            .overflow_y_scroll()
             .px_3()
             .gap_3()
             .child(
@@ -499,7 +498,7 @@ impl TicketPanel {
             .flex_col()
             .flex_1()
             .min_h_0()
-            .child(body)
+            .child(body.overflow_y_scrollbar())
             .child(actions)
             .into_any_element()
     }
