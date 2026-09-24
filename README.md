@@ -29,7 +29,7 @@ existing for everything else (remote, phone, another OS).
 | Platforms | Linux (GNOME and KDE alike), Windows, macOS — the UI draws itself, no desktop theme involved |
 | UI toolkit | [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) (Zed's toolkit, Apache-2.0), widgets from gpui-kit |
 | Terminal emulation | [`alacritty_terminal`](https://crates.io/crates/alacritty_terminal) — the same pairing as Zed's terminal, with a view of our own |
-| Sessions | attached through aiball's terminal host rather than tmux |
+| Sessions | each terminal runs `tmux attach` (`psmux attach` on Windows) on the agent's claude-loop session — tmux keeps the agent alive, tvty only shows it. Replacing tmux by a terminal host of aiball's own stays an option for later |
 
 See [`docs/UX.md`](docs/UX.md) for the interface: navigation, switching, the ticket panel.
 
