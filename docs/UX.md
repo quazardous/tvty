@@ -31,6 +31,16 @@ such; open points are listed at the end.
 - **Clicking a ticket opens its detail**: the thread, its decisions, the reply
   box.
 
+## Keys
+
+| Keys | |
+|---|---|
+| ctrl+tab (shift: backwards) | the slider, most recent first; release ctrl to switch |
+| ctrl+shift+space | the gallery; type to filter, enter opens the first, esc closes |
+| ctrl+shift+t | fold / unfold the ticket panel |
+
+Everything else goes to the terminal.
+
 ## Open points
 
 - **Where the ticket detail opens.** Proposed, and what tvty does for now: in

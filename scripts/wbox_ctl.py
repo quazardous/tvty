@@ -22,6 +22,8 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
+    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2
+    wbox_ctl.py hold   CONFIG [-s key=value ...] MODIFIER KEY TIMES [--name NAME]
 
 Headless by default: the compositor renders offscreen and nothing appears on
 the desktop. Set WBOX_VISIBLE=1 to get a window, for when the assertion is
@@ -166,6 +168,53 @@ def main():
             client.roundtrip()
             clock.sleep(0.03)
         result = {"ok": True}
+    elif command == "drag":
+        # Press at X1 Y1, move to X2 Y2 in steps, release.
+        if len(args) != 4:
+            sys.exit("drag needs X1 Y1 X2 Y2")
+        x1, y1, x2, y2 = (int(a) for a in args)
+        _warm_up(comp, x1, y1)
+        import time as clock
+        from wbox import pointer as wp
+        client = comp._vptr_client()
+        vp = client._ensure_vptr()
+        client._motion(vp, x1, y1)
+        client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.PRESSED))
+        client._send(vp, 4)
+        client.roundtrip()
+        for i in range(1, 11):
+            client._motion(vp, x1 + (x2 - x1) * i // 10, y1 + (y2 - y1) * i // 10)
+            client.roundtrip()
+            clock.sleep(0.03)
+        client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.RELEASED))
+        client._send(vp, 4)
+        client.roundtrip()
+        result = {"ok": True}
+    elif command == "hold":
+        # Hold a modifier, tap a key N times, screenshot, then release: a
+        # gesture like alt-tab, which acts on release, seen while held.
+        if len(args) != 3:
+            sys.exit("hold needs MODIFIER KEY TIMES (and --name for the shot)")
+        modifier, key, times = args[0], args[1], int(args[2])
+        _warm_up(comp)
+        import time as clock
+        from wbox import pointer as wp
+        client = comp._vptr_client()
+        client._ensure_vkbd()
+        mask, mod_code = wp._MODIFIERS[modifier.lower()]
+        code, _, _ = wp._parse_shortcut(key)
+        client._kbd_key(mod_code, wp.PRESSED)
+        client._kbd_mods(mask)
+        for _ in range(times):
+            client._kbd_key(code, wp.PRESSED)
+            client._kbd_key(code, wp.RELEASED)
+            client.roundtrip()
+            clock.sleep(0.15)
+        clock.sleep(0.5)
+        result = comp.screenshot(name or "hold")
+        client._kbd_mods(0)
+        client._kbd_key(mod_code, wp.RELEASED)
+        client.roundtrip()
     elif command == "status":
         result = {"running": comp.is_running(), "headless": cfg["headless"]}
     else:

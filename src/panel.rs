@@ -14,6 +14,9 @@ use crate::aiball::{Aiball, Thread, TicketRow};
 /// Something changed on the board: the shell should read it again.
 pub struct BoardChanged;
 
+/// The user folds the panel away.
+pub struct CollapsePanel;
+
 /// What the panel is about: a project, and the agent of the terminal shown.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
@@ -39,6 +42,7 @@ pub struct TicketPanel {
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
+impl EventEmitter<CollapsePanel> for TicketPanel {}
 
 impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -463,6 +467,15 @@ impl Render for TicketPanel {
                     .text_xs()
                     .text_color(rgb(0x808080))
                     .child(format!("as {}", self.aiball.user)),
+            )
+            .child(
+                div()
+                    .id("collapse")
+                    .px_1()
+                    .cursor_pointer()
+                    .text_color(rgb(0x3b8eea))
+                    .child("›")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             );
         let content = match &self.detail {
             Some(detail) => self.detail(detail, cx),

@@ -46,12 +46,24 @@ the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
 a pending plan, a pending resolution, a queue and a closed one.
 `make aiball-down` drops it all.
 
-Point tvty at it with `AIBALL_SOCK`:
+Point tvty at it with `AIBALL_SOCK` (the API) and `AIBALL_URL` (its live
+feed, served on the TCP port only); `scripts/fake-aiball env` prints both.
+Give it its own `XDG_CONFIG_HOME` too, so a test run does not rewrite your
+remembered panel width:
 
 ```bash
 scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml \
-  -s "app.command=env AIBALL_SOCK=$PWD/dev/fake-aiball/home/sock $PWD/target/debug/tvty cl-demo-lead"
+  -s "app.command=env $(scripts/fake-aiball env) XDG_CONFIG_HOME=/tmp/tvty-test $PWD/target/debug/tvty cl-demo-lead"
 ```
+
+## Gestures wbox has no tool for
+
+`scripts/wbox_ctl.py` adds them (`make help` for the make side):
+
+- `scroll X Y N` — mouse wheel, N notches, negative = up;
+- `drag X1 Y1 X2 Y2` — press, move, release (the panel's edge);
+- `hold MODIFIER KEY TIMES --name NAME` — hold the modifier, tap the key,
+  screenshot, then release: how the slider (ctrl+tab) is seen while up.
 
 Reading the real board is fine (a screenshot of the alerts); a click on a
 real ticket marks it read for the user, so don't.

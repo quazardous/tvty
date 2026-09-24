@@ -258,7 +258,10 @@ impl Render for TerminalView {
             .relative()
             .size_full()
             .bg(to_hsla(default_rgb(NamedColor::Background as usize)))
-            .child(TerminalElement { view: cx.entity() })
+            .child(TerminalElement {
+                term: self.term.clone(),
+                view: Some(cx.entity()),
+            })
             .when(self.exited, |d| {
                 d.child(
                     div()
@@ -274,8 +277,11 @@ impl Render for TerminalView {
 }
 
 /// Paints the grid of a [`TerminalView`], and sizes the grid to its bounds.
-struct TerminalElement {
-    view: Entity<TerminalView>,
+pub struct TerminalElement {
+    term: Arc<FairMutex<Term<Listener>>>,
+    /// The live terminal it belongs to: the grid then follows the element's
+    /// size. Without one (a [`Snapshot`]), the font shrinks to fit the grid.
+    view: Option<Entity<TerminalView>>,
 }
 
 impl IntoElement for TerminalElement {
@@ -287,12 +293,12 @@ impl IntoElement for TerminalElement {
 }
 
 /// A piece of a row sharing one style, painted from its first column.
-struct Segment {
+pub struct Segment {
     column: usize,
     line: ShapedLine,
 }
 
-struct Frame {
+pub struct Frame {
     cell: Size<Pixels>,
     backgrounds: Vec<PaintQuad>,
     rows: Vec<(usize, Vec<Segment>)>,
@@ -333,9 +339,10 @@ impl Element for TerminalElement {
         window: &mut Window,
         cx: &mut App,
     ) -> Frame {
-        stats::frame();
+        if self.view.is_some() {
+            stats::frame();
+        }
         let started = std::time::Instant::now();
-        let font_size = px(FONT_SIZE);
         let regular = Font {
             fallbacks: Some(FontFallbacks::from_fonts(
                 FONT_FALLBACKS.iter().map(|f| f.to_string()).collect(),
@@ -357,19 +364,34 @@ impl Element for TerminalElement {
         };
         let text_system = window.text_system().clone();
         let font_id = text_system.resolve_font(&regular);
-        let cell_width = text_system
-            .advance(font_id, font_size, 'm')
-            .map(|size| size.width)
-            .unwrap_or(px(FONT_SIZE * 0.6));
-        let cell = size(cell_width, (font_size * LINE_HEIGHT).round());
+        let advance = |size: Pixels| {
+            text_system
+                .advance(font_id, size, 'm')
+                .map(|s| s.width)
+                .unwrap_or(size * 0.6)
+        };
+        let font_size = match &self.view {
+            Some(_) => px(FONT_SIZE),
+            None => {
+                use alacritty_terminal::grid::Dimensions as _;
+                let columns = self.term.lock().columns().max(1) as f32;
+                let fit = f32::from(bounds.size.width) / (columns * f32::from(advance(px(FONT_SIZE))));
+                px((FONT_SIZE * fit).max(2.))
+            }
+        };
+        let cell = size(advance(font_size), (font_size * LINE_HEIGHT).round());
 
         let columns = (f32::from(bounds.size.width) / f32::from(cell.width)).floor() as u16;
         let lines = (f32::from(bounds.size.height) / f32::from(cell.height)).floor() as u16;
-        let (term, focused) = self.view.update(cx, |view, _| {
-            view.resize(columns, lines, cell);
-            view.layout = (bounds.origin, cell);
-            (view.term.clone(), view.focus.is_focused(window))
-        });
+        let term = self.term.clone();
+        let focused = match &self.view {
+            Some(view) => view.update(cx, |view, _| {
+                view.resize(columns, lines, cell);
+                view.layout = (bounds.origin, cell);
+                view.focus.is_focused(window)
+            }),
+            None => false,
+        };
 
         let term = term.lock();
         let content = term.renderable_content();
@@ -496,7 +518,9 @@ impl Element for TerminalElement {
             rows.push((current_line, segments));
         }
 
-        let cursor = (content.mode.contains(TermMode::SHOW_CURSOR)
+        let live = self.view.is_some();
+        let cursor = (live
+            && content.mode.contains(TermMode::SHOW_CURSOR)
             && content.cursor.shape != CursorShape::Hidden)
             .then(|| {
                 let cursor = content.cursor.point;
@@ -767,4 +791,42 @@ fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad>
         quads.push(rect(cx - (t / 2.).floor(), cy - (t / 2.).floor(), cx + (t / 2.).ceil(), y1));
     }
     quads
+}
+
+/// A still copy of a screen, for thumbnails: fed with what `tmux
+/// capture-pane -e` prints, painted by the same element at a size that fits.
+pub struct Snapshot {
+    term: Arc<FairMutex<Term<Listener>>>,
+}
+
+impl Snapshot {
+    pub fn new() -> Self {
+        let (tx, _) = unbounded();
+        let term = Term::new(Config::default(), &TermSize::new(80, 24), Listener(tx));
+        Self {
+            term: Arc::new(FairMutex::new(term)),
+        }
+    }
+
+    /// Replaces the screen with `text`, a pane of `columns` × `lines`.
+    pub fn load(&self, columns: usize, lines: usize, text: &[u8]) {
+        let mut term = self.term.lock();
+        term.resize(TermSize::new(columns.max(1), lines.max(1)));
+        let mut bytes = b"\x1b[0m\x1b[H\x1b[2J".to_vec();
+        for (i, line) in text.split(|&b| b == b'\n').enumerate() {
+            if i > 0 {
+                bytes.extend_from_slice(b"\r\n");
+            }
+            bytes.extend_from_slice(line);
+        }
+        let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
+        parser.advance(&mut *term, &bytes);
+    }
+
+    pub fn element(&self) -> TerminalElement {
+        TerminalElement {
+            term: self.term.clone(),
+            view: None,
+        }
+    }
 }

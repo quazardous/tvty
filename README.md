@@ -43,6 +43,10 @@ Early. What works today:
   tickets, the critical ticket;
 - the ticket panel: the agent's tickets and the project's queue, a ticket's
   thread, accept / reject / reply.
+- switching: a slider (ctrl+tab) and a gallery of live thumbnails
+  (ctrl+shift+space); the panel resizes and folds away;
+- live updates from aiball's event feed (`$AIBALL_URL`, default
+  `http://127.0.0.1:7777`).
 
 Linux only for now; Windows and macOS are planned.
 

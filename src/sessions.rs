@@ -126,7 +126,7 @@ fn basename(path: &str) -> String {
 }
 
 /// `(session name, start directory)` of every tmux session.
-fn tmux_sessions() -> Vec<(String, String)> {
+pub fn tmux_sessions() -> Vec<(String, String)> {
     let Ok(output) = Command::new("tmux")
         .args(["ls", "-F", "#{session_name}\t#{session_path}"])
         .env_remove("TMUX")
@@ -139,4 +139,35 @@ fn tmux_sessions() -> Vec<(String, String)> {
         .filter_map(|line| line.split_once('\t'))
         .map(|(name, path)| (name.to_string(), path.to_string()))
         .collect()
+}
+
+/// A pane's screen as `tmux capture-pane -e` prints it, colours included.
+pub struct Capture {
+    pub columns: usize,
+    pub lines: usize,
+    pub text: Vec<u8>,
+}
+
+/// Blocking. Reads a session's current pane without attaching to it — so
+/// without resizing it, unlike opening its terminal.
+pub fn capture(session: &str) -> Option<Capture> {
+    let target = format!("={session}:");
+    let tmux = |args: &[&str]| {
+        Command::new("tmux")
+            .args(args)
+            .env_remove("TMUX")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| o.stdout)
+    };
+    let size = tmux(&["display", "-p", "-t", &target, "#{pane_width} #{pane_height}"])?;
+    let size = String::from_utf8_lossy(&size);
+    let (columns, lines) = size.trim().split_once(' ')?;
+    let text = tmux(&["capture-pane", "-p", "-e", "-t", &target])?;
+    Some(Capture {
+        columns: columns.parse().ok()?,
+        lines: lines.parse().ok()?,
+        text,
+    })
 }
