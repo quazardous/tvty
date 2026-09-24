@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-log
+.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-log fake-up sim-up fake-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -12,6 +12,11 @@ help:
 	@echo "make wbox-click X=.. Y=.. click at a position (1280x800 screen)"
 	@echo "make wbox-key K=ctrl+t    send a shortcut"
 	@echo "make wbox-log             last lines of the compositor/app log"
+	@echo ""
+	@echo "something to attach to, no tokens (tmux sessions tvty-fake / tvty-sim):"
+	@echo "make fake-up              fake-claude in tmux session tvty-fake"
+	@echo "make sim-up               simai-cli replaying dev/sim/dense.txt in tvty-sim"
+	@echo "make fake-down            kill both"
 
 build:
 	cargo build
@@ -52,3 +57,14 @@ check: wbox-restart
 	@sleep 2
 	$(MAKE) wbox-shot NAME=check
 	$(MAKE) wbox-down
+
+# ── fake sessions ────────────────────────────────────────────────────────────
+fake-up:
+	scripts/fake-loop fake
+
+sim-up:
+	scripts/fake-loop sim
+
+fake-down:
+	-scripts/fake-loop stop tvty-fake
+	-scripts/fake-loop stop tvty-sim

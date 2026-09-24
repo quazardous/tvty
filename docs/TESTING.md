@@ -11,13 +11,23 @@ without touching the desktop and without spending model tokens.
 
 ## wbox
 
-To register it for this repo (not done yet):
+Configured for this repo in `dev/tvty-wbox/` (labwc, headless, 1280x800).
+Its MCP tools (`tvty-wbox`) reach a Claude session started **in this
+directory**; `scripts/wbox_ctl.py` drives the same instance from anywhere,
+and `make check` chains build → launch → screenshot → stop.
 
-```bash
-wboxr init --name tvty --compositor labwc --headless --app-command "target/debug/tvty" --register
-```
+## Something to attach to
 
-Its MCP tools reach a Claude session started **in this directory**.
+`scripts/fake-loop` starts plain tmux sessions, no tokens spent:
+
+- `make fake-up` — `tvty-fake`, aiball's fake-claude;
+- `make sim-up` — `tvty-sim`, simai-cli replaying `dev/sim/dense.txt`
+  (300 long lines with wide glyphs and emoji) as fast as it can;
+- `make fake-down` — kills both.
+
+They are not claude-loops on purpose: a loop registered for this directory
+would clash with the agent's own. For the whole chain, start one elsewhere
+with `claude-loop start --command "$(realpath ../aiball/bin/fake-claude)"`.
 
 ## What the first slice measures
 

@@ -44,15 +44,8 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   — or a bare session: `tmux new-session -d -s tvty-fake ../aiball/bin/fake-claude`.
 - **simai-cli** (`simcli`, `../simai-cli`): replays a Claude-looking session
   from a script and records `.cast` — use it to stress rendering and measure.
-
-## Known gap
-
-GPUI needs system dev libraries that are **not installed yet** (xcb,
-xkbcommon, vulkan, fontconfig, freetype, alsa): `sudo dnf install
-libxcb-devel libxkbcommon-devel libxkbcommon-x11-devel vulkan-loader-devel
-fontconfig-devel freetype-devel alsa-lib-devel libX11-devel`. You have no
-sudo: if `pkg-config --exists xcb xkbcommon fontconfig` fails, say so on the
-sandbox ticket and ask david — do not work around it.
+- `make fake-up` / `make sim-up` / `make fake-down` wrap both
+  (`scripts/fake-loop`, tmux sessions `tvty-fake` and `tvty-sim`).
 
 ## Conventions
 

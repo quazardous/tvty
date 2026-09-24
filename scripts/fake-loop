@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# fake-loop — something for tvty to attach to, without spending tokens.
+#
+#   scripts/fake-loop fake [SESSION]          tmux session running aiball's fake-claude
+#   scripts/fake-loop sim  [SESSION] [SCRIPT] tmux session replaying a simai-cli script
+#                                             (default: dev/sim/dense.txt, as fast as it goes)
+#   scripts/fake-loop stop [SESSION]          kill the session
+#   scripts/fake-loop ls                      list the tvty-* sessions
+#
+# Sessions are plain tmux sessions (tvty-fake, tvty-sim by default), not
+# claude-loops: a loop registered for this directory would clash with the
+# agent's own. For the whole chain, run `claude-loop start --command
+# "$(realpath ../aiball/bin/fake-claude)"` from another directory.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SIBLINGS="$(dirname "$ROOT")"
+FAKE_CLAUDE="$SIBLINGS/aiball/bin/fake-claude"
+SIMCLI="$SIBLINGS/simai-cli/dist/main.js"
+
+start() { # session, command...
+    local session=$1; shift
+    if tmux has-session -t "=$session" 2>/dev/null; then
+        echo "$session already running"
+        return
+    fi
+    tmux new-session -d -s "$session" -x 160 -y 48 "$@"
+    echo "$session started — tmux attach -t $session"
+}
+
+case "${1:-}" in
+    fake)
+        [[ -x $FAKE_CLAUDE ]] || { echo "fake-claude not found: $FAKE_CLAUDE" >&2; exit 1; }
+        start "${2:-tvty-fake}" "$FAKE_CLAUDE"
+        ;;
+    sim)
+        [[ -f $SIMCLI ]] || { echo "simai-cli not built: $SIMCLI (npm install there)" >&2; exit 1; }
+        script=$(realpath "${3:-$ROOT/dev/sim/dense.txt}")
+        # Keep the pane open once the script ends, so there is still a screen to look at.
+        start "${2:-tvty-sim}" bash -c "node '$SIMCLI' --as claude --script '$script' --pace 0 --think 0; exec cat"
+        ;;
+    stop)
+        tmux kill-session -t "=${2:-tvty-fake}"
+        ;;
+    ls)
+        tmux ls -F '#{session_name}' 2>/dev/null | grep '^tvty-' || echo "no tvty-* session"
+        ;;
+    *)
+        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac
