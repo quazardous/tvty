@@ -210,7 +210,7 @@ def main():
             client._kbd_key(code, wp.RELEASED)
             client.roundtrip()
             clock.sleep(0.15)
-        clock.sleep(0.5)
+        clock.sleep(float(os.environ.get("WBOX_HOLD_WAIT", "0.5")))
         result = comp.screenshot(name or "hold")
         client._kbd_mods(0)
         client._kbd_key(mod_code, wp.RELEASED)

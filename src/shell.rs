@@ -46,9 +46,16 @@ pub struct Shell {
     settings: Settings,
     /// The panel's edge is being dragged.
     resizing: bool,
-    /// The slider is up, on this index of `recent`.
+    /// The slider is up, on this index of [`Shell::slider_order`].
     slider: Option<usize>,
+    /// Counts the slider's openings: each one replays its entrance.
+    slider_shown: usize,
     gallery: Option<Gallery>,
+    /// Screens of every terminal, for the gallery and the slider; kept
+    /// between openings so they open already filled.
+    thumbnails: HashMap<String, Snapshot>,
+    /// A capture loop is running.
+    capturing: bool,
     focus: FocusHandle,
     /// Wakes the refresh loop before its next tick.
     refresh_now: futures::channel::mpsc::UnboundedSender<()>,
@@ -56,7 +63,6 @@ pub struct Shell {
 
 struct Gallery {
     filter: String,
-    thumbnails: HashMap<String, Snapshot>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -144,7 +150,10 @@ impl Shell {
             settings: Settings::load(),
             resizing: false,
             slider: None,
+            slider_shown: 0,
             gallery: None,
+            thumbnails: HashMap::new(),
+            capturing: false,
             focus: cx.focus_handle(),
             refresh_now,
         };
@@ -370,26 +379,46 @@ impl Shell {
 
     /// The slider commits when ctrl is released, like alt-tab.
     fn on_modifiers(&mut self, event: &ModifiersChangedEvent, window: &mut Window, cx: &mut Context<Self>) {
+        log::debug!("modifiers {:?}, slider {:?}", event.modifiers, self.slider);
         if let Some(index) = self.slider
             && !event.modifiers.control
         {
             self.slider = None;
-            if let Some(session) = self.recent.get(index).cloned() {
+            if let Some(session) = self.slider_order().get(index).cloned() {
                 self.select(session, window, cx);
             }
             cx.notify();
         }
     }
 
+    /// The slider's order: the terminals used lately, most recent first,
+    /// then the others as the list shows them.
+    fn slider_order(&self) -> Vec<String> {
+        let mut order = self.recent.clone();
+        for project in &self.board.projects {
+            for terminal in &project.terminals {
+                if !order.contains(&terminal.session) {
+                    order.push(terminal.session.clone());
+                }
+            }
+        }
+        order
+    }
+
     fn step_slider(&mut self, step: isize, cx: &mut Context<Self>) {
-        if self.recent.is_empty() {
+        log::debug!("slider step {step} from {:?}", self.slider);
+        let len = self.slider_order().len() as isize;
+        if len == 0 {
             return;
         }
-        let len = self.recent.len() as isize;
+        if self.slider.is_none() {
+            self.slider_shown += 1;
+        }
         // From the current terminal (index 0), the first tap goes to the
         // previous one: the quick hop between two.
         let index = self.slider.map_or(0, |i| i as isize);
         self.slider = Some((index + step).rem_euclid(len) as usize);
+        self.capture_thumbnails(cx);
         cx.notify();
     }
 
@@ -400,7 +429,6 @@ impl Shell {
         }
         self.gallery = Some(Gallery {
             filter: String::new(),
-            thumbnails: HashMap::new(),
         });
         // Keys go to the window while the gallery is up.
         window.focus(&self.focus.clone(), cx);
@@ -418,13 +446,21 @@ impl Shell {
     }
 
     /// Captures every terminal's screen with `tmux capture-pane`, again and
-    /// again while the gallery is up. Read-only: unlike attaching, it does
-    /// not resize the session.
+    /// again while the gallery or the slider is up. Read-only: unlike
+    /// attaching, it does not resize the session.
     fn capture_thumbnails(&mut self, cx: &mut Context<Self>) {
+        if self.capturing {
+            return;
+        }
+        self.capturing = true;
         cx.spawn(async move |this, cx| {
             loop {
                 let Ok(sessions) = this.update(cx, |shell, _| {
-                    shell.gallery.as_ref().map(|_| {
+                    let shown = shell.gallery.is_some() || shell.slider.is_some();
+                    if !shown {
+                        shell.capturing = false;
+                    }
+                    shown.then(|| {
                         shell
                             .board
                             .projects
@@ -446,11 +482,8 @@ impl Shell {
                     })
                     .await;
                 let alive = this.update(cx, |shell, cx| {
-                    let Some(gallery) = shell.gallery.as_mut() else {
-                        return false;
-                    };
                     for (session, capture) in captures {
-                        gallery
+                        shell
                             .thumbnails
                             .entry(session)
                             .or_insert_with(Snapshot::new)
@@ -641,53 +674,144 @@ impl Shell {
         list
     }
 
-    fn slider_strip(&self, index: usize) -> impl IntoElement + use<> {
-        let mut strip = div()
-            .absolute()
-            .top_2()
-            .left_2()
-            .right_2()
-            .flex()
-            .gap_2()
-            .p_2()
-            .rounded_md()
-            .bg(rgba(0x1b1b1cf0))
-            .border_1()
-            .border_color(rgb(0x3c3c3c))
-            .shadow_lg();
-        for (i, session) in self.recent.iter().enumerate() {
-            let (project, label, alerts) = match self.terminal_of(session) {
-                Some((project, terminal)) => (
-                    project.to_string(),
-                    terminal.label.clone(),
-                    self.alerts_of(project, terminal.agent.as_deref()),
-                ),
-                None => (String::new(), session.clone(), Alerts::default()),
+    /// The slider as a portfolio: the window fades behind, and the groups of
+    /// terminals come forward one after another, the chosen card enlarged.
+    fn portfolio(&self, index: usize) -> impl IntoElement + use<> {
+        let order = self.slider_order();
+        let chosen = order.get(index).cloned();
+        let chosen_project = chosen
+            .as_deref()
+            .and_then(|s| self.terminal_of(s))
+            .map(|(p, _)| p.to_string());
+        // The groups, the chosen one's first; within a group, the slider's order.
+        let mut groups: Vec<(&str, Vec<&Terminal>)> = Vec::new();
+        for session in &order {
+            let Some((project, terminal)) = self.terminal_of(session) else {
+                continue;
             };
-            strip = strip.child(
+            match groups.iter_mut().find(|(p, _)| *p == project) {
+                Some((_, terminals)) => terminals.push(terminal),
+                None => groups.push((project, vec![terminal])),
+            }
+        }
+        if let Some(chosen) = &chosen_project {
+            if let Some(at) = groups.iter().position(|(p, _)| p == chosen) {
+                let group = groups.remove(at);
+                groups.insert(0, group);
+            }
+        }
+
+        let mut body = div()
+            .flex()
+            .flex_wrap()
+            .content_start()
+            .justify_center()
+            .gap_x_8()
+            .gap_y_5()
+            .px_6()
+            .pt_6()
+            .flex_1()
+            .min_h_0()
+            .overflow_hidden();
+        let count = groups.len().max(1) as f32;
+        for (i, (project, terminals)) in groups.into_iter().enumerate() {
+            let is_chosen_group = chosen_project.as_deref() == Some(project);
+            let mut cards = div().flex().flex_wrap().gap_3();
+            for terminal in terminals {
+                let chosen = chosen.as_deref() == Some(terminal.session.as_str());
+                let (width, height) = if chosen { (340., 205.) } else { (230., 138.) };
+                cards = cards.child(self.card(project, terminal, chosen, width, height));
+            }
+            // Staggered entrance: each group starts a little after the one before.
+            let delay = 0.35 * i as f32 / count;
+            let group = div()
+                .flex()
+                .flex_col()
+                .gap_2()
+                .child(
+                    div()
+                        .text_sm()
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(if is_chosen_group { rgb(0xffffff) } else { rgb(0x8a8a8a) })
+                        .child(project.to_uppercase()),
+                )
+                .child(cards)
+                .with_animation(
+                    SharedString::from(format!("portfolio-{}-{project}", self.slider_shown)),
+                    Animation::new(Duration::from_millis(420)).with_easing(move |t| {
+                        let t = ((t - delay) / (1. - delay)).clamp(0., 1.);
+                        1. - (1. - t).powi(3)
+                    }),
+                    |group, t| group.opacity(t).mt(px(40. * (1. - t))),
+                );
+            body = body.child(group);
+        }
+
+        div()
+            .absolute()
+            .inset_0()
+            .flex()
+            .flex_col()
+            // The frosted glass, for now without the frost: GPUI cannot blur
+            // what lies under an element.
+            .bg(rgba(0x0b0b0ce8))
+            .child(body)
+            .child(
                 div()
                     .flex()
-                    .flex_col()
-                    .gap_1()
-                    .w(px(170.))
-                    .flex_none()
-                    .p_2()
-                    .rounded_md()
-                    .border_2()
-                    .border_color(if i == index { rgb(0x3b8eea) } else { rgb(0x2d2d2d) })
-                    .bg(if i == index { rgb(0x2a3a4d) } else { rgb(0x252526) })
-                    .child(
-                        div()
-                            .text_xs()
-                            .text_color(rgb(0x9d9d9d))
-                            .truncate()
-                            .child(project.to_uppercase()),
-                    )
-                    .child(div().truncate().child(label))
+                    .justify_center()
+                    .py_3()
+                    .text_sm()
+                    .text_color(rgb(0x8a8a8a))
+                    .child("tab: next · shift+tab: back · release ctrl to open · esc cancels"),
+            )
+            .with_animation(
+                SharedString::from(format!("portfolio-veil-{}", self.slider_shown)),
+                Animation::new(Duration::from_millis(180)),
+                |veil, t| veil.opacity(t),
+            )
+    }
+
+    /// A terminal as a card: its name and alerts over a thumbnail.
+    fn card(
+        &self,
+        project: &str,
+        terminal: &Terminal,
+        chosen: bool,
+        width: f32,
+        height: f32,
+    ) -> Stateful<Div> {
+        let session = &terminal.session;
+        let alerts = self.alerts_of(project, terminal.agent.as_deref());
+        div()
+            .id(SharedString::from(format!("card-{session}")))
+            .flex()
+            .flex_col()
+            .w(px(width))
+            .rounded_md()
+            .overflow_hidden()
+            .border_2()
+            .border_color(if chosen { rgb(0x3b8eea) } else { rgb(0x3c3c3c) })
+            .when(chosen, |d| d.shadow_lg())
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1()
+                    .bg(if chosen { rgb(0x2a3a4d) } else { rgb(0x2d2d2d) })
+                    .text_sm()
+                    .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                     .child(alerts.badges()),
-            );
-        }
-        strip
+            )
+            .child(
+                div()
+                    .h(px(height))
+                    .overflow_hidden()
+                    .bg(rgb(0x1e1e1e))
+                    .when_some(self.thumbnails.get(session), |d, snapshot| d.child(snapshot.element())),
+            )
     }
 
     fn gallery_view(&self, gallery: &Gallery, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -716,40 +840,11 @@ impl Shell {
             let mut row = div().flex().flex_wrap().gap_3();
             for terminal in terminals {
                 let session = terminal.session.clone();
-                let alerts = self.alerts_of(&project.name, terminal.agent.as_deref());
                 let selected = self.selected.as_deref() == Some(session.as_str());
-                let thumbnail = gallery.thumbnails.get(&session);
                 row = row.child(
-                    div()
-                        .id(SharedString::from(format!("thumb-{session}")))
-                        .flex()
-                        .flex_col()
-                        .w(px(320.))
-                        .rounded_md()
-                        .overflow_hidden()
-                        .border_2()
-                        .border_color(if selected { rgb(0x3b8eea) } else { rgb(0x3c3c3c) })
+                    self.card(&project.name, terminal, selected, 320., 190.)
                         .cursor_pointer()
                         .hover(|d| d.border_color(rgb(0x6b9fd6)))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap_2()
-                                .px_2()
-                                .py_1()
-                                .bg(rgb(0x2d2d2d))
-                                .text_sm()
-                                .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
-                                .child(alerts.badges()),
-                        )
-                        .child(
-                            div()
-                                .h(px(190.))
-                                .overflow_hidden()
-                                .bg(rgb(0x1e1e1e))
-                                .when_some(thumbnail, |d, snapshot| d.child(snapshot.element())),
-                        )
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.gallery = None;
                             shell.select(session.clone(), window, cx);
@@ -856,7 +951,7 @@ impl Render for Shell {
                 .unwrap_or_default();
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
-        let slider = self.slider.map(|index| self.slider_strip(index));
+        let slider = self.slider.map(|index| self.portfolio(index));
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
         div()
@@ -879,10 +974,10 @@ impl Render for Shell {
                     .flex_1()
                     .h_full()
                     .min_w_0()
-                    .child(center)
-                    .children(slider),
+                    .child(center),
             )
             .child(right)
+            .children(slider)
             .children(gallery)
     }
 }
