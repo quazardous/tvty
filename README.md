@@ -31,6 +31,8 @@ existing for everything else (remote, phone, another OS).
 | Terminal emulation | [`alacritty_terminal`](https://crates.io/crates/alacritty_terminal) — the same pairing as Zed's terminal, with a view of our own |
 | Sessions | attached through aiball's terminal host rather than tmux |
 
+See [`docs/UX.md`](docs/UX.md) for the interface: navigation, switching, the ticket panel.
+
 ## Status
 
 Empty scaffold. Nothing to run yet.
