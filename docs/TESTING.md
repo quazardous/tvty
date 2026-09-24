@@ -11,7 +11,7 @@ without touching the desktop and without spending model tokens.
 
 ## wbox
 
-Registered for this repo with:
+To register it for this repo (not done yet):
 
 ```bash
 wboxr init --name tvty --compositor labwc --headless --app-command "target/debug/tvty" --register
