@@ -27,7 +27,6 @@ const FONT_FAMILY: &str = "Source Code Pro";
 const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
 const FONT_SIZE: f32 = 14.;
 const LINE_HEIGHT: f32 = 1.3;
-const SELECTION: Rgb = Rgb { r: 0x26, g: 0x4f, b: 0x78 };
 
 /// Forwards the emulator's events (from its I/O thread) to the view.
 #[derive(Clone)]
@@ -377,7 +376,8 @@ impl Render for TerminalView {
                         .bottom_0()
                         .w_full()
                         .p_2()
-                        .bg(rgb(0x5a1d1d))
+                        .bg(crate::theme::p().danger)
+                        .text_color(crate::theme::on(crate::theme::p().danger))
                         .child("The session ended."),
                 )
             })
@@ -561,7 +561,12 @@ impl Element for TerminalElement {
                 std::mem::swap(&mut fg, &mut bg);
             }
             if selection.is_some_and(|range| range.contains(indexed.point)) {
-                bg = SELECTION;
+                let selection = crate::theme::terminal().selection;
+                bg = Rgb {
+                    r: (selection >> 16) as u8,
+                    g: (selection >> 8) as u8,
+                    b: selection as u8,
+                };
             }
             let mut fg = to_hsla(fg);
             if flags.contains(Flags::DIM) {
@@ -640,7 +645,7 @@ impl Element for TerminalElement {
                 let wide = term.grid()[cursor].flags.contains(Flags::WIDE_CHAR);
                 let width = cell.width * if wide { 2. } else { 1. };
                 let origin = at(line, cursor.column.0);
-                let color = to_hsla(resolve(Color::Named(NamedColor::Foreground)));
+                let color = to_hsla(resolve(Color::Named(NamedColor::Cursor)));
                 match (content.cursor.shape, focused) {
                     (CursorShape::Beam, true) => fill(Bounds::new(origin, size(px(2.), cell.height)), color),
                     (CursorShape::Underline, true) => fill(
@@ -791,20 +796,18 @@ fn to_hsla(rgb: Rgb) -> Hsla {
     .into()
 }
 
-/// The palette when the program did not set a color: a dark theme, the
-/// xterm 6x6x6 cube and gray ramp for indexes 16..=255.
+/// The palette when the program did not set a colour: the theme's 16 ANSI
+/// colours and its text, background and cursor; the xterm 6x6x6 cube and
+/// gray ramp for indexes 16..=255.
 fn default_rgb(index: usize) -> Rgb {
-    const ANSI: [u32; 16] = [
-        0x1e1e1e, 0xf14c4c, 0x23d18b, 0xf5f543, 0x3b8eea, 0xd670d6, 0x29b8db, 0xcccccc, //
-        0x666666, 0xf14c4c, 0x23d18b, 0xf5f543, 0x3b8eea, 0xd670d6, 0x29b8db, 0xffffff,
-    ];
+    let colours = crate::theme::terminal();
     let hex = |v: u32| Rgb {
         r: (v >> 16) as u8,
         g: (v >> 8) as u8,
         b: v as u8,
     };
     match index {
-        0..=15 => hex(ANSI[index]),
+        0..=15 => hex(colours.ansi[index]),
         16..=231 => {
             let i = index - 16;
             let level = |v: usize| if v == 0 { 0 } else { (55 + v * 40) as u8 };
@@ -818,7 +821,8 @@ fn default_rgb(index: usize) -> Rgb {
             let v = (8 + (index - 232) * 10) as u8;
             Rgb { r: v, g: v, b: v }
         }
-        i if i == NamedColor::Background as usize => hex(0x1e1e1e),
+        i if i == NamedColor::Background as usize => hex(colours.background),
+        i if i == NamedColor::Cursor as usize => hex(colours.cursor),
         i if i >= NamedColor::DimBlack as usize && i <= NamedColor::DimWhite as usize => {
             let base = default_rgb(i - NamedColor::DimBlack as usize);
             Rgb {
@@ -827,8 +831,15 @@ fn default_rgb(index: usize) -> Rgb {
                 b: (base.b as f32 * 0.66) as u8,
             }
         }
-        i if i == NamedColor::DimForeground as usize => hex(0x8a8a8a),
-        _ => hex(0xd4d4d4),
+        i if i == NamedColor::DimForeground as usize => {
+            let base = hex(colours.foreground);
+            Rgb {
+                r: (base.r as f32 * 0.66) as u8,
+                g: (base.g as f32 * 0.66) as u8,
+                b: (base.b as f32 * 0.66) as u8,
+            }
+        }
+        _ => hex(colours.foreground),
     }
 }
 

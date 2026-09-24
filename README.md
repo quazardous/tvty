@@ -45,6 +45,7 @@ Early. What works today:
   thread, accept / reject / reply.
 - switching: a slider (ctrl+tab) and a gallery of live thumbnails
   (ctrl+shift+space); the panel resizes and folds away;
+- colour themes, light and dark, for the window and the terminals;
 - live updates from aiball's event feed (`$AIBALL_URL`, default
   `http://127.0.0.1:7777`).
 

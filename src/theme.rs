@@ -1,0 +1,229 @@
+//! Colour themes. tvty uses gpui-component's theme system: themes are its
+//! JSON theme sets, a few bundled (from gpui-kit's collection) and any the
+//! user drops in `$XDG_CONFIG_HOME/tvty/themes/`. The active theme gives the
+//! whole window its colours — tvty's own views read [`p`], the kit's widgets
+//! read the kit's theme — and the terminals their palette.
+
+use std::path::PathBuf;
+use std::sync::{LazyLock, RwLock};
+
+use gpui_kit::component::{Theme, ThemeMode, ThemeRegistry};
+use gpui_kit::*;
+
+/// Themes shipped with tvty: `(file, contents)`.
+const BUNDLED: &[(&str, &str)] = &[
+    ("catppuccin", include_str!("../themes/catppuccin.json")),
+    ("everforest", include_str!("../themes/everforest.json")),
+    ("flexoki", include_str!("../themes/flexoki.json")),
+    ("gruvbox", include_str!("../themes/gruvbox.json")),
+    ("solarized", include_str!("../themes/solarized.json")),
+    ("tokyonight", include_str!("../themes/tokyonight.json")),
+];
+
+/// tvty's colours, drawn from the active theme.
+#[derive(Clone, Copy, Debug)]
+pub struct Palette {
+    pub bg: Hsla,
+    /// Side panels, cards, the title bar.
+    pub surface: Hsla,
+    pub hover: Hsla,
+    /// The selected row, the chosen card.
+    pub active: Hsla,
+    pub border: Hsla,
+    pub text: Hsla,
+    pub muted: Hsla,
+    pub accent: Hsla,
+    pub danger: Hsla,
+    pub warning: Hsla,
+    pub success: Hsla,
+    pub info: Hsla,
+    /// The veil behind the slider and the gallery.
+    pub veil: Hsla,
+}
+
+/// The terminals' colours: the 16 ANSI ones, then text, background, cursor
+/// and selection, as `0xRRGGBB`.
+#[derive(Clone, Copy, Debug)]
+pub struct TerminalColours {
+    pub ansi: [u32; 16],
+    pub foreground: u32,
+    pub background: u32,
+    pub cursor: u32,
+    pub selection: u32,
+}
+
+static PALETTE: LazyLock<RwLock<Palette>> = LazyLock::new(|| RwLock::new(palette_of(&Theme::default())));
+static TERMINAL: LazyLock<RwLock<TerminalColours>> =
+    LazyLock::new(|| RwLock::new(terminal_of(&Theme::default())));
+
+/// The active palette.
+pub fn p() -> Palette {
+    *PALETTE.read().unwrap()
+}
+
+pub fn terminal() -> TerminalColours {
+    *TERMINAL.read().unwrap()
+}
+
+/// Loads the bundled and the user's themes, then applies `name` (or the
+/// kit's default dark theme).
+pub fn init(name: Option<&str>, cx: &mut App) {
+    load(cx);
+    let name = name
+        .filter(|n| ThemeRegistry::global(cx).themes().contains_key(*n))
+        .map(SharedString::from)
+        .unwrap_or_else(|| ThemeRegistry::global(cx).default_dark_theme().name.clone());
+    apply(&name, None, cx);
+}
+
+/// (Re)reads the themes: the bundled ones, then the user's directory — so a
+/// theme file dropped or edited there shows the next time the list opens.
+pub fn load(cx: &mut App) {
+    let registry = ThemeRegistry::global_mut(cx);
+    for (file, content) in BUNDLED {
+        if let Err(error) = registry.load_themes_from_str(content) {
+            log::warn!("theme {file}: {error}");
+        }
+    }
+    let Some(dir) = user_dir() else { return };
+    let Ok(entries) = std::fs::read_dir(&dir) else { return };
+    for path in entries.flatten().map(|e| e.path()) {
+        if path.extension().and_then(|e| e.to_str()) != Some("json") {
+            continue;
+        }
+        let loaded = std::fs::read_to_string(&path)
+            .map_err(anyhow::Error::from)
+            .and_then(|content| registry.load_themes_from_str(&content));
+        if let Err(error) = loaded {
+            log::warn!("theme {}: {error}", path.display());
+        }
+    }
+}
+
+/// The themes to choose from, by name: dark ones first.
+pub fn names(cx: &App) -> Vec<(SharedString, bool)> {
+    let mut themes: Vec<(SharedString, bool)> = ThemeRegistry::global(cx)
+        .themes()
+        .values()
+        .map(|t| (t.name.clone(), t.mode.is_dark()))
+        .collect();
+    themes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+    themes
+}
+
+pub fn current(cx: &App) -> SharedString {
+    Theme::global(cx).theme_name().clone()
+}
+
+/// Makes `name` the active theme, for the kit's widgets and tvty's views.
+pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
+    let Some(config) = ThemeRegistry::global(cx).themes().get(name).cloned() else {
+        return;
+    };
+    let mode = config.mode;
+    {
+        let theme = Theme::global_mut(cx);
+        match mode {
+            ThemeMode::Dark => theme.dark_theme = config,
+            ThemeMode::Light => theme.light_theme = config,
+        }
+    }
+    Theme::change(mode, window, cx);
+    // The kit's monospace font, where it uses one, is the terminal's.
+    Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
+    let theme = Theme::global(cx);
+    *PALETTE.write().unwrap() = palette_of(theme);
+    *TERMINAL.write().unwrap() = terminal_of(theme);
+}
+
+fn user_dir() -> Option<PathBuf> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
+    Some(base.join("tvty").join("themes"))
+}
+
+fn palette_of(theme: &Theme) -> Palette {
+    Palette {
+        bg: theme.background,
+        surface: theme.sidebar,
+        hover: theme.list_hover,
+        active: theme.list_active,
+        border: theme.border,
+        text: theme.foreground,
+        muted: theme.muted_foreground,
+        // Not `primary`: some themes make it near white or black.
+        accent: theme.blue,
+        danger: theme.danger,
+        warning: theme.warning,
+        success: theme.success,
+        info: theme.info,
+        veil: theme.background.opacity(0.92),
+    }
+}
+
+fn terminal_of(theme: &Theme) -> TerminalColours {
+    let hex = |c: Hsla| {
+        let c = c.to_rgb();
+        let byte = |v: f32| (v.clamp(0., 1.) * 255.).round() as u32;
+        byte(c.r) << 16 | byte(c.g) << 8 | byte(c.b)
+    };
+    let dark = theme.mode.is_dark();
+    // Black and white follow the theme's light: on a light theme, "black"
+    // text must stay dark and "white" stay light.
+    let (black, white, bright_white) = if dark {
+        (theme.muted, theme.foreground.opacity(0.85), theme.foreground)
+    } else {
+        (theme.foreground, theme.muted, theme.background)
+    };
+    let ansi = [
+        black,
+        theme.red,
+        theme.green,
+        theme.yellow,
+        theme.blue,
+        theme.magenta,
+        theme.cyan,
+        white,
+        theme.muted_foreground,
+        theme.red_light,
+        theme.green_light,
+        theme.yellow_light,
+        theme.blue_light,
+        theme.magenta_light,
+        theme.cyan_light,
+        bright_white,
+    ]
+    .map(|c| hex(blend(c, theme.background)));
+    TerminalColours {
+        ansi,
+        foreground: hex(theme.foreground),
+        background: hex(theme.background),
+        cursor: hex(theme.caret),
+        selection: hex(blend(theme.selection, theme.background)),
+    }
+}
+
+/// Readable text on a `background`: dark on light colours, light on dark.
+pub fn on(background: Hsla) -> Hsla {
+    let c = background.to_rgb();
+    let luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    if luminance > 0.55 {
+        Hsla::from(Rgba { r: 0.08, g: 0.08, b: 0.08, a: 1. })
+    } else {
+        gpui_kit::white()
+    }
+}
+
+/// A colour with its transparency folded onto `under`.
+fn blend(colour: Hsla, under: Hsla) -> Hsla {
+    let (c, u) = (colour.to_rgb(), under.to_rgb());
+    let a = c.a;
+    Rgba {
+        r: c.r * a + u.r * (1. - a),
+        g: c.g * a + u.g * (1. - a),
+        b: c.b * a + u.b * (1. - a),
+        a: 1.,
+    }
+    .into()
+}

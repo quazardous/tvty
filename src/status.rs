@@ -8,24 +8,19 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::sessions::Status;
+use crate::theme::p;
 
-const WORKING: u32 = 0x3b8eea;
-const IDLE: u32 = 0x6b6b6b;
-const STARTING: u32 = 0xa06ad8;
-const AUTONOMOUS: u32 = 0x23d18b;
-const HELD: u32 = 0xe5b93b;
-const TYPING: u32 = 0xf14c4c;
 
 impl Status {
     /// The state's colour: the accent beside the agent's name.
-    pub fn colour(&self) -> Option<u32> {
+    pub fn colour(&self) -> Option<Hsla> {
         if !self.online {
             return None;
         }
         Some(match self.state.as_str() {
-            "busy" => WORKING,
-            "boot" => STARTING,
-            _ => IDLE,
+            "busy" => p().accent,
+            "boot" => p().info,
+            _ => p().muted,
         })
     }
 
@@ -34,14 +29,14 @@ impl Status {
         if !self.online {
             return div()
                 .text_size(px(11.))
-                .text_color(rgb(0x6b6b6b))
+                .text_color(p().muted)
                 .child("offline");
         }
         let (glyph, glyph_colour) = match self.driver.as_str() {
-            "stop" => ("✎", TYPING),
-            "wait" => ("‖", HELD),
-            "boot" => ("…", STARTING),
-            _ => ("▶", AUTONOMOUS),
+            "stop" => ("✎", p().danger),
+            "wait" => ("‖", p().warning),
+            "boot" => ("…", p().info),
+            _ => ("▶", p().success),
         };
         let what = match self.state.as_str() {
             "busy" => "working",
@@ -54,14 +49,17 @@ impl Status {
             .items_center()
             .gap_1()
             .text_size(px(11.))
-            .child(div().text_color(rgb(glyph_colour)).child(glyph))
+            .child(div().text_color(glyph_colour).child(glyph))
             .child(
                 div()
-                    .text_color(rgb(self.colour().filter(|&c| c != IDLE).unwrap_or(0x9d9d9d)))
+                    .text_color(match self.state.as_str() {
+                        "busy" => p().accent,
+                        _ => p().muted,
+                    })
                     .child(what),
             )
             .when_some(since, |d, since| {
-                d.child(div().text_color(rgb(0x6b6b6b)).child(format!("· {since}")))
+                d.child(div().text_color(p().muted).child(format!("· {since}")))
             })
     }
 }

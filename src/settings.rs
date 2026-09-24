@@ -14,6 +14,8 @@ pub struct Settings {
     pub panel_open: bool,
     /// The projects' list, on the left.
     pub sidebar_open: bool,
+    /// The colour theme's name; `None`: the kit's default dark theme.
+    pub theme: Option<String>,
 }
 
 impl Default for Settings {
@@ -22,6 +24,7 @@ impl Default for Settings {
             panel_width: None,
             panel_open: true,
             sidebar_open: true,
+            theme: None,
         }
     }
 }

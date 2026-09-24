@@ -54,6 +54,15 @@ decision, blue for unread. On the left, one dot per project with something
 waiting; on the right, the selected terminal's project. A click on the
 strip unfolds it. Both states are remembered.
 
+## Colour themes
+
+Everything takes its colours from one theme — the window, the panels, the
+alerts, the terminals' palette (the theme's ANSI colours, text, background,
+cursor, selection). Pick it from the title bar (◐ and its name), or step
+through them with ctrl+shift+k; it is remembered. Six theme sets are bundled
+(light and dark variants, see `themes/`), and any gpui-component theme file
+dropped in `~/.config/tvty/themes/` joins the list.
+
 ## Keys
 
 | Keys | |
@@ -62,6 +71,7 @@ strip unfolds it. Both states are remembered.
 | ctrl+shift+space | the gallery; type to filter, enter opens the first, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+b | fold / unfold the projects' list |
+| ctrl+shift+k | next colour theme |
 | ctrl+enter | go to what the banner shows: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v | copy the selection / paste (bracketed when the program asks) |
 

@@ -13,6 +13,7 @@ use gpui_kit::*;
 use gpui_kit::component::{TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
+use crate::theme::{self, p};
 use crate::events;
 use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
@@ -68,6 +69,8 @@ pub struct Shell {
     waiting: Option<HashSet<(u64, Wait)>>,
     /// Counts terminal switches: each one replays the slide.
     switches: usize,
+    /// The theme list is open, under the title bar.
+    theme_menu: bool,
 
     focus: FocusHandle,
     /// Wakes the refresh loop before its next tick.
@@ -100,9 +103,15 @@ enum Side {
     Right,
 }
 
-const CRITICAL: u32 = 0xc72e0f;
-const DECISION: u32 = 0xcc6d00;
-const UNREAD: u32 = 0x3b8eea;
+fn critical() -> Hsla {
+    p().danger
+}
+fn decision() -> Hsla {
+    p().warning
+}
+fn unread() -> Hsla {
+    p().accent
+}
 
 /// What a set of tickets asks of the user.
 #[derive(Default)]
@@ -124,22 +133,22 @@ impl Alerts {
     }
 
     /// One dot per kind of thing waiting, most pressing first.
-    fn colors(&self) -> Vec<u32> {
+    fn colors(&self) -> Vec<Hsla> {
         let mut colors = Vec::new();
         if self.critical {
-            colors.push(CRITICAL);
+            colors.push(critical());
         }
         if self.decisions > 0 {
-            colors.push(DECISION);
+            colors.push(decision());
         }
         if self.unread > 0 {
-            colors.push(UNREAD);
+            colors.push(unread());
         }
         colors
     }
 
     /// The most pressing thing waiting, if any.
-    fn color(&self) -> Option<u32> {
+    fn color(&self) -> Option<Hsla> {
         self.colors().first().copied()
     }
 
@@ -148,9 +157,9 @@ impl Alerts {
             .flex()
             .items_center()
             .gap_1()
-            .when(self.critical, |d| d.child(pill("!", CRITICAL)))
-            .when(self.decisions > 0, |d| d.child(pill(self.decisions.to_string(), DECISION)))
-            .when(self.unread > 0, |d| d.child(pill(self.unread.to_string(), UNREAD)))
+            .when(self.critical, |d| d.child(pill("!", critical())))
+            .when(self.decisions > 0, |d| d.child(pill(self.decisions.to_string(), decision())))
+            .when(self.unread > 0, |d| d.child(pill(self.unread.to_string(), unread())))
     }
 }
 
@@ -193,6 +202,7 @@ impl Shell {
             needs: Vec::new(),
             waiting: None,
             switches: 0,
+            theme_menu: false,
 
             focus: cx.focus_handle(),
             refresh_now,
@@ -495,6 +505,11 @@ impl Shell {
             self.toggle_panel(cx);
         } else if m.control && m.shift && key == "b" {
             self.toggle_sidebar(cx);
+        } else if m.control && m.shift && key == "k" {
+            self.next_theme(window, cx);
+        } else if key == "escape" && self.theme_menu {
+            self.theme_menu = false;
+            cx.notify();
         } else if key == "escape" && (self.slider.is_some() || self.gallery.is_some()) {
             self.slider = None;
             self.close_gallery(window, cx);
@@ -668,6 +683,88 @@ impl Shell {
             .collect()
     }
 
+    // ── Themes ──────────────────────────────────────────────────────────
+
+    fn set_theme(&mut self, name: SharedString, window: &mut Window, cx: &mut Context<Self>) {
+        theme::apply(&name, Some(window), cx);
+        self.settings.theme = Some(name.to_string());
+        self.settings.save();
+        self.theme_menu = false;
+        cx.notify();
+    }
+
+    fn next_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let names = theme::names(cx);
+        let current = theme::current(cx);
+        let at = names.iter().position(|(n, _)| *n == current).map_or(0, |i| i + 1);
+        if let Some((name, _)) = names.get(at % names.len().max(1)).cloned() {
+            self.set_theme(name, window, cx);
+        }
+    }
+
+    fn toggle_theme_menu(&mut self, cx: &mut Context<Self>) {
+        self.theme_menu = !self.theme_menu;
+        if self.theme_menu {
+            // A theme file dropped or edited meanwhile shows now.
+            theme::load(cx);
+        }
+        cx.notify();
+    }
+
+    fn theme_menu_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let current = theme::current(cx);
+        let mut list = div()
+            .id("theme-menu")
+            .absolute()
+            .top(px(36.))
+            .right_2()
+            .w(px(240.))
+            .max_h(px(420.))
+            .overflow_y_scroll()
+            .py_1()
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().border)
+            .shadow_lg()
+            .text_sm();
+        let mut last_dark = None;
+        for (name, dark) in theme::names(cx) {
+            if last_dark != Some(dark) {
+                last_dark = Some(dark);
+                list = list.child(
+                    div()
+                        .px_3()
+                        .pt_2()
+                        .pb_1()
+                        .text_xs()
+                        .text_color(p().muted)
+                        .child(if dark { "DARK" } else { "LIGHT" }),
+                );
+            }
+            let chosen = name == current;
+            let pick = name.clone();
+            list = list.child(
+                div()
+                    .id(SharedString::from(format!("theme-{name}")))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_1()
+                    .cursor_pointer()
+                    .when(chosen, |d| d.bg(p().active))
+                    .hover(|d| d.bg(p().hover))
+                    .child(div().w(px(10.)).child(if chosen { "✓" } else { "" }))
+                    .child(name.clone())
+                    .on_click(cx.listener(move |shell, _, window, cx| {
+                        shell.set_theme(pick.clone(), window, cx)
+                    })),
+            );
+        }
+        list
+    }
+
     // ── Rendering ───────────────────────────────────────────────────────
 
     /// The strip between a side and the terminal: a grip that folds the
@@ -685,11 +782,11 @@ impl Shell {
             .w(px(EDGE_WIDTH))
             .flex_none()
             .h_full()
-            .bg(rgb(0x1e1e1e))
+            .bg(p().bg)
             .when(side == Side::Right, |d| {
                 d.cursor(CursorStyle::ResizeColumn)
-                    .when(resizing, |d| d.bg(rgb(0x2a3a4d)))
-                    .hover(|d| d.bg(rgb(0x2a3a4d)))
+                    .when(resizing, |d| d.bg(p().active))
+                    .hover(|d| d.bg(p().active))
                     .on_mouse_down(
                         MouseButton::Left,
                         cx.listener(|shell, _, _, cx| {
@@ -707,9 +804,9 @@ impl Shell {
                     .w(px(6.))
                     .h(px(44.))
                     .rounded_full()
-                    .bg(rgb(0x4a4a4a))
+                    .bg(p().border)
                     .cursor_pointer()
-                    .hover(|d| d.bg(rgb(0x3b8eea)))
+                    .hover(|d| d.bg(p().accent))
                     // A press on the grip is a toggle, not the start of a drag.
                     .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
                     .on_click(cx.listener(move |shell, _, _, cx| match side {
@@ -720,7 +817,7 @@ impl Shell {
     }
 
     /// A folded side: 10 pixels, a dot per thing waiting, a click unfolds.
-    fn folded(&self, side: Side, dots: Vec<u32>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn folded(&self, side: Side, dots: Vec<Hsla>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
             .id(match side {
                 Side::Left => "sidebar-folded",
@@ -734,17 +831,17 @@ impl Shell {
             .w(px(FOLDED_WIDTH))
             .flex_none()
             .h_full()
-            .bg(rgb(0x252526))
+            .bg(p().surface)
             .map(|d| match side {
                 Side::Left => d.border_r_1(),
                 Side::Right => d.border_l_1(),
             })
-            .border_color(rgb(0x3c3c3c))
+            .border_color(p().border)
             .cursor_pointer()
-            .hover(|d| d.bg(rgb(0x2a3a4d)))
+            .hover(|d| d.bg(p().active))
             .children(
                 dots.into_iter()
-                    .map(|color| div().flex_none().size(px(6.)).rounded_full().bg(rgb(color))),
+                    .map(|color| div().flex_none().size(px(6.)).rounded_full().bg(color)),
             )
             .on_click(cx.listener(move |shell, _, _, cx| match side {
                 Side::Left => shell.toggle_sidebar(cx),
@@ -762,10 +859,10 @@ impl Shell {
             .h_full()
             .py_2()
             .overflow_y_scroll()
-            .bg(rgb(0x252526))
+            .bg(p().surface)
             .text_sm();
         if self.board.projects.is_empty() {
-            list = list.child(div().px_3().text_color(rgb(0x808080)).child("No session"));
+            list = list.child(div().px_3().text_color(p().muted).child("No session"));
         }
         for project in &self.board.projects {
             let tickets = self.board.tickets.get(&project.name);
@@ -787,7 +884,7 @@ impl Shell {
                             .truncate()
                             .text_xs()
                             .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(0x9d9d9d))
+                            .text_color(p().muted)
                             .child(project.name.to_uppercase()),
                     )
                     .child(alerts.badges()),
@@ -807,15 +904,15 @@ impl Shell {
                         .pr_3()
                         .py_1()
                         .cursor_pointer()
-                        .when(selected, |d| d.bg(rgb(0x37373d)).text_color(rgb(0xffffff)))
-                        .when(!selected, |d| d.hover(|d| d.bg(rgb(0x2a2d2e))))
+                        .when(selected, |d| d.bg(p().active).text_color(p().text))
+                        .when(!selected, |d| d.hover(|d| d.bg(p().hover)))
                         // The loop's state colour: working, idle, starting.
                         .child(
                             div()
                                 .w(px(3.))
                                 .flex_none()
                                 .rounded_sm()
-                                .when_some(state, |d, colour| d.bg(rgb(colour))),
+                                .when_some(state, |d, colour| d.bg(colour)),
                         )
                         .child(
                             div()
@@ -830,7 +927,7 @@ impl Shell {
                                         .items_center()
                                         .gap_2()
                                         // Green: the terminal already runs in tvty.
-                                        .child(div().w(px(7.)).when(open, |d| d.child(dot(0x23d18b))))
+                                        .child(div().w(px(7.)).when(open, |d| d.child(dot(p().success))))
                                         .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                                         .child(alerts.badges()),
                                 )
@@ -903,7 +1000,7 @@ impl Shell {
                     div()
                         .text_sm()
                         .font_weight(FontWeight::BOLD)
-                        .text_color(if is_chosen_group { rgb(0xffffff) } else { rgb(0x8a8a8a) })
+                        .text_color(if is_chosen_group { p().text } else { p().muted })
                         .child(project.to_uppercase()),
                 )
                 .child(cards)
@@ -925,7 +1022,7 @@ impl Shell {
             .flex_col()
             // The frosted glass, for now without the frost: GPUI cannot blur
             // what lies under an element.
-            .bg(rgba(0x0b0b0ce8))
+            .bg(p().veil)
             .child(body)
             .child(
                 div()
@@ -933,7 +1030,7 @@ impl Shell {
                     .justify_center()
                     .py_3()
                     .text_sm()
-                    .text_color(rgb(0x8a8a8a))
+                    .text_color(p().muted)
                     .child("tab: next · shift+tab: back · release ctrl to open · esc cancels"),
             )
             .with_animation(
@@ -952,8 +1049,8 @@ impl Shell {
             Wait::Unread => "something new on",
         };
         let color = match need.wait {
-            Wait::Decision => DECISION,
-            Wait::Unread => UNREAD,
+            Wait::Decision => decision(),
+            Wait::Unread => unread(),
         };
         Some(
             div()
@@ -968,9 +1065,9 @@ impl Shell {
                 .px_3()
                 .py_2()
                 .rounded_md()
-                .bg(rgb(0x1f2a36))
+                .bg(p().surface)
                 .border_1()
-                .border_color(rgb(color))
+                .border_color(color)
                 .shadow_lg()
                 .text_sm()
                 .cursor_pointer()
@@ -982,14 +1079,14 @@ impl Shell {
                         .truncate()
                         .child(format!("{} — {what} #{} {}", need.agent, need.ticket, need.title)),
                 )
-                .when(more > 0, |d| d.child(div().text_color(rgb(0x8a8a8a)).child(format!("+{more}"))))
-                .child(div().text_xs().text_color(rgb(0x8a8a8a)).child("ctrl+enter"))
+                .when(more > 0, |d| d.child(div().text_color(p().muted).child(format!("+{more}"))))
+                .child(div().text_xs().text_color(p().muted).child("ctrl+enter"))
                 .child(
                     div()
                         .id("banner-close")
                         .px_1()
-                        .text_color(rgb(0x8a8a8a))
-                        .hover(|d| d.text_color(rgb(0xffffff)))
+                        .text_color(p().muted)
+                        .hover(|d| d.text_color(p().text))
                         .child("×")
                         .on_click(cx.listener(|shell, _, _, cx| {
                             cx.stop_propagation();
@@ -1025,7 +1122,7 @@ impl Shell {
             .rounded_md()
             .overflow_hidden()
             .border_2()
-            .border_color(if chosen { rgb(0x3b8eea) } else { rgb(0x3c3c3c) })
+            .border_color(if chosen { p().accent } else { p().border })
             .when(chosen, |d| d.shadow_lg())
             .child(
                 div()
@@ -1034,19 +1131,19 @@ impl Shell {
                     .gap_2()
                     .px_2()
                     .py_1()
-                    .bg(if chosen { rgb(0x2a3a4d) } else { rgb(0x2d2d2d) })
+                    .bg(if chosen { p().active } else { p().surface })
                     .text_sm()
                     .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                     .child(alerts.badges()),
             )
             .when_some(terminal.status.as_ref(), |d, status| {
-                d.child(div().px_2().pb_1().bg(rgb(0x2d2d2d)).child(status.line()))
+                d.child(div().px_2().pb_1().bg(p().surface).child(status.line()))
             })
             .child(
                 div()
                     .h(px(height))
                     .overflow_hidden()
-                    .bg(rgb(0x1e1e1e))
+                    .bg(p().bg)
                     .when_some(self.thumbnails.get(session), |d, snapshot| d.child(snapshot.element())),
             )
     }
@@ -1081,7 +1178,7 @@ impl Shell {
                 row = row.child(
                     self.card(&project.name, terminal, selected, 320., 190.)
                         .cursor_pointer()
-                        .hover(|d| d.border_color(rgb(0x6b9fd6)))
+                        .hover(|d| d.border_color(p().accent))
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.gallery = None;
                             shell.select(session.clone(), window, cx);
@@ -1097,7 +1194,7 @@ impl Shell {
                         div()
                             .text_xs()
                             .font_weight(FontWeight::BOLD)
-                            .text_color(rgb(0x9d9d9d))
+                            .text_color(p().muted)
                             .child(project.name.to_uppercase()),
                     )
                     .child(row),
@@ -1108,7 +1205,7 @@ impl Shell {
             .inset_0()
             .flex()
             .flex_col()
-            .bg(rgb(0x161617))
+            .bg(p().bg)
             .child(
                 div()
                     .flex()
@@ -1117,12 +1214,12 @@ impl Shell {
                     .px_4()
                     .py_3()
                     .border_b_1()
-                    .border_color(rgb(0x3c3c3c))
+                    .border_color(p().border)
                     .child(div().font_weight(FontWeight::BOLD).child("All terminals"))
                     .child(
                         div()
                             .flex_1()
-                            .text_color(if gallery.filter.is_empty() { rgb(0x6b6b6b) } else { rgb(0xffffff) })
+                            .text_color(if gallery.filter.is_empty() { p().muted } else { p().text })
                             .child(if gallery.filter.is_empty() {
                                 "type to filter · enter opens the first · esc closes".to_string()
                             } else {
@@ -1154,7 +1251,7 @@ impl Render for Shell {
                 .flex()
                 .items_center()
                 .justify_center()
-                .text_color(rgb(0x808080))
+                .text_color(p().muted)
                 .child("Pick a terminal on the left · ctrl+shift+space shows them all")
                 .into_any_element(),
         };
@@ -1220,8 +1317,8 @@ impl Render for Shell {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(rgb(0x1e1e1e))
-            .text_color(rgb(0xd4d4d4))
+            .bg(p().bg)
+            .text_color(p().text)
             .when(self.resizing, |d| d.cursor(CursorStyle::ResizeColumn))
             .child(left)
             .child(
@@ -1240,20 +1337,41 @@ impl Render for Shell {
         // The window draws its own title bar: GNOME leaves decorations to the
         // application (as with VS Code or Zed). It moves the window and
         // carries its buttons; the frame and its resize edges come from Root.
+        let theme_name = theme::current(cx);
+        let menu = self.theme_menu.then(|| self.theme_menu_view(cx));
         div()
+            .relative()
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x1e1e1e))
+            .bg(p().bg)
             .child(
-                TitleBar::new().child(
-                    div()
-                        .text_sm()
-                        .text_color(rgb(0xb0b0b0))
-                        .truncate()
-                        .child(title),
-                ),
+                TitleBar::new()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .text_sm()
+                            .text_color(p().muted)
+                            .truncate()
+                            .child(title),
+                    )
+                    .child(
+                        div()
+                            .id("theme-button")
+                            .flex_none()
+                            .mr_2()
+                            .px_2()
+                            .rounded_sm()
+                            .text_xs()
+                            .text_color(p().muted)
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover).text_color(p().text))
+                            .child(format!("◐ {theme_name}"))
+                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                    ),
             )
             .child(body)
+            .children(menu)
     }
 }

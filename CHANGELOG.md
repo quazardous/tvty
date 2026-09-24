@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Colour themes: the whole window and the terminals follow the chosen theme,
+  picked from the title bar or with ctrl+shift+k and remembered; light and
+  dark themes bundled (Catppuccin, Everforest, Flexoki, Gruvbox, Solarized,
+  Tokyo Night), and your own in `~/.config/tvty/themes/`.
 - tvty draws its own window frame — a title bar to move it, with minimize,
   maximize and close, and edges to resize it — so it can be handled on GNOME,
   which leaves decorations to applications, and looks the same elsewhere.

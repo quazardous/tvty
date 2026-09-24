@@ -10,6 +10,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, Thread, TicketRow};
+use crate::theme::p;
 
 /// Something changed on the board: the shell should read it again.
 pub struct BoardChanged;
@@ -258,12 +259,12 @@ impl TicketPanel {
             .px_3()
             .py_1p5()
             .cursor_pointer()
-            .hover(|d| d.bg(rgb(0x2a2d2e)))
+            .hover(|d| d.bg(p().hover))
             .child(
                 div()
                     .flex_none()
                     .w(px(44.))
-                    .text_color(rgb(0x808080))
+                    .text_color(p().muted)
                     .child(format!("#{id}")),
             )
             .child(
@@ -275,13 +276,13 @@ impl TicketPanel {
                     .items_center()
                     .gap_1()
                     .child(div().mr_1().child(ticket.title.clone()))
-                    .when(critical, |d| d.child(pill("critical", 0xc72e0f)))
-                    .when(ticket.pending_decision, |d| d.child(pill("decision", 0xcc6d00)))
+                    .when(critical, |d| d.child(pill("critical", p().danger)))
+                    .when(ticket.pending_decision, |d| d.child(pill("decision", p().warning)))
                     .when(ticket.urgent(), |d| {
-                        d.child(pill(ticket.priority.clone().unwrap_or_default(), 0x8b2f2f))
+                        d.child(pill(ticket.priority.clone().unwrap_or_default(), p().danger))
                     }),
             )
-            .when(ticket.unread, |d| d.child(dot(0x3b8eea)))
+            .when(ticket.unread, |d| d.child(dot(p().accent)))
             .on_click(cx.listener(move |panel, _, _, cx| panel.open(id, cx)))
     }
 
@@ -313,7 +314,7 @@ impl TicketPanel {
                     .flex()
                     .gap_2()
                     .child(byline(&ticket.by_agent, &ticket.created_at))
-                    .when(ticket.closed, |d| d.child(pill("closed", 0x6b6b6b))),
+                    .when(ticket.closed, |d| d.child(pill("closed", p().muted))),
             )
             .when_some(ticket.body.clone(), |d, text| {
                 d.child(TextView::markdown(("body", ticket.id), text))
@@ -330,7 +331,7 @@ impl TicketPanel {
                             .flex()
                             .gap_2()
                             .child(byline(&comment.by_agent, &comment.created_at))
-                            .child(pill(kind.replace('_', " "), 0x3c3c3c)),
+                            .child(pill(kind.replace('_', " "), p().border)),
                     );
                     if let Some(text) = text {
                         body = body.child(TextView::markdown(("event", comment.id), text.clone()));
@@ -346,7 +347,7 @@ impl TicketPanel {
                     .gap_1()
                     .pt_2()
                     .border_t_1()
-                    .border_color(rgb(0x3c3c3c))
+                    .border_color(p().border)
                     .child(
                         div()
                             .flex()
@@ -355,9 +356,9 @@ impl TicketPanel {
                             .child(byline(&comment.by_agent, &comment.created_at))
                             .when_some(decision, |d, decision| {
                                 let color = match decision.status.as_str() {
-                                    "pending" => 0xcc6d00,
-                                    "accepted" => 0x2e7d32,
-                                    _ => 0x6b6b6b,
+                                    "pending" => p().warning,
+                                    "accepted" => p().success,
+                                    _ => p().muted,
                                 };
                                 d.child(pill(format!("{} · {}", decision.kind, decision.status), color))
                             }),
@@ -373,9 +374,9 @@ impl TicketPanel {
             .gap_2()
             .p_3()
             .border_t_1()
-            .border_color(rgb(0x3c3c3c))
+            .border_color(p().border)
             .when_some(detail.error.clone(), |d, error| {
-                d.child(div().text_color(rgb(0xf14c4c)).child(error))
+                d.child(div().text_color(p().danger).child(error))
             })
             .when_some(pending, |d, (comment, decision)| {
                 let id = comment.id;
@@ -439,13 +440,13 @@ impl Render for TicketPanel {
             .h(px(36.))
             .px_3()
             .border_b_1()
-            .border_color(rgb(0x3c3c3c))
+            .border_color(p().border)
             .when(self.detail.is_some(), |d| {
                 d.child(
                     div()
                         .id("back")
                         .cursor_pointer()
-                        .text_color(rgb(0x3b8eea))
+                        .text_color(p().accent)
                         .child("← Tickets")
                         .on_click(cx.listener(|panel, _, _, cx| {
                             panel.detail = None;
@@ -465,7 +466,7 @@ impl Render for TicketPanel {
             .child(
                 div()
                     .text_xs()
-                    .text_color(rgb(0x808080))
+                    .text_color(p().muted)
                     .child(format!("as {}", self.aiball.user)),
             )
             .child(
@@ -473,7 +474,7 @@ impl Render for TicketPanel {
                     .id("collapse")
                     .px_1()
                     .cursor_pointer()
-                    .text_color(rgb(0x3b8eea))
+                    .text_color(p().accent)
                     .child("›")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             );
@@ -485,7 +486,7 @@ impl Render for TicketPanel {
             .flex()
             .flex_col()
             .size_full()
-            .bg(rgb(0x252526))
+            .bg(p().surface)
             .text_sm()
             .child(header)
             .child(content)
@@ -499,12 +500,12 @@ fn section_title(title: impl Into<SharedString>) -> impl IntoElement {
         .pb_1()
         .text_xs()
         .font_weight(FontWeight::BOLD)
-        .text_color(rgb(0x9d9d9d))
+        .text_color(p().muted)
         .child(title.into().to_uppercase())
 }
 
 fn hint(text: impl Into<SharedString>) -> impl IntoElement {
-    div().p_3().text_color(rgb(0x808080)).child(text.into())
+    div().p_3().text_color(p().muted).child(text.into())
 }
 
 fn byline(who: &str, when: &str) -> impl IntoElement {
@@ -512,21 +513,21 @@ fn byline(who: &str, when: &str) -> impl IntoElement {
     let when = when.get(..16).map(|w| w.replace('T', " ")).unwrap_or_else(|| when.to_string());
     div()
         .text_xs()
-        .text_color(rgb(0x9d9d9d))
+        .text_color(p().muted)
         .child(format!("{who} · {when}"))
 }
 
-pub fn pill(text: impl Into<SharedString>, color: u32) -> impl IntoElement {
+pub fn pill(text: impl Into<SharedString>, color: Hsla) -> impl IntoElement {
     div()
         .flex_none()
         .px_1p5()
         .rounded_sm()
         .text_xs()
-        .bg(rgb(color))
-        .text_color(rgb(0xffffff))
+        .bg(color)
+        .text_color(crate::theme::on(color))
         .child(text.into())
 }
 
-pub fn dot(color: u32) -> impl IntoElement {
-    div().flex_none().mt_1p5().size(px(7.)).rounded_full().bg(rgb(color))
+pub fn dot(color: Hsla) -> impl IntoElement {
+    div().flex_none().mt_1p5().size(px(7.)).rounded_full().bg(color)
 }

@@ -10,6 +10,7 @@ mod shell;
 mod stats;
 mod status;
 mod terminal;
+mod theme;
 
 use gpui_kit::*;
 
@@ -30,9 +31,7 @@ fn main() {
     // The kit's icons (the title bar's buttons among them) come from its assets.
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
-        gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
-        // The kit's monospace font, where it uses one, is the terminal's.
-        gpui_kit::component::Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
+        theme::init(settings::Settings::load().theme.as_deref(), cx);
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {

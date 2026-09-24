@@ -12,6 +12,9 @@ if [[ ${1:-} == --staged ]]; then
 else
     mapfile -t files < <(git ls-files)
 fi
+# Bundled theme sets are third-party data full of hex colours (#179299),
+# which read like ticket ids.
+mapfile -t files < <(printf '%s\n' "${files[@]}" | grep -v '^themes/.*\.json$')
 ((${#files[@]})) || exit 0
 # Dev-machine paths; a board's ticket (#1234) or comment (#C.abcd12) id.
 pattern='((^|[[:space:]"'"'"'=:(`])(/home|/Users)/[A-Za-z]|[A-Z]:\\Users\\|(^|[^&A-Za-z0-9])#[0-9]{3,}\b|#C\.[a-z0-9]{4,8}\b)'
