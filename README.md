@@ -32,6 +32,7 @@ existing for everything else (remote, phone, another OS).
 | Sessions | each terminal runs `tmux attach` (`psmux attach` on Windows) on the agent's claude-loop session — tmux keeps the agent alive, tvty only shows it. Replacing tmux by a terminal host of aiball's own stays an option for later |
 
 See [`docs/UX.md`](docs/UX.md) for the interface: navigation, switching, the ticket panel.
+[`docs/TESTING.md`](docs/TESTING.md): how it is tested without a desktop or model tokens (wbox, fake-claude, simai-cli).
 
 ## Status
 
