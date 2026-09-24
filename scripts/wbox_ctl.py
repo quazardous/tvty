@@ -21,6 +21,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py click  CONFIG [-s key=value ...] X Y
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
+    wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
 
 Headless by default: the compositor renders offscreen and nothing appears on
 the desktop. Set WBOX_VISIBLE=1 to get a window, for when the assertion is
@@ -142,6 +143,29 @@ def main():
             sys.exit("type needs one TEXT argument")
         _warm_up(comp)
         result = comp.type_text(args[0])
+    elif command == "scroll":
+        # wbox has no wheel yet: speak zwlr_virtual_pointer_v1 directly,
+        # through wbox's own connection. N notches, negative = up.
+        if len(args) != 3:
+            sys.exit("scroll needs X Y NOTCHES")
+        x, y, notches = int(args[0]), int(args[1]), int(args[2])
+        _warm_up(comp, x, y)
+        import struct
+        import time as clock
+        client = comp._vptr_client()
+        vp = client._ensure_vptr()
+        client._motion(vp, x, y)
+        step = -1 if notches < 0 else 1
+        for _ in range(abs(notches)):
+            now = struct.pack("<I", int(clock.monotonic() * 1000) & 0xFFFFFFFF)
+            client._send(vp, 5, struct.pack("<I", 0))  # axis_source: wheel
+            # axis_discrete: time, axis (0 = vertical), value (fixed 24.8), discrete
+            client._send(vp, 7, now + struct.pack("<I", 0) +
+                         struct.pack("<i", step * 15 * 256) + struct.pack("<i", step))
+            client._send(vp, 4)  # frame
+            client.roundtrip()
+            clock.sleep(0.03)
+        result = {"ok": True}
     elif command == "status":
         result = {"running": comp.is_running(), "headless": cfg["headless"]}
     else:

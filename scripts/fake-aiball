@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# fake-aiball — a throwaway aiball daemon with a demo project, for testing
+# tvty's ticket panel without touching the real board.
+#
+#   scripts/fake-aiball up     start the daemon, seed it, start the demo loops
+#   scripts/fake-aiball down   stop the loops and the daemon, drop its data
+#   scripts/fake-aiball env    print the AIBALL_SOCK to point tvty at it
+#
+# Everything lives in dev/fake-aiball/: its own AIBALL_HOME, config dir, port
+# (7797) and socket. The demo project `demo` has two agents, demo-claude and
+# demo-crew, whose "loops" are tmux sessions cl-demo-lead / cl-demo-crew
+# running fake-claude in dev/fake-aiball/demo/{lead,crew}.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+AIBALL="$(dirname "$ROOT")/aiball"
+DIR="$ROOT/dev/fake-aiball"
+HOME_DIR="$DIR/home"
+SOCK="$HOME_DIR/sock"
+PIDFILE="$HOME_DIR/daemon.pid"
+DEMO="$DIR/demo"
+
+running() { [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+case "${1:-}" in
+    up)
+        if running; then echo "fake aiball already up"; exit 0; fi
+        rm -rf "$HOME_DIR"
+        mkdir -p "$HOME_DIR" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
+        AIBALL_HOME="$HOME_DIR" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
+            AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
+            nohup "$AIBALL/bin/aiball-daemon" >"$DIR/daemon.log" 2>&1 &
+        for _ in $(seq 50); do [[ -S $SOCK ]] && break; sleep 0.2; done
+        [[ -S $SOCK ]] || { echo "the daemon did not start, see $DIR/daemon.log" >&2; exit 1; }
+        python3 "$ROOT/scripts/fake-aiball-seed.py" "$SOCK" "$DEMO"
+        for sub in lead crew; do
+            tmux has-session -t "=cl-demo-$sub" 2>/dev/null ||
+                tmux new-session -d -s "cl-demo-$sub" -c "$DEMO/$sub" -x 160 -y 48 "$AIBALL/bin/fake-claude"
+        done
+        echo "fake aiball up — AIBALL_SOCK=$SOCK"
+        ;;
+    down)
+        for sub in lead crew; do tmux kill-session -t "=cl-demo-$sub" 2>/dev/null || true; done
+        if running; then kill "$(cat "$PIDFILE")"; fi
+        rm -rf "$HOME_DIR"
+        echo "fake aiball down"
+        ;;
+    env)
+        echo "AIBALL_SOCK=$SOCK"
+        ;;
+    *)
+        sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

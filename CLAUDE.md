@@ -48,6 +48,9 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   (`scripts/fake-loop`, tmux sessions `tvty-fake`, `tvty-sim`, `tvty-flood`).
   tvty lists them under "tmux". **Never click a real agent's loop in wbox**:
   attaching resizes it for every client, david's included.
+- **fake aiball** (`make aiball-up`): a throwaway daemon with a `demo`
+  project, for the ticket panel. Its gestures act as david: never try them
+  on the real board.
 
 ## Conventions
 

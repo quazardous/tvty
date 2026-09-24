@@ -35,6 +35,27 @@ with `claude-loop start --command "$(realpath ../aiball/bin/fake-claude)"`.
 **Never click a real agent's loop inside wbox**: attaching resizes its tmux
 window to tvty's for every client, david's included.
 
+## A board to click on
+
+The ticket panel reads **and writes** aiball: accepting, rejecting and
+replying act as david. Never test them on the real board. `make aiball-up`
+starts a throwaway daemon instead (`scripts/fake-aiball`): its own data dir,
+config dir, port (7797) and socket under `dev/fake-aiball/`, seeded with a
+`demo` project — two agents, `demo-claude` and `demo-crew`, whose loops are
+the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
+a pending plan, a pending resolution, a queue and a closed one.
+`make aiball-down` drops it all.
+
+Point tvty at it with `AIBALL_SOCK`:
+
+```bash
+scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml \
+  -s "app.command=env AIBALL_SOCK=$PWD/dev/fake-aiball/home/sock $PWD/target/debug/tvty cl-demo-lead"
+```
+
+Reading the real board is fine (a screenshot of the alerts); a click on a
+real ticket marks it read for david, so don't.
+
 ## Measuring
 
 With `TVTY_STATS=<file>` (set in the wbox config, to

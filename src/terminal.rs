@@ -6,6 +6,7 @@ use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, Notifier};
+use alacritty_terminal::grid::Scroll;
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::test::TermSize;
@@ -42,9 +43,22 @@ pub struct TerminalView {
     /// Grid size last sent to the PTY: (columns, lines).
     grid_size: (u16, u16),
     exited: bool,
+    /// The tmux session shown, to scroll its history in copy mode.
+    tmux_session: Option<String>,
+    /// Where the grid was last painted, and its cell size: for the mouse.
+    layout: (Point<Pixels>, Size<Pixels>),
+    /// Wheel movement not yet worth a line.
+    scroll_remainder: f32,
 }
 
 impl TerminalView {
+    /// Attaches to a tmux session.
+    pub fn tmux(session: &str, cx: &mut Context<Self>) -> anyhow::Result<Self> {
+        let mut view = Self::new("tmux", &["attach", "-t", &format!("={session}")], cx)?;
+        view.tmux_session = Some(session.to_string());
+        Ok(view)
+    }
+
     /// Spawns `program args` in a new PTY.
     pub fn new(program: &str, args: &[&str], cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let (tx, mut rx) = unbounded();
@@ -98,6 +112,9 @@ impl TerminalView {
             focus: cx.focus_handle(),
             grid_size: (columns, lines),
             exited: false,
+            tmux_session: None,
+            layout: (Point::default(), size(px(8.), px(16.))),
+            scroll_remainder: 0.,
         })
     }
 
@@ -168,6 +185,63 @@ impl TerminalView {
     }
 }
 
+impl TerminalView {
+    /// The wheel: to the program when it asked for the mouse, else through
+    /// tmux's history (copy mode), else through the terminal's own.
+    fn on_scroll(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let (origin, cell) = self.layout;
+        let lines = match event.delta {
+            ScrollDelta::Lines(delta) => delta.y,
+            ScrollDelta::Pixels(delta) => f32::from(delta.y) / f32::from(cell.height),
+        } + self.scroll_remainder;
+        let count = lines.trunc() as i32;
+        log::debug!("wheel {:?} -> {count} line(s)", event.delta);
+        self.scroll_remainder = lines - count as f32;
+        if count == 0 {
+            return;
+        }
+        let up = count > 0;
+        let mode = *self.term.lock().mode();
+        if mode.intersects(TermMode::MOUSE_MODE) {
+            let column = ((f32::from(event.position.x - origin.x) / f32::from(cell.width)).max(0.)) as u32 + 1;
+            let line = ((f32::from(event.position.y - origin.y) / f32::from(cell.height)).max(0.)) as u32 + 1;
+            let button = if up { 64 } else { 65 };
+            let one: Vec<u8> = if mode.contains(TermMode::SGR_MOUSE) {
+                format!("\x1b[<{button};{column};{line}M").into_bytes()
+            } else {
+                let clamp = |v: u32| (32 + v).min(255) as u8;
+                vec![0x1b, b'[', b'M', 32 + button as u8, clamp(column), clamp(line)]
+            };
+            self.write(one.repeat(count.unsigned_abs() as usize));
+        } else if let Some(session) = self.tmux_session.clone() {
+            // `=name:` — exactly this session, its current pane.
+            let target = format!("={session}:");
+            let steps = count.unsigned_abs().to_string();
+            // Off the UI thread: each tmux call is a process.
+            std::thread::spawn(move || {
+                let tmux = |args: &[&str]| {
+                    let _ = std::process::Command::new("tmux")
+                        .args(args)
+                        .env_remove("TMUX")
+                        .stderr(std::process::Stdio::null())
+                        .status();
+                };
+                if up {
+                    // -e: leaves copy mode when scrolled back to the bottom.
+                    tmux(&["copy-mode", "-e", "-t", &target]);
+                    tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-up"]);
+                } else {
+                    tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-down"]);
+                }
+            });
+        } else {
+            self.term.lock().scroll_display(Scroll::Delta(count));
+            cx.notify();
+        }
+        cx.stop_propagation();
+    }
+}
+
 impl Focusable for TerminalView {
     fn focus_handle(&self, _: &App) -> FocusHandle {
         self.focus.clone()
@@ -180,6 +254,7 @@ impl Render for TerminalView {
             .id("terminal")
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key_down))
+            .on_scroll_wheel(cx.listener(Self::on_scroll))
             .relative()
             .size_full()
             .bg(to_hsla(default_rgb(NamedColor::Background as usize)))
@@ -292,6 +367,7 @@ impl Element for TerminalElement {
         let lines = (f32::from(bounds.size.height) / f32::from(cell.height)).floor() as u16;
         let (term, focused) = self.view.update(cx, |view, _| {
             view.resize(columns, lines, cell);
+            view.layout = (bounds.origin, cell);
             (view.term.clone(), view.focus.is_focused(window))
         });
 
@@ -316,6 +392,7 @@ impl Element for TerminalElement {
         };
 
         let mut backgrounds = Vec::new();
+        let mut rules = Vec::new();
         let mut rows: Vec<(usize, Vec<Segment>)> = Vec::new();
         // The segment being built: first column, text, style.
         let mut pending: Option<(usize, String, TextRun)> = None;
@@ -360,6 +437,16 @@ impl Element for TerminalElement {
                 fg.a = 0.;
             }
             let width = if flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
+            if let Some(arms) = box_arms(cell_data.c) {
+                // Drawn, not typed: a glyph's strokes stop short of the next
+                // row as soon as the line height exceeds the font's.
+                rules.extend(box_quads(arms, Bounds::new(at(line, column), cell), fg));
+                flush(&mut pending, &mut segments);
+                if bg != default_rgb(NamedColor::Background as usize) {
+                    backgrounds.push(fill(Bounds::new(at(line, column), cell), to_hsla(bg)));
+                }
+                continue;
+            }
             if bg != default_rgb(NamedColor::Background as usize) {
                 backgrounds.push(fill(
                     Bounds::new(at(line, column), size(cell.width * width as f32, cell.height)),
@@ -433,6 +520,7 @@ impl Element for TerminalElement {
             });
 
         stats::prepaint(started);
+        backgrounds.extend(rules);
         Frame {
             cell,
             backgrounds,
@@ -606,4 +694,77 @@ fn default_rgb(index: usize) -> Rgb {
         i if i == NamedColor::DimForeground as usize => hex(0x8a8a8a),
         _ => hex(0xd4d4d4),
     }
+}
+
+/// The four arms of a box-drawing character — left, right, up, down —
+/// 1 for a light stroke, 2 for a heavy one. Rounded corners come out square.
+fn box_arms(c: char) -> Option<[u8; 4]> {
+    Some(match c {
+        '─' => [1, 1, 0, 0],
+        '━' => [2, 2, 0, 0],
+        '│' => [0, 0, 1, 1],
+        '┃' => [0, 0, 2, 2],
+        '┌' | '╭' => [0, 1, 0, 1],
+        '┐' | '╮' => [1, 0, 0, 1],
+        '└' | '╰' => [0, 1, 1, 0],
+        '┘' | '╯' => [1, 0, 1, 0],
+        '├' => [0, 1, 1, 1],
+        '┤' => [1, 0, 1, 1],
+        '┬' => [1, 1, 0, 1],
+        '┴' => [1, 1, 1, 0],
+        '┼' => [1, 1, 1, 1],
+        '┏' => [0, 2, 0, 2],
+        '┓' => [2, 0, 0, 2],
+        '┗' => [0, 2, 2, 0],
+        '┛' => [2, 0, 2, 0],
+        '┣' => [0, 2, 2, 2],
+        '┫' => [2, 0, 2, 2],
+        '┳' => [2, 2, 0, 2],
+        '┻' => [2, 2, 2, 0],
+        '╋' => [2, 2, 2, 2],
+        '╴' => [1, 0, 0, 0],
+        '╶' => [0, 1, 0, 0],
+        '╵' => [0, 0, 1, 0],
+        '╷' => [0, 0, 0, 1],
+        _ => return None,
+    })
+}
+
+/// The rectangles of a box-drawing character in its cell, on whole pixels
+/// so that neighbours meet.
+fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad> {
+    let x0 = f32::from(cell.origin.x).round();
+    let y0 = f32::from(cell.origin.y).round();
+    let x1 = f32::from(cell.origin.x + cell.size.width).round();
+    let y1 = f32::from(cell.origin.y + cell.size.height).round();
+    let light = (f32::from(cell.size.width) / 8.).round().max(1.);
+    let (cx, cy) = (((x0 + x1) / 2.).floor(), ((y0 + y1) / 2.).floor());
+    let rect = |left: f32, top: f32, right: f32, bottom: f32| {
+        fill(
+            Bounds::from_corners(point(px(left), px(top)), point(px(right), px(bottom))),
+            color,
+        )
+    };
+    let [left, right, up, down] = arms;
+    let thick = |weight: u8| light * weight as f32;
+    let mut quads = Vec::new();
+    // Each arm runs from the cell's edge to past the centre, so arms of a
+    // corner overlap instead of leaving a notch.
+    if left > 0 {
+        let t = thick(left);
+        quads.push(rect(x0, cy - (t / 2.).floor(), cx + (t / 2.).ceil(), cy + (t / 2.).ceil()));
+    }
+    if right > 0 {
+        let t = thick(right);
+        quads.push(rect(cx - (t / 2.).floor(), cy - (t / 2.).floor(), x1, cy + (t / 2.).ceil()));
+    }
+    if up > 0 {
+        let t = thick(up);
+        quads.push(rect(cx - (t / 2.).floor(), y0, cx + (t / 2.).ceil(), cy + (t / 2.).ceil()));
+    }
+    if down > 0 {
+        let t = thick(down);
+        quads.push(rect(cx - (t / 2.).floor(), cy - (t / 2.).floor(), cx + (t / 2.).ceil(), y1));
+    }
+    quads
 }

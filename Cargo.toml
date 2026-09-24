@@ -9,5 +9,14 @@ anyhow = "1.0.104"
 env_logger = "0.11.11"
 futures = "0.3"
 gpui-kit = "0.6"
+log = "0.4.34"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+# Full debug info makes target/debug weigh ~8 GB (GPUI is large). Line tables
+# keep backtraces readable at a fraction of the size.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false

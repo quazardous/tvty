@@ -7292,6 +7292,7 @@ dependencies = [
  "env_logger",
  "futures",
  "gpui-kit",
+ "log",
  "serde",
  "serde_json",
 ]

@@ -33,8 +33,9 @@ such; open points are listed at the end.
 
 ## Open points
 
-- **Where the ticket detail opens.** Proposed: in the panel itself, replacing
-  the list, with a back arrow; widening the panel when the thread needs room.
-  Alternative: a floating pane over the terminal.
+- **Where the ticket detail opens.** Proposed, and what tvty does for now: in
+  the panel itself, replacing the list, with a back arrow. Not done: widening
+  the panel when the thread needs room. Alternative: a floating pane over the
+  terminal.
 - **Which tickets the panel lists** for a project with several agents: those of
   the terminal in focus (proposed), or the whole project with a filter.

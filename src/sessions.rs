@@ -1,15 +1,13 @@
 //! Which terminals there are: the tmux sessions on this machine, grouped by
 //! project. A claude-loop session (`cl-*`) is matched to its aiball agent by
 //! its directory, which gives it a project and a name; any other session
-//! lands in a "tmux" group.
+//! lands in a "tmux" group. With them, the open tickets of each project.
 
-use std::collections::BTreeMap;
-use std::io::{Read, Write};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::Command;
-use std::time::Duration;
 
-use serde::Deserialize;
+use crate::aiball::{Aiball, Consumer, TicketRow};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminal {
@@ -17,30 +15,64 @@ pub struct Terminal {
     pub session: String,
     /// The agent's name, or the session's when no agent owns it.
     pub label: String,
+    /// The aiball agent running in it, if any.
+    pub agent: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Project {
     pub name: String,
+    /// Whether it is an aiball project (and has tickets).
+    pub on_board: bool,
     pub terminals: Vec<Terminal>,
 }
 
-#[derive(Deserialize)]
-struct Consumer {
-    consumer_id: String,
-    kind: String,
-    cwd: Option<String>,
-    project: Option<String>,
+/// Everything the window shows besides the terminals themselves.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Board {
+    pub projects: Vec<Project>,
+    /// Open tickets by project.
+    pub tickets: HashMap<String, Vec<TicketRow>>,
+    /// The critical ticket of each project, if any.
+    pub critical: HashMap<String, u64>,
 }
 
 const LOOP_PREFIX: &str = "cl-";
 const OTHER_GROUP: &str = "tmux";
 
 /// Blocking: runs `tmux ls` and asks aiball. Call it off the UI thread.
-pub fn discover() -> Vec<Project> {
-    let consumers = consumers().unwrap_or_default();
-    let mut projects: BTreeMap<String, Vec<Terminal>> = BTreeMap::new();
-    for (session, path) in tmux_sessions() {
+/// Learns on the way who the user is (see [`Aiball::find_user`]).
+pub fn discover(aiball: &mut Aiball) -> Board {
+    let consumers = match aiball.consumers() {
+        Ok(consumers) => consumers,
+        Err(error) => {
+            log::warn!("aiball: {error:#}");
+            Vec::new()
+        }
+    };
+    aiball.find_user(&consumers);
+    let projects = group(tmux_sessions(), &consumers);
+    let mut board = Board {
+        projects,
+        ..Default::default()
+    };
+    for project in board.projects.iter().filter(|p| p.on_board) {
+        match aiball.open_tickets(&project.name) {
+            Ok(tickets) => {
+                board.tickets.insert(project.name.clone(), tickets);
+            }
+            Err(error) => log::warn!("aiball: {error:#}"),
+        }
+        if let Ok(Some(id)) = aiball.critical(&project.name) {
+            board.critical.insert(project.name.clone(), id);
+        }
+    }
+    board
+}
+
+fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project> {
+    let mut projects: BTreeMap<String, (bool, Vec<Terminal>)> = BTreeMap::new();
+    for (session, path) in sessions {
         let agent = session
             .starts_with(LOOP_PREFIX)
             .then(|| {
@@ -49,29 +81,37 @@ pub fn discover() -> Vec<Project> {
                     .find(|c| c.kind == "agent" && c.cwd.as_deref() == Some(path.as_str()))
             })
             .flatten();
-        let (project, label) = match agent {
-            Some(c) => (
-                c.project.clone().unwrap_or_else(|| basename(&path)),
-                c.consumer_id.clone(),
-            ),
-            None if session.starts_with(LOOP_PREFIX) => (basename(&path), session.clone()),
-            None => (OTHER_GROUP.to_string(), session.clone()),
+        let (project, on_board, label) = match agent {
+            Some(c) => match &c.project {
+                Some(project) => (project.clone(), true, c.consumer_id.clone()),
+                None => (basename(&path), false, c.consumer_id.clone()),
+            },
+            None if session.starts_with(LOOP_PREFIX) => (basename(&path), false, session.clone()),
+            None => (OTHER_GROUP.to_string(), false, session.clone()),
         };
-        projects
-            .entry(project)
-            .or_default()
-            .push(Terminal { session, label });
+        let entry = projects.entry(project).or_default();
+        entry.0 |= on_board;
+        entry.1.push(Terminal {
+            session,
+            label,
+            agent: agent.map(|c| c.consumer_id.clone()),
+        });
     }
     // Plain tmux sessions last: the projects are what tvty is for.
     let other = projects.remove(OTHER_GROUP);
     let mut list: Vec<Project> = projects
         .into_iter()
-        .map(|(name, terminals)| Project { name, terminals })
+        .map(|(name, (on_board, terminals))| Project {
+            name,
+            on_board,
+            terminals,
+        })
         .collect();
     list.sort_by_key(|p| p.name.to_lowercase());
-    if let Some(terminals) = other {
+    if let Some((_, terminals)) = other {
         list.push(Project {
             name: OTHER_GROUP.into(),
+            on_board: false,
             terminals,
         });
     }
@@ -99,32 +139,4 @@ fn tmux_sessions() -> Vec<(String, String)> {
         .filter_map(|line| line.split_once('\t'))
         .map(|(name, path)| (name.to_string(), path.to_string()))
         .collect()
-}
-
-/// aiball's agents, over its local socket (`$AIBALL_SOCK`, or the default
-/// path). The socket is trusted by file permissions: no token.
-#[cfg(unix)]
-fn consumers() -> anyhow::Result<Vec<Consumer>> {
-    use std::os::unix::net::UnixStream;
-
-    let path = std::env::var("AIBALL_SOCK").ok().filter(|p| !p.is_empty()).unwrap_or_else(|| {
-        let home = std::env::var("HOME").unwrap_or_default();
-        format!("{home}/.local/share/aiball/sock")
-    });
-    let mut stream = UnixStream::connect(path)?;
-    stream.set_read_timeout(Some(Duration::from_secs(3)))?;
-    stream.write_all(b"GET /api/consumers HTTP/1.0\r\nHost: aiball\r\n\r\n")?;
-    let mut response = Vec::new();
-    stream.read_to_end(&mut response)?;
-    let response = String::from_utf8_lossy(&response);
-    let (head, body) = response
-        .split_once("\r\n\r\n")
-        .ok_or_else(|| anyhow::anyhow!("malformed response"))?;
-    anyhow::ensure!(head.starts_with("HTTP/1.1 200") || head.starts_with("HTTP/1.0 200"), "{}", head.lines().next().unwrap_or(""));
-    Ok(serde_json::from_str(body)?)
-}
-
-#[cfg(not(unix))]
-fn consumers() -> anyhow::Result<Vec<Consumer>> {
-    anyhow::bail!("aiball's socket is Unix only for now")
 }

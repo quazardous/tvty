@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-log fake-up sim-up flood-up fake-down
+.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -12,6 +12,7 @@ help:
 	@echo "make wbox-click X=.. Y=.. click at a position (1280x800 screen)"
 	@echo "make wbox-key K=ctrl+t    send a shortcut"
 	@echo "make wbox-type T=hello     type text (ASCII)"
+	@echo "make wbox-scroll X= Y= N=-3  mouse wheel, negative = up"
 	@echo "make wbox-log             last lines of the compositor/app log"
 	@echo ""
 	@echo "something to attach to, no tokens (tmux sessions tvty-fake / tvty-sim):"
@@ -19,6 +20,9 @@ help:
 	@echo "make sim-up               simai-cli replaying dev/sim/dense.txt in tvty-sim"
 	@echo "make flood-up             tvty-flood: 5 s of lines at full speed on Enter"
 	@echo "make fake-down            kill them all"
+	@echo ""
+	@echo "a throwaway aiball with a demo project, for the ticket panel:"
+	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
 
 build:
 	cargo build
@@ -55,6 +59,9 @@ wbox-key:
 wbox-type:
 	$(WBOX_CTL) type $(WBOX_CONFIG) "$(T)"
 
+wbox-scroll:
+	$(WBOX_CTL) scroll $(WBOX_CONFIG) $(X) $(Y) $(N)
+
 wbox-log:
 	@tail -n 50 dev/tvty-wbox/log/*.log 2>/dev/null || echo "no log yet"
 
@@ -77,3 +84,10 @@ fake-down:
 	-scripts/fake-loop stop tvty-fake
 	-scripts/fake-loop stop tvty-sim
 	-scripts/fake-loop stop tvty-flood
+
+# ── a throwaway aiball ───────────────────────────────────────────────────────
+aiball-up:
+	scripts/fake-aiball up
+
+aiball-down:
+	scripts/fake-aiball down
