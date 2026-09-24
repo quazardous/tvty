@@ -47,6 +47,10 @@ switch happens on its own: the user may be typing elsewhere.
 
 ## Folding the sides
 
+The **projects' list lies over the terminal** (it does not push it aside),
+at a width set by dragging its edge; the ticket panel sits beside the
+terminal, its width set the same way. Both widths are remembered.
+
 Both sides — the projects' list and the ticket panel — fold with a **grip**
 on their edge (or their key, below) into a **10-pixel strip** that still
 shows what waits, as dots: red for the critical ticket, orange for a
@@ -63,6 +67,14 @@ through them with ctrl+shift+k; it is remembered. Six theme sets are bundled
 (light and dark variants, see `themes/`), and any gpui-component theme file
 dropped in `~/.config/tvty/themes/` joins the list.
 
+## Options
+
+A full page (⚙ in the title bar, or ctrl+,) with its sections on the left:
+Appearance (the colour theme), Layout (the sides: folded or not, their
+widths, reset), Keyboard shortcuts (all of them, from the one list in
+`src/options.rs`), About (version, aiball's socket, who tvty acts as, the
+live feed, where settings and themes live). Esc closes it.
+
 ## Keys
 
 | Keys | |
@@ -72,6 +84,7 @@ dropped in `~/.config/tvty/themes/` joins the list.
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+k | next colour theme |
+| ctrl+, | options |
 | ctrl+enter | go to what the banner shows: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v | copy the selection / paste (bracketed when the program asks) |
 

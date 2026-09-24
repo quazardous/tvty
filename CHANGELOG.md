@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An options page (⚙ or ctrl+,): appearance, layout, every keyboard shortcut,
+  and where tvty's settings live.
+- The projects' list lies over the terminal and can be resized by its edge.
 - Colour themes: the whole window and the terminals follow the chosen theme,
   picked from the title bar or with ctrl+shift+k and remembered; light and
   dark themes bundled (Catppuccin, Everforest, Flexoki, Gruvbox, Solarized,

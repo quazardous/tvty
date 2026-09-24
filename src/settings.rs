@@ -12,8 +12,10 @@ pub struct Settings {
     /// a third of the window.
     pub panel_width: Option<f32>,
     pub panel_open: bool,
-    /// The projects' list, on the left.
+    /// The projects' list, on the left, over the terminal.
     pub sidebar_open: bool,
+    /// Its width, in pixels; `None`: the default.
+    pub sidebar_width: Option<f32>,
     /// The colour theme's name; `None`: the kit's default dark theme.
     pub theme: Option<String>,
 }
@@ -24,6 +26,7 @@ impl Default for Settings {
             panel_width: None,
             panel_open: true,
             sidebar_open: true,
+            sidebar_width: None,
             theme: None,
         }
     }

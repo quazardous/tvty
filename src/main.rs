@@ -3,6 +3,7 @@
 
 mod aiball;
 mod events;
+mod options;
 mod panel;
 mod sessions;
 mod settings;

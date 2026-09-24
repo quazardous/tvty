@@ -15,6 +15,7 @@ use gpui_kit::component::{TitleBar, window_paddings};
 use crate::aiball::{Aiball, TicketRow};
 use crate::theme::{self, p};
 use crate::events;
+use crate::options::{SHORTCUTS, Section};
 use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
@@ -32,7 +33,8 @@ const REREAD_EVERY: Duration = Duration::from_secs(60);
 /// How often the gallery's thumbnails are captured while it is open.
 const THUMBNAILS_EVERY: Duration = Duration::from_millis(1500);
 
-const SIDEBAR_WIDTH: f32 = 220.;
+const SIDEBAR_WIDTH: f32 = 240.;
+const SIDEBAR_MIN: f32 = 180.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
 /// A folded side: just enough for a few dots saying what waits.
@@ -50,8 +52,11 @@ pub struct Shell {
     recent: Vec<String>,
     panel: Entity<TicketPanel>,
     settings: Settings,
-    /// The panel's edge is being dragged.
-    resizing: bool,
+    /// A side's edge is being dragged.
+    resizing: Option<Side>,
+    /// The options page is open, on this section.
+    options: Option<Section>,
+    feed: events::Feed,
     /// The slider is up, on this index of [`Shell::slider_order`].
     slider: Option<usize>,
     /// Counts the slider's openings: each one replays its entrance.
@@ -183,7 +188,7 @@ impl Shell {
 
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
-        Self::refresh_loop(aiball.clone(), feed, wake, cx);
+        Self::refresh_loop(aiball.clone(), feed.clone(), wake, cx);
 
         let mut shell = Self {
             aiball,
@@ -193,7 +198,9 @@ impl Shell {
             recent: Vec::new(),
             panel,
             settings: Settings::load(),
-            resizing: false,
+            resizing: None,
+            options: None,
+            feed: feed.clone(),
             slider: None,
             slider_shown: 0,
             gallery: None,
@@ -457,11 +464,27 @@ impl Shell {
         cx.notify();
     }
 
-    fn panel_width(&self, window: &Window) -> f32 {
+    fn inner_width(window: &Window) -> f32 {
         let paddings = window_paddings(window);
-        let total = f32::from(window.viewport_size().width - paddings.left - paddings.right);
-        let left = if self.settings.sidebar_open { SIDEBAR_WIDTH } else { FOLDED_WIDTH };
-        let max = (total - left - 2. * EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
+        f32::from(window.viewport_size().width - paddings.left - paddings.right)
+    }
+
+    /// The projects' list lies over the terminal: it only needs to leave
+    /// some of it visible.
+    fn sidebar_width(&self, window: &Window) -> f32 {
+        let max = (Self::inner_width(window) * 0.6).max(SIDEBAR_MIN);
+        self.settings
+            .sidebar_width
+            .unwrap_or(SIDEBAR_WIDTH)
+            .clamp(SIDEBAR_MIN, max)
+    }
+
+    fn panel_width(&self, window: &Window) -> f32 {
+        let total = Self::inner_width(window);
+        // The projects' list lies over the terminal: only its folded strip
+        // takes room from the layout.
+        let left = if self.settings.sidebar_open { 0. } else { FOLDED_WIDTH };
+        let max = (total - left - EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
         self.settings
             .panel_width
             .unwrap_or(total / 3.)
@@ -469,20 +492,28 @@ impl Shell {
     }
 
     fn on_mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if !self.resizing {
-            return;
+        let paddings = window_paddings(window);
+        let x = f32::from(event.position.x);
+        match self.resizing {
+            None => return,
+            // The list starts where the frame's content does.
+            Some(Side::Left) => {
+                self.settings.sidebar_width = Some(x - f32::from(paddings.left) - EDGE_WIDTH / 2.)
+            }
+            // The panel ends where the frame's content does.
+            Some(Side::Right) => {
+                let right = f32::from(window.viewport_size().width - paddings.right);
+                self.settings.panel_width = Some(right - x);
+            }
         }
-        // The panel ends where the frame's content does, inside its shadow.
-        let right = f32::from(window.viewport_size().width - window_paddings(window).right);
-        self.settings.panel_width = Some(right - f32::from(event.position.x));
         cx.notify();
     }
 
     fn on_mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
-        if self.resizing {
-            self.resizing = false;
+        if self.resizing.take().is_some() {
             // Store what is shown, not an out-of-range drag.
             self.settings.panel_width = Some(self.panel_width(window));
+            self.settings.sidebar_width = Some(self.sidebar_width(window));
             self.settings.save();
             cx.notify();
         }
@@ -505,6 +536,10 @@ impl Shell {
             self.toggle_panel(cx);
         } else if m.control && m.shift && key == "b" {
             self.toggle_sidebar(cx);
+        } else if m.control && !m.shift && key == "," {
+            self.toggle_options(window, cx);
+        } else if key == "escape" && self.options.is_some() {
+            self.toggle_options(window, cx);
         } else if m.control && m.shift && key == "k" {
             self.next_theme(window, cx);
         } else if key == "escape" && self.theme_menu {
@@ -683,6 +718,223 @@ impl Shell {
             .collect()
     }
 
+    // ── Options ─────────────────────────────────────────────────────────
+
+    fn toggle_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.options.take().is_none() {
+            self.options = Some(Section::Appearance);
+            theme::load(cx);
+            // Keys go to the page, not to the terminal.
+            window.focus(&self.focus.clone(), cx);
+        } else if let Some(terminal) = self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
+            let focus = terminal.read(cx).focus_handle().clone();
+            window.focus(&focus, cx);
+        }
+        cx.notify();
+    }
+
+    fn options_view(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut nav = div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .w(px(220.))
+            .flex_none()
+            .h_full()
+            .p_3()
+            .bg(p().surface)
+            .border_r_1()
+            .border_color(p().border)
+            .child(
+                div()
+                    .px_2()
+                    .pb_3()
+                    .text_lg()
+                    .font_weight(FontWeight::BOLD)
+                    .child("Options"),
+            );
+        for item in Section::ALL {
+            let chosen = item == section;
+            nav = nav.child(
+                div()
+                    .id(SharedString::from(format!("options-{}", item.title())))
+                    .px_2()
+                    .py_1p5()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .when(chosen, |d| d.bg(p().active).text_color(p().text))
+                    .when(!chosen, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
+                    .child(item.title())
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.options = Some(item);
+                        cx.notify();
+                    })),
+            );
+        }
+        let content = match section {
+            Section::Appearance => self.options_appearance(cx).into_any_element(),
+            Section::Layout => self.options_layout(window, cx).into_any_element(),
+            Section::Shortcuts => options_shortcuts().into_any_element(),
+            Section::About => self.options_about(cx).into_any_element(),
+        };
+        div()
+            .id("options")
+            .absolute()
+            .inset_0()
+            // A page over the window: the mouse stops here.
+            .occlude()
+            .flex()
+            .bg(p().bg)
+            .text_color(p().text)
+            .child(nav)
+            .child(
+                div()
+                    .id("options-content")
+                    .flex_1()
+                    .min_w_0()
+                    .h_full()
+                    .overflow_y_scroll()
+                    .p_6()
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .pb_4()
+                            .child(div().flex_1().text_xl().font_weight(FontWeight::BOLD).child(section.title()))
+                            .child(
+                                div()
+                                    .id("options-close")
+                                    .px_2()
+                                    .rounded_sm()
+                                    .text_sm()
+                                    .text_color(p().muted)
+                                    .cursor_pointer()
+                                    .hover(|d| d.bg(p().hover).text_color(p().text))
+                                    .child("✕  Esc")
+                                    .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
+                            ),
+                    )
+                    .child(content),
+            )
+    }
+
+    fn options_appearance(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let current = theme::current(cx);
+        let mut page = div().flex().flex_col().gap_1().max_w(px(640.)).child(option_note(
+            "Colour theme of the window and the terminals. Ctrl+Shift+K steps through them.",
+        ));
+        let mut last_dark = None;
+        for (name, dark) in theme::names(cx) {
+            if last_dark != Some(dark) {
+                last_dark = Some(dark);
+                page = page.child(option_group(if dark { "Dark" } else { "Light" }));
+            }
+            let chosen = name == current;
+            let pick = name.clone();
+            page = page.child(
+                div()
+                    .id(SharedString::from(format!("options-theme-{name}")))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .when(chosen, |d| d.bg(p().active))
+                    .hover(|d| d.bg(p().hover))
+                    .child(div().w(px(12.)).child(if chosen { "✓" } else { "" }))
+                    .child(name.clone())
+                    .on_click(cx.listener(move |shell, _, window, cx| {
+                        shell.set_theme(pick.clone(), window, cx);
+                        shell.options = Some(Section::Appearance);
+                    })),
+            );
+        }
+        page.child(option_note(
+            "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
+        ))
+    }
+
+    fn options_layout(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let sidebar = format!(
+            "{} · {} px",
+            if self.settings.sidebar_open { "open" } else { "folded" },
+            self.sidebar_width(window).round()
+        );
+        let panel = format!(
+            "{} · {} px",
+            if self.settings.panel_open { "open" } else { "folded" },
+            self.panel_width(window).round()
+        );
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .max_w(px(640.))
+            .child(option_row(
+                "Projects' list",
+                "Over the terminal, on the left. Drag its edge to resize it; its grip folds it.",
+                sidebar,
+                "Fold / unfold",
+                cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx)),
+            ))
+            .child(option_row(
+                "Ticket panel",
+                "On the right of the terminal. Drag its edge to resize it; its grip folds it.",
+                panel,
+                "Fold / unfold",
+                cx.listener(|shell, _, _, cx| shell.toggle_panel(cx)),
+            ))
+            .child(option_row(
+                "Widths",
+                "Back to the defaults: a list of 240 px, a panel a third of the window.",
+                String::new(),
+                "Reset",
+                cx.listener(|shell, _, _, cx| {
+                    shell.settings.sidebar_width = None;
+                    shell.settings.panel_width = None;
+                    shell.settings.save();
+                    cx.notify();
+                }),
+            ))
+    }
+
+    fn options_about(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let config = std::env::var_os("XDG_CONFIG_HOME")
+            .map(std::path::PathBuf::from)
+            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+            .map(|d| d.join("tvty").display().to_string())
+            .unwrap_or_default();
+        let rows = [
+            ("Version", env!("CARGO_PKG_VERSION").to_string()),
+            ("aiball socket", crate::aiball::socket_path().display().to_string()),
+            ("Acting as", self.aiball.user.clone()),
+            (
+                "Live feed",
+                if self.feed.connected() { "connected" } else { "down — the board is polled" }.to_string(),
+            ),
+            ("Theme", theme::current(cx).to_string()),
+            ("Settings and themes", config),
+        ];
+        let mut table = div().flex().flex_col().gap_1().max_w(px(720.));
+        for (label, value) in rows {
+            table = table.child(
+                div()
+                    .flex()
+                    .gap_4()
+                    .py_1()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .child(div().w(px(180.)).flex_none().text_color(p().muted).child(label))
+                    .child(div().flex_1().min_w_0().child(value)),
+            );
+        }
+        table.child(option_note(
+            "tvty — Terminal Velocity. MIT licence. Bundled themes: see themes/README.md.",
+        ))
+    }
+
     // ── Themes ──────────────────────────────────────────────────────────
 
     fn set_theme(&mut self, name: SharedString, window: &mut Window, cx: &mut Context<Self>) {
@@ -716,6 +968,7 @@ impl Shell {
         let mut list = div()
             .id("theme-menu")
             .absolute()
+            .occlude()
             .top(px(36.))
             .right_2()
             .w(px(240.))
@@ -768,9 +1021,9 @@ impl Shell {
     // ── Rendering ───────────────────────────────────────────────────────
 
     /// The strip between a side and the terminal: a grip that folds the
-    /// side away; on the right, the rest of it drags the panel's width.
+    /// side away; the rest of it drags the side's width.
     fn edge(&self, side: Side, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let resizing = self.resizing;
+        let resizing = self.resizing == Some(side);
         div()
             .id(match side {
                 Side::Left => "sidebar-edge",
@@ -783,18 +1036,16 @@ impl Shell {
             .flex_none()
             .h_full()
             .bg(p().bg)
-            .when(side == Side::Right, |d| {
-                d.cursor(CursorStyle::ResizeColumn)
-                    .when(resizing, |d| d.bg(p().active))
-                    .hover(|d| d.bg(p().active))
-                    .on_mouse_down(
-                        MouseButton::Left,
-                        cx.listener(|shell, _, _, cx| {
-                            shell.resizing = true;
-                            cx.notify();
-                        }),
-                    )
-            })
+            .cursor(CursorStyle::ResizeColumn)
+            .when(resizing, |d| d.bg(p().active))
+            .hover(|d| d.bg(p().active))
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |shell, _, _, cx| {
+                    shell.resizing = Some(side);
+                    cx.notify();
+                }),
+            )
             .child(
                 div()
                     .id(match side {
@@ -849,12 +1100,12 @@ impl Shell {
             }))
     }
 
-    fn sidebar(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    fn sidebar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut list = div()
             .id("projects")
             .flex()
             .flex_col()
-            .w(px(SIDEBAR_WIDTH))
+            .w(px(width))
             .flex_none()
             .h_full()
             .py_2()
@@ -1018,6 +1269,7 @@ impl Shell {
         div()
             .absolute()
             .inset_0()
+            .occlude()
             .flex()
             .flex_col()
             // The frosted glass, for now without the frost: GPUI cannot blur
@@ -1203,6 +1455,7 @@ impl Shell {
         div()
             .absolute()
             .inset_0()
+            .occlude()
             .flex()
             .flex_col()
             .bg(p().bg)
@@ -1256,14 +1509,22 @@ impl Render for Shell {
                 .into_any_element(),
         };
         let banner = self.banner(cx);
-        let left = if self.settings.sidebar_open {
+        // Open, the projects' list lies over the terminal (see `overlay`
+        // below); folded, its strip takes its place in the layout.
+        let overlay = self.settings.sidebar_open.then(|| {
             div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .left_0()
+                .occlude()
                 .flex()
-                .flex_none()
-                .h_full()
-                .child(self.sidebar(cx))
+                .shadow_lg()
+                .child(self.sidebar(self.sidebar_width(window), cx))
                 .child(self.edge(Side::Left, cx))
-                .into_any_element()
+        });
+        let left = if self.settings.sidebar_open {
+            None
         } else {
             let dots = self
                 .board
@@ -1275,7 +1536,7 @@ impl Render for Shell {
                     alerts.color()
                 })
                 .collect();
-            self.folded(Side::Left, dots, cx).into_any_element()
+            Some(self.folded(Side::Left, dots, cx).into_any_element())
         };
         let right = if self.settings.panel_open {
             div()
@@ -1299,6 +1560,7 @@ impl Render for Shell {
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
         let slider = self.slider.map(|index| self.portfolio(index));
+        let options = self.options.map(|section| self.options_view(section, window, cx));
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
         let title = match self.selected.as_deref().and_then(|s| self.terminal_of(s)) {
@@ -1319,8 +1581,8 @@ impl Render for Shell {
             .min_h_0()
             .bg(p().bg)
             .text_color(p().text)
-            .when(self.resizing, |d| d.cursor(CursorStyle::ResizeColumn))
-            .child(left)
+            .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
+            .children(left)
             .child(
                 div()
                     .relative()
@@ -1328,11 +1590,13 @@ impl Render for Shell {
                     .h_full()
                     .min_w_0()
                     .child(center)
-                    .children(banner),
+                    .children(banner)
+                    .children(overlay),
             )
             .child(right)
             .children(slider)
-            .children(gallery);
+            .children(gallery)
+            .children(options);
 
         // The window draws its own title bar: GNOME leaves decorations to the
         // application (as with VS Code or Zed). It moves the window and
@@ -1369,9 +1633,119 @@ impl Render for Shell {
                             .hover(|d| d.bg(p().hover).text_color(p().text))
                             .child(format!("◐ {theme_name}"))
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                    )
+                    .child(
+                        div()
+                            .id("options-button")
+                            .flex_none()
+                            .mr_2()
+                            .px_2()
+                            .rounded_sm()
+                            .text_sm()
+                            .text_color(p().muted)
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover).text_color(p().text))
+                            .child("⚙")
+                            .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
                     ),
             )
             .child(body)
             .children(menu)
     }
+}
+
+fn option_group(title: &'static str) -> impl IntoElement {
+    div()
+        .pt_4()
+        .pb_1()
+        .text_xs()
+        .font_weight(FontWeight::BOLD)
+        .text_color(p().muted)
+        .child(title.to_uppercase())
+}
+
+fn option_note(text: &'static str) -> impl IntoElement {
+    div().py_2().text_sm().text_color(p().muted).child(text)
+}
+
+/// A setting: its name and what it does, its state, one button.
+fn option_row(
+    name: &'static str,
+    about: &'static str,
+    state: String,
+    action: &'static str,
+    on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_4()
+        .p_3()
+        .rounded_md()
+        .bg(p().surface)
+        .border_1()
+        .border_color(p().border)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .flex_1()
+                .min_w_0()
+                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().text_sm().text_color(p().muted).child(about)),
+        )
+        .child(div().flex_none().text_sm().text_color(p().muted).child(state))
+        .child(
+            div()
+                .id(SharedString::from(format!("options-action-{name}")))
+                .flex_none()
+                .px_3()
+                .py_1()
+                .rounded_md()
+                .border_1()
+                .border_color(p().border)
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(action)
+                .on_click(on_click),
+        )
+}
+
+fn options_shortcuts() -> impl IntoElement {
+    let mut page = div().flex().flex_col().max_w(px(760.));
+    for (group, shortcuts) in SHORTCUTS {
+        page = page.child(option_group(group));
+        for (keys, what) in *shortcuts {
+            page = page.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    .py_1p5()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .child(
+                        div().w(px(260.)).flex_none().child(
+                            div()
+                                .flex()
+                                .flex_wrap()
+                                .gap_1()
+                                .children(keys.split(" · ").map(|k| {
+                                    div()
+                                        .px_1p5()
+                                        .rounded_sm()
+                                        .border_1()
+                                        .border_color(p().border)
+                                        .bg(p().surface)
+                                        .text_sm()
+                                        .child(k.to_string())
+                                })),
+                        ),
+                    )
+                    .child(div().flex_1().min_w_0().text_sm().child(*what)),
+            );
+        }
+    }
+    page
 }
