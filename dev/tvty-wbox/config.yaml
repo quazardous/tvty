@@ -15,7 +15,8 @@ timeouts:
   stop: 10
 app:
   command: target/debug/tvty
-  env: {}
+  env:
+    TVTY_STATS: dev/tvty-wbox/log/tvty-stats.log
 tools:
   build:
     script: ./scripts/build.sh

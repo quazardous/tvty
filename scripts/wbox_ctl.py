@@ -20,6 +20,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py shot   CONFIG [-s key=value ...] [--name NAME]
     wbox_ctl.py click  CONFIG [-s key=value ...] X Y
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
+    wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
 
 Headless by default: the compositor renders offscreen and nothing appears on
 the desktop. Set WBOX_VISIBLE=1 to get a window, for when the assertion is
@@ -136,6 +137,11 @@ def main():
             sys.exit("key needs at least one shortcut, e.g. alt+F12")
         _warm_up(comp)
         result = comp.keys(args) if len(args) > 1 else comp.key(args[0])
+    elif command == "type":
+        if len(args) != 1:
+            sys.exit("type needs one TEXT argument")
+        _warm_up(comp)
+        result = comp.type_text(args[0])
     elif command == "status":
         result = {"running": comp.is_running(), "headless": cfg["headless"]}
     else:

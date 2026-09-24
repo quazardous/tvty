@@ -44,8 +44,10 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   — or a bare session: `tmux new-session -d -s tvty-fake ../aiball/bin/fake-claude`.
 - **simai-cli** (`simcli`, `../simai-cli`): replays a Claude-looking session
   from a script and records `.cast` — use it to stress rendering and measure.
-- `make fake-up` / `make sim-up` / `make fake-down` wrap both
-  (`scripts/fake-loop`, tmux sessions `tvty-fake` and `tvty-sim`).
+- `make fake-up` / `sim-up` / `flood-up` / `fake-down` wrap them
+  (`scripts/fake-loop`, tmux sessions `tvty-fake`, `tvty-sim`, `tvty-flood`).
+  tvty lists them under "tmux". **Never click a real agent's loop in wbox**:
+  attaching resizes it for every client, david's included.
 
 ## Conventions
 

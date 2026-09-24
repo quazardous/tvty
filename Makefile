@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-log fake-up sim-up fake-down
+.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-log fake-up sim-up flood-up fake-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -11,12 +11,14 @@ help:
 	@echo "make wbox-shot [NAME=..]  screenshot into dev/tvty-wbox/screenshots/"
 	@echo "make wbox-click X=.. Y=.. click at a position (1280x800 screen)"
 	@echo "make wbox-key K=ctrl+t    send a shortcut"
+	@echo "make wbox-type T=hello     type text (ASCII)"
 	@echo "make wbox-log             last lines of the compositor/app log"
 	@echo ""
 	@echo "something to attach to, no tokens (tmux sessions tvty-fake / tvty-sim):"
 	@echo "make fake-up              fake-claude in tmux session tvty-fake"
 	@echo "make sim-up               simai-cli replaying dev/sim/dense.txt in tvty-sim"
-	@echo "make fake-down            kill both"
+	@echo "make flood-up             tvty-flood: 5 s of lines at full speed on Enter"
+	@echo "make fake-down            kill them all"
 
 build:
 	cargo build
@@ -50,6 +52,9 @@ wbox-click:
 wbox-key:
 	$(WBOX_CTL) key $(WBOX_CONFIG) $(K)
 
+wbox-type:
+	$(WBOX_CTL) type $(WBOX_CONFIG) "$(T)"
+
 wbox-log:
 	@tail -n 50 dev/tvty-wbox/log/*.log 2>/dev/null || echo "no log yet"
 
@@ -65,6 +70,10 @@ fake-up:
 sim-up:
 	scripts/fake-loop sim
 
+flood-up:
+	scripts/fake-loop flood
+
 fake-down:
 	-scripts/fake-loop stop tvty-fake
 	-scripts/fake-loop stop tvty-sim
+	-scripts/fake-loop stop tvty-flood

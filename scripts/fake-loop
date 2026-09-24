@@ -4,6 +4,8 @@
 #   scripts/fake-loop fake [SESSION]          tmux session running aiball's fake-claude
 #   scripts/fake-loop sim  [SESSION] [SCRIPT] tmux session replaying a simai-cli script
 #                                             (default: dev/sim/dense.txt, as fast as it goes)
+#   scripts/fake-loop flood [SESSION]         tmux session that loops over dev/sim/dense.txt
+#                                             at full speed for 5 s on Enter (tvty-flood)
 #   scripts/fake-loop stop [SESSION]          kill the session
 #   scripts/fake-loop ls                      list the tvty-* sessions
 #
@@ -38,6 +40,10 @@ case "${1:-}" in
         # Keep the pane open once the script ends, so there is still a screen to look at.
         start "${2:-tvty-sim}" bash -c "node '$SIMCLI' --as claude --script '$script' --pace 0 --think 0; exec cat"
         ;;
+    flood)
+        dense="$ROOT/dev/sim/dense.txt"
+        start "${2:-tvty-flood}" bash -c "echo 'Enter to flood'; while read -r; do end=\$((SECONDS + 5)); while ((SECONDS < end)); do cat '$dense'; done; echo 'Enter to flood again'; done"
+        ;;
     stop)
         tmux kill-session -t "=${2:-tvty-fake}"
         ;;
@@ -45,7 +51,7 @@ case "${1:-}" in
         tmux ls -F '#{session_name}' 2>/dev/null | grep '^tvty-' || echo "no tvty-* session"
         ;;
     *)
-        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'
         exit 1
         ;;
 esac
