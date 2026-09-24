@@ -1,0 +1,24 @@
+name: tvty-wbox
+compositor: labwc
+screen: 1280x800
+weston_shell: kiosk
+weston_backend: x11
+input_backend: hybrid
+log:
+  dir: ./log
+  level: info
+screenshot_dir: ./screenshots
+timeouts:
+  wayland_display: 10
+  xwayland_display: 15
+  app_render: 3
+  stop: 10
+app:
+  command: target/debug/tvty
+  env: {}
+tools:
+  build:
+    script: ./scripts/build.sh
+    description: Build tvty (cargo build). Run it between kill and launch.
+    headless: true
+headless: true
