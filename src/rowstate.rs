@@ -136,7 +136,13 @@ pub fn of(row: &TicketRow, user: &str) -> RowState {
     } else if row.latest_is_step {
         Turn::Them
     } else {
+        // aiball's rule (src/db/last-actor-gate.ts): yours when someone else
+        // acted last, or when you are the only one on it. From the row we
+        // only see comments: a ticket you filed that nobody answered is
+        // yours. (Closes, reopens and decisions count for aiball, not here —
+        // the reason to have aiball compute the turn itself.)
         match row.last_speaker.as_deref() {
+            Some(speaker) if speaker == user && row.comment_count == 0 => Turn::You,
             Some(speaker) if speaker == user => Turn::Them,
             Some(_) => Turn::You,
             None => Turn::Nobody,
@@ -191,8 +197,17 @@ mod tests {
 
     #[test]
     fn you_spoke_last_it_is_their_turn() {
-        let state = of(&row(), "david");
+        let mut r = row();
+        r.comment_count = 2;
+        let state = of(&r, "david");
         assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::None));
+    }
+
+    #[test]
+    fn alone_on_it_it_is_yours() {
+        // Filed by you, nobody answered: aiball's rule says yours.
+        let state = of(&row(), "david");
+        assert_eq!((state.turn, state.stripe), (Turn::You, Stripe::Neutral));
     }
 
     #[test]
@@ -238,6 +253,8 @@ mod tests {
     #[test]
     fn a_rejected_resolution_is_the_agents_turn() {
         let mut r = row();
+        // The proposal, then your rejection: you spoke last.
+        r.comment_count = 2;
         r.latest_resolution_rejected = true;
         let state = of(&r, "david");
         assert_eq!((state.glyph, state.turn), (Some(Glyph::Rejected), Turn::Them));
