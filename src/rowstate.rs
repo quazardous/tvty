@@ -1,7 +1,8 @@
 //! What a ticket row tells at a glance: its band in the list, whose turn it
-//! is, one state glyph, and the stripe on its left. Computed here from the
-//! row aiball's `/api/inbox` builds — a prototype of the rules proposed for
-//! aiball itself (see docs/UX.md, "The ticket list").
+//! is, one state glyph, and the stripe on its left. aiball computes the band,
+//! the turn and the glyph when asked (`/api/inbox?v=tvty`); an aiball that
+//! predates them gets the same rules applied here, from the row's flags (see
+//! docs/UX.md, "The ticket list").
 
 use crate::aiball::TicketRow;
 
@@ -22,6 +23,13 @@ pub enum Band {
 }
 
 impl Band {
+    /// aiball's band number, 0 to 5, in this order.
+    fn from_server(band: u8) -> Option<Band> {
+        [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed]
+            .get(band as usize)
+            .copied()
+    }
+
     pub fn title(self) -> &'static str {
         match self {
             Band::Moderate => "To moderate",
@@ -60,6 +68,22 @@ pub enum Glyph {
 }
 
 impl Glyph {
+    /// aiball's `state_glyph` name.
+    fn from_server(name: &str) -> Option<Glyph> {
+        Some(match name {
+            "escalation" => Glyph::Escalation,
+            "plan" => Glyph::Plan,
+            "resolution" => Glyph::Resolution,
+            "wontfix" => Glyph::Wontfix,
+            "step_stalled" => Glyph::StalledStep,
+            "step" => Glyph::Step,
+            "rejected" => Glyph::Rejected,
+            "closed_resolved" => Glyph::ClosedResolved,
+            "closed" => Glyph::Closed,
+            _ => return None,
+        })
+    }
+
     pub fn symbol(self) -> &'static str {
         match self {
             Glyph::Escalation => "!",
@@ -111,6 +135,38 @@ pub struct RowState {
 
 /// `user` is who reads the list: the one whose turn "you" means.
 pub fn of(row: &TicketRow, user: &str) -> RowState {
+    let decision = row.pending_decision();
+    let local = || computed(row, user);
+    let (band, turn, glyph) = match row.band.and_then(Band::from_server) {
+        Some(band) => {
+            let turn = match row.turn.as_deref() {
+                Some("you") => Turn::You,
+                Some("them") => Turn::Them,
+                Some("none") => Turn::Nobody,
+                _ => local().turn,
+            };
+            (band, turn, row.state_glyph.as_deref().and_then(Glyph::from_server))
+        }
+        None => {
+            let state = local();
+            (state.band, state.turn, state.glyph)
+        }
+    };
+    RowState { band, turn, glyph, stripe: stripe(turn, decision, row.pending_decision_is_latest) }
+}
+
+fn stripe(turn: Turn, decision: bool, decision_is_latest: bool) -> Stripe {
+    match turn {
+        Turn::You if decision && decision_is_latest => Stripe::Solid,
+        Turn::You if decision => Stripe::Dashed,
+        Turn::You => Stripe::Neutral,
+        _ => Stripe::None,
+    }
+}
+
+/// The same rules, from the row's flags, for an aiball that does not
+/// compute them.
+fn computed(row: &TicketRow, user: &str) -> RowState {
     let moderation = row.status == "pending" || row.pending_comment_count > 0;
     let decision = row.pending_decision();
     let agent_on_it = row.holder().is_some() || row.latest_is_step;
@@ -171,14 +227,7 @@ pub fn of(row: &TicketRow, user: &str) -> RowState {
         None
     };
 
-    let stripe = match turn {
-        Turn::You if decision && row.pending_decision_is_latest => Stripe::Solid,
-        Turn::You if decision => Stripe::Dashed,
-        Turn::You => Stripe::Neutral,
-        _ => Stripe::None,
-    };
-
-    RowState { band, turn, glyph, stripe }
+    RowState { band, turn, glyph, stripe: stripe(turn, decision, row.pending_decision_is_latest) }
 }
 
 #[cfg(test)]
@@ -258,6 +307,27 @@ mod tests {
         r.latest_resolution_rejected = true;
         let state = of(&r, "david");
         assert_eq!((state.glyph, state.turn), (Some(Glyph::Rejected), Turn::Them));
+    }
+
+    #[test]
+    fn the_servers_fields_win() {
+        // aiball counts a decision taken without a comment: the agent spoke
+        // last, but it is not your turn.
+        let mut r = row();
+        r.last_speaker = Some("demo-claude".into());
+        r.turn = Some("them".into());
+        r.band = Some(4);
+        r.state_glyph = None;
+        let state = of(&r, "david");
+        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::None));
+
+        r.pending_plan = true;
+        r.pending_decision_is_latest = true;
+        r.turn = Some("you".into());
+        r.band = Some(1);
+        r.state_glyph = Some("plan".into());
+        let state = of(&r, "david");
+        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Decide, Turn::You, Some(Glyph::Plan), Stripe::Solid));
     }
 
     #[test]

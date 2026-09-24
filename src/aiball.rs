@@ -91,6 +91,12 @@ pub struct TicketRow {
     pub latest_plan_rejected: bool,
     #[serde(default)]
     pub latest_resolution_rejected: bool,
+    /// Computed by aiball for the reader when asked with `v=tvty`: whose
+    /// turn (`you`, `them`, `none`), the sorting band (0 to 5) and the state
+    /// glyph's name. Absent from an aiball that predates them.
+    pub turn: Option<String>,
+    pub band: Option<u8>,
+    pub state_glyph: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -204,7 +210,7 @@ impl Aiball {
 
     /// The open tickets of a project, as the web UI's list rows.
     pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
-        self.get(&format!("/api/inbox?project={}&open=1", encode(project)))
+        self.get(&format!("/api/inbox?project={}&open=1&v=tvty&sort=band", encode(project)))
     }
 
     pub fn thread(&self, ticket: u64) -> anyhow::Result<Thread> {
