@@ -17,9 +17,10 @@ such; open points are listed at the end.
 
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
   on each. Click one, or type to filter. The overview.
-- **Slider** (alt-tab): a horizontal strip over the current terminal; keep the
-  modifier held and tap to move along it, release to switch. The quick hop
-  between the few terminals you are juggling, most recent first.
+- **Slider** (alt-tab, as a portfolio): holding ctrl+tab dims the window and
+  brings the terminals forward as live thumbnails, grouped by project, the
+  chosen card enlarged; keep ctrl held and tap to move, release to switch.
+  Most recent first: the quick hop between the few terminals you juggle.
 
 ## The ticket panel
 
@@ -30,6 +31,14 @@ such; open points are listed at the end.
   width and whether it is open are remembered.
 - **Clicking a ticket opens its detail**: the thread, its decisions, the reply
   box.
+
+## The terminal comes to you
+
+When something newly waits on the user from an agent — a decision, or
+something new on a ticket it holds — a banner rises over the terminal
+("demo-crew — a decision waits on #3 …"). ctrl+enter, or a click, brings
+that agent's terminal (it slides in) and opens the ticket in the panel. No
+switch happens on its own: the user may be typing elsewhere.
 
 ## Folding the sides
 
@@ -48,6 +57,8 @@ strip unfolds it. Both states are remembered.
 | ctrl+shift+space | the gallery; type to filter, enter opens the first, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+b | fold / unfold the projects' list |
+| ctrl+enter | go to what the banner shows: the agent's terminal, its ticket open |
+| ctrl+shift+c / ctrl+shift+v | copy the selection / paste (bracketed when the program asks) |
 
 Everything else goes to the terminal.
 

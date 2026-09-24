@@ -31,8 +31,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Open a ticket to read its thread, accept or reject the pending plan or
   resolution, and reply — without leaving the terminal.
 - The mouse wheel scrolls back through the agent's history.
-- Switch terminals like alt-tab: hold ctrl and tap tab to go through the
-  most recent ones, release to switch.
+- Switch terminals like alt-tab, as a portfolio: hold ctrl and tap tab, the
+  window dims and the terminals come forward as live thumbnails grouped by
+  project; release to switch.
+- When an agent newly needs you (a decision, something new on its ticket), a
+  banner says so; ctrl+enter brings its terminal and opens the ticket.
+- Select text in the terminal with the mouse, copy and paste with
+  ctrl+shift+c / ctrl+shift+v.
 - See every terminal at once as live thumbnails (ctrl+shift+space), type to
   filter, enter to open — without resizing the agents' sessions.
 - Resize the ticket panel by its edge. Fold either side away with the grip
