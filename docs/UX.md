@@ -37,6 +37,27 @@ such; open points are listed at the end.
 - **Clicking a ticket opens its detail**: the thread, its decisions, the reply
   box.
 
+## The ticket list
+
+A prototype of the list proposed for aiball, computed in tvty from the rows
+of aiball's `/api/inbox` (`src/rowstate.rs`), before aiball computes it
+itself:
+
+- **Bands**, from "it is yours" to "it runs by itself": to moderate, waiting
+  on you (a decision), unread, agents on it, open. The most recent activity
+  first within a band.
+- **Weight says unread**, and nothing else does; read titles step back.
+- **One state glyph**, always in the same place: ◆ plan, ✓ resolution, ✕
+  wontfix, ! escalation, ▶ step (‖ when it went quiet), ↺ rejected. Coloured
+  when it waits on you, muted otherwise; a decision wins over a later step.
+- **The stripe says whose turn**: coloured and solid when a decision waits
+  on you and is the last message, dashed when the talk went on after it,
+  neutral when an agent answered you, none when the ball is with the agent.
+- Then who spoke last and how many messages, the agent holding it (🔥 when
+  active), ⚠N on the critical ticket, a high priority, the time.
+
+The legend is in the options page, under "Ticket list".
+
 ## The terminal comes to you
 
 When something newly waits on the user from an agent — a decision, or

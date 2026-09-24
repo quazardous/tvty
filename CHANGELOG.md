@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A ticket list that says at a glance what is yours: bands from "to
+  moderate" to "open", bold for unread, one state glyph, a stripe for whose
+  turn it is; its legend is in the options.
 - An options page (⚙ or ctrl+,): appearance, layout, every keyboard shortcut,
   and where tvty's settings live.
 - The projects' list lies over the terminal and can be resized by its edge.

@@ -5,6 +5,7 @@ mod aiball;
 mod events;
 mod options;
 mod panel;
+mod rowstate;
 mod sessions;
 mod settings;
 mod shell;

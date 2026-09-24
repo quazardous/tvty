@@ -130,7 +130,7 @@ impl Alerts {
     fn of<'a>(tickets: impl Iterator<Item = &'a TicketRow>, critical: Option<u64>) -> Self {
         let mut alerts = Self::default();
         for ticket in tickets {
-            alerts.decisions += ticket.pending_decision as usize;
+            alerts.decisions += ticket.pending_decision() as usize;
             alerts.unread += ticket.unread as usize;
             alerts.critical |= critical == Some(ticket.id);
         }
@@ -340,7 +340,7 @@ impl Shell {
                 let tickets = self.board.tickets.get(&project.name).into_iter().flatten();
                 for ticket in tickets.filter(|t| t.holder() == Some(agent.as_str())) {
                     // One entry per ticket: a decision says more than "new".
-                    let wait = if ticket.pending_decision {
+                    let wait = if ticket.pending_decision() {
                         Wait::Decision
                     } else if ticket.unread {
                         Wait::Unread
@@ -774,6 +774,7 @@ impl Shell {
         let content = match section {
             Section::Appearance => self.options_appearance(cx).into_any_element(),
             Section::Layout => self.options_layout(window, cx).into_any_element(),
+            Section::TicketList => options_ticket_list().into_any_element(),
             Section::Shortcuts => options_shortcuts().into_any_element(),
             Section::About => self.options_about(cx).into_any_element(),
         };
@@ -1747,5 +1748,88 @@ fn options_shortcuts() -> impl IntoElement {
             );
         }
     }
+    page
+}
+
+/// The legend of the ticket list: its bands, its glyphs, its stripe.
+fn options_ticket_list() -> impl IntoElement {
+    use crate::rowstate::{Band, Glyph};
+    let line = |mark: gpui_kit::AnyElement, what: String| {
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .py_1()
+            .border_b_1()
+            .border_color(p().border)
+            .child(div().w(px(90.)).flex_none().flex().justify_center().child(mark))
+            .child(div().flex_1().min_w_0().text_sm().child(what))
+    };
+    let glyph = |g: Glyph, colour: Hsla| {
+        div()
+            .font_weight(FontWeight::BOLD)
+            .text_color(colour)
+            .child(g.symbol())
+            .into_any_element()
+    };
+    let stripe = |colour: Hsla, dashed: bool| {
+        div()
+            .h(px(18.))
+            .border_l_3()
+            .border_color(colour)
+            .when(dashed, |d| d.border_dashed())
+            .into_any_element()
+    };
+    let mut page = div()
+        .flex()
+        .flex_col()
+        .max_w(px(760.))
+        .child(option_note(
+            "A prototype of the ticket list proposed on the board: computed in tvty from the same rows as aiball's web UI.",
+        ))
+        .child(option_group("Order"));
+    for band in [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open] {
+        let what = match band {
+            Band::Moderate => "the ticket, or comments on it, wait for moderation",
+            Band::Decide => "a plan, a resolution, a wontfix or an escalation waits for your decision",
+            Band::Unread => "something new on it",
+            Band::AgentOnIt => "an agent holds it or is on a step",
+            _ => "open, nothing pressing",
+        };
+        page = page.child(line(
+            div().text_xs().text_color(p().muted).child(band.title().to_uppercase()).into_any_element(),
+            format!("{what}; the most recent first"),
+        ));
+    }
+    page = page
+        .child(option_group("State glyph — coloured when it waits on you, muted otherwise"))
+        .child(line(glyph(Glyph::Plan, p().warning), Glyph::Plan.meaning().into()))
+        .child(line(glyph(Glyph::Resolution, p().success), Glyph::Resolution.meaning().into()))
+        .child(line(glyph(Glyph::Wontfix, p().muted), Glyph::Wontfix.meaning().into()))
+        .child(line(glyph(Glyph::Escalation, p().danger), Glyph::Escalation.meaning().into()))
+        .child(line(glyph(Glyph::Step, p().muted), Glyph::Step.meaning().into()))
+        .child(line(glyph(Glyph::StalledStep, p().muted), Glyph::StalledStep.meaning().into()))
+        .child(line(glyph(Glyph::Rejected, p().muted), Glyph::Rejected.meaning().into()))
+        .child(line(glyph(Glyph::ClosedResolved, p().muted), Glyph::ClosedResolved.meaning().into()))
+        .child(line(glyph(Glyph::Closed, p().muted), Glyph::Closed.meaning().into()))
+        .child(option_group("Stripe — whose turn"))
+        .child(line(stripe(p().warning, false), "a decision waits on you, and it is the last message".into()))
+        .child(line(stripe(p().warning, true), "a decision waits on you, but the talk went on after it".into()))
+        .child(line(stripe(p().border, false), "your turn: an agent answered you".into()))
+        .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
+        .child(option_group("The rest"))
+        .child(line(
+            div().font_weight(FontWeight::BOLD).child("Title").into_any_element(),
+            "bold: unread — and nothing else says it".into(),
+        ))
+        .child(line(
+            div().text_xs().text_color(p().muted).child("you · 3 msg").into_any_element(),
+            "who spoke last, and how many messages".into(),
+        ))
+        .child(line(
+            div().text_xs().text_color(p().muted).child("🔥 agent").into_any_element(),
+            "the agent holding it; 🔥 when it was active lately".into(),
+        ))
+        .child(line(pill("⚠ 3", p().danger).into_any_element(), "the project's critical ticket: it holds 3 open tickets".into()));
     page
 }

@@ -10,6 +10,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, Thread, TicketRow};
+use crate::rowstate::{self, Glyph, RowState, Stripe, Turn};
 use crate::theme::p;
 
 /// Something changed on the board: the shell should read it again.
@@ -205,21 +206,19 @@ impl TicketPanel {
     }
 
     fn list(&self, cx: &mut Context<Self>) -> AnyElement {
-        let Some(scope) = &self.scope else {
+        if self.scope.is_none() {
             return hint("No aiball project on this terminal.").into_any_element();
-        };
-        let agent = scope.agent.as_deref();
-        let current: Vec<&TicketRow> = self
-            .tickets
-            .iter()
-            .filter(|t| agent.is_some() && t.holder() == agent)
-            .collect();
-        let queue: Vec<&TicketRow> = self.tickets.iter().filter(|t| t.holder().is_none()).collect();
-        let others: Vec<&TicketRow> = self
-            .tickets
-            .iter()
-            .filter(|t| t.holder().is_some() && t.holder() != agent)
-            .collect();
+        }
+        let user = self.aiball.user.as_str();
+        // Bands first, from "it is yours" to "it runs by itself"; the most
+        // recent activity first within a band.
+        let mut rows: Vec<(RowState, &TicketRow)> =
+            self.tickets.iter().map(|t| (rowstate::of(t, user), t)).collect();
+        rows.sort_by(|(a, ta), (b, tb)| {
+            a.band
+                .cmp(&b.band)
+                .then_with(|| tb.last_activity.cmp(&ta.last_activity))
+        });
 
         let mut list = div()
             .id("ticket-list")
@@ -229,18 +228,13 @@ impl TicketPanel {
             .min_h_0()
             .overflow_y_scroll()
             .pb_2();
-        for (title, rows) in [
-            (agent.map(|a| format!("{a} is on")), current),
-            (Some("Queue".to_string()), queue),
-            (Some("Held by other agents".to_string()), others),
-        ] {
-            let (Some(title), false) = (title, rows.is_empty()) else {
-                continue;
-            };
-            list = list.child(section_title(title));
-            for row in rows {
-                list = list.child(self.row(row, cx));
+        let mut band = None;
+        for (state, ticket) in rows {
+            if band != Some(state.band) {
+                band = Some(state.band);
+                list = list.child(section_title(state.band.title()));
             }
+            list = list.child(self.row(ticket, state, cx));
         }
         if self.tickets.is_empty() {
             list = list.child(hint("No open ticket."));
@@ -248,41 +242,121 @@ impl TicketPanel {
         list.into_any_element()
     }
 
-    fn row(&self, ticket: &TicketRow, cx: &mut Context<Self>) -> impl IntoElement {
+    /// One ticket: a stripe for whose turn, one state glyph, the title
+    /// (bold when unread), then who spoke last, who holds it, and when.
+    fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
-        let critical = self.critical == Some(id);
+        let yours = state.turn == Turn::You;
+        let glyph_colour = |glyph: Glyph| {
+            // Coloured when it waits on you, muted otherwise.
+            if !yours {
+                return p().muted;
+            }
+            match glyph {
+                Glyph::Escalation | Glyph::Rejected => p().danger,
+                Glyph::Plan | Glyph::StalledStep => p().warning,
+                Glyph::Resolution => p().success,
+                Glyph::Step => p().accent,
+                Glyph::Wontfix | Glyph::ClosedResolved | Glyph::Closed => p().muted,
+            }
+        };
+        let stripe_colour = state
+            .glyph
+            .filter(|_| state.stripe != Stripe::Neutral)
+            .map(glyph_colour)
+            .unwrap_or(p().border);
+        let speaker = ticket.last_speaker.as_deref().map(|s| {
+            if s == self.aiball.user {
+                "you".to_string()
+            } else {
+                s.to_string()
+            }
+        });
+        let meta = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_x_2()
+            .text_xs()
+            .text_color(p().muted)
+            .when_some(speaker, |d, who| {
+                d.child(format!("{who} · {} msg", ticket.comment_count))
+            })
+            .when_some(ticket.holder().map(str::to_string), |d, holder| {
+                d.child(if ticket.hot { format!("🔥 {holder}") } else { holder })
+            })
+            .when_some(ticket.critical.as_ref(), |d, critical| {
+                d.child(pill(format!("⚠ {}", critical.holds), p().danger))
+            })
+            .when(ticket.urgent(), |d| {
+                d.child(pill(ticket.priority.clone().unwrap_or_default(), p().danger))
+            })
+            .child(div().flex_1())
+            .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
+
         div()
             .id(("ticket", id))
             .flex()
-            .items_start()
             .gap_2()
-            .px_3()
+            .pl_2()
+            .pr_3()
             .py_1p5()
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
+            // Whose turn: coloured when a decision waits on you (solid when
+            // it is the last message, dashed when the talk went on), neutral
+            // when an agent answered you, nothing when the ball is theirs.
             .child(
                 div()
+                    .w(px(3.))
                     .flex_none()
-                    .w(px(44.))
-                    .text_color(p().muted)
-                    .child(format!("#{id}")),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_w_0()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_1()
-                    .child(div().mr_1().child(ticket.title.clone()))
-                    .when(critical, |d| d.child(pill("critical", p().danger)))
-                    .when(ticket.pending_decision, |d| d.child(pill("decision", p().warning)))
-                    .when(ticket.urgent(), |d| {
-                        d.child(pill(ticket.priority.clone().unwrap_or_default(), p().danger))
+                    .rounded_sm()
+                    .map(|d| match state.stripe {
+                        Stripe::Solid | Stripe::Neutral => d.bg(stripe_colour),
+                        Stripe::Dashed => d.border_l_3().border_dashed().border_color(stripe_colour),
+                        Stripe::None => d,
                     }),
             )
-            .when(ticket.unread, |d| d.child(dot(p().accent)))
+            .child(
+                div()
+                    .w(px(14.))
+                    .flex_none()
+                    .font_weight(FontWeight::BOLD)
+                    .when_some(state.glyph, |d, glyph| {
+                        d.text_color(glyph_colour(glyph)).child(glyph.symbol())
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .child(div().flex_none().text_color(p().muted).child(format!("#{id}")))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .truncate()
+                                    // Weight says unread, and nothing else does: read
+                                    // titles step back so bold stands out.
+                                    .map(|d| {
+                                        if ticket.unread {
+                                            d.font_weight(FontWeight::BOLD).text_color(p().text)
+                                        } else {
+                                            d.font_weight(FontWeight::NORMAL).text_color(p().text.opacity(0.72))
+                                        }
+                                    })
+                                    .child(ticket.title.clone()),
+                            ),
+                    )
+                    .child(meta),
+            )
             .on_click(cx.listener(move |panel, _, _, cx| panel.open(id, cx)))
     }
 
@@ -530,4 +604,20 @@ pub fn pill(text: impl Into<SharedString>, color: Hsla) -> impl IntoElement {
 
 pub fn dot(color: Hsla) -> impl IntoElement {
     div().flex_none().mt_1p5().size(px(7.)).rounded_full().bg(color)
+}
+
+/// `2026-09-24T13:01:55.681Z` → `3m`, `2h`, `5d` ago.
+fn ago(when: &str) -> Option<String> {
+    let then = crate::status::parse_time(when)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    let seconds = now.saturating_sub(then);
+    Some(match seconds {
+        0..60 => "now".into(),
+        60..3600 => format!("{}m", seconds / 60),
+        3600..86400 => format!("{}h", seconds / 3600),
+        _ => format!("{}d", seconds / 86400),
+    })
 }

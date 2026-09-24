@@ -90,4 +90,60 @@ comment(t5, "First frame at 180 ms in release, most of it in font loading.", "de
 call("POST", "/messages", {"project": PROJECT, "kind": "ticket_closed", "ticket_id": t5,
                            "parent_id": t5}, "david")
 
-print(json.dumps({"tickets": [t1, t2, t3, t4, t5]}))
+# ── Every case of the ticket list, by the API's own gestures ────────────
+def decide(comment_id, status):
+    call("POST", f"/messages/{comment_id}/decide", {"status": status, "decided_by": "david"}, "david")
+
+def step(ticket_id, body, who):
+    return call("POST", "/messages", {
+        "project": PROJECT, "kind": "comment_added", "ticket_id": ticket_id, "parent_id": ticket_id,
+        "body": body, "summary_until": body[:200], "commits": None,
+        "step": True, "step_after_minutes": 0,
+    }, who)["id"]
+
+# A plan the talk went on after: the stripe turns dashed.
+t6 = ticket("Slide the terminal in on switch", "An animation when switching.", "david", intent="feature")
+call("POST", f"/tickets/{t6}/assign", {}, "demo-claude")
+comment(t6, "Plan: a relative offset, so tmux is not resized.", "demo-claude", decision="plan")
+comment(t6, "Also: keep it under 250 ms.", "demo-claude")
+
+# Closing without a fix, proposed.
+t7 = ticket("Blink the cursor", "Make the cursor blink.", "david", intent="request")
+call("POST", f"/tickets/{t7}/assign", {}, "demo-crew")
+comment(t7, "Claude Code draws its own cursor: nothing to do here.", "demo-crew", decision="wontfix")
+
+# An escalation: the agent needs a human.
+t8 = ticket("Install the GPUI system libraries", "xcb, xkbcommon, vulkan…", "david", intent="request")
+call("POST", f"/tickets/{t8}/assign", {}, "demo-crew")
+comment(t8, "Needs sudo: please run the dnf install.", "demo-crew", decision="escalation")
+
+# An agent on a step.
+t9 = ticket("Measure the frame rate", "Under a flood of output.", "david", intent="request")
+call("POST", f"/tickets/{t9}/assign", {}, "demo-claude")
+step(t9, "Debug build measured; release next.", "demo-claude")
+
+# A resolution david rejected: the ball is back with the agent.
+t10 = ticket("Truncate long agent names", "They wrap in the sidebar.", "david", intent="request")
+call("POST", f"/tickets/{t10}/assign", {}, "demo-crew")
+proposal = comment(t10, "Truncated with an ellipsis.", "demo-crew", decision="resolution")
+decide(proposal, "rejected")
+call("POST", "/messages", {"project": PROJECT, "kind": "comment_added", "ticket_id": t10,
+                           "parent_id": t10, "body": "Still wraps on narrow windows.", "by_agent": "david"}, "david")
+
+# An agent answered david, no decision: his turn, plain.
+t11 = ticket("Which font for the title bar?", "The kit's or the terminal's?", "david", intent="question")
+comment(t11, "The kit's: it follows the theme.", "demo-claude")
+
+# David spoke last: the agent's turn.
+t12 = ticket("Remember the theme", "Across restarts.", "david", intent="feature")
+call("POST", "/messages", {"project": PROJECT, "kind": "comment_added", "ticket_id": t12,
+                           "parent_id": t12, "body": "Store it with the panel widths.", "by_agent": "david"}, "david")
+
+# A ticket an agent filed: it waits for moderation.
+t13 = ticket("Add a status bar", "Filed by an agent.", "demo-crew", intent="feature")
+
+# The critical ticket: two others depend on it.
+for blocked in (t2, t3):
+    call("POST", f"/tickets/{blocked}/relations", {"target_ticket_id": t8, "kind": "depends_on"}, "david")
+
+print(json.dumps({"tickets": [t1, t2, t3, t4, t5, t6, t7, t8, t9, t10, t11, t12, t13]}))

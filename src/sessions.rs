@@ -68,16 +68,8 @@ pub fn discover(aiball: &mut Aiball) -> Board {
         projects,
         ..Default::default()
     };
-    for project in board.projects.iter().filter(|p| p.on_board) {
-        match aiball.open_tickets(&project.name) {
-            Ok(tickets) => {
-                board.tickets.insert(project.name.clone(), tickets);
-            }
-            Err(error) => log::warn!("aiball: {error:#}"),
-        }
-        if let Ok(Some(id)) = aiball.critical(&project.name) {
-            board.critical.insert(project.name.clone(), id);
-        }
+    for name in on_board(&board) {
+        read_project(aiball, &mut board, &name);
     }
     board
 }
@@ -115,29 +107,37 @@ pub fn update(aiball: &mut Aiball, previous: &Board, changes: &Changes) -> Board
             Err(error) => log::warn!("aiball: {error:#}"),
         }
     }
-    for project in board.projects.iter().filter(|p| p.on_board) {
-        let name = &project.name;
+    for name in on_board(&board) {
         // A project newly shown has never been read.
-        if !changes.projects.contains(name) && board.tickets.contains_key(name) {
+        if !changes.projects.contains(&name) && board.tickets.contains_key(&name) {
             continue;
         }
-        match aiball.open_tickets(name) {
-            Ok(tickets) => {
-                board.tickets.insert(name.clone(), tickets);
-            }
-            Err(error) => log::warn!("aiball: {error:#}"),
-        }
-        match aiball.critical(name) {
-            Ok(Some(id)) => {
-                board.critical.insert(name.clone(), id);
-            }
-            Ok(None) => {
-                board.critical.remove(name);
-            }
-            Err(_) => {}
-        }
+        read_project(aiball, &mut board, &name);
     }
     board
+}
+
+fn on_board(board: &Board) -> Vec<String> {
+    board
+        .projects
+        .iter()
+        .filter(|p| p.on_board)
+        .map(|p| p.name.clone())
+        .collect()
+}
+
+/// A project's open tickets; its critical ticket comes with them.
+fn read_project(aiball: &Aiball, board: &mut Board, name: &str) {
+    match aiball.open_tickets(name) {
+        Ok(tickets) => {
+            match tickets.iter().find(|t| t.critical.is_some()) {
+                Some(critical) => board.critical.insert(name.to_string(), critical.id),
+                None => board.critical.remove(name),
+            };
+            board.tickets.insert(name.to_string(), tickets);
+        }
+        Err(error) => log::warn!("aiball: {error:#}"),
+    }
 }
 
 fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project> {

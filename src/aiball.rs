@@ -37,27 +37,77 @@ pub struct Consumer {
     pub present: Option<bool>,
 }
 
-/// A row of a ticket listing, seen by [`Aiball::user`].
+/// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
+/// — the same row aiball's web UI shows.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct TicketRow {
     pub id: u64,
     pub project: String,
     pub title: String,
+    /// Moderation: `approved`, `pending`, `rejected`.
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub closed: bool,
+    #[serde(default)]
+    pub resolved: bool,
     pub priority: Option<String>,
     pub claimant: Option<String>,
     pub assignee: Option<String>,
-    /// A plan or resolution awaits a decision.
-    #[serde(default)]
-    pub pending_decision: bool,
     /// Something new on it for the user.
     #[serde(default)]
     pub unread: bool,
+    /// An agent was active on it lately.
+    #[serde(default)]
+    pub hot: bool,
+    /// Who wrote the last message.
+    pub last_speaker: Option<String>,
+    pub last_activity: Option<String>,
+    #[serde(default)]
+    pub comment_count: u32,
+    /// Set on the project's critical ticket: how many open tickets it holds.
+    pub critical: Option<Critical>,
+    #[serde(default)]
+    pub pending_plan: bool,
+    #[serde(default)]
+    pub pending_resolution: bool,
+    #[serde(default)]
+    pub pending_wontfix: bool,
+    #[serde(default)]
+    pub pending_escalation: bool,
+    /// Comments waiting for moderation.
+    #[serde(default)]
+    pub pending_comment_count: u32,
+    /// The pending decision is still the last message.
+    #[serde(default)]
+    pub pending_decision_is_latest: bool,
+    /// The last message is a step (`then: continue`).
+    #[serde(default)]
+    pub latest_is_step: bool,
+    /// ... and it went quiet.
+    #[serde(default)]
+    pub stalled_step: bool,
+    #[serde(default)]
+    pub latest_plan_rejected: bool,
+    #[serde(default)]
+    pub latest_resolution_rejected: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Critical {
+    #[serde(default)]
+    pub holds: u32,
 }
 
 impl TicketRow {
     /// The agent working on it: its assignee, else its claimant.
     pub fn holder(&self) -> Option<&str> {
         self.assignee.as_deref().or(self.claimant.as_deref())
+    }
+
+    /// A plan, resolution, wontfix or escalation awaits a decision.
+    pub fn pending_decision(&self) -> bool {
+        self.pending_plan || self.pending_resolution || self.pending_wontfix || self.pending_escalation
     }
 
     pub fn urgent(&self) -> bool {
@@ -152,22 +202,9 @@ impl Aiball {
         self.get("/api/consumers")
     }
 
-    /// The open tickets of a project.
+    /// The open tickets of a project, as the web UI's list rows.
     pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
-        self.get(&format!("/api/tickets?project={}&open=1", encode(project)))
-    }
-
-    /// The ticket holding back the most open tickets of the project.
-    pub fn critical(&self, project: &str) -> anyhow::Result<Option<u64>> {
-        let answer: Value = self.get(&format!("/api/projects/{}/critical", encode(project)))?;
-        Ok(match answer.get("critical") {
-            Some(Value::Number(n)) => n.as_u64(),
-            Some(Value::Object(o)) => o
-                .get("id")
-                .or_else(|| o.get("ticket_id"))
-                .and_then(Value::as_u64),
-            _ => None,
-        })
+        self.get(&format!("/api/inbox?project={}&open=1", encode(project)))
     }
 
     pub fn thread(&self, ticket: u64) -> anyhow::Result<Thread> {

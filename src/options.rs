@@ -5,14 +5,16 @@
 pub enum Section {
     Appearance,
     Layout,
+    TicketList,
     Shortcuts,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 4] = [
+    pub const ALL: [Section; 5] = [
         Section::Appearance,
         Section::Layout,
+        Section::TicketList,
         Section::Shortcuts,
         Section::About,
     ];
@@ -21,6 +23,7 @@ impl Section {
         match self {
             Section::Appearance => "Appearance",
             Section::Layout => "Layout",
+            Section::TicketList => "Ticket list",
             Section::Shortcuts => "Keyboard shortcuts",
             Section::About => "About",
         }
