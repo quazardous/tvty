@@ -4,7 +4,7 @@ A native terminal built for working with many AI agents at once: one window,
 the agents' terminals grouped by project, and each project's tickets beside
 its terminal.
 
-`tvty` is a client. [aiball](../aiball) is the engine behind it (tickets,
+`tvty` is a client. [aiball](https://github.com/quazardous/aiball) is the engine behind it (tickets,
 agents, wakes, the API) and evolves at its own pace; aiball's web UI keeps
 existing for everything else (remote, phone, another OS).
 
@@ -36,4 +36,28 @@ See [`docs/UX.md`](docs/UX.md) for the interface: navigation, switching, the tic
 
 ## Status
 
-Empty scaffold. Nothing to run yet.
+Early. What works today:
+
+- the agents' terminals, grouped by project, attached to their tmux sessions;
+- alerts per agent and per project: decisions waiting for you, unread
+  tickets, the critical ticket;
+- the ticket panel: the agent's tickets and the project's queue, a ticket's
+  thread, accept / reject / reply.
+
+Linux only for now; Windows and macOS are planned.
+
+## Build and run
+
+```bash
+cargo run --release              # needs a running aiball daemon
+cargo run --release -- SESSION   # open that tmux session at start
+```
+
+On Linux, GPUI needs the development packages of xcb, xkbcommon, vulkan,
+fontconfig, freetype and alsa. tvty reaches aiball over its local socket
+(`$AIBALL_SOCK`, else aiball's default) and acts as its human user
+(`$TVTY_USER`, else the human aiball saw last).
+
+## License
+
+[MIT](LICENSE).

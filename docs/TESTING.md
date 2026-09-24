@@ -5,9 +5,9 @@ without touching the desktop and without spending model tokens.
 
 | Tool | What it is | What it tests here |
 |---|---|---|
-| [wbox](../../wbox-mcp) | runs tvty in its own nested compositor, headless if wanted, and lets an agent click, type and screenshot inside it | the interface: tabs, gallery, slider, the ticket panel |
-| `fake-claude` ([aiball](../../aiball/docs/FAKE-CLAUDE.md)) | a scripted (YAML) stand-in for Claude Code's screen: boot, prompt, `esc to interrupt`, streamed output | the whole chain with no tokens: a real claude-loop, in a real tmux session, through the real PTY proxy, shown by tvty — attach, tabs per agent, alerts |
-| [simai-cli](../../simai-cli) | replays an agent CLI session with Claude's chrome from a script, and records it (`.cast`) | rendering and speed: dense, fast output replayed identically to measure smoothness; demo recordings |
+| [wbox](https://github.com/quazardous/wbox-mcp) | runs tvty in its own nested compositor, headless if wanted, and lets an agent click, type and screenshot inside it | the interface: tabs, gallery, slider, the ticket panel |
+| `fake-claude` ([aiball](https://github.com/quazardous/aiball/blob/main/docs/FAKE-CLAUDE.md)) | a scripted (YAML) stand-in for Claude Code's screen: boot, prompt, `esc to interrupt`, streamed output | the whole chain with no tokens: a real claude-loop, in a real tmux session, through the real PTY proxy, shown by tvty — attach, tabs per agent, alerts |
+| [simai-cli](https://github.com/quazardous/simai-cli) | replays an agent CLI session with Claude's chrome from a script, and records it (`.cast`) | rendering and speed: dense, fast output replayed identically to measure smoothness; demo recordings |
 
 ## wbox
 
@@ -33,12 +33,12 @@ would clash with the agent's own. For the whole chain, start one elsewhere
 with `claude-loop start --command "$(realpath ../aiball/bin/fake-claude)"`.
 
 **Never click a real agent's loop inside wbox**: attaching resizes its tmux
-window to tvty's for every client, david's included.
+window to tvty's for every client, the user's own included.
 
 ## A board to click on
 
 The ticket panel reads **and writes** aiball: accepting, rejecting and
-replying act as david. Never test them on the real board. `make aiball-up`
+replying act as the user. Never test them on the real board. `make aiball-up`
 starts a throwaway daemon instead (`scripts/fake-aiball`): its own data dir,
 config dir, port (7797) and socket under `dev/fake-aiball/`, seeded with a
 `demo` project — two agents, `demo-claude` and `demo-crew`, whose loops are
@@ -54,7 +54,7 @@ scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml \
 ```
 
 Reading the real board is fine (a screenshot of the alerts); a click on a
-real ticket marks it read for david, so don't.
+real ticket marks it read for the user, so don't.
 
 ## Measuring
 

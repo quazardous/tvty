@@ -1,10 +1,11 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: help build run check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
+.PHONY: help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
 
 help:
 	@echo "make build            cargo build (debug)"
 	@echo "make run              run tvty on your own desktop"
 	@echo "make check            build + launch in wbox + screenshot (what an agent reruns)"
+	@echo "make public-check     nothing private in the tracked files (paths, ticket ids)"
 	@echo ""
 	@echo "wbox (tvty in a nested compositor, offscreen by default; WBOX_VISIBLE=1 for a window):"
 	@echo "make wbox-up / wbox-down / wbox-restart"
@@ -23,6 +24,9 @@ help:
 	@echo ""
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
+
+public-check:
+	scripts/check-public
 
 build:
 	cargo build

@@ -54,6 +54,12 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
 
 ## Conventions
 
+- **Public repo, MIT.** English everywhere in the repo; nothing a stranger
+  cannot follow: no path of this machine, no board ticket id (a `#` and a number) in
+  code, docs or commit messages — say what changed, the ticket keeps the
+  link. `make public-check` scans (also a local pre-commit hook). Each
+  user-visible change gets a line in `CHANGELOG.md`.
+
 - Code, comments, commits and docs in **English**; talk to david in
   **French** (chat and ticket threads).
 - Commit locally as you go; **never push** (no remote yet) or publish without

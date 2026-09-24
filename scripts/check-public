@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# check-public — tvty is a public repo: refuse what a stranger could not
+# follow. Scans the files git tracks (or, with --staged, the staged ones)
+# for dev-machine paths and internal tracker ids. Exit 1 on a hit.
+#
+#   scripts/check-public            every tracked file
+#   scripts/check-public --staged   what is about to be committed (pre-commit)
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+if [[ ${1:-} == --staged ]]; then
+    mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR)
+else
+    mapfile -t files < <(git ls-files)
+fi
+((${#files[@]})) || exit 0
+# Dev-machine paths; a board's ticket (#1234) or comment (#C.abcd12) id.
+pattern='((^|[[:space:]"'"'"'=:(`])(/home|/Users)/[A-Za-z]|[A-Z]:\\Users\\|(^|[^&A-Za-z0-9])#[0-9]{3,}\b|#C\.[a-z0-9]{4,8}\b)'
+if hits=$(grep -nIE "$pattern" -- "${files[@]}" 2>/dev/null | grep -v '^scripts/check-public:'); then
+    echo "Not for a public repo (a path of your machine, or an internal ticket id):" >&2
+    echo "$hits" >&2
+    exit 1
+fi

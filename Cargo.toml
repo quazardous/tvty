@@ -2,6 +2,8 @@
 name = "tvty"
 version = "0.1.0"
 edition = "2024"
+description = "A native terminal for working with many AI agents, their tickets beside"
+license = "MIT"
 
 [dependencies]
 alacritty_terminal = "0.26"
