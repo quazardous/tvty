@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use gpui_kit::component::{TitleBar, window_border, window_paddings};
+use gpui_kit::component::{TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
 use crate::events;
@@ -1237,25 +1237,23 @@ impl Render for Shell {
             .children(slider)
             .children(gallery);
 
-        // The window draws its own frame: GNOME leaves decorations to the
-        // application (as with VS Code or Zed). The title bar moves the window
-        // and carries its buttons; the border resizes it.
-        window_border().child(
-            div()
-                .flex()
-                .flex_col()
-                .size_full()
-                .bg(rgb(0x1e1e1e))
-                .child(
-                    TitleBar::new().child(
-                        div()
-                            .text_sm()
-                            .text_color(rgb(0xb0b0b0))
-                            .truncate()
-                            .child(title),
-                    ),
-                )
-                .child(body),
-        )
+        // The window draws its own title bar: GNOME leaves decorations to the
+        // application (as with VS Code or Zed). It moves the window and
+        // carries its buttons; the frame and its resize edges come from Root.
+        div()
+            .flex()
+            .flex_col()
+            .size_full()
+            .bg(rgb(0x1e1e1e))
+            .child(
+                TitleBar::new().child(
+                    div()
+                        .text_sm()
+                        .text_color(rgb(0xb0b0b0))
+                        .truncate()
+                        .child(title),
+                ),
+            )
+            .child(body)
     }
 }

@@ -14,7 +14,12 @@ mod terminal;
 use gpui_kit::*;
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("warn")).init();
+    // Quiet by default: Vulkan's loader warns about every driver it probes
+    // and skips (other vendors' GPUs), which is not tvty's business.
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
+        "warn,wgpu_hal=error,gpui_component::theme::mono_font=error",
+    ))
+    .init();
     // tvty may be started from inside tmux; its terminals attach to tmux
     // sessions of their own, which tmux refuses while $TMUX is set.
     // SAFETY: no other thread exists yet.
@@ -26,6 +31,8 @@ fn main() {
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
         gpui_kit::init(cx);
         gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
+        // The kit's monospace font, where it uses one, is the terminal's.
+        gpui_kit::component::Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {
@@ -40,7 +47,10 @@ fn main() {
                 },
                 |window, cx| {
                     let view = cx.new(|cx| shell::Shell::new(selected, window, cx));
-                    cx.new(|cx| gpui_kit::component::Root::new(view, window, cx))
+                    // Root draws the window's frame; no shadow around it: where
+                    // the compositor does not show it as transparent, it reads
+                    // as a wide dark border.
+                    cx.new(|cx| gpui_kit::component::Root::new(view, window, cx).window_shadow_size(px(0.)))
                 },
             )
             .expect("failed to open the window");
