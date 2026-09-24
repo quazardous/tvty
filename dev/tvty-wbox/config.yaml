@@ -22,4 +22,8 @@ tools:
     script: ./scripts/build.sh
     description: Build tvty (cargo build). Run it between kill and launch.
     headless: true
+# Tests copy and paste inside the sandbox: never bridge to the host's clipboard.
+clipboard_bridge: false
 headless: true
+# Tests copy and paste inside the sandbox: never bridge to the host's clipboard.
+clipboard_bridge: false

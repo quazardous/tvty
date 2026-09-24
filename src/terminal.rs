@@ -6,7 +6,9 @@ use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
 use alacritty_terminal::event_loop::{EventLoop, Notifier};
-use alacritty_terminal::grid::Scroll;
+use alacritty_terminal::grid::{Dimensions as _, Scroll};
+use alacritty_terminal::index::{Column, Line, Point as GridPoint, Side};
+use alacritty_terminal::selection::{Selection, SelectionType};
 use alacritty_terminal::sync::FairMutex;
 use alacritty_terminal::term::cell::Flags;
 use alacritty_terminal::term::test::TermSize;
@@ -25,6 +27,7 @@ const FONT_FAMILY: &str = "Source Code Pro";
 const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
 const FONT_SIZE: f32 = 14.;
 const LINE_HEIGHT: f32 = 1.3;
+const SELECTION: Rgb = Rgb { r: 0x26, g: 0x4f, b: 0x78 };
 
 /// Forwards the emulator's events (from its I/O thread) to the view.
 #[derive(Clone)]
@@ -49,6 +52,8 @@ pub struct TerminalView {
     layout: (Point<Pixels>, Size<Pixels>),
     /// Wheel movement not yet worth a line.
     scroll_remainder: f32,
+    /// The left button is down on a selection being made.
+    selecting: bool,
 }
 
 impl TerminalView {
@@ -115,6 +120,7 @@ impl TerminalView {
             tmux_session: None,
             layout: (Point::default(), size(px(8.), px(16.))),
             scroll_remainder: 0.,
+            selecting: false,
         })
     }
 
@@ -176,12 +182,110 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let keystroke = &event.keystroke;
+        let m = &keystroke.modifiers;
+        // ctrl+shift+c / v: the terminal's copy and paste, not ^C.
+        if m.control && m.shift && !m.alt {
+            match keystroke.key.as_str() {
+                "c" => {
+                    if let Some(text) = self.term.lock().selection_to_string() {
+                        cx.write_to_clipboard(ClipboardItem::new_string(text));
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
+                "v" => {
+                    if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+                        self.paste(&text);
+                    }
+                    cx.stop_propagation();
+                    return;
+                }
+                _ => {}
+            }
+        }
         let app_cursor = self.term.lock().mode().contains(TermMode::APP_CURSOR);
-        if let Some(bytes) = keystroke_bytes(&event.keystroke, app_cursor) {
+        if let Some(bytes) = keystroke_bytes(keystroke, app_cursor) {
+            self.clear_selection(cx);
             self.write(bytes);
             stats::key_sent();
             cx.stop_propagation();
         }
+    }
+
+    /// Sends text as pasted: between bracketed-paste markers when the
+    /// program asked for them (so it knows this is not typing), else with
+    /// the line ends a terminal sends.
+    fn paste(&self, text: &str) {
+        let bracketed = self.term.lock().mode().contains(TermMode::BRACKETED_PASTE);
+        let bytes = if bracketed {
+            // A pasted end marker would end the paste early: drop escapes.
+            format!("\x1b[200~{}\x1b[201~", text.replace('\x1b', ""))
+        } else {
+            text.replace("\r\n", "\r").replace('\n', "\r")
+        };
+        self.write(bytes.into_bytes());
+    }
+
+    fn clear_selection(&self, cx: &mut Context<Self>) {
+        let mut term = self.term.lock();
+        if term.selection.take().is_some() {
+            cx.notify();
+        }
+    }
+
+    /// The grid cell under a window position, and which half of it.
+    fn grid_point(&self, position: Point<Pixels>) -> (GridPoint, Side) {
+        let (origin, cell) = self.layout;
+        let term = self.term.lock();
+        let x = f32::from(position.x - origin.x) / f32::from(cell.width);
+        let y = f32::from(position.y - origin.y) / f32::from(cell.height);
+        let column = (x.max(0.) as usize).min(term.columns().saturating_sub(1));
+        let row = (y.max(0.) as usize).min(term.screen_lines().saturating_sub(1));
+        let line = row as i32 - term.grid().display_offset() as i32;
+        let side = if x.fract() < 0.5 { Side::Left } else { Side::Right };
+        (GridPoint::new(Line(line), Column(column)), side)
+    }
+
+    fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus, cx);
+        // A program that takes the mouse keeps it, unless shift is held.
+        if self.term.lock().mode().intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
+            return;
+        }
+        let (point, side) = self.grid_point(event.position);
+        let kind = match event.click_count {
+            2 => SelectionType::Semantic,
+            3.. => SelectionType::Lines,
+            _ => SelectionType::Simple,
+        };
+        self.term.lock().selection = Some(Selection::new(kind, point, side));
+        self.selecting = true;
+        cx.notify();
+    }
+
+    fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.selecting || event.pressed_button != Some(MouseButton::Left) {
+            return;
+        }
+        let (point, side) = self.grid_point(event.position);
+        if let Some(selection) = self.term.lock().selection.as_mut() {
+            selection.update(point, side);
+        }
+        cx.notify();
+    }
+
+    fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        if !self.selecting {
+            return;
+        }
+        self.selecting = false;
+        // A click without a drag selects nothing.
+        let mut term = self.term.lock();
+        if term.selection.as_ref().is_some_and(|s| s.is_empty()) {
+            term.selection = None;
+        }
+        cx.notify();
     }
 }
 
@@ -255,6 +359,10 @@ impl Render for TerminalView {
             .track_focus(&self.focus)
             .on_key_down(cx.listener(Self::on_key_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
+            .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
+            .on_mouse_move(cx.listener(Self::on_mouse_move))
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            .cursor(CursorStyle::IBeam)
             .relative()
             .size_full()
             .bg(to_hsla(default_rgb(NamedColor::Background as usize)))
@@ -421,6 +529,7 @@ impl Element for TerminalElement {
         let mut current_line = usize::MAX;
         let mut segments = Vec::new();
         let offset = content.display_offset as i32;
+        let selection = content.selection;
 
         let flush = |pending: &mut Option<(usize, String, TextRun)>, segments: &mut Vec<Segment>| {
             if let Some((column, text, run)) = pending.take() {
@@ -450,6 +559,9 @@ impl Element for TerminalElement {
             let (mut fg, mut bg) = (resolve(cell_data.fg), resolve(cell_data.bg));
             if flags.contains(Flags::INVERSE) {
                 std::mem::swap(&mut fg, &mut bg);
+            }
+            if selection.is_some_and(|range| range.contains(indexed.point)) {
+                bg = SELECTION;
             }
             let mut fg = to_hsla(fg);
             if flags.contains(Flags::DIM) {
