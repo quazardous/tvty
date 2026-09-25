@@ -103,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The mouse wheel is no longer slow: a notch moves about three ticket rows
+  in the lists and threads (it was one), five lines of a terminal's
+  history, and a fast wheel in a tmux terminal no longer lags behind.
+  `scroll_speed` in the settings adjusts it.
+
 - The slider's cards stay in place: they are laid out as the projects'
   list, and only the enlarged, chosen card moves. The arrows move the
   choice, in the slider and in the gallery, whose enter now opens the

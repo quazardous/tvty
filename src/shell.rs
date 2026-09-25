@@ -1921,6 +1921,7 @@ impl Render for Shell {
         let keep_focus = canvas(
             |_, _, _| {},
             move |_, _, window, _| {
+                crate::wheel::speed_up(window);
                 window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
                     if phase != DispatchPhase::Bubble {
                         return;

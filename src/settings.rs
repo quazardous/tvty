@@ -22,6 +22,9 @@ pub struct Settings {
     pub terminal_theme: Option<String>,
     /// A ticket's thread shows its newest word first (top-down).
     pub thread_newest_first: bool,
+    /// The mouse wheel's speed, times tvty's own (1: a notch is about three
+    /// ticket rows, five lines of a terminal's history).
+    pub scroll_speed: f32,
 }
 
 impl Default for Settings {
@@ -34,6 +37,7 @@ impl Default for Settings {
             theme: None,
             terminal_theme: None,
             thread_newest_first: false,
+            scroll_speed: 1.,
         }
     }
 }

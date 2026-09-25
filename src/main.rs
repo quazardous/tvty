@@ -16,6 +16,7 @@ mod status;
 mod terminal;
 mod thread;
 mod theme;
+mod wheel;
 
 use gpui_kit::*;
 
@@ -37,6 +38,7 @@ fn main() {
     gpui_kit::application().with_assets(icons::Assets).run(move |cx| {
         gpui_kit::init(cx);
         let settings = settings::Settings::load();
+        wheel::set_speed(settings.scroll_speed);
         theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
         cx.spawn(async move |cx| {
             cx.open_window(

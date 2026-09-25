@@ -57,6 +57,9 @@ pub struct TerminalView {
     layout: (Point<Pixels>, Size<Pixels>),
     /// Wheel movement not yet worth a line.
     scroll_remainder: f32,
+    /// Lines to scroll tmux's history by (up: positive), to the one thread
+    /// that runs tmux for this view; started on the first notch.
+    tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
     /// The left button is down on a selection being made.
     selecting: bool,
 }
@@ -150,6 +153,7 @@ impl TerminalView {
             tmux_session: None,
             layout: (Point::default(), size(px(8.), px(16.))),
             scroll_remainder: 0.,
+            tmux_scroll: None,
             selecting: false,
         })
     }
@@ -355,7 +359,7 @@ impl TerminalView {
     fn on_scroll(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
         let (origin, cell) = self.layout;
         let lines = match event.delta {
-            ScrollDelta::Lines(delta) => delta.y,
+            ScrollDelta::Lines(delta) => crate::wheel::terminal_lines(delta.y),
             ScrollDelta::Pixels(delta) => f32::from(delta.y) / f32::from(cell.height),
         } + self.scroll_remainder;
         let count = lines.trunc() as i32;
@@ -378,32 +382,44 @@ impl TerminalView {
             };
             self.write(one.repeat(count.unsigned_abs() as usize));
         } else if let Some(session) = self.tmux_session.clone() {
-            // `=name:` — exactly this session, its current pane.
-            let target = format!("={session}:");
-            let steps = count.unsigned_abs().to_string();
-            // Off the UI thread: each tmux call is a process.
-            std::thread::spawn(move || {
-                let tmux = |args: &[&str]| {
-                    let _ = std::process::Command::new("tmux")
-                        .args(args)
-                        .env_remove("TMUX")
-                        .stderr(std::process::Stdio::null())
-                        .status();
-                };
-                if up {
-                    // -e: leaves copy mode when scrolled back to the bottom.
-                    tmux(&["copy-mode", "-e", "-t", &target]);
-                    tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-up"]);
-                } else {
-                    tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-down"]);
-                }
-            });
+            let queue = self.tmux_scroll.get_or_insert_with(|| tmux_scroller(session));
+            let _ = queue.send(count);
         } else {
             self.term.lock().scroll_display(Scroll::Delta(count));
             cx.notify();
         }
         cx.stop_propagation();
     }
+}
+
+/// The thread that scrolls a tmux session's history: one tmux call at a
+/// time, in order, off the UI thread; the notches that come meanwhile add up
+/// into the next call. Ends with its view (the sender dropped).
+fn tmux_scroller(session: String) -> std::sync::mpsc::Sender<i32> {
+    let (send, receive) = std::sync::mpsc::channel::<i32>();
+    std::thread::spawn(move || {
+        // `=name:` — exactly this session, its current pane.
+        let target = format!("={session}:");
+        let tmux = |args: &[&str]| {
+            let _ = std::process::Command::new("tmux")
+                .args(args)
+                .env_remove("TMUX")
+                .stderr(std::process::Stdio::null())
+                .status();
+        };
+        while let Ok(first) = receive.recv() {
+            let lines: i32 = first + receive.try_iter().sum::<i32>();
+            let steps = lines.unsigned_abs().to_string();
+            if lines > 0 {
+                // -e: leaves copy mode when scrolled back to the bottom.
+                tmux(&["copy-mode", "-e", "-t", &target]);
+                tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-up"]);
+            } else if lines < 0 {
+                tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-down"]);
+            }
+        }
+    });
+    send
 }
 
 impl Focusable for TerminalView {

@@ -190,6 +190,15 @@ widths, reset), Keyboard shortcuts (all of them, from the one list in
 `src/options.rs`), About (version, aiball's socket, who tvty acts as, the
 live feed, where settings and themes live). Esc closes it.
 
+## The wheel
+
+A notch moves about three ticket rows in the lists and the threads (GPUI's
+own step, three lines of text, was barely one row), and five lines of a
+terminal's history. In a terminal on tmux, the notches go to tmux in order,
+one call at a time, those that come meanwhile added up into the next: a
+fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
+`scroll_speed` in `state.json` multiplies both (1 by default).
+
 ## Keys
 
 | Keys | |
