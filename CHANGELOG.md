@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   summary line, replaced decisions say "superseded", and the gestures sit in
   one place under the thread — accept, reject with a reason, moderate,
   reply, close or reopen.
+- Dragging a side's edge no longer makes the program in the terminal redraw
+  at every column: the terminal takes its new size once the drag settles.
+  The projects' list, lying over the terminal, can be resized again.
 - Visible scrollbars on the ticket list, the ticket thread, the projects'
   list, the options, the theme menu and the gallery.
 - An options page (⚙ or ctrl+,): appearance, layout, every keyboard shortcut,

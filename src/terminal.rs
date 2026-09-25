@@ -38,12 +38,18 @@ impl EventListener for Listener {
     }
 }
 
+/// How long a new size must hold before the PTY hears of it.
+const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
+
 pub struct TerminalView {
     term: Arc<FairMutex<Term<Listener>>>,
     notifier: Notifier,
     focus: FocusHandle,
     /// Grid size last sent to the PTY: (columns, lines).
     grid_size: (u16, u16),
+    /// A new size waiting to be sent, and whether one was ever sent.
+    pending_size: Option<(u16, u16)>,
+    sized: bool,
     exited: bool,
     /// The tmux session shown, to scroll its history in copy mode.
     tmux_session: Option<String>,
@@ -115,6 +121,8 @@ impl TerminalView {
             notifier,
             focus: cx.focus_handle(),
             grid_size: (columns, lines),
+            pending_size: None,
+            sized: false,
             exited: false,
             tmux_session: None,
             layout: (Point::default(), size(px(8.), px(16.))),
@@ -163,11 +171,41 @@ impl TerminalView {
         }
     }
 
-    /// Resizes the grid and the PTY when the element's size in cells changed.
-    fn resize(&mut self, columns: u16, lines: u16, cell: Size<Pixels>) {
-        if (columns, lines) == self.grid_size || columns == 0 || lines == 0 {
+    /// Resizes the grid and the PTY when the element's size in cells changed
+    /// — once the size holds still: while a side is dragged, every column
+    /// would make tmux, and the program in it, redraw its whole screen.
+    fn resize(&mut self, columns: u16, lines: u16, cell: Size<Pixels>, cx: &mut Context<Self>) {
+        if columns == 0 || lines == 0 {
             return;
         }
+        if (columns, lines) == self.grid_size {
+            self.pending_size = None;
+            return;
+        }
+        if !self.sized {
+            self.apply_size(columns, lines, cell);
+            return;
+        }
+        if self.pending_size == Some((columns, lines)) {
+            return;
+        }
+        self.pending_size = Some((columns, lines));
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(RESIZE_SETTLE).await;
+            let _ = this.update(cx, |view, cx| {
+                if view.pending_size == Some((columns, lines)) {
+                    view.pending_size = None;
+                    view.apply_size(columns, lines, cell);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    fn apply_size(&mut self, columns: u16, lines: u16, cell: Size<Pixels>) {
+        self.sized = true;
+        stats::resized(columns, lines);
         self.grid_size = (columns, lines);
         self.term
             .lock()
@@ -493,8 +531,8 @@ impl Element for TerminalElement {
         let lines = (f32::from(bounds.size.height) / f32::from(cell.height)).floor() as u16;
         let term = self.term.clone();
         let focused = match &self.view {
-            Some(view) => view.update(cx, |view, _| {
-                view.resize(columns, lines, cell);
+            Some(view) => view.update(cx, |view, cx| {
+                view.resize(columns, lines, cell, cx);
                 view.layout = (bounds.origin, cell);
                 view.focus.is_focused(window)
             }),

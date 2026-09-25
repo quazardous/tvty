@@ -61,7 +61,9 @@ scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml \
 `scripts/wbox_ctl.py` adds them (`make help` for the make side):
 
 - `scroll X Y N` — mouse wheel, N notches, negative = up;
-- `drag X1 Y1 X2 Y2` — press, move, release (the panel's edge);
+- `drag X1 Y1 X2 Y2` — press, move, release (a side's edge — not its grip,
+  which folds it); `WBOX_DRAG_STEPS=60` moves in 60 short steps, closer to
+  a hand;
 - `hold MODIFIER KEY TIMES --name NAME` — hold the modifier, tap the key,
   screenshot, then release: how the slider (ctrl+tab) is seen while up.
 

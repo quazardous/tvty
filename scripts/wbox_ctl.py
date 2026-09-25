@@ -22,7 +22,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
-    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2
+    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N)
     wbox_ctl.py hold   CONFIG [-s key=value ...] MODIFIER KEY TIMES [--name NAME]
 
 Headless by default: the compositor renders offscreen and nothing appears on
@@ -182,10 +182,14 @@ def main():
         client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.PRESSED))
         client._send(vp, 4)
         client.roundtrip()
-        for i in range(1, 11):
-            client._motion(vp, x1 + (x2 - x1) * i // 10, y1 + (y2 - y1) * i // 10)
+        # WBOX_DRAG_STEPS: more, shorter steps are closer to a hand's drag.
+        import os
+        steps = max(1, int(os.environ.get("WBOX_DRAG_STEPS", "10")))
+        pause = 0.3 / steps if steps > 10 else 0.03
+        for i in range(1, steps + 1):
+            client._motion(vp, x1 + (x2 - x1) * i // steps, y1 + (y2 - y1) * i // steps)
             client.roundtrip()
-            clock.sleep(0.03)
+            clock.sleep(pause)
         client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.RELEASED))
         client._send(vp, 4)
         client.roundtrip()

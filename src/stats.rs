@@ -2,7 +2,8 @@
 //! - `echo <ms>`: from a keystroke sent to the PTY to the first frame painted
 //!   after the PTY answered;
 //! - `stream <frames> fps <wakeups> wakeups, prepaint max <ms>`: every second the PTY talked,
-//!   with the slowest grid preparation of that second.
+//!   with the slowest grid preparation of that second;
+//! - `resize <columns>x<lines>`: each new size sent to the PTY.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -86,4 +87,10 @@ pub fn frame() {
 /// How long the grid took to prepare, for `prepaint max`.
 pub fn prepaint(started: Instant) {
     with(|s| s.prepaint_max = s.prepaint_max.max(started.elapsed().as_secs_f64() * 1000.));
+}
+
+pub fn resized(columns: u16, lines: u16) {
+    with(|s| {
+        let _ = writeln!(s.file, "resize {columns}x{lines}");
+    });
 }

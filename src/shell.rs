@@ -55,6 +55,8 @@ pub struct Shell {
     settings: Settings,
     /// A side's edge is being dragged.
     resizing: Option<Side>,
+    /// The edge has moved since it was pressed.
+    dragged: bool,
     /// The options page is open, on this section.
     options: Option<Section>,
     feed: events::Feed,
@@ -200,6 +202,7 @@ impl Shell {
             panel,
             settings: Settings::load(),
             resizing: None,
+            dragged: false,
             options: None,
             feed: feed.clone(),
             slider: None,
@@ -491,9 +494,13 @@ impl Shell {
             .clamp(PANEL_MIN, max)
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+    /// A side's edge is dragged. GPUI's drag, not a mouse move: its moves
+    /// reach the shell even over the projects' list, which lies over the
+    /// terminal and stops the mouse.
+    fn on_drag_move(&mut self, event: &DragMoveEvent<ResizeDrag>, window: &mut Window, cx: &mut Context<Self>) {
         let paddings = window_paddings(window);
-        let x = f32::from(event.position.x);
+        let x = f32::from(event.event.position.x);
+        self.dragged = true;
         match self.resizing {
             None => return,
             // The list starts after its strip, where the frame's content does.
@@ -511,6 +518,11 @@ impl Shell {
     }
 
     fn on_mouse_up(&mut self, _: &MouseUpEvent, window: &mut Window, cx: &mut Context<Self>) {
+        self.end_resize(window, cx);
+    }
+
+    fn end_resize(&mut self, window: &Window, cx: &mut Context<Self>) {
+        self.dragged = false;
         if self.resizing.take().is_some() {
             // Store what is shown, not an out-of-range drag.
             self.settings.panel_width = Some(self.panel_width(window));
@@ -1114,6 +1126,8 @@ impl Shell {
                     cx.notify();
                 }),
             )
+            .on_mouse_up(MouseButton::Left, cx.listener(|shell, _, window, cx| shell.end_resize(window, cx)))
+            .on_drag(ResizeDrag, |_, _, _, cx| cx.new(|_| NoPreview))
             .child(
                 div()
                     .id(match side {
@@ -1552,6 +1566,11 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A drag released anywhere, even over the title bar: the edge's
+        // drag is gone, the width is kept.
+        if self.dragged && !cx.has_active_drag() {
+            self.end_resize(window, cx);
+        }
         let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
             // The terminal slides in on every switch. A relative offset, not a
             // margin: the terminal keeps its size, so tmux is not resized.
@@ -1636,7 +1655,7 @@ impl Render for Shell {
             .track_focus(&self.focus)
             .capture_key_down(cx.listener(Self::on_key))
             .on_modifiers_changed(cx.listener(Self::on_modifiers))
-            .on_mouse_move(cx.listener(Self::on_mouse_move))
+            .on_drag_move(cx.listener(Self::on_drag_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .relative()
             .flex()
@@ -1715,6 +1734,18 @@ impl Render for Shell {
             )
             .child(body)
             .children(menu)
+    }
+}
+
+/// What a side's edge carries while dragged.
+pub struct ResizeDrag;
+
+/// A drag that shows nothing under the pointer.
+struct NoPreview;
+
+impl Render for NoPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
     }
 }
 
