@@ -21,11 +21,16 @@ such; open points are listed at the end.
 ## Two ways to switch
 
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
-  on each. Click one, or type to filter. The overview.
+  on each. Click one, or type to filter; the arrows move the blue border
+  (it starts on the current terminal), enter opens it. The overview.
 - **Slider** (alt-tab, as a portfolio): holding ctrl+tab dims the window and
   brings the terminals forward as live thumbnails, grouped by project, the
   chosen card enlarged; keep ctrl held and tap to move, release to switch.
-  Most recent first: the quick hop between the few terminals you juggle.
+  Tab goes most recent first: the quick hop between the few terminals you
+  juggle. The arrows move to the card seen left, right, above, below.
+- **Cards never move**: both lay them out as the projects' list does. Only
+  the choice moves — in the slider, the chosen card is enlarged over its
+  own slot, above its neighbours, so nothing shifts under the eye.
 - **The cards are live**: a terminal open in tvty draws its own screen; any
   other session gets a read-only client (`tmux attach -r`: read-only and
   ignore-size, so it never resizes the session) while the slider or the
@@ -189,8 +194,8 @@ live feed, where settings and themes live). Esc closes it.
 
 | Keys | |
 |---|---|
-| ctrl+tab (shift: backwards) | the slider, most recent first; release ctrl to switch |
-| ctrl+shift+space | the gallery; type to filter, enter opens the first, esc closes |
+| ctrl+tab (shift: backwards) | the slider, most recent first; arrows move too; release ctrl to switch |
+| ctrl+shift+space | the gallery; type to filter, arrows move, enter opens, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+k | next colour theme |

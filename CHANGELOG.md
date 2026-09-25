@@ -103,6 +103,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The slider's cards stay in place: they are laid out as the projects'
+  list, and only the enlarged, chosen card moves. The arrows move the
+  choice, in the slider and in the gallery, whose enter now opens the
+  card it shows chosen.
+
 - Debug builds (`make run`) draw at almost release speed: the gallery went
   from about one frame a second to eight or nine, as the dependencies are
   now optimised even there.

@@ -4,7 +4,9 @@
 //! first) and the gallery (ctrl+shift+space, every terminal as a thumbnail).
 //! See docs/UX.md.
 
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -38,6 +40,9 @@ const CARDS_EVERY: Duration = Duration::from_millis(100);
 /// A card's viewport: the bottom of the screen, where Claude Code writes.
 const CARD_LINES: usize = 30;
 const CARD_COLUMNS: usize = 100;
+/// The slider's cards, and its chosen one, enlarged: a card's screen size.
+const SLIDER_CARD: (f32, f32) = (230., 138.);
+const SLIDER_CHOSEN: (f32, f32) = (340., 205.);
 
 const SIDEBAR_WIDTH: f32 = 240.;
 const SIDEBAR_MIN: f32 = 180.;
@@ -72,8 +77,8 @@ pub struct Shell {
     /// there.
     full_list_return: bool,
     feed: events::Feed,
-    /// The slider is up, on this index of [`Shell::slider_order`].
-    slider: Option<usize>,
+    /// The slider is up, on this session.
+    slider: Option<String>,
     /// Counts the slider's openings: each one replays its entrance.
     slider_shown: usize,
     gallery: Option<Gallery>,
@@ -84,6 +89,9 @@ pub struct Shell {
     watchers: HashMap<String, Entity<TerminalView>>,
     /// A capture loop is running.
     watching: bool,
+    /// Where each card of the slider or the gallery was last drawn, by
+    /// session: what up and down go by.
+    card_centres: Rc<RefCell<HashMap<String, Point<Pixels>>>>,
     /// What agents wait on from the user, newest last: the banner.
     needs: Vec<Need>,
     /// What was already waiting at the last read, so that only what is new
@@ -99,8 +107,85 @@ pub struct Shell {
     refresh_now: futures::channel::mpsc::UnboundedSender<events::Change>,
 }
 
+/// An arrow over the cards: along them, or to the group above or below.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Move {
+    Back,
+    Forth,
+    Up,
+    Down,
+}
+
+impl Move {
+    fn of(key: &str) -> Option<Move> {
+        match key {
+            "left" => Some(Move::Back),
+            "right" => Some(Move::Forth),
+            "up" => Some(Move::Up),
+            "down" => Some(Move::Down),
+            _ => None,
+        }
+    }
+}
+
+/// Where an arrow leads from `from` over cards laid out in `groups`: left and
+/// right follow the cards, wrapping around; up and down go to the card seen
+/// nearest above or below, by `centres` (where each was drawn) — or, past the
+/// edge or unmeasured, to the group before or after, at the same place in it
+/// (or its last card). From nowhere, the first card.
+fn moved(
+    groups: &[Vec<String>],
+    from: Option<&str>,
+    step: Move,
+    centres: &HashMap<String, Point<Pixels>>,
+) -> Option<String> {
+    let at = from.and_then(|from| {
+        groups
+            .iter()
+            .enumerate()
+            .find_map(|(g, sessions)| sessions.iter().position(|s| s == from).map(|i| (g, i)))
+    });
+    let Some((g, i)) = at else {
+        return groups.first()?.first().cloned();
+    };
+    match step {
+        Move::Back | Move::Forth => {
+            let flat: Vec<&String> = groups.iter().flatten().collect();
+            let here = groups[..g].iter().map(Vec::len).sum::<usize>() + i;
+            let step = if step == Move::Back { -1 } else { 1 };
+            let next = (here as isize + step).rem_euclid(flat.len() as isize) as usize;
+            Some(flat[next].clone())
+        }
+        Move::Up | Move::Down => {
+            let here = centres.get(groups[g][i].as_str());
+            let nearest = here.and_then(|here| {
+                let (hx, hy) = (f32::from(here.x), f32::from(here.y));
+                groups
+                    .iter()
+                    .flatten()
+                    .filter_map(|s| centres.get(s).map(|c| (s, f32::from(c.x) - hx, f32::from(c.y) - hy)))
+                    // A row away at least: cards of one row differ by a few pixels.
+                    .filter(|(_, _, dy)| if step == Move::Up { *dy < -20. } else { *dy > 20. })
+                    .min_by(|a, b| {
+                        let score = |(_, dx, dy): &(&String, f32, f32)| dy.abs() + dx.abs() / 2.;
+                        score(a).total_cmp(&score(b))
+                    })
+                    .map(|(s, _, _)| s.clone())
+            });
+            if nearest.is_some() {
+                return nearest;
+            }
+            let step = if step == Move::Up { -1 } else { 1 };
+            let group = &groups[(g as isize + step).rem_euclid(groups.len() as isize) as usize];
+            group.get(i).or_else(|| group.last()).cloned()
+        }
+    }
+}
+
 struct Gallery {
     filter: String,
+    /// The card enter opens; when the filter hides it, the first one shown.
+    chosen: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -249,6 +334,7 @@ impl Shell {
             gallery: None,
             watchers: HashMap::new(),
             watching: false,
+            card_centres: Rc::default(),
             needs: Vec::new(),
             waiting: None,
             switches: 0,
@@ -677,17 +763,29 @@ impl Shell {
         } else if key == "escape" && (self.slider.is_some() || self.gallery.is_some()) {
             self.slider = None;
             self.close_gallery(window, cx);
-        } else if let Some(gallery) = self.gallery.as_mut() {
-            // The gallery is up: keys filter it.
+        } else if let (Some(chosen), Some(step)) = (self.slider.clone(), Move::of(key)) {
+            let groups = self.card_sessions("");
+            let centres = self.card_centres.borrow().clone();
+            self.slider = moved(&groups, Some(&chosen), step, &centres).or(Some(chosen));
+            cx.notify();
+        } else if self.gallery.is_some() {
+            // The gallery is up: keys filter it, arrows move along its cards.
+            let chosen = self.gallery_chosen();
+            let groups = self.card_sessions(&self.gallery_filter());
+            let centres = self.card_centres.borrow().clone();
+            let Some(gallery) = self.gallery.as_mut() else { return };
             match key {
                 "backspace" => {
                     gallery.filter.pop();
                 }
                 "enter" => {
-                    if let Some(session) = self.gallery_terminals().first().map(|t| t.session.clone()) {
+                    if let Some(session) = chosen {
                         self.gallery = None;
                         self.select(session, window, cx);
                     }
+                }
+                _ if Move::of(key).is_some() => {
+                    gallery.chosen = moved(&groups, chosen.as_deref(), Move::of(key).unwrap(), &centres).or(chosen);
                 }
                 _ if !m.control && !m.alt && !m.platform => {
                     if let Some(text) = &keystroke.key_char {
@@ -706,11 +804,8 @@ impl Shell {
     /// The slider commits when ctrl is released, like alt-tab.
     fn on_modifiers(&mut self, event: &ModifiersChangedEvent, window: &mut Window, cx: &mut Context<Self>) {
         log::debug!("modifiers {:?}, slider {:?}", event.modifiers, self.slider);
-        if let Some(index) = self.slider
-            && !event.modifiers.control
-        {
-            self.slider = None;
-            if let Some(session) = self.slider_order().get(index).cloned() {
+        if self.slider.is_some() && !event.modifiers.control {
+            if let Some(session) = self.slider.take() {
                 self.select(session, window, cx);
             }
             cx.notify();
@@ -733,17 +828,24 @@ impl Shell {
 
     fn step_slider(&mut self, step: isize, cx: &mut Context<Self>) {
         log::debug!("slider step {step} from {:?}", self.slider);
-        let len = self.slider_order().len() as isize;
+        let order = self.slider_order();
+        let len = order.len() as isize;
         if len == 0 {
             return;
         }
         if self.slider.is_none() {
             self.slider_shown += 1;
+            self.card_centres.borrow_mut().clear();
         }
         // From the current terminal (index 0), the first tap goes to the
-        // previous one: the quick hop between two.
-        let index = self.slider.map_or(0, |i| i as isize);
-        self.slider = Some((index + step).rem_euclid(len) as usize);
+        // previous one: the quick hop between two. The cards stay in place:
+        // only the chosen one changes.
+        let index = self
+            .slider
+            .as_ref()
+            .and_then(|s| order.iter().position(|o| o == s))
+            .unwrap_or(0) as isize;
+        self.slider = order.get((index + step).rem_euclid(len) as usize).cloned();
         self.watch_cards(cx);
         cx.notify();
     }
@@ -753,8 +855,10 @@ impl Shell {
             self.close_gallery(window, cx);
             return;
         }
+        self.card_centres.borrow_mut().clear();
         self.gallery = Some(Gallery {
             filter: String::new(),
+            chosen: self.selected.clone(),
         });
         // Keys go to the window while the gallery is up.
         window.focus(&self.focus.clone(), cx);
@@ -836,24 +940,49 @@ impl Shell {
             .map(|view| view.read(cx).screen())
     }
 
-    /// The terminals the gallery shows, by its filter (label or project).
-    fn gallery_terminals(&self) -> Vec<&Terminal> {
-        let filter = self
-            .gallery
-            .as_ref()
-            .map(|g| g.filter.to_lowercase())
-            .unwrap_or_default();
+    /// The cards as the slider and the gallery lay them out: the projects
+    /// in the list's order, each with its terminals, kept by `filter`
+    /// (label or project, lowercase; empty keeps all).
+    fn card_groups(&self, filter: &str) -> Vec<(&str, Vec<&Terminal>)> {
         self.board
             .projects
             .iter()
-            .flat_map(|p| p.terminals.iter().map(move |t| (p, t)))
-            .filter(|(p, t)| {
-                filter.is_empty()
-                    || t.label.to_lowercase().contains(&filter)
-                    || p.name.to_lowercase().contains(&filter)
+            .map(|p| {
+                let shown = p
+                    .terminals
+                    .iter()
+                    .filter(|t| {
+                        filter.is_empty()
+                            || t.label.to_lowercase().contains(filter)
+                            || p.name.to_lowercase().contains(filter)
+                    })
+                    .collect::<Vec<_>>();
+                (p.name.as_str(), shown)
             })
-            .map(|(_, t)| t)
+            .filter(|(_, shown)| !shown.is_empty())
             .collect()
+    }
+
+    /// [`Shell::card_groups`], by session: what the arrows move along.
+    fn card_sessions(&self, filter: &str) -> Vec<Vec<String>> {
+        self.card_groups(filter)
+            .into_iter()
+            .map(|(_, terminals)| terminals.into_iter().map(|t| t.session.clone()).collect())
+            .collect()
+    }
+
+    fn gallery_filter(&self) -> String {
+        self.gallery.as_ref().map(|g| g.filter.to_lowercase()).unwrap_or_default()
+    }
+
+    /// The gallery's chosen card, if the filter shows it; else the first shown.
+    fn gallery_chosen(&self) -> Option<String> {
+        let groups = self.card_sessions(&self.gallery_filter());
+        let chosen = self.gallery.as_ref()?.chosen.as_ref();
+        chosen
+            .filter(|c| groups.iter().flatten().any(|s| s == *c))
+            .or_else(|| groups.first()?.first())
+            .cloned()
     }
 
     // ── Options ─────────────────────────────────────────────────────────
@@ -1401,30 +1530,11 @@ impl Shell {
 
     /// The slider as a portfolio: the window fades behind, and the groups of
     /// terminals come forward one after another, the chosen card enlarged.
-    fn portfolio(&self, index: usize, cx: &App) -> impl IntoElement + use<> {
-        let order = self.slider_order();
-        let chosen = order.get(index).cloned();
-        let chosen_project = chosen
-            .as_deref()
-            .and_then(|s| self.terminal_of(s))
-            .map(|(p, _)| p.to_string());
-        // The groups, the chosen one's first; within a group, the slider's order.
-        let mut groups: Vec<(&str, Vec<&Terminal>)> = Vec::new();
-        for session in &order {
-            let Some((project, terminal)) = self.terminal_of(session) else {
-                continue;
-            };
-            match groups.iter_mut().find(|(p, _)| *p == project) {
-                Some((_, terminals)) => terminals.push(terminal),
-                None => groups.push((project, vec![terminal])),
-            }
-        }
-        if let Some(chosen) = &chosen_project {
-            if let Some(at) = groups.iter().position(|(p, _)| p == chosen) {
-                let group = groups.remove(at);
-                groups.insert(0, group);
-            }
-        }
+    fn portfolio(&self, chosen: &str, cx: &App) -> impl IntoElement + use<> {
+        let chosen_project = self.terminal_of(chosen).map(|(p, _)| p.to_string());
+        // The cards keep their place, in the list's order: only the chosen
+        // one moves, enlarged above its slot.
+        let groups = self.card_groups("");
 
         let mut body = div()
             .flex()
@@ -1443,9 +1553,29 @@ impl Shell {
             let is_chosen_group = chosen_project.as_deref() == Some(project);
             let mut cards = div().flex().flex_wrap().gap_3();
             for terminal in terminals {
-                let chosen = chosen.as_deref() == Some(terminal.session.as_str());
-                let (width, height) = if chosen { (340., 205.) } else { (230., 138.) };
-                cards = cards.child(self.card(project, terminal, chosen, width, height, cx));
+                let (width, height) = SLIDER_CARD;
+                if terminal.session != chosen {
+                    cards = cards.child(self.card(project, terminal, false, true, width, height, cx));
+                    continue;
+                }
+                // The slot keeps a card's size (a ghost, without its screen);
+                // the enlarged card is painted over it, over its neighbours too.
+                let (big_width, big_height) = SLIDER_CHOSEN;
+                cards = cards.child(
+                    div()
+                        .relative()
+                        .child(self.card(project, terminal, false, false, width, height, cx).opacity(0.))
+                        .child(
+                            deferred(
+                                div()
+                                    .absolute()
+                                    .left(px(-(big_width - width) / 2.))
+                                    .top(px(-(big_height - height) / 2.))
+                                    .child(self.card(project, terminal, true, true, big_width, big_height, cx)),
+                            )
+                            .with_priority(1),
+                        ),
+                );
             }
             // Staggered entrance: each group starts a little after the one before.
             let delay = 0.35 * i as f32 / count;
@@ -1489,7 +1619,7 @@ impl Shell {
                     .py_3()
                     .text_sm()
                     .text_color(p().muted)
-                    .child("tab: next · shift+tab: back · release ctrl to open · esc cancels"),
+                    .child("tab: next · shift+tab: back · arrows: move · release ctrl to open · esc cancels"),
             )
             .with_animation(
                 SharedString::from(format!("portfolio-veil-{}", self.slider_shown)),
@@ -1567,14 +1697,30 @@ impl Shell {
         project: &str,
         terminal: &Terminal,
         chosen: bool,
+        live: bool,
         width: f32,
         height: f32,
         cx: &App,
     ) -> Stateful<Div> {
         let session = &terminal.session;
         let alerts = self.alerts_of(project, terminal.agent.as_deref());
+        let centres = self.card_centres.clone();
+        let key = session.clone();
+        // Where the card lands, for up and down; the slider's enlarged card
+        // is centred on its slot, so both give the same place.
+        let spot = canvas(
+            move |bounds, _, _| {
+                centres.borrow_mut().insert(key, bounds.center());
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .size_full();
         div()
-            .id(SharedString::from(format!("card-{session}")))
+            .id(SharedString::from(format!("card-{session}{}", if live { "" } else { "-ghost" })))
+            .relative()
+            .bg(p().bg)
+            .child(spot)
             .flex()
             .flex_col()
             .w(px(width))
@@ -1603,12 +1749,14 @@ impl Shell {
                     .h(px(height))
                     .overflow_hidden()
                     .bg(p().bg)
-                    .when_some(self.screen(session, cx), |d, screen| d.child(screen.viewport(CARD_LINES, CARD_COLUMNS))),
+                    .when_some(self.screen(session, cx).filter(|_| live), |d, screen| {
+                        d.child(screen.viewport(CARD_LINES, CARD_COLUMNS))
+                    }),
             )
     }
 
     fn gallery_view(&self, gallery: &Gallery, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let shown: Vec<&Terminal> = self.gallery_terminals();
+        let chosen = self.gallery_chosen();
         // Projects side by side, each with its terminals: groups flow.
         let mut body = div()
             .id("gallery")
@@ -1620,21 +1768,13 @@ impl Shell {
             .p_4()
             .flex_1()
             .min_h_0();
-        for project in &self.board.projects {
-            let terminals: Vec<&Terminal> = project
-                .terminals
-                .iter()
-                .filter(|t| shown.iter().any(|s| s.session == t.session))
-                .collect();
-            if terminals.is_empty() {
-                continue;
-            }
+        for (project, terminals) in self.card_groups(&self.gallery_filter()) {
             let mut row = div().flex().flex_wrap().gap_3();
             for terminal in terminals {
                 let session = terminal.session.clone();
-                let selected = self.selected.as_deref() == Some(session.as_str());
+                let is_chosen = chosen.as_deref() == Some(session.as_str());
                 row = row.child(
-                    self.card(&project.name, terminal, selected, 320., 190., cx)
+                    self.card(project, terminal, is_chosen, true, 320., 190., cx)
                         .cursor_pointer()
                         .hover(|d| d.border_color(p().accent))
                         .on_click(cx.listener(move |shell, _, window, cx| {
@@ -1653,7 +1793,7 @@ impl Shell {
                             .text_xs()
                             .font_weight(FontWeight::BOLD)
                             .text_color(p().muted)
-                            .child(project.name.to_uppercase()),
+                            .child(project.to_uppercase()),
                     )
                     .child(row),
             );
@@ -1680,7 +1820,7 @@ impl Shell {
                             .flex_1()
                             .text_color(if gallery.filter.is_empty() { p().muted } else { p().text })
                             .child(if gallery.filter.is_empty() {
-                                "type to filter · enter opens the first · esc closes".to_string()
+                                "type to filter · arrows move · enter opens · esc closes".to_string()
                             } else {
                                 format!("{}▏", gallery.filter)
                             }),
@@ -1771,7 +1911,7 @@ impl Render for Shell {
                 .unwrap_or_default();
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
-        let slider = self.slider.map(|index| self.portfolio(index, cx));
+        let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
         let options = self.options.map(|section| self.options_view(section, window, cx));
         let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
         // A click on something that takes no focus (a list, the panel)
@@ -2093,4 +2233,63 @@ fn options_ticket_list() -> impl IntoElement {
             "priority: urgent, high, low (normal shows nothing)".into(),
         ));
     page
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use gpui_kit::{point, px};
+
+    use super::{Move, moved};
+
+    fn at(cards: &[(&str, f32, f32)]) -> HashMap<String, gpui_kit::Point<gpui_kit::Pixels>> {
+        cards.iter().map(|(s, x, y)| (s.to_string(), point(px(*x), px(*y)))).collect()
+    }
+
+    fn groups() -> Vec<Vec<String>> {
+        [&["a1", "a2", "a3"][..], &["b1"], &["c1", "c2"]]
+            .iter()
+            .map(|g| g.iter().map(|s| s.to_string()).collect())
+            .collect()
+    }
+
+    #[test]
+    fn arrows_follow_the_cards_and_wrap() {
+        let g = groups();
+        assert_eq!(moved(&g, Some("a3"), Move::Forth, &HashMap::new()).as_deref(), Some("b1"));
+        assert_eq!(moved(&g, Some("b1"), Move::Back, &HashMap::new()).as_deref(), Some("a3"));
+        assert_eq!(moved(&g, Some("c2"), Move::Forth, &HashMap::new()).as_deref(), Some("a1"));
+        assert_eq!(moved(&g, Some("a1"), Move::Back, &HashMap::new()).as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn up_and_down_keep_the_place_in_the_group() {
+        let g = groups();
+        assert_eq!(moved(&g, Some("a2"), Move::Down, &HashMap::new()).as_deref(), Some("b1"));
+        assert_eq!(moved(&g, Some("c2"), Move::Down, &HashMap::new()).as_deref(), Some("a2"));
+        assert_eq!(moved(&g, Some("a3"), Move::Up, &HashMap::new()).as_deref(), Some("c2"));
+    }
+
+    #[test]
+    fn up_and_down_go_by_what_is_seen() {
+        // a1 a2 a3 b1 on the first row, c1 c2 under a2 and a3.
+        let g = groups();
+        let seen = at(&[
+            ("a1", 100., 100.), ("a2", 300., 100.), ("a3", 500., 100.), ("b1", 800., 100.),
+            ("c1", 300., 400.), ("c2", 500., 400.),
+        ]);
+        assert_eq!(moved(&g, Some("a3"), Move::Down, &seen).as_deref(), Some("c2"));
+        assert_eq!(moved(&g, Some("b1"), Move::Down, &seen).as_deref(), Some("c2"));
+        assert_eq!(moved(&g, Some("c1"), Move::Up, &seen).as_deref(), Some("a2"));
+        // Nothing below: the next group, as without positions.
+        assert_eq!(moved(&g, Some("c1"), Move::Down, &seen).as_deref(), Some("a1"));
+    }
+
+    #[test]
+    fn from_nowhere_the_first_card() {
+        assert_eq!(moved(&groups(), None, Move::Down, &HashMap::new()).as_deref(), Some("a1"));
+        assert_eq!(moved(&groups(), Some("gone"), Move::Forth, &HashMap::new()).as_deref(), Some("a1"));
+        assert_eq!(moved(&[], None, Move::Forth, &HashMap::new()), None);
+    }
 }

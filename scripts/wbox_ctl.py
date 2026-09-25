@@ -24,6 +24,8 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
     wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N)
     wbox_ctl.py hold   CONFIG [-s key=value ...] MODIFIER KEY TIMES [--name NAME]
+                       (env WBOX_HOLD_THEN=right,down: more keys held, a shot
+                       each; WBOX_HOLD_CANCEL=1: Escape before the release)
 
 Headless by default: the compositor renders offscreen and nothing appears on
 the desktop. Set WBOX_VISIBLE=1 to get a window, for when the assertion is
@@ -215,8 +217,27 @@ def main():
             client._kbd_key(code, wp.RELEASED)
             client.roundtrip()
             clock.sleep(0.15)
-        clock.sleep(float(os.environ.get("WBOX_HOLD_WAIT", "0.5")))
+        wait = float(os.environ.get("WBOX_HOLD_WAIT", "0.5"))
+        clock.sleep(wait)
         result = comp.screenshot(name or "hold")
+        # WBOX_HOLD_THEN="right,down": more keys tapped while still held, a
+        # shot after each (NAME-1, NAME-2...).
+        extra = [k for k in os.environ.get("WBOX_HOLD_THEN", "").split(",") if k]
+        for i, then in enumerate(extra, 1):
+            then_code, _, _ = wp._parse_shortcut(then)
+            client._kbd_key(then_code, wp.PRESSED)
+            client._kbd_key(then_code, wp.RELEASED)
+            client.roundtrip()
+            clock.sleep(wait)
+            result = comp.screenshot("%s-%d" % (name or "hold", i))
+        # WBOX_HOLD_CANCEL=1: Escape before the release, so that a gesture
+        # acting on release (the slider opening a card) does nothing.
+        if os.environ.get("WBOX_HOLD_CANCEL"):
+            esc, _, _ = wp._parse_shortcut("Escape")
+            client._kbd_key(esc, wp.PRESSED)
+            client._kbd_key(esc, wp.RELEASED)
+            client.roundtrip()
+            clock.sleep(0.2)
         client._kbd_mods(0)
         client._kbd_key(mod_code, wp.RELEASED)
         client.roundtrip()
