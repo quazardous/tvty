@@ -1030,21 +1030,7 @@ impl Shell {
 
     fn theme_menu_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let current = theme::current(cx);
-        let mut list = div()
-            .id("theme-menu")
-            .absolute()
-            .occlude()
-            .top(px(36.))
-            .right_2()
-            .w(px(240.))
-            .max_h(px(420.))
-            .py_1()
-            .rounded_md()
-            .bg(p().surface)
-            .border_1()
-            .border_color(p().border)
-            .shadow_lg()
-            .text_sm();
+        let mut list = div().id("theme-menu-list").flex().flex_col().py_1().text_sm();
         let mut last_dark = None;
         for (name, dark) in theme::names(cx) {
             if last_dark != Some(dark) {
@@ -1079,7 +1065,25 @@ impl Shell {
                     })),
             );
         }
-        list.overflow_y_scrollbar()
+        // The box holds the place under the title bar; the list scrolls in
+        // it (the scrollbar's wrapper keeps a size, not a position).
+        div()
+            .id("theme-menu")
+            .absolute()
+            .occlude()
+            .top(px(36.))
+            .right_2()
+            .w(px(240.))
+            .h(px(420.))
+            .flex()
+            .flex_col()
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().border)
+            .shadow_lg()
+            .overflow_hidden()
+            .child(list.overflow_y_scrollbar())
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
