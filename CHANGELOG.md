@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A ticket list that says at a glance what is yours: bands from "to
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.
+- In a ticket's thread: the order (newest first or last), a click to
+  change the priority, a short snooze, replies without notifying, `@`
+  mentions, pasted screenshots, and questions answered and ticked from
+  the reply.
 - The ticket list's states, the flame, the critical warning and the
   priorities are drawn as Material Symbols icons, in the theme's colours —
   the emoji they replace showed grey.

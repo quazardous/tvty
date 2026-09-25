@@ -6,7 +6,7 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
+use gpui_kit::component::input::{InputEvent, Paste, Textarea, TextareaState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -15,6 +15,7 @@ use gpui_kit::*;
 use crate::aiball::{Aiball, Comment, Thread, TicketRow};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
+use crate::thread;
 use crate::icons::{self, Icon};
 use crate::theme::p;
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
@@ -30,6 +31,9 @@ const ROW_HEIGHT: f32 = 56.;
 
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
+
+/// The user flipped the thread's order: newest first when true.
+pub struct OrderChanged(pub bool);
 
 /// What the panel is about: a project, and the agent of the terminal shown.
 #[derive(Clone, Debug, PartialEq)]
@@ -51,6 +55,18 @@ struct Detail {
     unfolded: HashSet<u64>,
     /// The thread's scroll: it opens on its latest word, next to the reply.
     scroll: ScrollHandle,
+    /// Questions the reply answers: (message, question id).
+    answers: Vec<(u64, String)>,
+    /// The next reply notifies nobody.
+    quiet: bool,
+    /// The short menus under the reply box: snooze, priority.
+    menu: Option<Menu>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Menu {
+    Snooze,
+    Priority,
 }
 
 pub struct TicketPanel {
@@ -63,9 +79,14 @@ pub struct TicketPanel {
     /// The bands folded to their title, and each band's own scroll.
     folded: HashSet<Band>,
     scrolls: HashMap<Band, ScrollHandle>,
+    /// The thread's order: newest first (top-down) or last (by the reply).
+    newest_first: bool,
+    /// Who can be @mentioned, read once.
+    mentions: Vec<String>,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
+impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
 
@@ -83,6 +104,14 @@ impl TicketPanel {
             }
         })
         .detach();
+        let reader = aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
+            if let Ok(mentions) = mentions {
+                let _ = this.update(cx, |panel, _| panel.mentions = mentions);
+            }
+        })
+        .detach();
         Self {
             aiball,
             scope: None,
@@ -92,7 +121,27 @@ impl TicketPanel {
             reply,
             folded: HashSet::new(),
             scrolls: HashMap::new(),
+            newest_first: false,
+            mentions: Vec::new(),
         }
+    }
+
+    pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {
+        self.newest_first = newest_first;
+        cx.notify();
+    }
+
+    fn flip_order(&mut self, cx: &mut Context<Self>) {
+        self.newest_first = !self.newest_first;
+        if let Some(detail) = &self.detail {
+            if self.newest_first {
+                detail.scroll.set_offset(point(px(0.), px(0.)));
+            } else {
+                detail.scroll.scroll_to_bottom();
+            }
+        }
+        cx.emit(OrderChanged(self.newest_first));
+        cx.notify();
     }
 
     /// Shows another terminal's tickets; closes the open ticket when the
@@ -136,6 +185,9 @@ impl TicketPanel {
             busy: false,
             unfolded: HashSet::new(),
             scroll: ScrollHandle::new(),
+            answers: Vec::new(),
+            quiet: false,
+            menu: None,
         });
         self.load(ticket, true, cx);
         cx.notify();
@@ -156,6 +208,7 @@ impl TicketPanel {
                 })
                 .await;
             let _ = this.update(cx, |panel, cx| {
+                let newest_first = panel.newest_first;
                 if let Some(detail) = panel.detail.as_mut().filter(|d| d.ticket == ticket) {
                     match thread {
                         Ok(thread) => {
@@ -165,7 +218,7 @@ impl TicketPanel {
                                 .thread
                                 .as_ref()
                                 .is_none_or(|t| t.comments.len() != thread.comments.len());
-                            if grew {
+                            if grew && !newest_first {
                                 detail.scroll.scroll_to_bottom();
                             }
                             detail.thread = Some(thread);
@@ -245,10 +298,15 @@ impl TicketPanel {
             return;
         };
         let ticket = detail.ticket;
+        let (quiet, answers) = (detail.quiet, detail.answers.clone());
         self.gesture(
             move |aiball| {
                 if !body.is_empty() {
-                    aiball.reply(&project, ticket, &body)?;
+                    let comment = aiball.reply(&project, ticket, &body, quiet)?;
+                    // The questions it answers get their box ticked.
+                    for (message, question) in &answers {
+                        aiball.answer_question(*message, question, comment)?;
+                    }
                 }
                 then(aiball, &project, ticket)
             },
@@ -256,10 +314,110 @@ impl TicketPanel {
                 panel
                     .reply
                     .update(cx, |reply, cx| reply.set_value("", window, cx));
+                if let Some(detail) = panel.detail.as_mut() {
+                    detail.answers.clear();
+                    detail.quiet = false;
+                    detail.menu = None;
+                }
             },
             window,
             cx,
         );
+    }
+
+    /// Snoozes the ticket for `hours` (or wakes it: `None`).
+    fn snooze(&mut self, hours: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
+        let until = hours.map(|h| {
+            let at = std::time::SystemTime::now() + std::time::Duration::from_secs(h * 3600);
+            crate::status::format_time(at)
+        });
+        self.act(move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
+    }
+
+    fn set_priority(&mut self, priority: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        self.act(move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
+    }
+
+    fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
+        if let Some(detail) = self.detail.as_mut() {
+            detail.menu = if detail.menu == Some(menu) { None } else { Some(menu) };
+            cx.notify();
+        }
+    }
+
+    /// Quotes a question into the reply; sending the reply ticks it.
+    fn answer(&mut self, message: u64, question: thread::Question, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(detail) = self.detail.as_mut() else { return };
+        if detail.answers.iter().any(|(m, q)| *m == message && *q == question.id) {
+            return;
+        }
+        detail.answers.push((message, question.id));
+        let text = self.reply.read(cx).value().to_string();
+        let quoted = format!("{text}{}> {}\n\n", if text.is_empty() || text.ends_with('\n') { "" } else { "\n\n" }, question.text);
+        self.reply.update(cx, |reply, cx| reply.set_value(quoted, window, cx));
+        cx.notify();
+    }
+
+    /// The `@name` being typed at the end of the reply, if any.
+    fn mention_typed(&self, cx: &App) -> Option<String> {
+        let text = self.reply.read(cx).value();
+        let word = text.rsplit(char::is_whitespace).next()?;
+        let name = word.strip_prefix('@')?;
+        name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_').then(|| name.to_lowercase())
+    }
+
+    fn complete_mention(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.reply.read(cx).value().to_string();
+        let Some(at) = text.rfind('@') else { return };
+        let completed = format!("{}@{name} ", &text[..at]);
+        self.reply.update(cx, |reply, cx| reply.set_value(completed, window, cx));
+        cx.notify();
+    }
+
+    /// Ctrl+V with an image on the clipboard: uploads it to aiball and puts
+    /// its link in the reply. Answers whether it took the paste.
+    fn paste_image(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let Some(image) = cx.read_from_clipboard().and_then(|item| {
+            item.into_entries().find_map(|entry| match entry {
+                ClipboardEntry::Image(image) => Some(image),
+                _ => None,
+            })
+        }) else {
+            return false;
+        };
+        let content_type = image.format.mime_type().to_string();
+        let name = format!("pasted.{}", content_type.rsplit('/').next().unwrap_or("png"));
+        let aiball = self.aiball.clone();
+        let window_handle = window.window_handle();
+        if let Some(detail) = self.detail.as_mut() {
+            detail.busy = true;
+        }
+        cx.spawn(async move |this, cx| {
+            let bytes = image.bytes.clone();
+            let uploaded = cx
+                .background_executor()
+                .spawn(async move { aiball.upload(&bytes, &content_type, &name) })
+                .await;
+            let _ = cx.update_window(window_handle, |_, window, cx| {
+                let _ = this.update(cx, |panel, cx| {
+                    if let Some(detail) = panel.detail.as_mut() {
+                        detail.busy = false;
+                        match uploaded {
+                            Ok(url) => {
+                                let text = panel.reply.read(cx).value().to_string();
+                                let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
+                                let with_image = format!("{text}{sep}![pasted]({url})\n");
+                                panel.reply.update(cx, |reply, cx| reply.set_value(with_image, window, cx));
+                            }
+                            Err(error) => detail.error = Some(format!("{error:#}")),
+                        }
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
+        true
     }
 
     fn decide(&mut self, message: u64, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -516,7 +674,21 @@ impl TicketPanel {
             .font_weight(FontWeight::BOLD)
             .items_center()
             .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 20.)))
-            .child(div().flex_1().min_w_0().child(format!("#{} {}", ticket.id, ticket.title)));
+            .child(div().flex_1().min_w_0().child(format!("#{} {}", ticket.id, ticket.title)))
+            .child(
+                div()
+                    .id("thread-order")
+                    .flex_none()
+                    .px_1()
+                    .rounded_sm()
+                    .text_xs()
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(p().accent)
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child(if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
+                    .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
+            );
         let turn = (!sentence.is_empty()).then(|| {
             let (stripe_kind, colour) = state
                 .as_ref()
@@ -543,10 +715,27 @@ impl TicketPanel {
                 div().child(text).into_any_element()
             });
         }
-        if let Some(priority) = ticket.priority.as_deref() {
-            if let Some(icon) = icons::priority(priority) {
-                chips.push(icons::labelled(icon, icons::priority_colour(priority), 14., priority.to_string()).into_any_element());
-            }
+        {
+            // The priority, a click away from changing.
+            let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
+            let label = match icons::priority(&priority) {
+                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone()),
+                None => div().child(priority.clone()),
+            };
+            chips.push(
+                div()
+                    .id("priority-chip")
+                    .px_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child(label)
+                    .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Priority, cx)))
+                    .into_any_element(),
+            );
+        }
+        if let Some(until) = ticket.postponed_until.as_deref() {
+            chips.push(div().child(format!("snoozed until {}", until.get(..16).unwrap_or(until).replace('T', " "))).into_any_element());
         }
         if let Some(critical) = &ticket.critical {
             chips.push(icons::pill(Icon::Critical, format!("holds {}", critical.holds), p().danger).into_any_element());
@@ -622,11 +811,10 @@ impl TicketPanel {
         // ── The talk, folded up to its latest snapshot ──────────────────
         let has_talk = read.entries.iter().any(|e| !matches!(e.shape, Shape::Event { .. }));
         let body_open = !has_talk || detail.unfolded.contains(&ticket.id);
-        let mut body = div()
+        let mut talk: Vec<AnyElement> = Vec::new();
+        let opening = div()
             .flex()
             .flex_col()
-            .px_3()
-            .py_2()
             .gap_2()
             .child(self.entry_head(
                 ticket.id,
@@ -644,14 +832,19 @@ impl TicketPanel {
                 (Some(text), false) => d.child(folded_line(reading::first_line(Some(text)))),
                 (None, _) => d,
             });
+        talk.push(opening.into_any_element());
         let comments: std::collections::HashMap<u64, &Comment> =
             thread.comments.iter().map(|c| (c.id, c)).collect();
         for entry in &read.entries {
             let Some(comment) = comments.get(&entry.id) else {
                 continue;
             };
-            body = body.child(self.entry(entry, comment, &detail.unfolded, &user, detail.busy, cx));
+            talk.push(self.entry(entry, comment, detail, &user, cx));
         }
+        if self.newest_first {
+            talk.reverse();
+        }
+        let body = div().flex().flex_col().px_3().py_2().gap_2().children(talk);
 
         // ── The gestures, in one place ──────────────────────────────────
         let typed = !self.reply.read(cx).value().trim().is_empty();
@@ -680,7 +873,11 @@ impl TicketPanel {
                                     icons::of_kind(&active.kind),
                                     p().warning,
                                     16.,
-                                    format!("{} proposes a {}", active.by, reading::kind_noun(&active.kind)),
+                                    {
+                                        let noun = reading::kind_noun(&active.kind);
+                                        let article = if noun.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+                                        format!("{} proposes {article} {noun}", active.by)
+                                    },
                                 )),
                         )
                         .child(
@@ -729,20 +926,92 @@ impl TicketPanel {
                 )
         });
         let closed = ticket.closed;
+        let snoozed = ticket.postponed_until.is_some();
+        // `@` at the end of the reply: who it can be.
+        let mentions = self.mention_typed(cx).map(|typed| {
+            let mut row = div().flex().flex_wrap().gap_1();
+            for name in self.mentions.iter().filter(|n| n.to_lowercase().starts_with(&typed)).take(8) {
+                let pick = name.clone();
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("mention-{name}")))
+                        .px_1p5()
+                        .rounded_sm()
+                        .text_xs()
+                        .border_1()
+                        .border_color(p().border)
+                        .cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .child(format!("@{name}"))
+                        .on_click(cx.listener(move |panel, _, window, cx| panel.complete_mention(pick.clone(), window, cx))),
+                );
+            }
+            row
+        });
+        let chip = |id: &'static str, label: &'static str| {
+            div()
+                .id(id)
+                .px_2()
+                .py_0p5()
+                .rounded_md()
+                .text_xs()
+                .border_1()
+                .border_color(p().border)
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(label)
+        };
+        let menu = detail.menu.map(|menu| {
+            let row = div().flex().flex_wrap().items_center().gap_1();
+            match menu {
+                Menu::Snooze => row
+                    .child(div().text_xs().text_color(p().muted).child("Snooze for"))
+                    .child(chip("snooze-1h", "1 hour").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
+                    .child(chip("snooze-1d", "a day").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
+                    .child(chip("snooze-1w", "a week").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
+                Menu::Priority => {
+                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Priority"));
+                    for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
+                        row = row.child(
+                            chip(id, priority).on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx))),
+                        );
+                    }
+                    row
+                }
+            }
+        });
+        let quiet = detail.quiet;
         let actions = div()
+            .id("ticket-actions")
             .flex()
             .flex_col()
             .flex_none()
             .gap_2()
             .p_3()
-            .border_t_1()
+            .map(|d| if self.newest_first { d.border_b_1() } else { d.border_t_1() })
             .border_color(p().border)
+            // A paste with an image: it goes to aiball, its link to the
+            // reply. Caught before the reply box pastes text.
+            .capture_action(cx.listener(|panel, _: &Paste, window, cx| {
+                if panel.paste_image(window, cx) {
+                    cx.stop_propagation();
+                }
+            }))
             .when_some(detail.error.clone(), |d, error| {
                 d.child(div().text_color(p().danger).child(error))
             })
             .children(moderation)
             .children(decision)
             .child(Textarea::new(&self.reply))
+            .children(mentions)
+            .when(!detail.answers.is_empty(), |d| {
+                d.child(div().text_xs().text_color(p().muted).child(format!(
+                    "Sending answers {} question{}.",
+                    detail.answers.len(),
+                    if detail.answers.len() > 1 { "s" } else { "" }
+                )))
+            })
+            .children(menu)
             .child(
                 div()
                     .flex()
@@ -756,7 +1025,43 @@ impl TicketPanel {
                             .disabled(detail.busy)
                             .on_click(cx.listener(move |panel, _, window, cx| panel.set_closed(!closed, window, cx))),
                     )
+                    .when(!closed, |d| {
+                        d.child(if snoozed {
+                            Button::new("wake")
+                                .ghost()
+                                .small()
+                                .label("Wake")
+                                .disabled(detail.busy)
+                                .on_click(cx.listener(|panel, _, window, cx| panel.snooze(None, window, cx)))
+                        } else {
+                            Button::new("snooze")
+                                .ghost()
+                                .small()
+                                .label("Snooze ▾")
+                                .disabled(detail.busy)
+                                .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
+                        })
+                    })
                     .child(div().flex_1())
+                    .child(
+                        div()
+                            .id("quiet")
+                            .px_2()
+                            .py_0p5()
+                            .rounded_md()
+                            .text_xs()
+                            .border_1()
+                            .border_color(if quiet { p().accent } else { p().border })
+                            .text_color(if quiet { p().text } else { p().muted })
+                            .cursor_pointer()
+                            .child("without notifying")
+                            .on_click(cx.listener(|panel, _, _, cx| {
+                                if let Some(detail) = panel.detail.as_mut() {
+                                    detail.quiet = !detail.quiet;
+                                }
+                                cx.notify();
+                            })),
+                    )
                     .child(
                         Button::new("send")
                             .primary()
@@ -767,48 +1072,46 @@ impl TicketPanel {
                     ),
             );
 
+        let thread_view = div()
+            .relative()
+            .flex_1()
+            .min_h_0()
+            .child(
+                div()
+                    .id("ticket-thread")
+                    .size_full()
+                    .track_scroll(&detail.scroll)
+                    .overflow_y_scroll()
+                    .child(body),
+            )
+            .child(
+                div().absolute().inset_0().child(
+                    Scrollbar::new(&detail.scroll)
+                        .axis(ScrollbarAxis::Vertical)
+                        .viewport_from_layout(),
+                ),
+            );
+        // Newest last, the reply sits under the talk; newest first, above it.
+        let (first, second) = if self.newest_first {
+            (actions.into_any_element(), thread_view.into_any_element())
+        } else {
+            (thread_view.into_any_element(), actions.into_any_element())
+        };
         div()
             .flex()
             .flex_col()
             .flex_1()
             .min_h_0()
             .child(head)
-            .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .id("ticket-thread")
-                            .size_full()
-                            .track_scroll(&detail.scroll)
-                            .overflow_y_scroll()
-                            .child(body),
-                    )
-                    .child(
-                        div().absolute().inset_0().child(
-                            Scrollbar::new(&detail.scroll)
-                                .axis(ScrollbarAxis::Vertical)
-                                .viewport_from_layout(),
-                        ),
-                    ),
-            )
-            .child(actions)
+            .child(first)
+            .child(second)
             .into_any_element()
     }
 
     /// One entry of the thread: an event line, a folded comment, or a whole
     /// one.
-    fn entry(
-        &self,
-        entry: &Entry,
-        comment: &Comment,
-        unfolded: &HashSet<u64>,
-        user: &str,
-        busy: bool,
-        cx: &mut Context<Self>,
-    ) -> AnyElement {
+    fn entry(&self, entry: &Entry, comment: &Comment, detail: &Detail, user: &str, cx: &mut Context<Self>) -> AnyElement {
+        let (unfolded, busy) = (&detail.unfolded, detail.busy);
         if let Shape::Event { verb, count } = &entry.shape {
             let times = if *count > 1 { format!(" ×{count}") } else { String::new() };
             return div()
@@ -846,6 +1149,32 @@ impl TicketPanel {
                 )
         });
         let commits = comment.commits();
+        // Its open questions: a click quotes one into the reply, which ticks
+        // it once sent.
+        let questions = thread::questions(comment.body.as_deref());
+        let mut questions_row = div().flex().flex_col().gap_1();
+        for question in &questions {
+            let queued = detail.answers.iter().any(|(m, q)| *m == comment.id && *q == question.id);
+            let (message, pick) = (comment.id, question.clone());
+            questions_row = questions_row.child(
+                div()
+                    .id(SharedString::from(format!("question-{}-{}", comment.id, question.id)))
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_0p5()
+                    .rounded_md()
+                    .text_xs()
+                    .border_1()
+                    .border_color(if queued { p().accent } else { p().border })
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child(div().flex_none().text_color(p().accent).child(if queued { "✓ in the reply" } else { "Answer" }))
+                    .child(div().flex_1().min_w_0().truncate().child(question.text.clone()))
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.answer(message, pick.clone(), window, cx))),
+            );
+        }
         div()
             .flex()
             .flex_col()
@@ -870,6 +1199,7 @@ impl TicketPanel {
                 _ => d,
             })
             .children(moderation)
+            .when(open && !questions.is_empty(), |d| d.child(questions_row))
             .when(open && !commits.is_empty(), |d| {
                 d.child(div().text_xs().text_color(p().muted).child(commits.join(" · ")))
             })

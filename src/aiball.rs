@@ -181,6 +181,8 @@ pub struct TicketHeader {
     pub token_usage: Option<TokenUsage>,
     /// The ticket's own meta: a decision when it was filed with one.
     pub meta: Option<String>,
+    /// Snoozed until then.
+    pub postponed_until: Option<String>,
     #[serde(default)]
     pub relations: Vec<Relation>,
 }
@@ -351,19 +353,70 @@ impl Aiball {
             .map(drop)
     }
 
-    pub fn reply(&self, project: &str, ticket: u64, body: &str) -> anyhow::Result<()> {
+    /// Posts a comment; `quiet`: without notifying anyone (scope
+    /// internal). Answers the comment's id.
+    pub fn reply(&self, project: &str, ticket: u64, body: &str, quiet: bool) -> anyhow::Result<u64> {
+        let mut message = json!({
+            "project": project,
+            "kind": "comment_added",
+            "ticket_id": ticket,
+            "parent_id": ticket,
+            "body": body,
+            "by_agent": self.user,
+        });
+        if quiet {
+            message["scope"] = json!("internal");
+        }
+        let answer = self.post("/api/messages", message)?;
+        answer.get("id").and_then(Value::as_u64).context("the new comment has no id")
+    }
+
+    /// Marks a question (`- [ ]` in a comment) answered by a comment.
+    pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
         self.post(
-            "/api/messages",
-            json!({
-                "project": project,
-                "kind": "comment_added",
-                "ticket_id": ticket,
-                "parent_id": ticket,
-                "body": body,
-                "by_agent": self.user,
-            }),
+            &format!("/api/messages/{message}/questions/{}/answer", encode(question)),
+            json!({ "answered_by": self.user, "answered_in": answered_in }),
         )
         .map(drop)
+    }
+
+    /// Snoozes a ticket until `until` (ISO 8601), or wakes it (`None`).
+    pub fn snooze(&self, ticket: u64, until: Option<&str>) -> anyhow::Result<()> {
+        match until {
+            Some(until) => self.post(&format!("/api/tickets/{ticket}/postpone"), json!({ "until": until })),
+            None => self.post(&format!("/api/tickets/{ticket}/unsnooze"), json!({})),
+        }
+        .map(drop)
+    }
+
+    pub fn set_priority(&self, ticket: u64, priority: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{ticket}/edit"), json!({ "priority": priority }))
+            .map(drop)
+    }
+
+    /// Who can be @mentioned: projects, then agents.
+    pub fn mention_suggestions(&self) -> anyhow::Result<Vec<String>> {
+        #[derive(Deserialize)]
+        struct Suggestions {
+            projects: Vec<String>,
+            agents: Vec<String>,
+        }
+        let s: Suggestions = self.get("/api/mention-suggestions")?;
+        Ok(s.projects.into_iter().chain(s.agents).collect())
+    }
+
+    /// Stores a file in aiball's uploads; answers its URL, to cite in a
+    /// comment.
+    pub fn upload(&self, bytes: &[u8], content_type: &str, name: &str) -> anyhow::Result<String> {
+        let answer = self.request_bytes(
+            "POST",
+            "/api/uploads",
+            content_type,
+            &[("x-aiball-upload-name", name)],
+            bytes,
+        )?;
+        let answer: Value = serde_json::from_str(&answer)?;
+        answer.get("url").and_then(Value::as_str).map(str::to_string).context("the upload has no url")
     }
 
     /// Moderation: approve or reject a pending ticket or comment.
@@ -404,23 +457,36 @@ impl Aiball {
         Ok(serde_json::from_str(&answer).unwrap_or(Value::Null))
     }
 
-    #[cfg(unix)]
     fn request(&self, method: &str, path: &str, body: Option<Value>) -> anyhow::Result<String> {
+        let body = body.map(|b| b.to_string()).unwrap_or_default();
+        self.request_bytes(method, path, "application/json", &[], body.as_bytes())
+    }
+
+    #[cfg(unix)]
+    fn request_bytes(
+        &self,
+        method: &str,
+        path: &str,
+        content_type: &str,
+        headers: &[(&str, &str)],
+        body: &[u8],
+    ) -> anyhow::Result<String> {
         use std::os::unix::net::UnixStream;
 
         let mut stream = UnixStream::connect(&self.socket)
             .with_context(|| format!("aiball's socket {}", self.socket.display()))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
-        let body = body.map(|b| b.to_string()).unwrap_or_default();
         // HTTP/1.0: the daemon closes the connection after the answer, so
         // reading to the end reads exactly one answer, never chunked.
-        let request = format!(
+        let extra: String = headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
+        let head = format!(
             "{method} {path} HTTP/1.0\r\nHost: aiball\r\nx-aiball-consumer: {user}\r\n\
-             content-type: application/json\r\ncontent-length: {len}\r\n\r\n{body}",
+             content-type: {content_type}\r\n{extra}content-length: {len}\r\n\r\n",
             user = self.user,
             len = body.len(),
         );
-        stream.write_all(request.as_bytes())?;
+        stream.write_all(head.as_bytes())?;
+        stream.write_all(body)?;
         let mut answer = Vec::new();
         stream.read_to_end(&mut answer)?;
         let answer = String::from_utf8_lossy(&answer);
@@ -435,7 +501,7 @@ impl Aiball {
     }
 
     #[cfg(not(unix))]
-    fn request(&self, _: &str, _: &str, _: Option<Value>) -> anyhow::Result<String> {
+    fn request_bytes(&self, _: &str, _: &str, _: &str, _: &[(&str, &str)], _: &[u8]) -> anyhow::Result<String> {
         bail!("aiball's socket is Unix only for now")
     }
 }

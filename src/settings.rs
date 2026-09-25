@@ -20,6 +20,8 @@ pub struct Settings {
     pub theme: Option<String>,
     /// The terminals' own colour theme; `None`: the window's.
     pub terminal_theme: Option<String>,
+    /// A ticket's thread shows its newest word first (top-down).
+    pub thread_newest_first: bool,
 }
 
 impl Default for Settings {
@@ -31,6 +33,7 @@ impl Default for Settings {
             sidebar_width: None,
             theme: None,
             terminal_theme: None,
+            thread_newest_first: false,
         }
     }
 }

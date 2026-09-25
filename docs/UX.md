@@ -105,6 +105,15 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   list's glyphs, and **"superseded"** when a newer decision replaced them:
   only the latest can be taken. Only the latest step shows as running.
   Events are one grey line, merged when one author repeats them.
+- **⇅ sets the order**: newest last, the reply box under the talk (the
+  default), or newest first, the reply box at the top; it is remembered.
+- **The frequent gestures stay at hand** in the panel — a dev's round is
+  read, decide or answer, next: a click on the priority chip changes it;
+  Snooze gives an hour, a day or a week (Wake when snoozed); "without
+  notifying" sends the next reply to nobody; `@` at the end of the reply
+  offers who to mention; an image pasted (Ctrl+V) goes to aiball's uploads
+  and its link into the reply; an open question (`- [ ]`) of a comment has
+  an Answer chip that quotes it into the reply, and sending ticks it.
 - **The gestures, in one place**: the pending decision (not your own) with
   Accept — "→ go", "→ close" — and Reject, which wants a reason typed first;
   moderation; the reply box; Close or Reopen. What is typed is posted first,

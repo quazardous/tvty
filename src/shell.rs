@@ -18,7 +18,7 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::fulllist::{CloseFullList, FullList, OpenTicket};
-use crate::panel::{BoardChanged, CollapsePanel, OpenFullList, Scope, TicketPanel, dot, pill};
+use crate::panel::{BoardChanged, CollapsePanel, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
 use crate::terminal::{Snapshot, TerminalView};
@@ -193,6 +193,11 @@ impl Shell {
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
             .detach();
+        cx.subscribe(&panel, |shell, _, order: &OrderChanged, _| {
+            shell.settings.thread_newest_first = order.0;
+            shell.settings.save();
+        })
+        .detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
             shell.toggle_full_list(window, cx)
         })
@@ -229,6 +234,8 @@ impl Shell {
             focus: cx.focus_handle(),
             refresh_now,
         };
+        let newest_first = shell.settings.thread_newest_first;
+        shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
             None => window.focus(&shell.focus.clone(), cx),

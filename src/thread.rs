@@ -150,6 +150,30 @@ pub fn read(thread: &Thread) -> Reading {
     Reading { active, summary, ticket_decision, entries }
 }
 
+/// A question asked in a comment — a `- [ ]` line aiball marked with
+/// `<!-- q:id -->` — still open.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Question {
+    pub id: String,
+    pub text: String,
+}
+
+/// The open questions of a body.
+pub fn questions(body: Option<&str>) -> Vec<Question> {
+    body.unwrap_or_default()
+        .lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix(['-', '*', '+'])?.trim_start();
+            let rest = rest.strip_prefix("[ ]")?.trim_start();
+            let rest = rest.strip_prefix("<!--")?.trim_start().strip_prefix("q:")?;
+            let (id, text) = rest.split_once("-->")?;
+            let id = id.trim();
+            let valid = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
+            valid.then(|| Question { id: id.to_string(), text: text.trim().to_string() })
+        })
+        .collect()
+}
+
 /// The first line of a body, cut short.
 pub fn first_line(body: Option<&str>) -> String {
     let line = body
@@ -383,6 +407,19 @@ mod tests {
         let t = thread(serde_json::json!([comment(2, "david", serde_json::json!(null))]));
         let r = read(&t);
         assert_eq!(sentence(&t, &r, Some(&turn(Turn::Them)), false, "david", 0), "demo-claude's turn: you spoke last");
+    }
+
+    #[test]
+    fn open_questions_are_found() {
+        let body = "Two things:\n- [ ] <!-- q:a3f2c1 --> Is the API change fine?\n- [x] <!-- q:b7e891 --> Main?\n  * [ ]<!-- q:c1 --> Tabs or spaces?\n- [ ] not marked";
+        let found = super::questions(Some(body));
+        assert_eq!(
+            found,
+            [
+                super::Question { id: "a3f2c1".into(), text: "Is the API change fine?".into() },
+                super::Question { id: "c1".into(), text: "Tabs or spaces?".into() },
+            ]
+        );
     }
 
     #[test]
