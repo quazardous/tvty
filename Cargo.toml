@@ -20,6 +20,10 @@ tungstenite = "0.30.0"
 # keep backtraces readable at a fraction of the size.
 [profile.dev]
 debug = "line-tables-only"
+opt-level = 1
 
+# Unoptimised, the dependencies (GPUI, wgpu, alacritty_terminal) draw the
+# gallery at about one frame a second: optimise them even in debug builds.
 [profile.dev.package."*"]
 debug = false
+opt-level = 3
