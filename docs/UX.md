@@ -45,7 +45,9 @@ the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
 
 - **Bands**, from "it is yours" to "it runs by itself": to moderate, waiting
   on you (a decision), unread, agents on it, open. The most recent activity
-  first within a band.
+  first within a band. In the panel each band is a section: a click on its
+  title folds it, and each scrolls on its own — a long band never pushes
+  the others out of sight.
 - **Weight says unread**, and nothing else does; read titles step back.
 - **One state icon**, always in the same place — Google's Material Symbols,
   as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
@@ -78,6 +80,9 @@ to look over the board (`src/fulllist.rs`):
   panel, and all the row has to say — the start of its body, intent, level,
   tags, milestone, priority, who holds it (claimed or assigned), who spoke
   last, tokens, critical, blocked, snoozed, its scope, who filed it and when.
+- **One list, sorted**: by last activity (the default), whose turn (the
+  bands' order), priority, creation or number; a second click on the sort
+  reverses it. The bands are a filter here, not sections.
 - Opening a ticket shows it in the panel; the list, hidden, keeps its scope
   and filters for the next time. Esc closes it.
 

@@ -7,7 +7,7 @@
 use crate::aiball::TicketRow;
 
 /// Where the row sorts: from "it is yours" to "it runs by itself".
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Band {
     /// The ticket, or comments on it, wait for moderation.
     Moderate,

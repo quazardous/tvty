@@ -30,7 +30,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the emoji they replace showed grey.
 - The ticket list, full screen (⤢ in the panel, or ctrl+shift+l): projects,
   band counters and filters on the left, and every ticket with all its row
-  has to say on the right.
+  has to say on the right, in one list sorted by activity, whose turn,
+  priority, creation or number.
+- In the panel, each band of tickets folds with a click on its title and
+  scrolls on its own.
 - A ticket's thread says where it stands once, on top: whose turn it is in
   one sentence and the latest summary pinned; older comments fold to their
   summary line, replaced decisions say "superseded", and the gestures sit in

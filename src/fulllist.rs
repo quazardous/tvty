@@ -22,6 +22,39 @@ const ALL_LIMIT: usize = 300;
 
 const BANDS: [Band; 6] = [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed];
 
+/// How the list is ordered: one list, not bands — the bands filter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Sort {
+    Activity,
+    Turn,
+    Priority,
+    Created,
+    Number,
+}
+
+impl Sort {
+    const ALL: [Sort; 5] = [Sort::Activity, Sort::Turn, Sort::Priority, Sort::Created, Sort::Number];
+
+    fn title(self) -> &'static str {
+        match self {
+            Sort::Activity => "Last activity",
+            Sort::Turn => "Whose turn (bands)",
+            Sort::Priority => "Priority",
+            Sort::Created => "Created",
+            Sort::Number => "Number",
+        }
+    }
+}
+
+fn priority_rank(priority: Option<&str>) -> u8 {
+    match priority {
+        Some("urgent") => 3,
+        Some("high") => 2,
+        Some("low") => 0,
+        _ => 1,
+    }
+}
+
 /// The user leaves the list.
 pub struct CloseFullList;
 
@@ -40,6 +73,10 @@ pub struct FullList {
     /// `None`: every project.
     scope: Option<String>,
     band: Option<Band>,
+    sort: Sort,
+    /// The sort's natural order (most recent, most pressing, highest
+    /// first), or its reverse.
+    reversed: bool,
     /// Closed tickets too, read on demand.
     with_closed: bool,
     all: HashMap<String, Vec<TicketRow>>,
@@ -68,6 +105,8 @@ impl FullList {
             critical: HashMap::new(),
             scope,
             band: None,
+            sort: Sort::Activity,
+            reversed: false,
             with_closed: false,
             all: HashMap::new(),
             loading: false,
@@ -165,7 +204,19 @@ impl FullList {
             .flatten()
             .map(|t| (rowstate::of(t, user), t))
             .collect();
-        rows.sort_by(|(a, ta), (b, tb)| a.band.cmp(&b.band).then_with(|| tb.last_activity.cmp(&ta.last_activity)));
+        let recent = |a: &TicketRow, b: &TicketRow| b.last_activity.cmp(&a.last_activity);
+        rows.sort_by(|(sa, a), (sb, b)| {
+            let order = match self.sort {
+                Sort::Activity => recent(a, b),
+                Sort::Turn => sa.band.cmp(&sb.band).then_with(|| recent(a, b)),
+                Sort::Priority => priority_rank(b.priority.as_deref())
+                    .cmp(&priority_rank(a.priority.as_deref()))
+                    .then_with(|| recent(a, b)),
+                Sort::Created => b.created_at.cmp(&a.created_at),
+                Sort::Number => b.id.cmp(&a.id),
+            };
+            if self.reversed { order.reverse() } else { order }
+        });
         rows
     }
 
@@ -225,6 +276,27 @@ impl FullList {
                 Some(div().text_xs().text_color(p().muted).child(n.to_string()).into_any_element()),
                 cx.listener(move |list, _, _, cx| {
                     list.band = if list.band == Some(band) { None } else { Some(band) };
+                    cx.notify();
+                }),
+            ));
+        }
+
+        side = side.child(group("Sort"));
+        for sort in Sort::ALL {
+            let chosen = self.sort == sort;
+            let arrow = if !chosen { "" } else if self.reversed { "↑" } else { "↓" };
+            side = side.child(self.choice(
+                SharedString::from(format!("sort-{sort:?}")),
+                sort.title().into(),
+                chosen,
+                Some(div().text_xs().text_color(p().muted).child(arrow).into_any_element()),
+                cx.listener(move |list, _, _, cx| {
+                    if list.sort == sort {
+                        list.reversed = !list.reversed;
+                    } else {
+                        list.sort = sort;
+                        list.reversed = false;
+                    }
                     cx.notify();
                 }),
             ));
@@ -467,12 +539,7 @@ impl Render for FullList {
             .filter(|(s, t)| self.band.is_none_or(|b| s.band == b) && self.matches(t, &query))
             .collect();
         let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
-        let mut band = None;
         for (state, ticket) in &shown {
-            if band != Some(state.band) {
-                band = Some(state.band);
-                list = list.child(group(state.band.title()).px_3());
-            }
             list = list.child(self.row(ticket, *state, cx));
         }
         if shown.is_empty() {

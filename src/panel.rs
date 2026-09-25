@@ -3,7 +3,7 @@
 //! top, the talk folded up to its latest snapshot, and the gestures in one
 //! place under it: accept or reject, moderate, reply, close or reopen.
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{InputEvent, Textarea, TextareaState};
@@ -13,17 +13,20 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, Comment, Thread, TicketRow};
-use crate::rowstate::{self, Glyph, RowState, Stripe, Turn};
+use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::icons::{self, Icon};
 use crate::theme::p;
-use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
+use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
 
 /// Something changed on the board: the shell should read it again.
 pub struct BoardChanged;
 
 /// The user folds the panel away.
 pub struct CollapsePanel;
+
+/// A ticket row's height in the panel, near enough: two lines and padding.
+const ROW_HEIGHT: f32 = 56.;
 
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
@@ -57,6 +60,9 @@ pub struct TicketPanel {
     critical: Option<u64>,
     detail: Option<Detail>,
     reply: Entity<TextareaState>,
+    /// The bands folded to their title, and each band's own scroll.
+    folded: HashSet<Band>,
+    scrolls: HashMap<Band, ScrollHandle>,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
@@ -84,6 +90,8 @@ impl TicketPanel {
             critical: None,
             detail: None,
             reply,
+            folded: HashSet::new(),
+            scrolls: HashMap::new(),
         }
     }
 
@@ -109,6 +117,7 @@ impl TicketPanel {
         if self.tickets != tickets || self.critical != critical {
             self.tickets = tickets;
             self.critical = critical;
+            self.keep_scrolls();
             cx.notify();
         }
     }
@@ -296,25 +305,87 @@ impl TicketPanel {
                 .then_with(|| tb.last_activity.cmp(&ta.last_activity))
         });
 
-        let mut list = div()
-            .id("ticket-list")
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .pb_2();
-        let mut band = None;
-        for (state, ticket) in rows {
-            if band != Some(state.band) {
-                band = Some(state.band);
-                list = list.child(section_title(state.band.title()));
-            }
-            list = list.child(self.row(ticket, state, cx));
-        }
+        // One section per band, each with its title — a click folds it —
+        // and its own scroll: the bands share the height, a long one never
+        // pushes the others out of sight.
+        let mut list = div().id("ticket-list").flex().flex_col().flex_1().min_h_0().pb_1();
         if self.tickets.is_empty() {
-            list = list.child(hint("No open ticket."));
+            return list.child(hint("No open ticket.")).into_any_element();
         }
-        list.overflow_y_scrollbar().into_any_element()
+        let mut at = 0;
+        while at < rows.len() {
+            let band = rows[at].0.band;
+            let end = rows[at..].iter().position(|(s, _)| s.band != band).map_or(rows.len(), |n| at + n);
+            let folded = self.folded.contains(&band);
+            let header = div()
+                .id(SharedString::from(format!("band-{band:?}")))
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap_1()
+                .px_3()
+                .pt_2()
+                .pb_1()
+                .text_xs()
+                .font_weight(FontWeight::BOLD)
+                .text_color(p().muted)
+                .cursor_pointer()
+                .hover(|d| d.text_color(p().text))
+                .child(div().w(px(10.)).child(if folded { "▸" } else { "▾" }))
+                .child(band.title().to_uppercase())
+                .child(div().font_weight(FontWeight::NORMAL).child(format!("{}", end - at)))
+                .on_click(cx.listener(move |panel, _, _, cx| {
+                    if !panel.folded.remove(&band) {
+                        panel.folded.insert(band);
+                    }
+                    cx.notify();
+                }));
+            let mut section = div().flex().flex_col().flex_initial().min_h_0().child(header);
+            if !folded {
+                let scroll = self.scrolls.get(&band).cloned().unwrap_or_default();
+                let mut rows_el = div()
+                    .id(SharedString::from(format!("band-rows-{band:?}")))
+                    .flex()
+                    .flex_col()
+                    .flex_initial()
+                    .min_h_0()
+                    .track_scroll(&scroll)
+                    .overflow_y_scroll();
+                for (state, ticket) in &rows[at..end] {
+                    rows_el = rows_el.child(self.row(ticket, *state, cx));
+                }
+                // A band shrinks to share the height, but never below two
+                // rows (or all of them, when it has fewer).
+                let keep = (end - at).min(2) as f32 * ROW_HEIGHT;
+                section = section.child(
+                    div()
+                        .relative()
+                        .flex()
+                        .flex_col()
+                        .flex_initial()
+                        .min_h(px(keep))
+                        .child(rows_el)
+                        .child(
+                            div()
+                                .absolute()
+                                .inset_0()
+                                .child(Scrollbar::new(&scroll).axis(ScrollbarAxis::Vertical).viewport_from_layout()),
+                        ),
+                );
+            }
+            list = list.child(section);
+            at = end;
+        }
+        list.into_any_element()
+    }
+
+    /// Keeps a scroll per band across renders.
+    fn keep_scrolls(&mut self) {
+        let user = self.aiball.user.clone();
+        for ticket in &self.tickets {
+            let band = rowstate::of(ticket, &user).band;
+            self.scrolls.entry(band).or_default();
+        }
     }
 
     /// One ticket: a stripe for whose turn, one state glyph, the title
@@ -915,17 +986,6 @@ impl Render for TicketPanel {
             .child(header)
             .child(content)
     }
-}
-
-fn section_title(title: impl Into<SharedString>) -> impl IntoElement {
-    div()
-        .px_3()
-        .pt_3()
-        .pb_1()
-        .text_xs()
-        .font_weight(FontWeight::BOLD)
-        .text_color(p().muted)
-        .child(title.into().to_uppercase())
 }
 
 fn hint(text: impl Into<SharedString>) -> impl IntoElement {
