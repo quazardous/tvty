@@ -46,9 +46,10 @@ pub const SHORTCUTS: &[(&str, &[(&str, &str)])] = &[
         &[
             ("Ctrl+Shift+B", "Fold or unfold the projects' list"),
             ("Ctrl+Shift+T", "Fold or unfold the ticket panel"),
+            ("Ctrl+Shift+L", "The ticket list, full screen (also ⤢ in the panel)"),
             ("Ctrl+Shift+K", "Next colour theme"),
             ("Ctrl+,", "Options"),
-            ("Esc", "Close the gallery, the slider, the theme list, the options"),
+            ("Esc", "Close the gallery, the slider, the theme list, the options, the full list"),
         ],
     ),
     (

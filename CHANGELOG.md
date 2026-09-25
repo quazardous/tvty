@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A ticket list that says at a glance what is yours: bands from "to
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.
+- The ticket list's states, the flame, the critical warning and the
+  priorities are drawn as Material Symbols icons, in the theme's colours —
+  the emoji they replace showed grey.
+- The ticket list, full screen (⤢ in the panel, or ctrl+shift+l): projects,
+  band counters and filters on the left, and every ticket with all its row
+  has to say on the right.
 - A ticket's thread says where it stands once, on top: whose turn it is in
   one sentence and the latest summary pinned; older comments fold to their
   summary line, replaced decisions say "superseded", and the gestures sit in

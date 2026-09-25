@@ -84,19 +84,6 @@ impl Glyph {
         })
     }
 
-    pub fn symbol(self) -> &'static str {
-        match self {
-            Glyph::Escalation => "!",
-            Glyph::Plan => "◆",
-            Glyph::Resolution | Glyph::ClosedResolved => "✓",
-            Glyph::Wontfix => "✕",
-            Glyph::StalledStep => "‖",
-            Glyph::Step => "▶",
-            Glyph::Rejected => "↺",
-            Glyph::Closed => "⊘",
-        }
-    }
-
     pub fn meaning(self) -> &'static str {
         match self {
             Glyph::Escalation => "an agent escalates: it needs you to act",

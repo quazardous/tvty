@@ -47,9 +47,14 @@ the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
   on you (a decision), unread, agents on it, open. The most recent activity
   first within a band.
 - **Weight says unread**, and nothing else does; read titles step back.
-- **One state glyph**, always in the same place: ◆ plan, ✓ resolution, ✕
-  wontfix, ! escalation, ▶ step (‖ when it went quiet), ↺ rejected. Coloured
-  when it waits on you, muted otherwise; a decision wins over a later step.
+- **One state icon**, always in the same place — Google's Material Symbols,
+  as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
+  `check_circle` resolution, `block` wontfix, `priority_high` escalation,
+  `play_circle` step (`pause_circle` when it went quiet), `undo` rejected,
+  `task_alt` / `lock` closed. Coloured when it waits on you, muted
+  otherwise; a decision wins over a later step. The flame (an agent active
+  lately), the critical warning and the priority arrows are icons too: an
+  emoji would show grey.
 - **The stripe says whose turn**: coloured and solid when a decision waits
   on you and is the last message, dashed when the talk went on after it,
   neutral when an agent answered you, none when the ball is with the agent.
@@ -57,6 +62,24 @@ the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
   active), ⚠N on the critical ticket, a high priority, the time.
 
 The legend is in the options page, under "Ticket list".
+
+## The ticket list, full screen
+
+The panel is the compact list, beside the terminal: enough to steer. ⤢ in
+its header, or ctrl+shift+l, opens the list full screen, over the window,
+to look over the board (`src/fulllist.rs`):
+
+- **The left third, the scope and the counters**: all projects or one, each
+  with its badges; the bands with their counts — a click narrows to one, a
+  second click widens again; open tickets or all of them (closed ones are
+  read on demand); a search in the titles; the tags present, to narrow to
+  those carrying them all.
+- **The rest, the list**: the same bands, stripe, glyph and weight as the
+  panel, and all the row has to say — the start of its body, intent, level,
+  tags, milestone, priority, who holds it (claimed or assigned), who spoke
+  last, tokens, critical, blocked, snoozed, its scope, who filed it and when.
+- Opening a ticket shows it in the panel; the list, hidden, keeps its scope
+  and filters for the next time. Esc closes it.
 
 ## A ticket's thread
 

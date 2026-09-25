@@ -15,6 +15,7 @@ use gpui_kit::*;
 use crate::aiball::{Aiball, Comment, Thread, TicketRow};
 use crate::rowstate::{self, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
+use crate::icons::{self, Icon};
 use crate::theme::p;
 use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
 
@@ -23,6 +24,9 @@ pub struct BoardChanged;
 
 /// The user folds the panel away.
 pub struct CollapsePanel;
+
+/// The user wants the tickets full screen.
+pub struct OpenFullList;
 
 /// What the panel is about: a project, and the agent of the terminal shown.
 #[derive(Clone, Debug, PartialEq)]
@@ -33,6 +37,9 @@ pub struct Scope {
 
 struct Detail {
     ticket: u64,
+    /// Its project: the panel's, or another one when opened from the
+    /// full-screen list.
+    project: Option<String>,
     thread: Option<Thread>,
     error: Option<String>,
     /// A gesture is on its way to aiball.
@@ -54,6 +61,7 @@ pub struct TicketPanel {
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
+impl EventEmitter<OpenFullList> for TicketPanel {}
 
 impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -106,8 +114,14 @@ impl TicketPanel {
     }
 
     pub fn open(&mut self, ticket: u64, cx: &mut Context<Self>) {
+        self.open_in(None, ticket, cx);
+    }
+
+    /// Opens a ticket of `project` (`None`: the panel's own).
+    pub fn open_in(&mut self, project: Option<String>, ticket: u64, cx: &mut Context<Self>) {
         self.detail = Some(Detail {
             ticket,
+            project,
             thread: None,
             error: None,
             busy: false,
@@ -211,10 +225,17 @@ impl TicketPanel {
         cx: &mut Context<Self>,
     ) {
         let body = self.reply.read(cx).value().trim().to_string();
-        let (Some(detail), Some(scope)) = (self.detail.as_ref(), self.scope.as_ref()) else {
+        let Some(detail) = self.detail.as_ref() else {
             return;
         };
-        let (project, ticket) = (scope.project.clone(), detail.ticket);
+        let Some(project) = detail
+            .project
+            .clone()
+            .or_else(|| self.scope.as_ref().map(|s| s.project.clone()))
+        else {
+            return;
+        };
+        let ticket = detail.ticket;
         self.gesture(
             move |aiball| {
                 if !body.is_empty() {
@@ -321,13 +342,18 @@ impl TicketPanel {
                 d.child(format!("{who} · {} msg", ticket.comment_count))
             })
             .when_some(ticket.holder().map(str::to_string), |d, holder| {
-                d.child(if ticket.hot { format!("🔥 {holder}") } else { holder })
+                d.child(if ticket.hot {
+                    icons::labelled(Icon::Hot, p().warning, 12., holder).into_any_element()
+                } else {
+                    holder.into_any_element()
+                })
             })
             .when_some(ticket.critical.as_ref(), |d, critical| {
-                d.child(pill(format!("⚠ {}", critical.holds), p().danger))
+                d.child(icons::pill(Icon::Critical, critical.holds.to_string(), p().danger))
             })
-            .when(ticket.urgent(), |d| {
-                d.child(pill(ticket.priority.clone().unwrap_or_default(), p().danger))
+            .when_some(ticket.priority.as_deref().and_then(icons::priority), |d, icon| {
+                let priority = ticket.priority.as_deref().unwrap_or_default();
+                d.child(icons::icon(icon, icons::priority_colour(priority), 14.))
             })
             .child(div().flex_1())
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
@@ -344,11 +370,11 @@ impl TicketPanel {
             .child(stripe(state.stripe, stripe_colour))
             .child(
                 div()
-                    .w(px(14.))
+                    .w(px(16.))
+                    .pt_0p5()
                     .flex_none()
-                    .font_weight(FontWeight::BOLD)
                     .when_some(state.glyph, |d, glyph| {
-                        d.text_color(glyph_colour(glyph)).child(glyph.symbol())
+                        d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph), 16.))
                     }),
             )
             .child(
@@ -417,9 +443,8 @@ impl TicketPanel {
             .gap_2()
             .text_lg()
             .font_weight(FontWeight::BOLD)
-            .when_some(glyph, |d, glyph| {
-                d.child(div().flex_none().text_color(glyph_colour(glyph, yours)).child(glyph.symbol()))
-            })
+            .items_center()
+            .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 20.)))
             .child(div().flex_1().min_w_0().child(format!("#{} {}", ticket.id, ticket.title)));
         let turn = (!sentence.is_empty()).then(|| {
             let (stripe_kind, colour) = state
@@ -440,13 +465,20 @@ impl TicketPanel {
         let mut chips: Vec<AnyElement> = Vec::new();
         if let Some(holder) = ticket.holder() {
             let hot = row.is_some_and(|r| r.hot);
-            chips.push(div().child(format!("{}held by {holder}", if hot { "🔥 " } else { "" })).into_any_element());
+            let text = format!("held by {holder}");
+            chips.push(if hot {
+                icons::labelled(Icon::Hot, p().warning, 12., text).into_any_element()
+            } else {
+                div().child(text).into_any_element()
+            });
         }
-        if matches!(ticket.priority.as_deref(), Some("high" | "urgent")) {
-            chips.push(pill(ticket.priority.clone().unwrap_or_default(), p().danger).into_any_element());
+        if let Some(priority) = ticket.priority.as_deref() {
+            if let Some(icon) = icons::priority(priority) {
+                chips.push(icons::labelled(icon, icons::priority_colour(priority), 14., priority.to_string()).into_any_element());
+            }
         }
         if let Some(critical) = &ticket.critical {
-            chips.push(pill(format!("⚠ holds {}", critical.holds), p().danger).into_any_element());
+            chips.push(icons::pill(Icon::Critical, format!("holds {}", critical.holds), p().danger).into_any_element());
         }
         if let Some(usage) = &ticket.token_usage {
             let total = usage.tokens_in + usage.tokens_out + usage.cache_w;
@@ -461,13 +493,19 @@ impl TicketPanel {
                 _ => continue,
             };
             let target = relation.target_ticket_id;
-            let state = match self.tickets.iter().find(|t| t.id == target) {
-                Some(row) => rowstate::of(row, &user).glyph.map(|g| g.symbol().to_string()),
-                None => relation.target_stage.clone(),
-            };
+            let glyph = self
+                .tickets
+                .iter()
+                .find(|t| t.id == target)
+                .and_then(|row| rowstate::of(row, &user).glyph);
+            let stage = relation.target_stage.clone().filter(|_| glyph.is_none());
             chips.push(
                 div()
-                    .child(format!("{verb} #{target}{}", state.map(|s| format!(" {s}")).unwrap_or_default()))
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .child(format!("{verb} #{target}{}", stage.map(|s| format!(" {s}")).unwrap_or_default()))
+                    .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), p().muted, 12.)))
                     .into_any_element(),
             );
         }
@@ -567,7 +605,12 @@ impl TicketPanel {
                             div()
                                 .flex_1()
                                 .min_w_0()
-                                .child(format!("{} {} proposes a {}", symbol_of(&active.kind), active.by, reading::kind_noun(&active.kind))),
+                                .child(icons::labelled(
+                                    icons::of_kind(&active.kind),
+                                    p().warning,
+                                    16.,
+                                    format!("{} proposes a {}", active.by, reading::kind_noun(&active.kind)),
+                                )),
                         )
                         .child(
                             Button::new("reject")
@@ -791,7 +834,7 @@ impl TicketPanel {
                 d.child(
                     div()
                         .text_color(if latest { p().accent } else { p().muted })
-                        .child(format!("{} step", Glyph::Step.symbol())),
+                        .child(icons::labelled(Icon::Step, if latest { p().accent } else { p().muted }, 12., "step")),
                 )
             })
             .when(pending, |d| d.child(pill("to moderate", p().warning)))
@@ -843,6 +886,15 @@ impl Render for TicketPanel {
             )
             .child(
                 div()
+                    .id("full-list")
+                    .px_1()
+                    .cursor_pointer()
+                    .text_color(p().accent)
+                    .child("⤢")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenFullList))),
+            )
+            .child(
+                div()
                     .id("collapse")
                     .px_1()
                     .cursor_pointer()
@@ -891,7 +943,7 @@ fn folded_line(text: String) -> impl IntoElement {
 }
 
 /// Coloured when it waits on you, muted otherwise.
-fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
+pub(crate) fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
     if !yours {
         return p().muted;
     }
@@ -904,7 +956,7 @@ fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
     }
 }
 
-fn stripe_colour(state: &RowState) -> Hsla {
+pub(crate) fn stripe_colour(state: &RowState) -> Hsla {
     state
         .glyph
         .filter(|_| state.stripe != Stripe::Neutral)
@@ -915,7 +967,7 @@ fn stripe_colour(state: &RowState) -> Hsla {
 /// Whose turn: coloured when a decision waits on you (solid when it is the
 /// last message, dashed when the talk went on), neutral when an agent
 /// answered you, nothing when the ball is theirs.
-fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
+pub(crate) fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
     div()
         .w(px(3.))
         .flex_none()
@@ -932,9 +984,9 @@ fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
 fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
     let noun = reading::kind_noun(kind);
     match state {
-        DecisionState::Pending => pill(format!("{} {noun} · pending", symbol_of(kind)), p().warning).into_any_element(),
-        DecisionState::Accepted => pill(format!("✓ {noun} accepted"), p().success).into_any_element(),
-        DecisionState::Rejected => pill(format!("✕ {noun} rejected"), p().danger).into_any_element(),
+        DecisionState::Pending => icons::pill(icons::of_kind(kind), format!("{noun} · pending"), p().warning).into_any_element(),
+        DecisionState::Accepted => icons::pill(Icon::Resolution, format!("{noun} accepted"), p().success).into_any_element(),
+        DecisionState::Rejected => icons::pill(Icon::Wontfix, format!("{noun} rejected"), p().danger).into_any_element(),
         DecisionState::Superseded => div()
             .flex_none()
             .px_1p5()
@@ -948,17 +1000,9 @@ fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
     }
 }
 
-fn symbol_of(kind: &str) -> &'static str {
-    match kind {
-        "resolution" => Glyph::Resolution.symbol(),
-        "wontfix" => Glyph::Wontfix.symbol(),
-        "escalation" => Glyph::Escalation.symbol(),
-        _ => Glyph::Plan.symbol(),
-    }
-}
 
 /// `12345` → `12.3k`.
-fn count(n: u64) -> String {
+pub(crate) fn count(n: u64) -> String {
     match n {
         0..1000 => n.to_string(),
         1000..1_000_000 => format!("{:.1}k", n as f64 / 1e3),
@@ -982,7 +1026,7 @@ pub fn dot(color: Hsla) -> impl IntoElement {
 }
 
 /// `2026-09-24T13:01:55.681Z` → `3m`, `2h`, `5d` ago.
-fn ago(when: &str) -> Option<String> {
+pub(crate) fn ago(when: &str) -> Option<String> {
     let then = crate::status::parse_time(when)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

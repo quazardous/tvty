@@ -17,7 +17,8 @@ use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
-use crate::panel::{BoardChanged, CollapsePanel, Scope, TicketPanel, dot, pill};
+use crate::fulllist::{CloseFullList, FullList, OpenTicket};
+use crate::panel::{BoardChanged, CollapsePanel, OpenFullList, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
 use crate::terminal::{Snapshot, TerminalView};
@@ -59,6 +60,10 @@ pub struct Shell {
     dragged: bool,
     /// The options page is open, on this section.
     options: Option<Section>,
+    /// The ticket list, full screen, and whether it is shown: hidden, it
+    /// keeps its scope and filters for the next time.
+    full_list: Option<Entity<FullList>>,
+    full_list_shown: bool,
     feed: events::Feed,
     /// The slider is up, on this index of [`Shell::slider_order`].
     slider: Option<usize>,
@@ -123,14 +128,14 @@ fn unread() -> Hsla {
 
 /// What a set of tickets asks of the user.
 #[derive(Default)]
-struct Alerts {
+pub(crate) struct Alerts {
     decisions: usize,
     unread: usize,
-    critical: bool,
+    pub(crate) critical: bool,
 }
 
 impl Alerts {
-    fn of<'a>(tickets: impl Iterator<Item = &'a TicketRow>, critical: Option<u64>) -> Self {
+    pub(crate) fn of<'a>(tickets: impl Iterator<Item = &'a TicketRow>, critical: Option<u64>) -> Self {
         let mut alerts = Self::default();
         for ticket in tickets {
             alerts.decisions += ticket.pending_decision() as usize;
@@ -160,7 +165,7 @@ impl Alerts {
         self.colors().first().copied()
     }
 
-    fn badges(&self) -> impl IntoElement + use<> {
+    pub(crate) fn badges(&self) -> impl IntoElement + use<> {
         div()
             .flex()
             .items_center()
@@ -188,6 +193,10 @@ impl Shell {
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
             .detach();
+        cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
+            shell.toggle_full_list(window, cx)
+        })
+        .detach();
 
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
@@ -204,6 +213,8 @@ impl Shell {
             resizing: None,
             dragged: false,
             options: None,
+            full_list: None,
+            full_list_shown: false,
             feed: feed.clone(),
             slider: None,
             slider_shown: 0,
@@ -331,6 +342,70 @@ impl Shell {
             cx.notify();
         }
         self.sync_panel(cx);
+        self.sync_full_list(cx);
+    }
+
+    // ── The ticket list, full screen ────────────────────────────────────
+
+    /// Shows it — as it was left, else on the selected terminal's project —
+    /// or hides it.
+    fn toggle_full_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.full_list_shown {
+            self.full_list_shown = false;
+            self.focus_terminal(window, cx);
+            cx.notify();
+            return;
+        }
+        self.full_list_shown = true;
+        // Keys go to the list, not to the terminal: after the click that
+        // opened it, if a click did, has settled focus.
+        cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+        if self.full_list.is_some() {
+            self.sync_full_list(cx);
+            cx.notify();
+            return;
+        }
+        let scope = self
+            .selected
+            .as_deref()
+            .and_then(|s| self.terminal_of(s))
+            .map(|(project, _)| project.to_string())
+            .filter(|project| self.board.tickets.contains_key(project));
+        let aiball = self.aiball.clone();
+        let list = cx.new(|cx| FullList::new(aiball, scope, window, cx));
+        cx.subscribe_in(&list, window, |shell, _, _: &CloseFullList, window, cx| {
+            shell.toggle_full_list(window, cx)
+        })
+        .detach();
+        cx.subscribe_in(&list, window, |shell, _, open: &OpenTicket, window, cx| {
+            let (project, ticket) = (open.project.clone(), open.ticket);
+            shell.full_list_shown = false;
+            if !shell.settings.panel_open {
+                shell.toggle_panel(cx);
+            }
+            shell.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
+            cx.defer_in(window, |shell, window, cx| shell.focus_terminal(window, cx));
+            cx.notify();
+        })
+        .detach();
+        self.full_list = Some(list);
+        self.sync_full_list(cx);
+        cx.notify();
+    }
+
+    fn sync_full_list(&mut self, cx: &mut Context<Self>) {
+        let Some(list) = self.full_list.clone() else { return };
+        let mut projects: Vec<String> = self.board.tickets.keys().cloned().collect();
+        projects.sort_by_key(|p| p.to_lowercase());
+        let (aiball, open, critical) = (self.aiball.clone(), self.board.tickets.clone(), self.board.critical.clone());
+        list.update(cx, |list, cx| list.set_board(&aiball, projects, open, critical, cx));
+    }
+
+    fn focus_terminal(&self, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(terminal) = self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
+            let focus = terminal.read(cx).focus_handle().clone();
+            window.focus(&focus, cx);
+        }
     }
 
     /// Raises the banner for what newly waits on the user: a decision or
@@ -553,6 +628,10 @@ impl Shell {
             self.toggle_options(window, cx);
         } else if key == "escape" && self.options.is_some() {
             self.toggle_options(window, cx);
+        } else if m.control && m.shift && key == "l" {
+            self.toggle_full_list(window, cx);
+        } else if key == "escape" && self.full_list_shown {
+            self.toggle_full_list(window, cx);
         } else if m.control && m.shift && key == "k" {
             self.next_theme(window, cx);
         } else if key == "escape" && self.theme_menu {
@@ -1644,6 +1723,29 @@ impl Render for Shell {
         };
         let slider = self.slider.map(|index| self.portfolio(index));
         let options = self.options.map(|section| self.options_view(section, window, cx));
+        let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
+        // A click on something that takes no focus (a list, the panel)
+        // leaves none: the keys would reach nothing, the shell's shortcuts
+        // included. Once the click is done, the shell takes them back.
+        let shell_focus = self.focus.clone();
+        let keep_focus = canvas(
+            |_, _, _| {},
+            move |_, _, window, _| {
+                window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
+                    if phase != DispatchPhase::Bubble {
+                        return;
+                    }
+                    let focus = shell_focus.clone();
+                    window.defer(cx, move |window, cx| {
+                        if window.focused(cx).is_none() {
+                            window.focus(&focus, cx);
+                        }
+                    });
+                });
+            },
+        )
+        .absolute()
+        .size_0();
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
         let title = match self.selected.as_deref().and_then(|s| self.terminal_of(s)) {
@@ -1679,6 +1781,8 @@ impl Render for Shell {
             .child(right)
             .children(slider)
             .children(gallery)
+            .child(keep_focus)
+            .children(full_list)
             .children(options);
 
         // The window draws its own title bar: GNOME leaves decorations to the
@@ -1859,13 +1963,7 @@ fn options_ticket_list() -> impl IntoElement {
             .child(div().w(px(90.)).flex_none().flex().justify_center().child(mark))
             .child(div().flex_1().min_w_0().text_sm().child(what))
     };
-    let glyph = |g: Glyph, colour: Hsla| {
-        div()
-            .font_weight(FontWeight::BOLD)
-            .text_color(colour)
-            .child(g.symbol())
-            .into_any_element()
-    };
+    let glyph = |g: Glyph, colour: Hsla| crate::icons::icon(crate::icons::of_glyph(g), colour, 16.).into_any_element();
     let stripe = |colour: Hsla, dashed: bool| {
         div()
             .h(px(18.))
@@ -1921,9 +2019,25 @@ fn options_ticket_list() -> impl IntoElement {
             "who spoke last, and how many messages".into(),
         ))
         .child(line(
-            div().text_xs().text_color(p().muted).child("🔥 agent").into_any_element(),
-            "the agent holding it; 🔥 when it was active lately".into(),
+            crate::icons::labelled(crate::icons::Icon::Hot, p().warning, 12., "agent")
+                .text_xs()
+                .text_color(p().muted)
+                .into_any_element(),
+            "the agent holding it; the flame when it was active lately".into(),
         ))
-        .child(line(pill("⚠ 3", p().danger).into_any_element(), "the project's critical ticket: it holds 3 open tickets".into()));
+        .child(line(
+            crate::icons::pill(crate::icons::Icon::Critical, "3", p().danger).into_any_element(),
+            "the project's critical ticket: it holds 3 open tickets".into(),
+        ))
+        .child(line(
+            div()
+                .flex()
+                .gap_1()
+                .child(crate::icons::icon(crate::icons::Icon::PriorityUrgent, crate::icons::priority_colour("urgent"), 14.))
+                .child(crate::icons::icon(crate::icons::Icon::PriorityHigh, crate::icons::priority_colour("high"), 14.))
+                .child(crate::icons::icon(crate::icons::Icon::PriorityLow, crate::icons::priority_colour("low"), 14.))
+                .into_any_element(),
+            "priority: urgent, high, low (normal shows nothing)".into(),
+        ));
     page
 }

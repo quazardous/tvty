@@ -97,6 +97,37 @@ pub struct TicketRow {
     pub turn: Option<String>,
     pub band: Option<u8>,
     pub state_glyph: Option<String>,
+    // What the full-screen list shows besides.
+    /// The start of the ticket's body or summary.
+    pub snippet: Option<String>,
+    #[serde(default)]
+    pub by_agent: String,
+    #[serde(default)]
+    pub created_at: String,
+    pub intent: Option<String>,
+    pub level: Option<String>,
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub blocked: bool,
+    pub milestone: Option<Milestone>,
+    #[serde(default)]
+    pub tags: Vec<Tag>,
+    pub token_usage: Option<TokenUsage>,
+    /// Snoozed until then.
+    pub postponed_until: Option<String>,
+    #[serde(default)]
+    pub has_payload: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Tag {
+    pub name: String,
+    pub color: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Milestone {
+    pub title: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -114,10 +145,6 @@ impl TicketRow {
     /// A plan, resolution, wontfix or escalation awaits a decision.
     pub fn pending_decision(&self) -> bool {
         self.pending_plan || self.pending_resolution || self.pending_wontfix || self.pending_escalation
-    }
-
-    pub fn urgent(&self) -> bool {
-        matches!(self.priority.as_deref(), Some("high" | "urgent"))
     }
 }
 
@@ -164,7 +191,7 @@ pub struct Step {
     pub resume_on_ticket: Option<u64>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct TokenUsage {
     #[serde(default)]
     pub tokens_in: u64,
@@ -304,6 +331,15 @@ impl Aiball {
     /// The open tickets of a project, as the web UI's list rows.
     pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
         self.get(&format!("/api/inbox?project={}&open=1&v=tvty&sort=band", encode(project)))
+    }
+
+    /// A project's tickets, closed ones too: the most pressing first, at
+    /// most `limit`.
+    pub fn all_tickets(&self, project: &str, limit: usize) -> anyhow::Result<Vec<TicketRow>> {
+        self.get(&format!(
+            "/api/inbox?project={}&v=tvty&sort=band&limit={limit}",
+            encode(project)
+        ))
     }
 
     pub fn thread(&self, ticket: u64) -> anyhow::Result<Thread> {

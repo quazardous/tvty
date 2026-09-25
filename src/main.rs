@@ -3,6 +3,8 @@
 
 mod aiball;
 mod events;
+mod fulllist;
+mod icons;
 mod options;
 mod panel;
 mod rowstate;
@@ -32,7 +34,7 @@ fn main() {
     let selected = std::env::args().nth(1);
 
     // The kit's icons (the title bar's buttons among them) come from its assets.
-    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(move |cx| {
+    gpui_kit::application().with_assets(icons::Assets).run(move |cx| {
         gpui_kit::init(cx);
         let settings = settings::Settings::load();
         theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);

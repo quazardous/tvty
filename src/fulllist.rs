@@ -1,0 +1,550 @@
+//! The ticket list, full screen: over the window, the scope and the counters
+//! on the left third — projects, bands, filters — and the list on the rest,
+//! each row with all it has to say. The panel beside the terminal stays the
+//! compact list; this one is for looking over the board.
+
+use std::collections::{BTreeSet, HashMap};
+
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::scroll::ScrollableElement as _;
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+
+use crate::aiball::{Aiball, TicketRow};
+use crate::icons::{self, Icon};
+use crate::panel::{ago, count, glyph_colour, stripe, stripe_colour};
+use crate::rowstate::{self, Band, RowState, Turn};
+use crate::shell::Alerts;
+use crate::theme::p;
+
+/// Closed tickets read per project when the list shows them too.
+const ALL_LIMIT: usize = 300;
+
+const BANDS: [Band; 6] = [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed];
+
+/// The user leaves the list.
+pub struct CloseFullList;
+
+/// The user opens a ticket from the list.
+pub struct OpenTicket {
+    pub project: String,
+    pub ticket: u64,
+}
+
+pub struct FullList {
+    aiball: Aiball,
+    /// The projects on the board, their open tickets and critical ticket.
+    projects: Vec<String>,
+    open: HashMap<String, Vec<TicketRow>>,
+    critical: HashMap<String, u64>,
+    /// `None`: every project.
+    scope: Option<String>,
+    band: Option<Band>,
+    /// Closed tickets too, read on demand.
+    with_closed: bool,
+    all: HashMap<String, Vec<TicketRow>>,
+    loading: bool,
+    tags: BTreeSet<String>,
+    search: Entity<InputState>,
+    error: Option<String>,
+}
+
+impl EventEmitter<CloseFullList> for FullList {}
+impl EventEmitter<OpenTicket> for FullList {}
+
+impl FullList {
+    pub fn new(aiball: Aiball, scope: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search titles…"));
+        cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
+        Self {
+            aiball,
+            projects: Vec::new(),
+            open: HashMap::new(),
+            critical: HashMap::new(),
+            scope,
+            band: None,
+            with_closed: false,
+            all: HashMap::new(),
+            loading: false,
+            tags: BTreeSet::new(),
+            search,
+            error: None,
+        }
+    }
+
+    /// The board as last read.
+    pub fn set_board(
+        &mut self,
+        aiball: &Aiball,
+        projects: Vec<String>,
+        open: HashMap<String, Vec<TicketRow>>,
+        critical: HashMap<String, u64>,
+        cx: &mut Context<Self>,
+    ) {
+        self.aiball = aiball.clone();
+        if self.projects != projects || self.open != open || self.critical != critical {
+            self.projects = projects;
+            self.open = open;
+            self.critical = critical;
+            if self.with_closed {
+                self.read_all(cx);
+            }
+            cx.notify();
+        }
+    }
+
+    fn scoped(&self) -> Vec<String> {
+        match &self.scope {
+            Some(project) => vec![project.clone()],
+            None => self.projects.clone(),
+        }
+    }
+
+    fn set_scope(&mut self, scope: Option<String>, cx: &mut Context<Self>) {
+        self.scope = scope;
+        self.band = None;
+        if self.with_closed {
+            self.read_all(cx);
+        }
+        cx.notify();
+    }
+
+    fn set_with_closed(&mut self, with_closed: bool, cx: &mut Context<Self>) {
+        self.with_closed = with_closed;
+        if with_closed {
+            self.read_all(cx);
+        }
+        cx.notify();
+    }
+
+    /// Reads the scope's tickets, closed ones too, off the UI thread.
+    fn read_all(&mut self, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        let projects = self.scoped();
+        self.loading = true;
+        cx.spawn(async move |this, cx| {
+            let read = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut all = HashMap::new();
+                    for project in projects {
+                        all.insert(project.clone(), aiball.all_tickets(&project, ALL_LIMIT)?);
+                    }
+                    anyhow::Ok(all)
+                })
+                .await;
+            let _ = this.update(cx, |list, cx| {
+                list.loading = false;
+                match read {
+                    Ok(all) => {
+                        list.all.extend(all);
+                        list.error = None;
+                    }
+                    Err(error) => list.error = Some(format!("{error:#}")),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The scope's rows, with their reading, before the band and the text
+    /// and tag filters.
+    fn rows(&self) -> Vec<(RowState, &TicketRow)> {
+        let user = self.aiball.user.as_str();
+        let source = if self.with_closed { &self.all } else { &self.open };
+        let mut rows: Vec<(RowState, &TicketRow)> = self
+            .scoped()
+            .iter()
+            .filter_map(|project| source.get(project))
+            .flatten()
+            .map(|t| (rowstate::of(t, user), t))
+            .collect();
+        rows.sort_by(|(a, ta), (b, tb)| a.band.cmp(&b.band).then_with(|| tb.last_activity.cmp(&ta.last_activity)));
+        rows
+    }
+
+    fn matches(&self, ticket: &TicketRow, query: &str) -> bool {
+        (query.is_empty() || ticket.title.to_lowercase().contains(query))
+            && self.tags.iter().all(|tag| ticket.tags.iter().any(|t| &t.name == tag))
+    }
+
+    // ── The left third: scope, counters, filters ────────────────────────
+
+    fn side(&self, rows: &[(RowState, &TicketRow)], query: &str, cx: &mut Context<Self>) -> Stateful<Div> {
+        let mut side = div()
+            .id("full-list-side")
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .p_3()
+            .text_sm()
+            .child(group("Projects"));
+        let mut all_alerts = Alerts::of(
+            self.projects.iter().filter_map(|p| self.open.get(p)).flatten(),
+            None,
+        );
+        all_alerts.critical = !self.critical.is_empty();
+        side = side.child(self.choice(
+            "scope-all",
+            "All projects".into(),
+            self.scope.is_none(),
+            Some(all_alerts.badges().into_any_element()),
+            cx.listener(|list, _, _, cx| list.set_scope(None, cx)),
+        ));
+        for project in &self.projects {
+            let alerts = Alerts::of(
+                self.open.get(project).into_iter().flatten(),
+                self.critical.get(project).copied(),
+            );
+            let pick = project.clone();
+            side = side.child(self.choice(
+                SharedString::from(format!("scope-{project}")),
+                project.clone().into(),
+                self.scope.as_ref() == Some(project),
+                Some(alerts.badges().into_any_element()),
+                cx.listener(move |list, _, _, cx| list.set_scope(Some(pick.clone()), cx)),
+            ));
+        }
+
+        side = side.child(group("Bands"));
+        for band in BANDS {
+            if band == Band::Closed && !self.with_closed {
+                continue;
+            }
+            let n = rows.iter().filter(|(s, t)| s.band == band && self.matches(t, query)).count();
+            side = side.child(self.choice(
+                SharedString::from(format!("band-{band:?}")),
+                band.title().into(),
+                self.band == Some(band),
+                Some(div().text_xs().text_color(p().muted).child(n.to_string()).into_any_element()),
+                cx.listener(move |list, _, _, cx| {
+                    list.band = if list.band == Some(band) { None } else { Some(band) };
+                    cx.notify();
+                }),
+            ));
+        }
+
+        side = side
+            .child(group("Filters"))
+            .child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .child(self.toggle("open-only", "Open", !self.with_closed, cx.listener(|list, _, _, cx| {
+                        list.set_with_closed(false, cx)
+                    })))
+                    .child(self.toggle("with-closed", "All", self.with_closed, cx.listener(|list, _, _, cx| {
+                        list.set_with_closed(true, cx)
+                    })))
+                    .when(self.loading, |d| d.child(div().text_xs().text_color(p().muted).child("reading…"))),
+            )
+            .child(div().pt_1().child(Input::new(&self.search)));
+
+        // The tags of the scope, to narrow to those carrying them all.
+        let tags: BTreeSet<&str> = rows.iter().flat_map(|(_, t)| t.tags.iter().map(|t| t.name.as_str())).collect();
+        if !tags.is_empty() {
+            let mut chips = div().flex().flex_wrap().gap_1().pt_1();
+            for tag in tags {
+                let on = self.tags.contains(tag);
+                let name = tag.to_string();
+                chips = chips.child(
+                    div()
+                        .id(SharedString::from(format!("tag-{tag}")))
+                        .px_1p5()
+                        .rounded_sm()
+                        .text_xs()
+                        .cursor_pointer()
+                        .border_1()
+                        .border_color(if on { p().accent } else { p().border })
+                        .text_color(if on { p().text } else { p().muted })
+                        .child(tag.to_string())
+                        .on_click(cx.listener(move |list, _, _, cx| {
+                            if !list.tags.remove(&name) {
+                                list.tags.insert(name.clone());
+                            }
+                            cx.notify();
+                        })),
+                );
+            }
+            side = side.child(chips);
+        }
+        side.when_some(self.error.clone(), |d, error| d.child(div().pt_2().text_color(p().danger).child(error)))
+    }
+
+    fn choice(
+        &self,
+        id: impl Into<ElementId>,
+        label: SharedString,
+        chosen: bool,
+        trailing: Option<AnyElement>,
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .flex()
+            .items_center()
+            .gap_2()
+            .px_2()
+            .py_1()
+            .rounded_md()
+            .cursor_pointer()
+            .when(chosen, |d| d.bg(p().active))
+            .hover(|d| d.bg(p().hover))
+            .child(div().flex_1().min_w_0().truncate().child(label))
+            .children(trailing)
+            .on_click(on_click)
+    }
+
+    fn toggle(
+        &self,
+        id: &'static str,
+        label: &'static str,
+        on: bool,
+        on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    ) -> Stateful<Div> {
+        div()
+            .id(id)
+            .px_2()
+            .py_0p5()
+            .rounded_md()
+            .text_xs()
+            .cursor_pointer()
+            .border_1()
+            .border_color(if on { p().accent } else { p().border })
+            .text_color(if on { p().text } else { p().muted })
+            .child(label)
+            .on_click(on_click)
+    }
+
+    // ── The list ────────────────────────────────────────────────────────
+
+    fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let yours = state.turn == Turn::You;
+        let user = &self.aiball.user;
+        let who = |name: &str| if name == user { "you".to_string() } else { name.to_string() };
+
+        let title = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(div().flex_none().text_color(p().muted).child(format!("#{}", ticket.id)))
+            .when(self.scope.is_none(), |d| {
+                d.child(div().flex_none().text_xs().text_color(p().accent).child(ticket.project.clone()))
+            })
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .truncate()
+                    .map(|d| {
+                        if ticket.unread {
+                            d.font_weight(FontWeight::BOLD).text_color(p().text)
+                        } else {
+                            d.text_color(p().text.opacity(0.72))
+                        }
+                    })
+                    .child(ticket.title.clone()),
+            )
+            .when_some(ticket.priority.as_deref().and_then(icons::priority), |d, icon| {
+                let priority = ticket.priority.clone().unwrap_or_default();
+                d.child(
+                    icons::labelled(icon, icons::priority_colour(&priority), 14., priority)
+                        .text_xs()
+                        .text_color(p().muted),
+                )
+            })
+            .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| {
+                d.child(div().flex_none().text_xs().text_color(p().muted).child(when))
+            });
+
+        let mut facts: Vec<String> = Vec::new();
+        if let Some(intent) = &ticket.intent {
+            facts.push(intent.clone());
+        }
+        if let Some(level) = ticket.level.as_deref().filter(|l| *l != "task") {
+            facts.push(level.to_string());
+        }
+        if let Some(title) = ticket.milestone.as_ref().and_then(|m| m.title.clone()) {
+            facts.push(format!("milestone {title}"));
+        }
+        if let Some(holder) = ticket.holder() {
+            let held = if ticket.assignee.is_some() { "assigned to" } else { "claimed by" };
+            facts.push(format!("{held} {}", who(holder)));
+        }
+        if let Some(speaker) = &ticket.last_speaker {
+            facts.push(format!("{} spoke last · {} msg", who(speaker), ticket.comment_count));
+        }
+        if let Some(usage) = &ticket.token_usage {
+            let total = usage.tokens_in + usage.tokens_out + usage.cache_w;
+            if total > 0 {
+                facts.push(format!("{} tok", count(total)));
+            }
+        }
+        if ticket.blocked {
+            facts.push("blocked".into());
+        }
+        if let Some(until) = ticket.postponed_until.as_deref() {
+            facts.push(format!("snoozed until {}", until.get(..10).unwrap_or(until)));
+        }
+        if ticket.has_payload {
+            facts.push("payload".into());
+        }
+        if ticket.scope.as_deref().is_some_and(|s| s != "default") {
+            facts.push(ticket.scope.clone().unwrap_or_default());
+        }
+        facts.push(format!("by {} · {}", who(&ticket.by_agent), ticket.created_at.get(..10).unwrap_or("")));
+
+        let meta = div()
+            .flex()
+            .flex_wrap()
+            .items_center()
+            .gap_x_2()
+            .text_xs()
+            .text_color(p().muted)
+            .when_some(ticket.critical.as_ref(), |d, critical| {
+                d.child(icons::pill(Icon::Critical, critical.holds.to_string(), p().danger))
+            })
+            .when(ticket.hot, |d| d.child(icons::icon(Icon::Hot, p().warning, 12.)))
+            .children(ticket.tags.iter().map(|tag| {
+                div().px_1().rounded_sm().border_1().border_color(p().border).child(tag.name.clone())
+            }))
+            .child(facts.join(" · "));
+
+        let (project, id) = (ticket.project.clone(), ticket.id);
+        div()
+            .id(SharedString::from(format!("full-{}-{}", ticket.project, ticket.id)))
+            .flex()
+            .gap_2()
+            .px_3()
+            .py_2()
+            .border_b_1()
+            .border_color(p().border.opacity(0.5))
+            .cursor_pointer()
+            .hover(|d| d.bg(p().hover))
+            .child(stripe(state.stripe, stripe_colour(&state)))
+            .child(
+                div()
+                    .w(px(18.))
+                    .pt_0p5()
+                    .flex_none()
+                    .when_some(state.glyph, |d, glyph| {
+                        d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 18.))
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .flex_1()
+                    .min_w_0()
+                    .child(title)
+                    .when_some(ticket.snippet.clone().filter(|s| !s.trim().is_empty()), |d, snippet| {
+                        d.child(div().text_xs().text_color(p().muted).truncate().child(snippet.replace('\n', " ")))
+                    })
+                    .child(meta),
+            )
+            .on_click(cx.listener(move |_, _, _, cx| {
+                cx.emit(OpenTicket { project: project.clone(), ticket: id })
+            }))
+    }
+}
+
+impl Render for FullList {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let query = self.search.read(cx).value().trim().to_lowercase();
+        let rows = self.rows();
+        let side = self.side(&rows, &query, cx);
+
+        let shown: Vec<&(RowState, &TicketRow)> = rows
+            .iter()
+            .filter(|(s, t)| self.band.is_none_or(|b| s.band == b) && self.matches(t, &query))
+            .collect();
+        let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
+        let mut band = None;
+        for (state, ticket) in &shown {
+            if band != Some(state.band) {
+                band = Some(state.band);
+                list = list.child(group(state.band.title()).px_3());
+            }
+            list = list.child(self.row(ticket, *state, cx));
+        }
+        if shown.is_empty() {
+            list = list.child(div().p_4().text_color(p().muted).child(if self.loading {
+                "Reading…"
+            } else {
+                "No ticket here."
+            }));
+        }
+
+        let title = match &self.scope {
+            Some(project) => format!("Tickets — {project}"),
+            None => "Tickets — all projects".to_string(),
+        };
+        div()
+            .id("full-list")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .flex()
+            .flex_col()
+            .bg(p().bg)
+            .text_color(p().text)
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .h(px(40.))
+                    .px_4()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child(title))
+                    .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
+                    .child(
+                        div()
+                            .id("full-list-close")
+                            .px_2()
+                            .rounded_sm()
+                            .text_sm()
+                            .text_color(p().muted)
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover).text_color(p().text))
+                            .child("✕  Esc")
+                            .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseFullList))),
+                    ),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(
+                        div()
+                            .w_1_3()
+                            .flex_none()
+                            .h_full()
+                            .bg(p().surface)
+                            .border_r_1()
+                            .border_color(p().border)
+                            .child(side.overflow_y_scrollbar()),
+                    )
+                    .child(div().flex_1().min_w_0().h_full().child(list.overflow_y_scrollbar())),
+            )
+    }
+}
+
+fn group(title: &'static str) -> Div {
+    div()
+        .pt_3()
+        .pb_1()
+        .text_xs()
+        .font_weight(FontWeight::BOLD)
+        .text_color(p().muted)
+        .child(title.to_uppercase())
+}
