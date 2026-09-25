@@ -123,6 +123,12 @@ pub struct TicketPanel {
     edit_title: Entity<InputState>,
     edit_body: Entity<TextareaState>,
     relation_target: Entity<InputState>,
+    /// Full screen, a comment's ⋯ menu, the one being edited, the one
+    /// whose deletion waits for a confirming click.
+    comment_menu: Option<u64>,
+    comment_editing: Option<u64>,
+    confirm_delete: Option<u64>,
+    edit_comment: Entity<TextareaState>,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
@@ -148,6 +154,7 @@ impl TicketPanel {
         let edit_title = cx.new(|cx| InputState::new(window, cx));
         let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
+        let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         let reader = aiball.clone();
         cx.spawn(async move |this, cx| {
             let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
@@ -174,7 +181,42 @@ impl TicketPanel {
             edit_title,
             edit_body,
             relation_target,
+            comment_menu: None,
+            comment_editing: None,
+            confirm_delete: None,
+            edit_comment,
         }
+    }
+
+    /// A gesture on one comment: the menu closes once aiball has it.
+    fn on_comment(
+        &mut self,
+        run: impl FnOnce(&Aiball) -> anyhow::Result<()> + Send + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        self.gesture(
+            run,
+            |panel, _, _| {
+                panel.comment_menu = None;
+                panel.comment_editing = None;
+                panel.confirm_delete = None;
+            },
+            window,
+            cx,
+        );
+    }
+
+    fn edit_comment_start(&mut self, comment: u64, body: String, window: &mut Window, cx: &mut Context<Self>) {
+        self.comment_editing = Some(comment);
+        self.comment_menu = None;
+        self.edit_comment.update(cx, |input, cx| input.set_value(body, window, cx));
+        cx.notify();
+    }
+
+    fn edit_comment_save(&mut self, comment: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let body = self.edit_comment.read(cx).value().to_string();
+        self.on_comment(move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
     }
 
     pub fn is_full(&self) -> bool {
@@ -316,9 +358,19 @@ impl TicketPanel {
     ) {
         self.aiball = aiball.clone();
         if self.tickets != tickets || self.critical != critical {
+            // The open ticket moved (someone wrote, decided…): read its
+            // thread again.
+            let open = self.detail.as_ref().map(|d| d.ticket);
+            let moved = open.is_some_and(|id| {
+                let row = |rows: &[TicketRow]| rows.iter().find(|t| t.id == id).map(|t| (t.last_activity.clone(), t.comment_count));
+                row(&self.tickets) != row(&tickets)
+            });
             self.tickets = tickets;
             self.critical = critical;
             self.keep_scrolls();
+            if let (true, Some(id)) = (moved, open) {
+                self.load(id, false, cx);
+            }
             cx.notify();
         }
     }
@@ -1571,7 +1623,10 @@ impl TicketPanel {
             .child(row("inv-reporter", "reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at)), Some(Editing::Owner), cx));
         if editing == Some(Editing::Owner) {
             let mut list = choices();
-            for agent in catalog.agents.iter().chain(std::iter::once(&self.aiball.user)) {
+            let mut people: Vec<&String> = catalog.agents.iter().chain(std::iter::once(&self.aiball.user)).collect();
+            people.sort();
+            people.dedup();
+            for agent in people {
                 let name = agent.clone();
                 list = list.child(choice(
                     SharedString::from(format!("owner-{agent}")),
@@ -1811,18 +1866,54 @@ impl TicketPanel {
             .pt_2()
             .border_t_1()
             .border_color(p().border)
-            .child(self.entry_head(
-                entry.id,
-                &comment.by_agent,
-                &comment.created_at,
-                entry.decision.clone(),
-                entry.step,
-                entry.pending,
-                foldable,
-                user,
-                cx,
-            ))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().min_w_0().child(self.entry_head(
+                        entry.id,
+                        &comment.by_agent,
+                        &comment.created_at,
+                        entry.decision.clone(),
+                        entry.step,
+                        entry.pending,
+                        foldable,
+                        user,
+                        cx,
+                    )))
+                    .children(self.full.then(|| self.comment_tools(comment, cx))),
+            )
+            .children((self.full && self.comment_menu == Some(comment.id)).then(|| self.comment_menu_row(entry, comment, user, cx)))
             .map(|d| match (&entry.shape, open, &comment.body) {
+                _ if self.comment_editing == Some(comment.id) => d.child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .gap_1()
+                        .child(Textarea::new(&self.edit_comment))
+                        .child(
+                            div()
+                                .flex()
+                                .gap_2()
+                                .justify_end()
+                                .child(Button::new(("comment-cancel", comment.id)).ghost().small().label("Cancel").on_click(
+                                    cx.listener(|panel, _, _, cx| {
+                                        panel.comment_editing = None;
+                                        cx.notify();
+                                    }),
+                                ))
+                                .child({
+                                    let id = comment.id;
+                                    Button::new(("comment-save", comment.id))
+                                        .primary()
+                                        .small()
+                                        .label("Save")
+                                        .loading(busy)
+                                        .on_click(cx.listener(move |panel, _, window, cx| panel.edit_comment_save(id, window, cx)))
+                                }),
+                        ),
+                ),
                 (Shape::Folded(line), false, _) => d.child(folded_line(line.clone())),
                 (_, _, Some(text)) => d.child(TextView::markdown(("comment", comment.id), text.clone())),
                 _ => d,
@@ -1833,6 +1924,125 @@ impl TicketPanel {
                 d.child(div().text_xs().text_color(p().muted).child(commits.join(" · ")))
             })
             .into_any_element()
+    }
+
+    /// Full screen, at a comment's right: its votes, and ⋯ for its menu.
+    fn comment_tools(&self, comment: &Comment, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let votes = comment.votes_summary.clone().unwrap_or_default();
+        let id = comment.id;
+        div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .gap_2()
+            .text_xs()
+            .text_color(p().muted)
+            .when(votes.up > 0, |d| d.child(format!("+{}", votes.up)))
+            .when(votes.down > 0, |d| d.child(format!("−{}", votes.down)))
+            .child(
+                div()
+                    .id(("comment-menu", id))
+                    .px_1()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover).text_color(p().text))
+                    .child("⋯")
+                    .on_click(cx.listener(move |panel, _, _, cx| {
+                        panel.comment_menu = if panel.comment_menu == Some(id) { None } else { Some(id) };
+                        panel.confirm_delete = None;
+                        cx.notify();
+                    })),
+            )
+    }
+
+    /// A comment's gestures: edit, delete, classify, step, vote, resurface,
+    /// copy its reference.
+    fn comment_menu_row(&self, entry: &Entry, comment: &Comment, user: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let id = comment.id;
+        let busy = self.detail.as_ref().is_some_and(|d| d.busy);
+        let item = |key: &str, label: String, colour: Hsla| {
+            div()
+                .id(SharedString::from(format!("{key}-{id}")))
+                .px_1p5()
+                .py_0p5()
+                .rounded_sm()
+                .text_xs()
+                .border_1()
+                .border_color(p().border)
+                .text_color(colour)
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(label)
+        };
+        let mut row = div().flex().flex_wrap().gap_1().pb_1();
+        if let Some(body) = comment.body.clone() {
+            row = row.child(item("edit", "Edit".into(), p().text).on_click(cx.listener(move |panel, _, window, cx| {
+                panel.edit_comment_start(id, body.clone(), window, cx)
+            })));
+        }
+        let confirming = self.confirm_delete == Some(id);
+        row = row.child(
+            item("delete", if confirming { "Really delete?".into() } else { "Delete".into() }, p().danger).on_click(cx.listener(
+                move |panel, _, window, cx| {
+                    if busy {
+                        return;
+                    }
+                    if panel.confirm_delete == Some(id) {
+                        panel.on_comment(move |aiball| aiball.delete_comment(id), window, cx);
+                    } else {
+                        panel.confirm_delete = Some(id);
+                        cx.notify();
+                    }
+                },
+            )),
+        );
+        // One way to classify, the four kinds; accepting stays with the
+        // decision card.
+        let current = entry.decision.as_ref().filter(|(_, s)| *s == DecisionState::Pending).map(|(k, _)| k.clone());
+        for kind in ["plan", "resolution", "wontfix", "escalation"] {
+            if current.as_deref() == Some(kind) {
+                continue;
+            }
+            row = row.child(
+                item(&format!("classify-{kind}"), format!("as {}", reading::kind_noun(kind)), p().text)
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.classify(id, kind), window, cx))),
+            );
+        }
+        if current.is_some() {
+            row = row.child(
+                item("untag", "no decision".into(), p().text)
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.untag(id), window, cx))),
+            );
+        }
+        if comment.by_agent != user && entry.decision.is_none() {
+            let step = entry.step.is_some();
+            row = row.child(
+                item("step", if step { "not a step".into() } else { "a step".into() }, p().text)
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.set_step(id, !step), window, cx))),
+            );
+        }
+        let mine = comment.votes_summary.as_ref().and_then(|v| v.mine).unwrap_or(0);
+        for (key, label, value) in [("up", "👍", 1), ("down", "👎", -1)] {
+            let on = mine == value;
+            row = row.child(
+                item(key, if on { format!("{label} ✓") } else { label.to_string() }, p().text).on_click(cx.listener(move |panel, _, window, cx| {
+                    let value = if on { 0 } else { value };
+                    panel.on_comment(move |aiball| aiball.vote(id, value), window, cx)
+                })),
+            );
+        }
+        row = row.child(
+            item("resurface", "Resurface".into(), p().text)
+                .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.resurface(id), window, cx))),
+        );
+        if let Some(hashid) = comment.hashid.clone() {
+            row = row.child(item("copy", format!("#C.{hashid}"), p().muted).on_click(cx.listener(move |panel, _, _, cx| {
+                cx.write_to_clipboard(ClipboardItem::new_string(format!("#C.{hashid}")));
+                panel.comment_menu = None;
+                cx.notify();
+            })));
+        }
+        row
     }
 
     /// Who, when, and the chips of an entry; a click folds or unfolds it.

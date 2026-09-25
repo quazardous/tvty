@@ -243,6 +243,19 @@ pub struct Comment {
     pub status: String,
     /// For an event: the ticket it comes from or points to.
     pub source_ticket_id: Option<u64>,
+    /// Its short reference, `#C.<hashid>`.
+    pub hashid: Option<String>,
+    pub votes_summary: Option<Votes>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Votes {
+    #[serde(default)]
+    pub up: u32,
+    #[serde(default)]
+    pub down: u32,
+    /// The reader's own vote: 1, -1, or none.
+    pub mine: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -478,6 +491,37 @@ impl Aiball {
 
     pub fn move_ticket(&self, ticket: u64, project: &str) -> anyhow::Result<()> {
         self.post(&format!("/api/tickets/{ticket}/move"), json!({ "project": project })).map(drop)
+    }
+
+    /// Deletes a comment (aiball keeps a tombstone).
+    pub fn delete_comment(&self, comment: u64) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{comment}/delete"), json!({})).map(drop)
+    }
+
+    /// Makes a comment a pending decision of `kind`.
+    pub fn classify(&self, comment: u64, kind: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{comment}/promote"), json!({ "kind": kind })).map(drop)
+    }
+
+    /// Takes a pending decision off a comment.
+    pub fn untag(&self, comment: u64) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{comment}/untag"), json!({})).map(drop)
+    }
+
+    /// Marks an agent's comment as a step, or unmarks it.
+    pub fn set_step(&self, comment: u64, step: bool) -> anyhow::Result<()> {
+        let verb = if step { "step" } else { "unstep" };
+        self.post(&format!("/api/messages/{comment}/{verb}"), json!({})).map(drop)
+    }
+
+    /// Votes on a comment: 1, -1, or 0 to take the vote back.
+    pub fn vote(&self, comment: u64, value: i64) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{comment}/vote"), json!({ "value": value })).map(drop)
+    }
+
+    /// Makes a comment unread again for those it notified.
+    pub fn resurface(&self, comment: u64) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{comment}/resurface"), json!({})).map(drop)
     }
 
     /// Who can be @mentioned: projects, then agents.

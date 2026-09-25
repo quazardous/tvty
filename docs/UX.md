@@ -123,7 +123,11 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   offers its values (intent, priority, level, scope, milestone, tags, the
   reporter, the assignee or release, a relation to add or undo, the
   project to move to), the title and body open an editor; no reply goes
-  with these; on the rest the talk at a readable width, whole
+  with these; on the rest the talk at a readable width, whole — each
+  comment with a ⋯ menu: edit, delete (a second click confirms), classify
+  as a plan, a resolution, closing without a fix or an escalation (one way,
+  the four kinds; accepting stays with the decision card), no decision, a
+  step (an agent's comment), vote, resurface, copy its `#C.` reference —
   unless folded on demand, with the same gestures. Esc returns where it was
   opened from: the panel, or the full list.
 - **The gestures, in one place**: the pending decision (not your own) with
