@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the rest, each comment with a ⋯ menu (edit, delete, classify, step, vote,
   resurface, copy its reference).
 - An open ticket's thread reads itself again when someone else writes.
+- The slider and gallery cards are live — each session watched read-only,
+  never resized — and show only the bottom of the screen: ctrl+tab no
+  longer drags.
+- In the panel, a band with many tickets no longer overlaps the next one:
+  each keeps its title and two rows, and scrolls within.
 - In a ticket's thread: the order (newest first or last), a click to
   change the priority, a short snooze, replies without notifying, `@`
   mentions, pasted screenshots, and questions answered and ticked from

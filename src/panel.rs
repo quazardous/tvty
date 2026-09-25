@@ -29,6 +29,8 @@ pub struct CollapsePanel;
 
 /// A ticket row's height in the panel, near enough: two lines and padding.
 const ROW_HEIGHT: f32 = 56.;
+/// A band's title in the panel, with its padding.
+const BAND_TITLE_HEIGHT: f32 = 28.;
 
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
@@ -671,7 +673,9 @@ impl TicketPanel {
         // One section per band, each with its title — a click folds it —
         // and its own scroll: the bands share the height, a long one never
         // pushes the others out of sight.
-        let mut list = div().id("ticket-list").flex().flex_col().flex_1().min_h_0().pb_1();
+        // When even the bands' minimums do not fit, the list scrolls as a
+        // whole rather than letting them overlap.
+        let mut list = div().id("ticket-list").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().pb_1();
         if self.tickets.is_empty() {
             return list.child(hint("No open ticket.")).into_any_element();
         }
@@ -703,7 +707,16 @@ impl TicketPanel {
                     }
                     cx.notify();
                 }));
-            let mut section = div().flex().flex_col().flex_initial().min_h_0().child(header);
+            // A band shares the height down to its title and two rows (all of
+        // them when it has fewer), never below — its rows would spill over
+        // the next band —, never above its content either.
+        let keep_rows = if folded { 0 } else { (end - at).min(2) };
+        let mut section = div()
+            .flex()
+            .flex_col()
+            .flex_initial()
+            .min_h(px(BAND_TITLE_HEIGHT + keep_rows as f32 * ROW_HEIGHT))
+            .child(header);
             if !folded {
                 let scroll = self.scrolls.get(&band).cloned().unwrap_or_default();
                 let mut rows_el = div()

@@ -220,32 +220,16 @@ pub fn tmux_sessions() -> Vec<(String, String)> {
 }
 
 /// A pane's screen as `tmux capture-pane -e` prints it, colours included.
-pub struct Capture {
-    pub columns: usize,
-    pub lines: usize,
-    pub text: Vec<u8>,
-}
-
-/// Blocking. Reads a session's current pane without attaching to it — so
-/// without resizing it, unlike opening its terminal.
-pub fn capture(session: &str) -> Option<Capture> {
-    let target = format!("={session}:");
-    let tmux = |args: &[&str]| {
-        Command::new("tmux")
-            .args(args)
-            .env_remove("TMUX")
-            .output()
-            .ok()
-            .filter(|o| o.status.success())
-            .map(|o| o.stdout)
-    };
-    let size = tmux(&["display", "-p", "-t", &target, "#{pane_width} #{pane_height}"])?;
-    let size = String::from_utf8_lossy(&size);
-    let (columns, lines) = size.trim().split_once(' ')?;
-    let text = tmux(&["capture-pane", "-p", "-e", "-t", &target])?;
-    Some(Capture {
-        columns: columns.parse().ok()?,
-        lines: lines.parse().ok()?,
-        text,
-    })
+/// Blocking. A session's window size, in cells: a card watching it live
+/// needs to be as large to see all of it.
+pub fn window_size(session: &str) -> Option<(u16, u16)> {
+    let output = Command::new("tmux")
+        .args(["display", "-p", "-t", &format!("={session}:"), "#{window_width} #{window_height}"])
+        .env_remove("TMUX")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())?;
+    let text = String::from_utf8_lossy(&output.stdout);
+    let (columns, lines) = text.trim().split_once(' ')?;
+    Some((columns.parse().ok()?, lines.parse().ok()?))
 }

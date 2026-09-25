@@ -21,7 +21,7 @@ use crate::fulllist::{CloseFullList, FullList, OpenTicket};
 use crate::panel::{BoardChanged, CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
-use crate::terminal::{Snapshot, TerminalView};
+use crate::terminal::TerminalView;
 
 /// How often the tmux sessions are listed (cheap: one `tmux ls`).
 const SESSIONS_EVERY: Duration = Duration::from_secs(3);
@@ -32,8 +32,12 @@ const POLL_EVERY: Duration = Duration::from_secs(5);
 const READ_GAP: Duration = Duration::from_secs(1);
 /// How often the board is read anyway, feed or not.
 const REREAD_EVERY: Duration = Duration::from_secs(60);
-/// How often the gallery's thumbnails are captured while it is open.
-const THUMBNAILS_EVERY: Duration = Duration::from_millis(1500);
+/// How often the cards redraw while the slider or the gallery is up: they
+/// are live, this only paces them.
+const CARDS_EVERY: Duration = Duration::from_millis(100);
+/// A card's viewport: the bottom of the screen, where Claude Code writes.
+const CARD_LINES: usize = 30;
+const CARD_COLUMNS: usize = 100;
 
 const SIDEBAR_WIDTH: f32 = 240.;
 const SIDEBAR_MIN: f32 = 180.;
@@ -75,9 +79,11 @@ pub struct Shell {
     gallery: Option<Gallery>,
     /// Screens of every terminal, for the gallery and the slider; kept
     /// between openings so they open already filled.
-    thumbnails: HashMap<String, Snapshot>,
+    /// Read-only clients (`tmux attach -r`, which never resizes) of the
+    /// sessions not open here, while the slider or the gallery shows them.
+    watchers: HashMap<String, Entity<TerminalView>>,
     /// A capture loop is running.
-    capturing: bool,
+    watching: bool,
     /// What agents wait on from the user, newest last: the banner.
     needs: Vec<Need>,
     /// What was already waiting at the last read, so that only what is new
@@ -241,8 +247,8 @@ impl Shell {
             slider: None,
             slider_shown: 0,
             gallery: None,
-            thumbnails: HashMap::new(),
-            capturing: false,
+            watchers: HashMap::new(),
+            watching: false,
             needs: Vec::new(),
             waiting: None,
             switches: 0,
@@ -738,7 +744,7 @@ impl Shell {
         // previous one: the quick hop between two.
         let index = self.slider.map_or(0, |i| i as isize);
         self.slider = Some((index + step).rem_euclid(len) as usize);
-        self.capture_thumbnails(cx);
+        self.watch_cards(cx);
         cx.notify();
     }
 
@@ -752,7 +758,7 @@ impl Shell {
         });
         // Keys go to the window while the gallery is up.
         window.focus(&self.focus.clone(), cx);
-        self.capture_thumbnails(cx);
+        self.watch_cards(cx);
         cx.notify();
     }
 
@@ -765,60 +771,69 @@ impl Shell {
         cx.notify();
     }
 
-    /// Captures every terminal's screen with `tmux capture-pane`, again and
-    /// again while the gallery or the slider is up. Read-only: unlike
-    /// attaching, it does not resize the session.
-    fn capture_thumbnails(&mut self, cx: &mut Context<Self>) {
-        if self.capturing {
+    /// Makes the cards live while the slider or the gallery is up: the
+    /// terminals open here draw their own screen; every other session gets
+    /// a read-only client that never resizes it, closed with the view.
+    fn watch_cards(&mut self, cx: &mut Context<Self>) {
+        if self.watching {
             return;
         }
-        self.capturing = true;
+        self.watching = true;
+        let sessions: Vec<String> = self
+            .board
+            .projects
+            .iter()
+            .flat_map(|p| p.terminals.iter().map(|t| t.session.clone()))
+            .filter(|s| !self.terminals.contains_key(s))
+            .collect();
         cx.spawn(async move |this, cx| {
+            let sized = cx
+                .background_executor()
+                .spawn(async move {
+                    sessions
+                        .into_iter()
+                        .filter_map(|s| sessions::window_size(&s).map(|(c, l)| (s, c, l)))
+                        .collect::<Vec<_>>()
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                for (session, columns, lines) in sized {
+                    if shell.terminals.contains_key(&session) || shell.watchers.contains_key(&session) {
+                        continue;
+                    }
+                    let watcher = cx.new(|cx| {
+                        TerminalView::watch(&session, columns, lines, cx).expect("failed to spawn a watcher")
+                    });
+                    shell.watchers.insert(session, watcher);
+                }
+            });
+            // Redraw at a steady pace while shown; then let the watchers go.
             loop {
-                let Ok(sessions) = this.update(cx, |shell, _| {
+                cx.background_executor().timer(CARDS_EVERY).await;
+                let shown = this.update(cx, |shell, cx| {
                     let shown = shell.gallery.is_some() || shell.slider.is_some();
-                    if !shown {
-                        shell.capturing = false;
+                    if shown {
+                        cx.notify();
+                    } else {
+                        shell.watchers.clear();
+                        shell.watching = false;
                     }
-                    shown.then(|| {
-                        shell
-                            .board
-                            .projects
-                            .iter()
-                            .flat_map(|p| p.terminals.iter().map(|t| t.session.clone()))
-                            .collect::<Vec<_>>()
-                    })
-                }) else {
-                    break;
-                };
-                let Some(sessions) = sessions else { break };
-                let captures = cx
-                    .background_executor()
-                    .spawn(async move {
-                        sessions
-                            .into_iter()
-                            .filter_map(|s| sessions::capture(&s).map(|c| (s, c)))
-                            .collect::<Vec<_>>()
-                    })
-                    .await;
-                let alive = this.update(cx, |shell, cx| {
-                    for (session, capture) in captures {
-                        shell
-                            .thumbnails
-                            .entry(session)
-                            .or_insert_with(Snapshot::new)
-                            .load(capture.columns, capture.lines, &capture.text);
-                    }
-                    cx.notify();
-                    true
+                    shown
                 });
-                if !matches!(alive, Ok(true)) {
+                if !matches!(shown, Ok(true)) {
                     break;
                 }
-                cx.background_executor().timer(THUMBNAILS_EVERY).await;
             }
         })
         .detach();
+    }
+
+    /// A session's screen, live: its terminal here, else its watcher.
+    fn screen(&self, session: &str, cx: &App) -> Option<crate::terminal::Snapshot> {
+        self.terminals
+            .get(session)
+            .or_else(|| self.watchers.get(session))
+            .map(|view| view.read(cx).screen())
     }
 
     /// The terminals the gallery shows, by its filter (label or project).
@@ -1386,7 +1401,7 @@ impl Shell {
 
     /// The slider as a portfolio: the window fades behind, and the groups of
     /// terminals come forward one after another, the chosen card enlarged.
-    fn portfolio(&self, index: usize) -> impl IntoElement + use<> {
+    fn portfolio(&self, index: usize, cx: &App) -> impl IntoElement + use<> {
         let order = self.slider_order();
         let chosen = order.get(index).cloned();
         let chosen_project = chosen
@@ -1430,7 +1445,7 @@ impl Shell {
             for terminal in terminals {
                 let chosen = chosen.as_deref() == Some(terminal.session.as_str());
                 let (width, height) = if chosen { (340., 205.) } else { (230., 138.) };
-                cards = cards.child(self.card(project, terminal, chosen, width, height));
+                cards = cards.child(self.card(project, terminal, chosen, width, height, cx));
             }
             // Staggered entrance: each group starts a little after the one before.
             let delay = 0.35 * i as f32 / count;
@@ -1554,6 +1569,7 @@ impl Shell {
         chosen: bool,
         width: f32,
         height: f32,
+        cx: &App,
     ) -> Stateful<Div> {
         let session = &terminal.session;
         let alerts = self.alerts_of(project, terminal.agent.as_deref());
@@ -1587,7 +1603,7 @@ impl Shell {
                     .h(px(height))
                     .overflow_hidden()
                     .bg(p().bg)
-                    .when_some(self.thumbnails.get(session), |d, snapshot| d.child(snapshot.element())),
+                    .when_some(self.screen(session, cx), |d, screen| d.child(screen.viewport(CARD_LINES, CARD_COLUMNS))),
             )
     }
 
@@ -1618,7 +1634,7 @@ impl Shell {
                 let session = terminal.session.clone();
                 let selected = self.selected.as_deref() == Some(session.as_str());
                 row = row.child(
-                    self.card(&project.name, terminal, selected, 320., 190.)
+                    self.card(&project.name, terminal, selected, 320., 190., cx)
                         .cursor_pointer()
                         .hover(|d| d.border_color(p().accent))
                         .on_click(cx.listener(move |shell, _, window, cx| {
@@ -1755,7 +1771,7 @@ impl Render for Shell {
                 .unwrap_or_default();
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
-        let slider = self.slider.map(|index| self.portfolio(index));
+        let slider = self.slider.map(|index| self.portfolio(index, cx));
         let options = self.options.map(|section| self.options_view(section, window, cx));
         let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
         // A click on something that takes no focus (a list, the panel)

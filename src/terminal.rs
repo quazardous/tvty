@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
-use alacritty_terminal::event_loop::{EventLoop, Notifier};
+use alacritty_terminal::event_loop::{EventLoop, Msg, Notifier};
 use alacritty_terminal::grid::{Dimensions as _, Scroll};
 use alacritty_terminal::index::{Column, Line, Point as GridPoint, Side};
 use alacritty_terminal::selection::{Selection, SelectionType};
@@ -61,12 +61,35 @@ pub struct TerminalView {
     selecting: bool,
 }
 
+impl Drop for TerminalView {
+    /// Stops the PTY's event loop, so the child (a tmux client) goes with the
+    /// view — a card's watcher must not stay attached once the slider closes.
+    fn drop(&mut self) {
+        let _ = self.notifier.0.send(Msg::Shutdown);
+    }
+}
+
 impl TerminalView {
     /// Attaches to a tmux session.
     pub fn tmux(session: &str, cx: &mut Context<Self>) -> anyhow::Result<Self> {
         let mut view = Self::new("tmux", &["attach", "-t", &format!("={session}")], cx)?;
         view.tmux_session = Some(session.to_string());
         Ok(view)
+    }
+
+    /// Watches a tmux session live without ever resizing it: a read-only
+    /// client that ignores its own size (`attach -r`), as large as the
+    /// session's window so it sees all of it.
+    pub fn watch(session: &str, columns: u16, lines: u16, cx: &mut Context<Self>) -> anyhow::Result<Self> {
+        let mut view = Self::new("tmux", &["attach", "-r", "-t", &format!("={session}")], cx)?;
+        view.tmux_session = Some(session.to_string());
+        view.apply_size(columns.max(1), lines.max(1), size(px(8.), px(16.)));
+        Ok(view)
+    }
+
+    /// Its screen, live, to draw elsewhere (a card).
+    pub fn screen(&self) -> Snapshot {
+        Snapshot { term: self.term.clone() }
     }
 
     /// Spawns `program args` in a new PTY.
@@ -406,6 +429,7 @@ impl Render for TerminalView {
             .child(TerminalElement {
                 term: self.term.clone(),
                 view: Some(cx.entity()),
+                viewport: None,
             })
             .when(self.exited, |d| {
                 d.child(
@@ -428,6 +452,9 @@ pub struct TerminalElement {
     /// The live terminal it belongs to: the grid then follows the element's
     /// size. Without one (a [`Snapshot`]), the font shrinks to fit the grid.
     view: Option<Entity<TerminalView>>,
+    /// Without a view: only the bottom `lines` × the first `columns` of the
+    /// grid — a card's viewport, where a program such as Claude Code writes.
+    viewport: Option<(usize, usize)>,
 }
 
 impl IntoElement for TerminalElement {
@@ -516,11 +543,19 @@ impl Element for TerminalElement {
                 .map(|s| s.width)
                 .unwrap_or(size * 0.6)
         };
+        // The rows above the viewport, and the columns it keeps.
+        let (skip_lines, keep_columns) = match self.viewport {
+            Some((lines, columns)) => {
+                use alacritty_terminal::grid::Dimensions as _;
+                (self.term.lock().screen_lines().saturating_sub(lines), columns)
+            }
+            None => (0, usize::MAX),
+        };
         let font_size = match &self.view {
             Some(_) => px(FONT_SIZE),
             None => {
                 use alacritty_terminal::grid::Dimensions as _;
-                let columns = self.term.lock().columns().max(1) as f32;
+                let columns = self.term.lock().columns().min(keep_columns).max(1) as f32;
                 let fit = f32::from(bounds.size.width) / (columns * f32::from(advance(px(FONT_SIZE))));
                 px((FONT_SIZE * fit).max(2.))
             }
@@ -581,6 +616,10 @@ impl Element for TerminalElement {
         for indexed in content.display_iter {
             let line = (indexed.point.line.0 + offset) as usize;
             let column = indexed.point.column.0;
+            if line < skip_lines || column >= keep_columns {
+                continue;
+            }
+            let line = line - skip_lines;
             if line != current_line {
                 flush(&mut pending, &mut segments);
                 if current_line != usize::MAX {
@@ -699,6 +738,9 @@ impl Element for TerminalElement {
             });
 
         stats::prepaint(started);
+        if !live {
+            stats::card(started);
+        }
         backgrounds.extend(rules);
         Frame {
             cell,
@@ -954,40 +996,19 @@ fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad>
     quads
 }
 
-/// A still copy of a screen, for thumbnails: fed with what `tmux
-/// capture-pane -e` prints, painted by the same element at a size that fits.
+/// A terminal's screen drawn elsewhere — a card of the slider or the
+/// gallery —, read-only, at a size that fits.
 pub struct Snapshot {
     term: Arc<FairMutex<Term<Listener>>>,
 }
 
 impl Snapshot {
-    pub fn new() -> Self {
-        let (tx, _) = unbounded();
-        let term = Term::new(Config::default(), &TermSize::new(80, 24), Listener(tx));
-        Self {
-            term: Arc::new(FairMutex::new(term)),
-        }
-    }
-
-    /// Replaces the screen with `text`, a pane of `columns` × `lines`.
-    pub fn load(&self, columns: usize, lines: usize, text: &[u8]) {
-        let mut term = self.term.lock();
-        term.resize(TermSize::new(columns.max(1), lines.max(1)));
-        let mut bytes = b"\x1b[0m\x1b[H\x1b[2J".to_vec();
-        for (i, line) in text.split(|&b| b == b'\n').enumerate() {
-            if i > 0 {
-                bytes.extend_from_slice(b"\r\n");
-            }
-            bytes.extend_from_slice(line);
-        }
-        let mut parser: alacritty_terminal::vte::ansi::Processor = Default::default();
-        parser.advance(&mut *term, &bytes);
-    }
-
-    pub fn element(&self) -> TerminalElement {
+    /// Only the bottom `lines` × the first `columns`: a card's viewport.
+    pub fn viewport(&self, lines: usize, columns: usize) -> TerminalElement {
         TerminalElement {
             term: self.term.clone(),
             view: None,
+            viewport: Some((lines, columns)),
         }
     }
 }

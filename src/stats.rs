@@ -3,7 +3,9 @@
 //!   after the PTY answered;
 //! - `stream <frames> fps <wakeups> wakeups, prepaint max <ms>`: every second the PTY talked,
 //!   with the slowest grid preparation of that second;
-//! - `resize <columns>x<lines>`: each new size sent to the PTY.
+//! - `resize <columns>x<lines>`: each new size sent to the PTY;
+//! - `cards <n> max <ms>`: every second cards were drawn (the slider, the
+//!   gallery), the most any one frame spent preparing them all.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -18,6 +20,10 @@ struct State {
     frames: u32,
     wakeups: u32,
     prepaint_max: f64,
+    /// Cards: time spent this frame, the worst frame this second, how many.
+    cards_frame: f64,
+    cards_max: f64,
+    cards_count: u32,
 }
 
 static STATE: LazyLock<Option<Mutex<State>>> = LazyLock::new(|| {
@@ -30,6 +36,9 @@ static STATE: LazyLock<Option<Mutex<State>>> = LazyLock::new(|| {
         frames: 0,
         wakeups: 0,
         prepaint_max: 0.,
+        cards_frame: 0.,
+        cards_max: 0.,
+        cards_count: 0,
     }))
 });
 
@@ -61,6 +70,8 @@ pub fn output() {
 pub fn frame() {
     with(|s| {
         s.frames += 1;
+        s.cards_max = s.cards_max.max(s.cards_frame);
+        s.cards_frame = 0.;
         if let Some((at, true)) = s.key {
             let ms = at.elapsed().as_secs_f64() * 1000.;
             let _ = writeln!(s.file, "echo {ms:.1}");
@@ -76,6 +87,11 @@ pub fn frame() {
                     s.wakeups, s.prepaint_max
                 );
             }
+            if s.cards_max > 0. {
+                let _ = writeln!(s.file, "cards {} max {:.1} ms", s.cards_count, s.cards_max);
+            }
+            s.cards_max = 0.;
+            s.cards_count = 0;
             s.second = Instant::now();
             s.frames = 0;
             s.wakeups = 0;
@@ -92,5 +108,13 @@ pub fn prepaint(started: Instant) {
 pub fn resized(columns: u16, lines: u16) {
     with(|s| {
         let _ = writeln!(s.file, "resize {columns}x{lines}");
+    });
+}
+
+/// A card prepared: its time adds to the frame's.
+pub fn card(started: Instant) {
+    with(|s| {
+        s.cards_frame += started.elapsed().as_secs_f64() * 1000.;
+        s.cards_count += 1;
     });
 }

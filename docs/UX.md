@@ -26,6 +26,13 @@ such; open points are listed at the end.
   brings the terminals forward as live thumbnails, grouped by project, the
   chosen card enlarged; keep ctrl held and tap to move, release to switch.
   Most recent first: the quick hop between the few terminals you juggle.
+- **The cards are live**: a terminal open in tvty draws its own screen; any
+  other session gets a read-only client (`tmux attach -r`: read-only and
+  ignore-size, so it never resizes the session) while the slider or the
+  gallery shows it, closed with them. Each card shows a viewport — the
+  bottom 30 lines, first 100 columns, where Claude Code writes — which
+  keeps a frame light (measured: at most 6 ms for nine cards, against 51
+  for their full grids).
 
 ## The ticket panel
 
