@@ -103,7 +103,9 @@ def _warm_up(comp, x=None, y=None):
             pass
     if x is not None:
         comp.mouse_move(x, y)
-    time.sleep(0.3)
+    # GPUI clicks what the last frame found under the pointer: after a jump,
+    # wait for a frame to be drawn there, or the click lands on stale hover.
+    time.sleep(float(os.environ.get("WBOX_HOVER_WAIT", "0.6")))
 
 
 def main():

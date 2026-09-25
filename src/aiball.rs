@@ -409,15 +409,92 @@ impl Aiball {
             .map(drop)
     }
 
+    /// Edits a ticket's fields: `{"title": …}`, `{"priority": …}`,
+    /// `{"intent": …}`, `{"level": …}`, `{"scope": …}`, `{"body": …}`.
+    pub fn edit(&self, message: u64, fields: Value) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{message}/edit"), fields).map(drop)
+    }
+
+    pub fn add_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/messages/{ticket}/tags"), json!({ "tag": tag, "set_by": self.user }))
+            .map(drop)
+    }
+
+    pub fn remove_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
+        self.request("DELETE", &format!("/api/messages/{ticket}/tags/{}", encode(tag)), None)
+            .map(drop)
+    }
+
+    /// The tags a project's tickets can carry.
+    pub fn tag_catalog(&self, project: &str) -> anyhow::Result<Vec<String>> {
+        let tags: Vec<Tag> = self.get(&format!("/api/tags?project={}", encode(project)))?;
+        Ok(tags.into_iter().map(|t| t.name).collect())
+    }
+
+    /// A project's milestones not yet released: (id, title).
+    pub fn milestones(&self, project: &str) -> anyhow::Result<Vec<(u64, String)>> {
+        let answer: Value = self.get(&format!("/api/projects/{}/milestones", encode(project)))?;
+        Ok(answer
+            .get("milestones")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter(|m| !m.get("released").and_then(Value::as_bool).unwrap_or(false))
+            .filter_map(|m| {
+                let id = m.get("id")?.as_u64()?;
+                let title = m.get("title").and_then(Value::as_str).unwrap_or("").to_string();
+                Some((id, title))
+            })
+            .collect())
+    }
+
+    pub fn set_milestone(&self, ticket: u64, milestone: Option<u64>) -> anyhow::Result<()> {
+        self.post(&format!("/api/tickets/{ticket}/milestone"), json!({ "milestone_id": milestone }))
+            .map(drop)
+    }
+
+    /// Assigns the ticket to `who`, or releases it (`None`).
+    pub fn assign(&self, ticket: u64, who: Option<&str>) -> anyhow::Result<()> {
+        match who {
+            Some(who) => self.post(&format!("/api/tickets/{ticket}/assign"), json!({ "assignee": who })),
+            None => self.post(&format!("/api/tickets/{ticket}/release"), json!({})),
+        }
+        .map(drop)
+    }
+
+    /// Makes `who` the ticket's reporter (its owner).
+    pub fn set_owner(&self, ticket: u64, who: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/tickets/{ticket}/owner"), json!({ "by_agent": who })).map(drop)
+    }
+
+    /// Relates the ticket to `target`; `ignored` removes the relation.
+    pub fn relate(&self, ticket: u64, target: u64, kind: &str) -> anyhow::Result<()> {
+        self.post(
+            &format!("/api/tickets/{ticket}/relations"),
+            json!({ "target_ticket_id": target, "kind": kind }),
+        )
+        .map(drop)
+    }
+
+    pub fn move_ticket(&self, ticket: u64, project: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/tickets/{ticket}/move"), json!({ "project": project })).map(drop)
+    }
+
     /// Who can be @mentioned: projects, then agents.
     pub fn mention_suggestions(&self) -> anyhow::Result<Vec<String>> {
+        let (projects, agents) = self.projects_and_agents()?;
+        Ok(projects.into_iter().chain(agents).collect())
+    }
+
+    /// The board's projects and agents.
+    pub fn projects_and_agents(&self) -> anyhow::Result<(Vec<String>, Vec<String>)> {
         #[derive(Deserialize)]
         struct Suggestions {
             projects: Vec<String>,
             agents: Vec<String>,
         }
         let s: Suggestions = self.get("/api/mention-suggestions")?;
-        Ok(s.projects.into_iter().chain(s.agents).collect())
+        Ok((s.projects, s.agents))
     }
 
     /// Stores a file in aiball's uploads; answers its URL, to cite in a

@@ -6,7 +6,8 @@
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
-use gpui_kit::component::input::{InputEvent, Paste, Textarea, TextareaState};
+use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
+use serde_json::json;
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -72,6 +73,32 @@ enum Menu {
     Priority,
 }
 
+/// Full screen, the invariant being changed in the left column.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Editing {
+    Content,
+    Intent,
+    Priority,
+    Level,
+    Scope,
+    Milestone,
+    Tags,
+    Owner,
+    Assignee,
+    Relation,
+    Project,
+}
+
+/// What the full-screen detail offers to choose from, per project.
+#[derive(Clone, Default)]
+struct Catalog {
+    project: String,
+    tags: Vec<String>,
+    milestones: Vec<(u64, String)>,
+    agents: Vec<String>,
+    projects: Vec<String>,
+}
+
 pub struct TicketPanel {
     aiball: Aiball,
     scope: Option<Scope>,
@@ -91,6 +118,11 @@ pub struct TicketPanel {
     full: bool,
     /// Full screen, the talk shows whole unless folded on demand.
     full_folded: bool,
+    editing: Option<Editing>,
+    catalog: Option<Catalog>,
+    edit_title: Entity<InputState>,
+    edit_body: Entity<TextareaState>,
+    relation_target: Entity<InputState>,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
@@ -113,6 +145,9 @@ impl TicketPanel {
             }
         })
         .detach();
+        let edit_title = cx.new(|cx| InputState::new(window, cx));
+        let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
+        let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let reader = aiball.clone();
         cx.spawn(async move |this, cx| {
             let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
@@ -134,6 +169,11 @@ impl TicketPanel {
             mentions: Vec::new(),
             full: false,
             full_folded: false,
+            editing: None,
+            catalog: None,
+            edit_title,
+            edit_body,
+            relation_target,
         }
     }
 
@@ -144,9 +184,98 @@ impl TicketPanel {
     pub fn set_full(&mut self, full: bool, cx: &mut Context<Self>) {
         if self.full != full {
             self.full = full;
+            self.editing = None;
+            if full {
+                self.read_catalog(cx);
+            }
             cx.emit(FullChanged);
             cx.notify();
         }
+    }
+
+    /// The open ticket's project.
+    fn project(&self) -> Option<String> {
+        self.detail
+            .as_ref()
+            .and_then(|d| d.project.clone())
+            .or_else(|| self.scope.as_ref().map(|s| s.project.clone()))
+    }
+
+    /// Reads what the left column offers to choose from.
+    fn read_catalog(&mut self, cx: &mut Context<Self>) {
+        let Some(project) = self.project() else { return };
+        if self.catalog.as_ref().is_some_and(|c| c.project == project) {
+            return;
+        }
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let catalog = cx
+                .background_executor()
+                .spawn(async move {
+                    let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
+                    Catalog {
+                        tags: aiball.tag_catalog(&project).unwrap_or_default(),
+                        milestones: aiball.milestones(&project).unwrap_or_default(),
+                        agents,
+                        projects,
+                        project,
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |panel, cx| {
+                panel.catalog = Some(catalog);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn start_editing(&mut self, editing: Editing, window: &mut Window, cx: &mut Context<Self>) {
+        if self.editing == Some(editing) {
+            self.editing = None;
+        } else {
+            self.editing = Some(editing);
+            if editing == Editing::Content {
+                let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
+                if let Some(ticket) = ticket {
+                    self.edit_title.update(cx, |input, cx| input.set_value(ticket.title.clone(), window, cx));
+                    self.edit_body.update(cx, |input, cx| input.set_value(ticket.body.clone().unwrap_or_default(), window, cx));
+                }
+            }
+        }
+        cx.notify();
+    }
+
+    /// Changes an invariant: no reply is posted with it.
+    fn change(
+        &mut self,
+        run: impl FnOnce(&Aiball, u64) -> anyhow::Result<()> + Send + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) else { return };
+        self.gesture(
+            move |aiball| run(aiball, ticket),
+            |panel, _, _| panel.editing = None,
+            window,
+            cx,
+        );
+    }
+
+    fn save_content(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let title = self.edit_title.read(cx).value().trim().to_string();
+        let body = self.edit_body.read(cx).value().to_string();
+        if title.is_empty() {
+            return;
+        }
+        self.change(move |aiball, ticket| aiball.edit(ticket, json!({ "title": title, "body": body })), window, cx);
+    }
+
+    fn add_relation(&mut self, kind: &'static str, window: &mut Window, cx: &mut Context<Self>) {
+        let text = self.relation_target.read(cx).value().to_string();
+        let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
+        self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
+        self.change(move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
     }
 
     pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {
@@ -1158,7 +1287,7 @@ impl TicketPanel {
         };
 
         // ── Full screen: the invariants on the left third ───────────────
-        let left = self.invariants(ticket, turn_line, chips_row(chips), &user);
+        let left = self.invariants(ticket, turn_line, chips_row(chips), &user, cx);
         let fold = div()
             .id("fold-all")
             .px_2()
@@ -1227,15 +1356,52 @@ impl TicketPanel {
 
     /// The full-screen detail's left third: what holds for the ticket as a
     /// whole — its state, its fields, who is on it, what it is linked to.
-    fn invariants(&self, ticket: &TicketHeader, turn: Option<Div>, chips: Div, user: &str) -> impl IntoElement + use<> {
-        let row = |label: &'static str, value: String| {
+    /// A click on a field offers its values underneath; a click on one sets
+    /// it (no reply goes with it).
+    fn invariants(&self, ticket: &TicketHeader, turn: Option<Div>, chips: Div, user: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let editing = self.editing;
+        let busy = self.detail.as_ref().is_some_and(|d| d.busy);
+        let catalog = self.catalog.clone().unwrap_or_default();
+        let label = |text: &'static str| div().w(px(96.)).flex_none().text_color(p().muted).child(text);
+        // A row: a click opens its choices, when it has some.
+        let row = |id: &'static str, text: &'static str, value: String, edit: Option<Editing>, cx: &mut Context<Self>| {
+            let open = edit.is_some() && edit == editing;
             div()
+                .id(id)
                 .flex()
                 .gap_2()
                 .py_0p5()
-                .child(div().w(px(96.)).flex_none().text_color(p().muted).child(label))
+                .px_1()
+                .rounded_sm()
+                .when(open, |d| d.bg(p().active))
+                .when_some(edit, |d, edit| {
+                    d.cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .on_click(cx.listener(move |panel, _, window, cx| panel.start_editing(edit, window, cx)))
+                })
+                .child(label(text))
                 .child(div().flex_1().min_w_0().child(value))
         };
+        let choice = |id: SharedString, text: String, on: bool, cx: &mut Context<Self>, set: Box<dyn Fn(&mut Self, &mut Window, &mut Context<Self>)>| {
+            div()
+                .id(id)
+                .px_1p5()
+                .py_0p5()
+                .rounded_sm()
+                .text_xs()
+                .border_1()
+                .border_color(if on { p().accent } else { p().border })
+                .text_color(if on { p().text } else { p().muted })
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(text)
+                .on_click(cx.listener(move |panel, _, window, cx| {
+                    if !busy {
+                        set(panel, window, cx)
+                    }
+                }))
+        };
+        let choices = || div().flex().flex_wrap().gap_1().pl(px(100.)).pb_1();
         let group = |title: &'static str| {
             div()
                 .pt_3()
@@ -1252,29 +1418,145 @@ impl TicketPanel {
             (false, _) if ticket.status == "pending" => "waits for moderation".to_string(),
             (false, _) => "open".to_string(),
         };
+
         let mut col = div()
             .id("ticket-invariants")
             .flex()
             .flex_col()
+            // Room for the scrollbar.
+            .pr_3()
             .text_sm()
             .child(group("State"))
             .children(turn)
             .child(div().pt_1().child(chips))
-            .child(row("lifecycle", lifecycle))
-            .children(ticket.postponed_until.as_deref().map(|until| row("snoozed", format!("until {}", date(until)))));
+            .child(row("inv-lifecycle", "lifecycle", lifecycle, None, cx))
+            .children(ticket.postponed_until.as_deref().map(|until| row("inv-snoozed", "snoozed", format!("until {}", date(until)), None, cx)));
 
-        col = col
-            .child(group("Fields"))
-            .child(row("intent", ticket.intent.clone().unwrap_or_else(|| "—".into())))
-            .child(row("priority", ticket.priority.clone().unwrap_or_else(|| "normal".into())))
-            .child(row("level", ticket.level.clone().unwrap_or_else(|| "task".into())))
-            .child(row("milestone", ticket.milestone.as_ref().and_then(|m| m.title.clone()).unwrap_or_else(|| "—".into())))
-            .child(row("scope", ticket.scope.clone().unwrap_or_else(|| "default".into())))
-            .child(row(
-                "tags",
-                if ticket.tags.is_empty() { "—".into() } else { ticket.tags.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ") },
+        // ── Content ──
+        col = col.child(group("Content")).child(row(
+            "inv-content",
+            "title, body",
+            if editing == Some(Editing::Content) { "editing…".into() } else { "edit".into() },
+            Some(Editing::Content),
+            cx,
+        ));
+        if editing == Some(Editing::Content) {
+            col = col.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .pb_2()
+                    .child(Input::new(&self.edit_title))
+                    .child(Textarea::new(&self.edit_body))
+                    .child(
+                        div()
+                            .flex()
+                            .gap_2()
+                            .justify_end()
+                            .child(
+                                Button::new("content-cancel")
+                                    .ghost()
+                                    .small()
+                                    .label("Cancel")
+                                    .on_click(cx.listener(|panel, _, window, cx| panel.start_editing(Editing::Content, window, cx))),
+                            )
+                            .child(
+                                Button::new("content-save")
+                                    .primary()
+                                    .small()
+                                    .label("Save")
+                                    .loading(busy)
+                                    .on_click(cx.listener(|panel, _, window, cx| panel.save_content(window, cx))),
+                            ),
+                    ),
+            );
+        }
+
+        // ── Fields ──
+        col = col.child(group("Fields"));
+        let fields: [(&'static str, &'static str, Option<String>, &'static str, Editing, &'static [&'static str]); 4] = [
+            ("inv-intent", "intent", ticket.intent.clone(), "intent", Editing::Intent, &["request", "question", "fyi", "feature", "panic"]),
+            ("inv-priority", "priority", ticket.priority.clone(), "priority", Editing::Priority, &["urgent", "high", "normal", "low"]),
+            ("inv-level", "level", ticket.level.clone(), "level", Editing::Level, &["task", "milestone", "roadmap"]),
+            ("inv-scope", "scope", ticket.scope.clone(), "scope", Editing::Scope, &["internal", "default", "broadcast"]),
+        ];
+        for (id, text, value, field, edit, values) in fields {
+            col = col.child(row(id, text, value.clone().unwrap_or_else(|| "—".into()), Some(edit), cx));
+            if editing == Some(edit) {
+                let mut list = choices();
+                for v in values {
+                    let v: &'static str = v;
+                    list = list.child(choice(
+                        SharedString::from(format!("{id}-{v}")),
+                        v.to_string(),
+                        value.as_deref() == Some(v),
+                        cx,
+                        Box::new(move |panel, window, cx| {
+                            panel.change(move |aiball, ticket| aiball.edit(ticket, json!({ field: v })), window, cx)
+                        }),
+                    ));
+                }
+                col = col.child(list);
+            }
+        }
+        let milestone = ticket.milestone.as_ref().and_then(|m| m.title.clone());
+        col = col.child(row("inv-milestone", "milestone", milestone.clone().unwrap_or_else(|| "—".into()), Some(Editing::Milestone), cx));
+        if editing == Some(Editing::Milestone) {
+            let mut list = choices().child(choice(
+                "milestone-none".into(),
+                "none".into(),
+                milestone.is_none(),
+                cx,
+                Box::new(|panel, window, cx| panel.change(|aiball, ticket| aiball.set_milestone(ticket, None), window, cx)),
             ));
+            for (id, title) in &catalog.milestones {
+                let id = *id;
+                list = list.child(choice(
+                    SharedString::from(format!("milestone-{id}")),
+                    title.clone(),
+                    milestone.as_deref() == Some(title.as_str()),
+                    cx,
+                    Box::new(move |panel, window, cx| panel.change(move |aiball, ticket| aiball.set_milestone(ticket, Some(id)), window, cx)),
+                ));
+            }
+            if catalog.milestones.is_empty() {
+                list = list.child(div().text_xs().text_color(p().muted).child("no open milestone in this project"));
+            }
+            col = col.child(list);
+        }
+        let tags: Vec<String> = ticket.tags.iter().map(|t| t.name.clone()).collect();
+        col = col.child(row(
+            "inv-tags",
+            "tags",
+            if tags.is_empty() { "—".into() } else { tags.join(", ") },
+            Some(Editing::Tags),
+            cx,
+        ));
+        if editing == Some(Editing::Tags) {
+            let mut list = choices();
+            for tag in &catalog.tags {
+                let on = tags.contains(tag);
+                let name = tag.clone();
+                list = list.child(choice(
+                    SharedString::from(format!("tag-{tag}")),
+                    tag.clone(),
+                    on,
+                    cx,
+                    Box::new(move |panel, window, cx| {
+                        let name = name.clone();
+                        panel.change(
+                            move |aiball, ticket| if on { aiball.remove_tag(ticket, &name) } else { aiball.add_tag(ticket, &name) },
+                            window,
+                            cx,
+                        )
+                    }),
+                ));
+            }
+            col = col.child(list);
+        }
 
+        // ── People ──
         let claim = match (&ticket.claimant, ticket.is_claim) {
             (Some(claimant), true) => format!(
                 "{}{}",
@@ -1286,13 +1568,62 @@ impl TicketPanel {
         };
         col = col
             .child(group("People"))
-            .child(row("reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at))))
-            .child(row("claimed by", claim))
-            .child(row("assigned to", ticket.assignee.as_deref().map_or("—".into(), |a| who(a, user))));
+            .child(row("inv-reporter", "reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at)), Some(Editing::Owner), cx));
+        if editing == Some(Editing::Owner) {
+            let mut list = choices();
+            for agent in catalog.agents.iter().chain(std::iter::once(&self.aiball.user)) {
+                let name = agent.clone();
+                list = list.child(choice(
+                    SharedString::from(format!("owner-{agent}")),
+                    agent.clone(),
+                    *agent == ticket.by_agent,
+                    cx,
+                    Box::new(move |panel, window, cx| {
+                        let name = name.clone();
+                        panel.change(move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx)
+                    }),
+                ));
+            }
+            col = col.child(list);
+        }
+        col = col.child(row("inv-claim", "claimed by", claim, None, cx)).child(row(
+            "inv-assignee",
+            "assigned to",
+            ticket.assignee.as_deref().map_or("—".into(), |a| who(a, user)),
+            Some(Editing::Assignee),
+            cx,
+        ));
+        if editing == Some(Editing::Assignee) {
+            let mut list = choices();
+            if ticket.assignee.is_some() || ticket.is_claim {
+                list = list.child(choice(
+                    "assign-release".into(),
+                    "release".into(),
+                    false,
+                    cx,
+                    Box::new(|panel, window, cx| panel.change(|aiball, ticket| aiball.assign(ticket, None), window, cx)),
+                ));
+            }
+            for agent in &catalog.agents {
+                let name = agent.clone();
+                list = list.child(choice(
+                    SharedString::from(format!("assign-{agent}")),
+                    agent.clone(),
+                    ticket.assignee.as_deref() == Some(agent.as_str()),
+                    cx,
+                    Box::new(move |panel, window, cx| {
+                        let name = name.clone();
+                        panel.change(move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
+                    }),
+                ));
+            }
+            col = col.child(list);
+        }
 
+        // ── Links ──
         col = col.child(group("Links"));
         if let Some(parent) = ticket.parent_ticket_id {
-            col = col.child(row("sub-ticket of", format!("#{parent}")));
+            col = col.child(row("inv-parent", "sub-ticket of", format!("#{parent}"), None, cx));
         }
         if !ticket.sub_tickets.is_empty() {
             let subs: Vec<String> = ticket
@@ -1301,7 +1632,7 @@ impl TicketPanel {
                 .filter_map(|t| t.get("id").and_then(|id| id.as_u64()).or_else(|| t.as_u64()))
                 .map(|id| format!("#{id}"))
                 .collect();
-            col = col.child(row("sub-tickets", subs.join(", ")));
+            col = col.child(row("inv-subs", "sub-tickets", subs.join(", "), None, cx));
         }
         for relation in &ticket.relations {
             let verb = match (relation.kind.as_str(), relation.reciprocal) {
@@ -1314,21 +1645,83 @@ impl TicketPanel {
                 ("child_of", false) | ("parent_of", true) => "child of",
                 _ => continue,
             };
+            let target = relation.target_ticket_id;
             let stage = relation.target_stage.clone().map(|s| format!(" ({s})")).unwrap_or_default();
-            col = col.child(row(verb, format!("#{}{stage}", relation.target_ticket_id)));
+            // Only a relation made on this ticket can be undone from here.
+            let remove = (!relation.reciprocal).then(|| {
+                div()
+                    .id(SharedString::from(format!("unrelate-{target}")))
+                    .px_1()
+                    .text_xs()
+                    .text_color(p().muted)
+                    .cursor_pointer()
+                    .hover(|d| d.text_color(p().danger))
+                    .child("✕")
+                    .on_click(cx.listener(move |panel, _, window, cx| {
+                        panel.change(move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
+                    }))
+            });
+            col = col.child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .py_0p5()
+                    .px_1()
+                    .child(label(verb))
+                    .child(div().flex_1().min_w_0().child(format!("#{target}{stage}")))
+                    .children(remove),
+            );
         }
-        if ticket.parent_ticket_id.is_none() && ticket.sub_tickets.is_empty() && ticket.relations.is_empty() {
-            col = col.child(div().text_color(p().muted).child("none"));
+        col = col.child(row(
+            "inv-relate",
+            "relate",
+            if editing == Some(Editing::Relation) { "to…".into() } else { "+ a ticket".into() },
+            Some(Editing::Relation),
+            cx,
+        ));
+        if editing == Some(Editing::Relation) {
+            let mut list = choices().child(div().w(px(90.)).child(Input::new(&self.relation_target)));
+            for (id, kind) in [("rel-depends", "depends_on"), ("rel-blocks", "blocks"), ("rel-relates", "relates_to"), ("rel-dup", "duplicates")] {
+                list = list.child(choice(
+                    id.into(),
+                    kind.replace('_', " "),
+                    false,
+                    cx,
+                    Box::new(move |panel, window, cx| panel.add_relation(kind, window, cx)),
+                ));
+            }
+            col = col.child(list);
+        }
+
+        // ── Elsewhere ──
+        let project = self.project().unwrap_or_default();
+        col = col.child(group("Project")).child(row("inv-project", "project", project.clone(), Some(Editing::Project), cx));
+        if editing == Some(Editing::Project) {
+            let mut list = choices();
+            for other in catalog.projects.iter().filter(|p| **p != project) {
+                let name = other.clone();
+                list = list.child(choice(
+                    SharedString::from(format!("move-{other}")),
+                    format!("move to {other}"),
+                    false,
+                    cx,
+                    Box::new(move |panel, window, cx| {
+                        let name = name.clone();
+                        panel.change(move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
+                    }),
+                ));
+            }
+            col = col.child(list);
         }
 
         if let Some(usage) = &ticket.token_usage {
             col = col
                 .child(group("Tokens"))
-                .child(row("in · out", format!("{} · {}", count(usage.tokens_in), count(usage.tokens_out))))
-                .child(row("cache", format!("{} written · {} read", count(usage.cache_w), count(usage.cache_r))));
+                .child(row("inv-tokens", "in · out", format!("{} · {}", count(usage.tokens_in), count(usage.tokens_out)), None, cx))
+                .child(row("inv-cache", "cache", format!("{} written · {} read", count(usage.cache_w), count(usage.cache_r)), None, cx));
         }
         if ticket.has_payload {
-            col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload"));
+            col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload (see the web UI)"));
         }
 
         div()

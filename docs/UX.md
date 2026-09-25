@@ -119,7 +119,11 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   ticket as a whole — its state and chips, lifecycle and snooze, its fields
   (intent, priority, level, milestone, scope, tags), who is on it (reporter,
   a claim and until when — a lapsed one says so —, an assignment), what it
-  is linked to, its tokens; on the rest the talk at a readable width, whole
+  is linked to, its tokens — each changeable in place: a click on a row
+  offers its values (intent, priority, level, scope, milestone, tags, the
+  reporter, the assignee or release, a relation to add or undo, the
+  project to move to), the title and body open an editor; no reply goes
+  with these; on the rest the talk at a readable width, whole
   unless folded on demand, with the same gestures. Esc returns where it was
   opened from: the panel, or the full list.
 - **The gestures, in one place**: the pending decision (not your own) with

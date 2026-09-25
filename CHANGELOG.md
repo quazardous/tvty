@@ -26,7 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.
 - A ticket full screen (⤢ more, or from the full list): its invariants on
-  the left third, the whole talk on the rest.
+  the left third — fields, tags, milestone, reporter, assignee, relations,
+  project, title and body, each changed in place — and the whole talk on
+  the rest.
 - In a ticket's thread: the order (newest first or last), a click to
   change the priority, a short snooze, replies without notifying, `@`
   mentions, pasted screenshots, and questions answered and ticked from
