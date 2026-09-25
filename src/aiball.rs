@@ -135,7 +135,55 @@ pub struct TicketHeader {
     pub body: Option<String>,
     pub by_agent: String,
     pub created_at: String,
+    /// Moderation: `approved`, `pending`, `rejected`.
+    #[serde(default)]
+    pub status: String,
     pub closed: bool,
+    #[serde(default)]
+    pub resolved: bool,
+    pub resolved_by: Option<String>,
+    pub priority: Option<String>,
+    pub claimant: Option<String>,
+    pub assignee: Option<String>,
+    /// The claim is still held (a lapsed one stays in `claimant`).
+    #[serde(default)]
+    pub is_claim: bool,
+    /// The live step, when the last word is a `then: continue`.
+    pub step: Option<Step>,
+    pub critical: Option<Critical>,
+    pub token_usage: Option<TokenUsage>,
+    /// The ticket's own meta: a decision when it was filed with one.
+    pub meta: Option<String>,
+    #[serde(default)]
+    pub relations: Vec<Relation>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Step {
+    pub resume_at: Option<String>,
+    pub resume_on_ticket: Option<u64>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct TokenUsage {
+    #[serde(default)]
+    pub tokens_in: u64,
+    #[serde(default)]
+    pub tokens_out: u64,
+    #[serde(default)]
+    pub cache_w: u64,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct Relation {
+    pub target_ticket_id: u64,
+    /// `depends_on`, `blocks`, `relates_to`, `duplicates`, `parent_of`…
+    pub kind: String,
+    /// `open`, `closed`…
+    pub target_stage: Option<String>,
+    /// Seen from the other ticket: this one is its target.
+    #[serde(default)]
+    pub reciprocal: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -146,6 +194,11 @@ pub struct Comment {
     pub body: Option<String>,
     pub meta: Option<String>,
     pub created_at: String,
+    /// Moderation: `approved`, `pending`, `rejected`.
+    #[serde(default)]
+    pub status: String,
+    /// For an event: the ticket it comes from or points to.
+    pub source_ticket_id: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -154,29 +207,69 @@ pub struct Decision {
     pub kind: String,
     /// `pending`, `accepted`, `rejected`.
     pub status: String,
+    pub decided_by: Option<String>,
+}
+
+fn meta_of(meta: Option<&str>) -> Option<Value> {
+    serde_json::from_str(meta?).ok()
+}
+
+fn decision_of(meta: Option<&str>) -> Option<Decision> {
+    let meta = meta_of(meta)?;
+    let decision = meta.get("decision")?;
+    Some(Decision {
+        kind: decision.get("kind")?.as_str()?.to_string(),
+        status: decision.get("status")?.as_str()?.to_string(),
+        decided_by: decision.get("decided_by").and_then(Value::as_str).map(str::to_string),
+    })
+}
+
+impl TicketHeader {
+    /// The decision the ticket was filed with, if any.
+    pub fn decision(&self) -> Option<Decision> {
+        decision_of(self.meta.as_deref())
+    }
+
+    /// Who works on it: its assignee, else whoever still holds the claim.
+    pub fn holder(&self) -> Option<&str> {
+        self.assignee
+            .as_deref()
+            .or(self.claimant.as_deref().filter(|_| self.is_claim))
+    }
 }
 
 impl Comment {
     pub fn decision(&self) -> Option<Decision> {
-        let meta: Value = serde_json::from_str(self.meta.as_deref()?).ok()?;
-        let decision = meta.get("decision")?;
-        Some(Decision {
-            kind: decision.get("kind")?.as_str()?.to_string(),
-            status: decision.get("status")?.as_str()?.to_string(),
-        })
+        decision_of(self.meta.as_deref())
     }
-}
 
-impl Thread {
-    /// The comment carrying the thread's latest decision, when it still
-    /// awaits one: only the latest decision of a thread can be taken.
-    pub fn pending_decision(&self) -> Option<(&Comment, Decision)> {
-        let (comment, decision) = self
-            .comments
+    /// The one-line state of the ticket its author left with it.
+    pub fn summary_until(&self) -> Option<String> {
+        let meta = meta_of(self.meta.as_deref())?;
+        let summary = meta.get("summary_until")?.as_str()?.trim();
+        (!summary.is_empty()).then(|| summary.to_string())
+    }
+
+    /// A step: `then: continue`.
+    pub fn is_step(&self) -> bool {
+        meta_of(self.meta.as_deref())
+            .and_then(|m| m.get("step").and_then(Value::as_bool))
+            .unwrap_or(false)
+    }
+
+    /// The commits the comment cites, as short SHAs.
+    pub fn commits(&self) -> Vec<String> {
+        let Some(meta) = meta_of(self.meta.as_deref()) else {
+            return Vec::new();
+        };
+        let Some(commits) = meta.get("commits").and_then(Value::as_array) else {
+            return Vec::new();
+        };
+        commits
             .iter()
-            .rev()
-            .find_map(|c| c.decision().map(|d| (c, d)))?;
-        (decision.status == "pending").then_some((comment, decision))
+            .filter_map(|c| c.as_str().or_else(|| c.get("sha").and_then(Value::as_str)))
+            .map(|sha| sha.chars().take(7).collect())
+            .collect()
     }
 }
 
@@ -231,6 +324,27 @@ impl Aiball {
                 "ticket_id": ticket,
                 "parent_id": ticket,
                 "body": body,
+                "by_agent": self.user,
+            }),
+        )
+        .map(drop)
+    }
+
+    /// Moderation: approve or reject a pending ticket or comment.
+    pub fn moderate(&self, message: u64, approve: bool) -> anyhow::Result<()> {
+        let verb = if approve { "approve" } else { "reject" };
+        self.post(&format!("/api/messages/{message}/{verb}"), json!({})).map(drop)
+    }
+
+    /// Closes or reopens a ticket.
+    pub fn set_closed(&self, project: &str, ticket: u64, closed: bool) -> anyhow::Result<()> {
+        self.post(
+            "/api/messages",
+            json!({
+                "project": project,
+                "kind": if closed { "ticket_closed" } else { "ticket_reopened" },
+                "ticket_id": ticket,
+                "parent_id": ticket,
                 "by_agent": self.user,
             }),
         )

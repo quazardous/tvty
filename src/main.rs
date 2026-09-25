@@ -12,6 +12,7 @@ mod shell;
 mod stats;
 mod status;
 mod terminal;
+mod thread;
 mod theme;
 
 use gpui_kit::*;

@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A ticket list that says at a glance what is yours: bands from "to
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.
+- A ticket's thread says where it stands once, on top: whose turn it is in
+  one sentence and the latest summary pinned; older comments fold to their
+  summary line, replaced decisions say "superseded", and the gestures sit in
+  one place under the thread — accept, reject with a reason, moderate,
+  reply, close or reopen.
 - Visible scrollbars on the ticket list, the ticket thread, the projects'
   list, the options, the theme menu and the gallery.
 - An options page (⚙ or ctrl+,): appearance, layout, every keyboard shortcut,

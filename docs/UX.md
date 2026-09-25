@@ -39,9 +39,9 @@ such; open points are listed at the end.
 
 ## The ticket list
 
-A prototype of the list proposed for aiball, computed in tvty from the rows
-of aiball's `/api/inbox` (`src/rowstate.rs`), before aiball computes it
-itself:
+The band, whose turn it is and the state glyph are computed by aiball for
+the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
+(`src/rowstate.rs`) for an aiball that does not:
 
 - **Bands**, from "it is yours" to "it runs by itself": to moderate, waiting
   on you (a decision), unread, agents on it, open. The most recent activity
@@ -57,6 +57,31 @@ itself:
   active), ⚠N on the critical ticket, a high priority, the time.
 
 The legend is in the options page, under "Ticket list".
+
+## A ticket's thread
+
+The detail says where the ticket stands once, then the talk, then the
+gestures (`src/thread.rs` reads the thread, the panel draws it):
+
+- **On top**: the list's glyph and the title; one sentence for whose turn it
+  is ("Yours: accept or reject demo-claude's plan", "demo-claude is on a step
+  · waits on #9", "Closed, resolved by you"), with the list's stripe; short
+  chips only when they say something (who holds it — a lapsed claim does
+  not count —, a high priority, the tickets it holds, tokens, what it
+  depends on or blocks); and the latest `summary_until`, pinned: where it
+  stands.
+- **The talk**, oldest first, so the latest word sits by the reply box, where
+  the thread opens. Comments before the latest snapshot fold to one line —
+  their own snapshot, else their first line — as aiball's `brief` mode cuts
+  a thread; a click on a comment's head unfolds it. Decisions carry the
+  list's glyphs, and **"superseded"** when a newer decision replaced them:
+  only the latest can be taken. Only the latest step shows as running.
+  Events are one grey line, merged when one author repeats them.
+- **The gestures, in one place**: the pending decision (not your own) with
+  Accept — "→ go", "→ close" — and Reject, which wants a reason typed first;
+  moderation; the reply box; Close or Reopen. What is typed is posted first,
+  so every gesture carries its why. The rest (snooze, editing, relations,
+  votes) stays in aiball's web UI.
 
 ## The terminal comes to you
 
