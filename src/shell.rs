@@ -18,7 +18,7 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::fulllist::{CloseFullList, FullList, OpenTicket};
-use crate::panel::{BoardChanged, CollapsePanel, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
+use crate::panel::{BoardChanged, CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
 use crate::terminal::{Snapshot, TerminalView};
@@ -64,6 +64,9 @@ pub struct Shell {
     /// keeps its scope and filters for the next time.
     full_list: Option<Entity<FullList>>,
     full_list_shown: bool,
+    /// The full detail was opened from the full list: leaving it returns
+    /// there.
+    full_list_return: bool,
     feed: events::Feed,
     /// The slider is up, on this index of [`Shell::slider_order`].
     slider: Option<usize>,
@@ -193,6 +196,19 @@ impl Shell {
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
             .detach();
+        cx.subscribe_in(&panel, window, |shell, panel, _: &FullChanged, window, cx| {
+            // Leaving the full detail opened from the full list goes back
+            // to the list.
+            if !panel.read(cx).is_full() {
+                if shell.full_list_return {
+                    shell.full_list_return = false;
+                    shell.full_list_shown = true;
+                }
+                cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+            }
+            cx.notify();
+        })
+        .detach();
         cx.subscribe(&panel, |shell, _, order: &OrderChanged, _| {
             shell.settings.thread_newest_first = order.0;
             shell.settings.save();
@@ -220,6 +236,7 @@ impl Shell {
             options: None,
             full_list: None,
             full_list_shown: false,
+            full_list_return: false,
             feed: feed.clone(),
             slider: None,
             slider_shown: 0,
@@ -390,8 +407,13 @@ impl Shell {
             if !shell.settings.panel_open {
                 shell.toggle_panel(cx);
             }
-            shell.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
-            cx.defer_in(window, |shell, window, cx| shell.focus_terminal(window, cx));
+            // Opened from the full list, the ticket shows full screen too.
+            shell.full_list_return = true;
+            shell.panel.update(cx, |panel, cx| {
+                panel.open_in(Some(project), ticket, cx);
+                panel.set_full(true, cx);
+            });
+            cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
             cx.notify();
         })
         .detach();
@@ -637,6 +659,8 @@ impl Shell {
             self.toggle_options(window, cx);
         } else if m.control && m.shift && key == "l" {
             self.toggle_full_list(window, cx);
+        } else if key == "escape" && self.panel.read(cx).is_full() {
+            self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
         } else if key == "escape" && self.full_list_shown {
             self.toggle_full_list(window, cx);
         } else if m.control && m.shift && key == "k" {
@@ -1707,7 +1731,10 @@ impl Render for Shell {
                 .collect();
             self.folded(Side::Left, dots, cx)
         };
-        let right = if self.settings.panel_open {
+        // Full screen, the panel lies over the window; its place shows the
+        // folded strip meanwhile.
+        let panel_full = self.panel.read(cx).is_full();
+        let right = if self.settings.panel_open && !panel_full {
             div()
                 .flex()
                 .flex_none()
@@ -1790,6 +1817,9 @@ impl Render for Shell {
             .children(gallery)
             .child(keep_focus)
             .children(full_list)
+            .when(panel_full, |d| {
+                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone()))
+            })
             .children(options);
 
         // The window draws its own title bar: GNOME leaves decorations to the

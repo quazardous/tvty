@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A ticket list that says at a glance what is yours: bands from "to
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.
+- A ticket full screen (⤢ more, or from the full list): its invariants on
+  the left third, the whole talk on the rest.
 - In a ticket's thread: the order (newest first or last), a click to
   change the priority, a short snooze, replies without notifying, `@`
   mentions, pasted screenshots, and questions answered and ticked from
@@ -37,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   has to say on the right, in one list sorted by activity, whose turn,
   priority, creation or number.
 - In the panel, each band of tickets folds with a click on its title and
-  scrolls on its own.
+  scrolls on its own; the tickets agents are on come first.
 - A ticket's thread says where it stands once, on top: whose turn it is in
   one sentence and the latest summary pinned; older comments fold to their
   summary line, replaced decisions say "superseded", and the gestures sit in

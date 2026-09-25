@@ -20,7 +20,7 @@ use crate::theme::p;
 /// Closed tickets read per project when the list shows them too.
 const ALL_LIMIT: usize = 300;
 
-const BANDS: [Band; 6] = [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed];
+const BANDS: [Band; 6] = [Band::AgentOnIt, Band::Moderate, Band::Decide, Band::Unread, Band::Open, Band::Closed];
 
 /// How the list is ordered: one list, not bands — the bands filter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -208,7 +208,7 @@ impl FullList {
         rows.sort_by(|(sa, a), (sb, b)| {
             let order = match self.sort {
                 Sort::Activity => recent(a, b),
-                Sort::Turn => sa.band.cmp(&sb.band).then_with(|| recent(a, b)),
+                Sort::Turn => sa.band.rank().cmp(&sb.band.rank()).then_with(|| recent(a, b)),
                 Sort::Priority => priority_rank(b.priority.as_deref())
                     .cmp(&priority_rank(a.priority.as_deref()))
                     .then_with(|| recent(a, b)),

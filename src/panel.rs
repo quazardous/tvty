@@ -12,13 +12,13 @@ use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use crate::aiball::{Aiball, Comment, Thread, TicketRow};
+use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
 use crate::icons::{self, Icon};
 use crate::theme::p;
-use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
+use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
 
 /// Something changed on the board: the shell should read it again.
 pub struct BoardChanged;
@@ -34,6 +34,9 @@ pub struct OpenFullList;
 
 /// The user flipped the thread's order: newest first when true.
 pub struct OrderChanged(pub bool);
+
+/// The detail went full screen, or back to the panel.
+pub struct FullChanged;
 
 /// What the panel is about: a project, and the agent of the terminal shown.
 #[derive(Clone, Debug, PartialEq)]
@@ -83,10 +86,16 @@ pub struct TicketPanel {
     newest_first: bool,
     /// Who can be @mentioned, read once.
     mentions: Vec<String>,
+    /// The detail fills the window: the ticket's invariants on the left
+    /// third, the thread on the rest.
+    full: bool,
+    /// Full screen, the talk shows whole unless folded on demand.
+    full_folded: bool,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
 impl EventEmitter<OrderChanged> for TicketPanel {}
+impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
 
@@ -123,6 +132,20 @@ impl TicketPanel {
             scrolls: HashMap::new(),
             newest_first: false,
             mentions: Vec::new(),
+            full: false,
+            full_folded: false,
+        }
+    }
+
+    pub fn is_full(&self) -> bool {
+        self.full && self.detail.is_some()
+    }
+
+    pub fn set_full(&mut self, full: bool, cx: &mut Context<Self>) {
+        if self.full != full {
+            self.full = full;
+            cx.emit(FullChanged);
+            cx.notify();
         }
     }
 
@@ -459,7 +482,8 @@ impl TicketPanel {
             self.tickets.iter().map(|t| (rowstate::of(t, user), t)).collect();
         rows.sort_by(|(a, ta), (b, tb)| {
             a.band
-                .cmp(&b.band)
+                .rank()
+                .cmp(&b.band.rank())
                 .then_with(|| tb.last_activity.cmp(&ta.last_activity))
         });
 
@@ -688,6 +712,23 @@ impl TicketPanel {
                     .hover(|d| d.bg(p().hover))
                     .child(if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
                     .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
+            )
+            .child(
+                div()
+                    .id("thread-full")
+                    .flex_none()
+                    .px_1()
+                    .rounded_sm()
+                    .text_xs()
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(if self.full { p().muted } else { p().accent })
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child(if self.full { "✕  Esc" } else { "⤢ more" })
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        let full = !panel.full;
+                        panel.set_full(full, cx)
+                    })),
             );
         let turn = (!sentence.is_empty()).then(|| {
             let (stripe_kind, colour) = state
@@ -781,32 +822,39 @@ impl TicketPanel {
                 .child(div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user))))
                 .child(div().child(text))
         });
-        let head = div()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .gap_1p5()
-            .px_3()
-            .pt_2()
-            .pb_2()
-            .border_b_1()
-            .border_color(p().border)
-            .child(title)
-            .children(turn)
-            .when(!chips.is_empty(), |d| {
-                d.child(
-                    div()
-                        .flex()
-                        .flex_wrap()
-                        .items_center()
-                        .gap_x_3()
-                        .gap_y_1()
-                        .text_xs()
-                        .text_color(p().muted)
-                        .children(chips),
-                )
-            })
-            .children(summary);
+        // Full screen, the title spans the top, the state and chips go to
+        // the left column, the summary heads the talk; in the panel they
+        // all make the head.
+        let chips_row = |chips: Vec<AnyElement>| {
+            div()
+                .flex()
+                .flex_wrap()
+                .items_center()
+                .gap_x_3()
+                .gap_y_1()
+                .text_xs()
+                .text_color(p().muted)
+                .children(chips)
+        };
+        let (head, full_parts) = if self.full {
+            (None, Some((title, turn, chips, summary)))
+        } else {
+            let head = div()
+                .flex()
+                .flex_col()
+                .flex_none()
+                .gap_1p5()
+                .px_3()
+                .pt_2()
+                .pb_2()
+                .border_b_1()
+                .border_color(p().border)
+                .child(title)
+                .children(turn)
+                .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
+                .children(summary);
+            (Some(head), None)
+        };
 
         // ── The talk, folded up to its latest snapshot ──────────────────
         let has_talk = read.entries.iter().any(|e| !matches!(e.shape, Shape::Event { .. }));
@@ -1097,15 +1145,202 @@ impl TicketPanel {
         } else {
             (thread_view.into_any_element(), actions.into_any_element())
         };
+        let Some((title, turn_line, chips, summary_full)) = full_parts else {
+            return div()
+                .flex()
+                .flex_col()
+                .flex_1()
+                .min_h_0()
+                .children(head)
+                .child(first)
+                .child(second)
+                .into_any_element();
+        };
+
+        // ── Full screen: the invariants on the left third ───────────────
+        let left = self.invariants(ticket, turn_line, chips_row(chips), &user);
+        let fold = div()
+            .id("fold-all")
+            .px_2()
+            .rounded_sm()
+            .text_xs()
+            .text_color(p().accent)
+            .cursor_pointer()
+            .hover(|d| d.bg(p().hover))
+            .child(if self.full_folded { "unfold all" } else { "fold before the summary" })
+            .on_click(cx.listener(|panel, _, _, cx| {
+                panel.full_folded = !panel.full_folded;
+                cx.notify();
+            }));
         div()
             .flex()
             .flex_col()
-            .flex_1()
-            .min_h_0()
-            .child(head)
-            .child(first)
-            .child(second)
+            .size_full()
+            .child(
+                div()
+                    .flex_none()
+                    .px_4()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .child(title),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_1()
+                    .min_h_0()
+                    .child(left)
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .items_center()
+                            .child(
+                                // A readable measure for the talk.
+                                div()
+                                    .flex()
+                                    .flex_col()
+                                    .w_full()
+                                    .max_w(px(820.))
+                                    .h_full()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_center()
+                                            .gap_2()
+                                            .px_3()
+                                            .pt_2()
+                                            .children(summary_full)
+                                            .child(div().flex_1())
+                                            .child(fold),
+                                    )
+                                    .child(first)
+                                    .child(second),
+                            ),
+                    ),
+            )
             .into_any_element()
+    }
+
+    /// The full-screen detail's left third: what holds for the ticket as a
+    /// whole — its state, its fields, who is on it, what it is linked to.
+    fn invariants(&self, ticket: &TicketHeader, turn: Option<Div>, chips: Div, user: &str) -> impl IntoElement + use<> {
+        let row = |label: &'static str, value: String| {
+            div()
+                .flex()
+                .gap_2()
+                .py_0p5()
+                .child(div().w(px(96.)).flex_none().text_color(p().muted).child(label))
+                .child(div().flex_1().min_w_0().child(value))
+        };
+        let group = |title: &'static str| {
+            div()
+                .pt_3()
+                .pb_1()
+                .text_xs()
+                .font_weight(FontWeight::BOLD)
+                .text_color(p().muted)
+                .child(title.to_uppercase())
+        };
+        let date = |when: &str| when.get(..16).map(|w| w.replace('T', " ")).unwrap_or_else(|| when.to_string());
+        let lifecycle = match (ticket.closed, ticket.resolved) {
+            (true, true) => "closed, resolved".to_string(),
+            (true, false) => "closed".to_string(),
+            (false, _) if ticket.status == "pending" => "waits for moderation".to_string(),
+            (false, _) => "open".to_string(),
+        };
+        let mut col = div()
+            .id("ticket-invariants")
+            .flex()
+            .flex_col()
+            .text_sm()
+            .child(group("State"))
+            .children(turn)
+            .child(div().pt_1().child(chips))
+            .child(row("lifecycle", lifecycle))
+            .children(ticket.postponed_until.as_deref().map(|until| row("snoozed", format!("until {}", date(until)))));
+
+        col = col
+            .child(group("Fields"))
+            .child(row("intent", ticket.intent.clone().unwrap_or_else(|| "—".into())))
+            .child(row("priority", ticket.priority.clone().unwrap_or_else(|| "normal".into())))
+            .child(row("level", ticket.level.clone().unwrap_or_else(|| "task".into())))
+            .child(row("milestone", ticket.milestone.as_ref().and_then(|m| m.title.clone()).unwrap_or_else(|| "—".into())))
+            .child(row("scope", ticket.scope.clone().unwrap_or_else(|| "default".into())))
+            .child(row(
+                "tags",
+                if ticket.tags.is_empty() { "—".into() } else { ticket.tags.iter().map(|t| t.name.clone()).collect::<Vec<_>>().join(", ") },
+            ));
+
+        let claim = match (&ticket.claimant, ticket.is_claim) {
+            (Some(claimant), true) => format!(
+                "{}{}",
+                who(claimant, user),
+                ticket.claim_until.as_deref().map(|u| format!(", until {}", date(u))).unwrap_or_default()
+            ),
+            (Some(claimant), false) => format!("{} (lapsed)", who(claimant, user)),
+            (None, _) => "—".into(),
+        };
+        col = col
+            .child(group("People"))
+            .child(row("reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at))))
+            .child(row("claimed by", claim))
+            .child(row("assigned to", ticket.assignee.as_deref().map_or("—".into(), |a| who(a, user))));
+
+        col = col.child(group("Links"));
+        if let Some(parent) = ticket.parent_ticket_id {
+            col = col.child(row("sub-ticket of", format!("#{parent}")));
+        }
+        if !ticket.sub_tickets.is_empty() {
+            let subs: Vec<String> = ticket
+                .sub_tickets
+                .iter()
+                .filter_map(|t| t.get("id").and_then(|id| id.as_u64()).or_else(|| t.as_u64()))
+                .map(|id| format!("#{id}"))
+                .collect();
+            col = col.child(row("sub-tickets", subs.join(", ")));
+        }
+        for relation in &ticket.relations {
+            let verb = match (relation.kind.as_str(), relation.reciprocal) {
+                ("depends_on", false) | ("blocks", true) => "depends on",
+                ("blocks", false) | ("depends_on", true) => "blocks",
+                ("relates_to", _) => "relates to",
+                ("duplicates", false) => "duplicates",
+                ("duplicates", true) => "duplicated by",
+                ("parent_of", false) | ("child_of", true) => "parent of",
+                ("child_of", false) | ("parent_of", true) => "child of",
+                _ => continue,
+            };
+            let stage = relation.target_stage.clone().map(|s| format!(" ({s})")).unwrap_or_default();
+            col = col.child(row(verb, format!("#{}{stage}", relation.target_ticket_id)));
+        }
+        if ticket.parent_ticket_id.is_none() && ticket.sub_tickets.is_empty() && ticket.relations.is_empty() {
+            col = col.child(div().text_color(p().muted).child("none"));
+        }
+
+        if let Some(usage) = &ticket.token_usage {
+            col = col
+                .child(group("Tokens"))
+                .child(row("in · out", format!("{} · {}", count(usage.tokens_in), count(usage.tokens_out))))
+                .child(row("cache", format!("{} written · {} read", count(usage.cache_w), count(usage.cache_r))));
+        }
+        if ticket.has_payload {
+            col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload"));
+        }
+
+        div()
+            .w_1_3()
+            .flex_none()
+            .h_full()
+            .px_4()
+            .pb_4()
+            .bg(p().surface)
+            .border_r_1()
+            .border_color(p().border)
+            .child(col.overflow_y_scrollbar())
     }
 
     /// One entry of the thread: an event line, a folded comment, or a whole
@@ -1124,7 +1359,8 @@ impl TicketPanel {
                 ))
                 .into_any_element();
         }
-        let foldable = matches!(entry.shape, Shape::Folded(_));
+        // Full screen, everything shows whole unless the user folds it.
+        let foldable = matches!(entry.shape, Shape::Folded(_)) && (!self.full || self.full_folded);
         let open = !foldable || unfolded.contains(&entry.id);
         let moderation = entry.pending.then(|| {
             let id = entry.id;
@@ -1307,13 +1543,14 @@ impl Render for TicketPanel {
             Some(detail) => self.detail(detail, cx),
             None => self.list(cx),
         };
+        let full = self.is_full();
         div()
             .flex()
             .flex_col()
             .size_full()
-            .bg(p().surface)
+            .bg(if full { p().bg } else { p().surface })
             .text_sm()
-            .child(header)
+            .when(!full, |d| d.child(header))
             .child(content)
     }
 }

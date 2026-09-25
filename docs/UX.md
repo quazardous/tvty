@@ -43,8 +43,8 @@ The band, whose turn it is and the state glyph are computed by aiball for
 the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
 (`src/rowstate.rs`) for an aiball that does not:
 
-- **Bands**, from "it is yours" to "it runs by itself": to moderate, waiting
-  on you (a decision), unread, agents on it, open. The most recent activity
+- **Bands**: agents on it first — the work under way —, then to moderate,
+  waiting on you (a decision), unread, open. The most recent activity
   first within a band. In the panel each band is a section: a click on its
   title folds it, and each scrolls on its own — a long band never pushes
   the others out of sight.
@@ -114,6 +114,14 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   offers who to mention; an image pasted (Ctrl+V) goes to aiball's uploads
   and its link into the reply; an open question (`- [ ]`) of a comment has
   an Answer chip that quotes it into the reply, and sending ticks it.
+- **Full screen** (⤢ more in the detail, or opening a ticket from the full
+  list): the title across the top; on the left third what holds for the
+  ticket as a whole — its state and chips, lifecycle and snooze, its fields
+  (intent, priority, level, milestone, scope, tags), who is on it (reporter,
+  a claim and until when — a lapsed one says so —, an assignment), what it
+  is linked to, its tokens; on the rest the talk at a readable width, whole
+  unless folded on demand, with the same gestures. Esc returns where it was
+  opened from: the panel, or the full list.
 - **The gestures, in one place**: the pending decision (not your own) with
   Accept — "→ go", "→ close" — and Reject, which wants a reason typed first;
   moderation; the reply box; Close or Reopen. What is typed is posted first,

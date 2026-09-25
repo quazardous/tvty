@@ -23,6 +23,19 @@ pub enum Band {
 }
 
 impl Band {
+    /// The order the list shows the bands in: what agents are on first —
+    /// the work under way —, then what waits on you, then the rest.
+    pub fn rank(self) -> u8 {
+        match self {
+            Band::AgentOnIt => 0,
+            Band::Moderate => 1,
+            Band::Decide => 2,
+            Band::Unread => 3,
+            Band::Open => 4,
+            Band::Closed => 5,
+        }
+    }
+
     /// aiball's band number, 0 to 5, in this order.
     fn from_server(band: u8) -> Option<Band> {
         [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed]

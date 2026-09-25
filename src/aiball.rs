@@ -185,6 +185,19 @@ pub struct TicketHeader {
     pub postponed_until: Option<String>,
     #[serde(default)]
     pub relations: Vec<Relation>,
+    // The invariants the full-screen detail shows.
+    pub intent: Option<String>,
+    pub level: Option<String>,
+    pub scope: Option<String>,
+    #[serde(default)]
+    pub tags: Vec<Tag>,
+    pub milestone: Option<Milestone>,
+    pub claim_until: Option<String>,
+    pub parent_ticket_id: Option<u64>,
+    #[serde(default)]
+    pub sub_tickets: Vec<Value>,
+    #[serde(default)]
+    pub has_payload: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -201,6 +214,8 @@ pub struct TokenUsage {
     pub tokens_out: u64,
     #[serde(default)]
     pub cache_w: u64,
+    #[serde(default)]
+    pub cache_r: u64,
 }
 
 #[derive(Clone, Debug, Deserialize)]
