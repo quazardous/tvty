@@ -183,7 +183,6 @@ def main():
         client._send(vp, 4)
         client.roundtrip()
         # WBOX_DRAG_STEPS: more, shorter steps are closer to a hand's drag.
-        import os
         steps = max(1, int(os.environ.get("WBOX_DRAG_STEPS", "10")))
         pause = 0.3 / steps if steps > 10 else 0.03
         for i in range(1, steps + 1):
