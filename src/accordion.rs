@@ -87,23 +87,37 @@ impl Section {
             .absolute()
             .size_0()
         });
+        // A band of its own: a line above, a darker ground, the title in
+        // full colour and its count in a pill — the break between two
+        // groups reads at a glance.
         let header = div()
             .id(SharedString::from(format!("{id}-title")))
             .flex()
             .flex_none()
             .items_center()
-            .gap_1()
+            .gap_1p5()
             .h(px(TITLE_HEIGHT))
             .px_3()
-            .pt_1()
+            .bg(p().surface)
+            .border_t_1()
+            .border_b_1()
+            .border_color(p().border)
             .text_xs()
             .font_weight(FontWeight::BOLD)
-            .text_color(p().muted)
+            .text_color(p().text)
             .cursor_pointer()
-            .hover(|d| d.text_color(p().text))
-            .child(div().w(px(10.)).child(if folded { "▸" } else { "▾" }))
+            .hover(|d| d.bg(p().hover))
+            .child(div().w(px(10.)).text_color(p().accent).child(if folded { "▸" } else { "▾" }))
             .child(title.to_uppercase())
-            .child(div().font_weight(FontWeight::NORMAL).child(count.to_string()))
+            .child(
+                div()
+                    .px_1p5()
+                    .rounded_full()
+                    .bg(p().border)
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(p().text)
+                    .child(count.to_string()),
+            )
             .on_click(on_toggle);
         let keep = if folded { 0. } else { keep };
         div()

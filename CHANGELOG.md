@@ -179,6 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The lists' section titles stand out: a band with a line above and below,
+  the title in full colour, the count in a pill.
+
 - Notifications show in the terminal's top right corner (the window's
   while a full screen covers it), the newest highest.
 
