@@ -122,6 +122,9 @@ pub struct TicketPanel {
     edit_title: Entity<InputState>,
     edit_body: Entity<TextareaState>,
     relation_target: Entity<InputState>,
+    /// What is typed to search the open list of choices (tags, people,
+    /// projects): the long lists are searched, not scrolled.
+    search: Entity<InputState>,
     /// Full screen, a comment's ⋯ menu, the one being edited, the one
     /// whose deletion waits for a confirming click.
     comment_menu: Option<u64>,
@@ -155,6 +158,13 @@ impl TicketPanel {
         let edit_title = cx.new(|cx| InputState::new(window, cx));
         let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder("search…"));
+        cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         // The rows a notification is about shine while it is up.
         cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
@@ -189,6 +199,7 @@ impl TicketPanel {
             edit_title,
             edit_body,
             relation_target,
+            search,
             comment_menu: None,
             comment_editing: None,
             confirm_delete: None,
@@ -308,11 +319,34 @@ impl TicketPanel {
         .detach();
     }
 
+    /// The names matching what is typed in the search, those that start
+    /// with it first; nothing typed, the first ones. A handful at most.
+    fn searched<'a>(&self, names: impl Iterator<Item = &'a String>, cx: &App) -> Vec<&'a String> {
+        const SHOWN: usize = 8;
+        let query = self.search.read(cx).value().trim().to_lowercase();
+        let (mut first, rest): (Vec<&String>, Vec<&String>) = names
+            .filter(|n| n.to_lowercase().contains(&query))
+            .partition(|n| n.to_lowercase().starts_with(&query));
+        first.extend(rest);
+        first.truncate(SHOWN);
+        first
+    }
+
+    fn search_box(&self) -> impl IntoElement + use<> {
+        div().w(px(160.)).child(Input::new(&self.search))
+    }
+
     fn start_editing(&mut self, editing: Editing, window: &mut Window, cx: &mut Context<Self>) {
         if self.editing == Some(editing) {
             self.editing = None;
         } else {
             self.editing = Some(editing);
+            if matches!(editing, Editing::Tags | Editing::Owner | Editing::Assignee | Editing::Project) {
+                self.search.update(cx, |input, cx| {
+                    input.set_value("", window, cx);
+                    input.focus(window, cx);
+                });
+            }
             if editing == Editing::Content {
                 let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
                 if let Some(ticket) = ticket {
@@ -1620,8 +1654,8 @@ impl TicketPanel {
             cx,
         ));
         if editing == Some(Editing::Tags) {
-            let mut list = choices();
-            for tag in &catalog.tags {
+            let mut list = choices().child(self.search_box());
+            for tag in self.searched(catalog.tags.iter(), cx) {
                 let on = tags.contains(tag);
                 let name = tag.clone();
                 list = list.child(choice(
@@ -1657,11 +1691,11 @@ impl TicketPanel {
             .child(group("People"))
             .child(row("inv-reporter", "reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at)), Some(Editing::Owner), cx));
         if editing == Some(Editing::Owner) {
-            let mut list = choices();
+            let mut list = choices().child(self.search_box());
             let mut people: Vec<&String> = catalog.agents.iter().chain(std::iter::once(&self.aiball.user)).collect();
             people.sort();
             people.dedup();
-            for agent in people {
+            for agent in self.searched(people.into_iter(), cx) {
                 let name = agent.clone();
                 list = list.child(choice(
                     SharedString::from(format!("owner-{agent}")),
@@ -1684,7 +1718,7 @@ impl TicketPanel {
             cx,
         ));
         if editing == Some(Editing::Assignee) {
-            let mut list = choices();
+            let mut list = choices().child(self.search_box());
             if ticket.holder().is_some() {
                 list = list.child(choice(
                     "assign-release".into(),
@@ -1694,7 +1728,7 @@ impl TicketPanel {
                     Box::new(|panel, window, cx| panel.change("released", |aiball, ticket| aiball.assign(ticket, None), window, cx)),
                 ));
             }
-            for agent in &catalog.agents {
+            for agent in self.searched(catalog.agents.iter(), cx) {
                 let name = agent.clone();
                 list = list.child(choice(
                     SharedString::from(format!("assign-{agent}")),
@@ -1803,8 +1837,8 @@ impl TicketPanel {
         let project = self.project().unwrap_or_default();
         col = col.child(group("Project")).child(row("inv-project", "project", project.clone(), Some(Editing::Project), cx));
         if editing == Some(Editing::Project) {
-            let mut list = choices();
-            for other in catalog.projects.iter().filter(|p| **p != project) {
+            let mut list = choices().child(self.search_box());
+            for other in self.searched(catalog.projects.iter().filter(|p| **p != project), cx) {
                 let name = other.clone();
                 list = list.child(choice(
                     SharedString::from(format!("move-{other}")),

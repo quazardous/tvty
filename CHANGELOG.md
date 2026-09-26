@@ -179,6 +179,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The long lists of choices are searched as you type, not laid out whole:
+  in a new ticket the project, tags, milestone and assignee (Enter takes
+  the first match, ✕ drops a choice), in a ticket's detail the tags,
+  reporter, assignee and project to move to.
+
 - In the ticket lists, a step (`then: continue`) keeps its colour whoever's
   turn it is: blue, amber once it went quiet, as in aiball's web UI.
 
