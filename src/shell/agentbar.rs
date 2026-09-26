@@ -1,14 +1,20 @@
 //! The agent's bar, under its terminal: what claude-loop's tmux status line
-//! says, drawn by tvty from aiball — who drives the loop (and a click to
-//! hold or free it), its Claude's state, its events, the tickets it holds,
-//! its wait credit, where it works. Agent-centric: the panel beside it is
-//! the project's.
+//! says, drawn by tvty from aiball. When the loop pushes its bar (aiball's
+//! `/api/consumers/:id/bar`), all of it: who drives the loop — and a click to
+//! hold or free it —, its Claude's phase and passing state, the dialogs and
+//! alerts, the prompt and a human typing, the proxy, its counters and its
+//! next wake. Before a loop pushes one, what the agent's state says. Then its
+//! events, the tickets it holds, its wait credit, where it works; a click on
+//! its backlog lists it. Agent-centric: the panel beside it is the project's.
+
+use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
-use crate::status::{ago, now};
+use crate::aiball::{AgentBacklog, AgentBar};
+use crate::status::{ago, now, parse_time};
 use crate::theme::p;
 
 /// The bar's height: the terminal gives it that much, once.
@@ -17,29 +23,69 @@ pub const BAR_HEIGHT: f32 = 24.;
 /// What the AFK chip offers: aiball's action, and its label.
 const AFK_ACTIONS: &[(&str, &str)] = &[("off", "auto"), ("arm_10m", "hold 10 min"), ("arm_inf", "hold")];
 
+/// An agent's backlog, open over the bar: whose, and what aiball answered.
+pub(super) struct BacklogView {
+    agent: String,
+    read: Option<Result<AgentBacklog, String>>,
+}
+
+/// Seconds from now to an ISO time: `None` when past or unreadable.
+fn until(at: Option<&str>) -> Option<u64> {
+    parse_time(at?)?.checked_sub(now()).filter(|s| *s > 0)
+}
+
+/// A backlog tier's name.
+fn tier(t: Option<i64>) -> &'static str {
+    match t {
+        Some(-1) => "critical",
+        Some(0) => "hot",
+        Some(1) => "yours",
+        Some(2) => "your decision pending",
+        Some(3) => "waiting on them",
+        Some(4) => "blocked",
+        _ => "other",
+    }
+}
+
 impl Shell {
     /// The bar of the terminal shown, if an agent runs in it.
     pub(super) fn agent_bar(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let (project, terminal) = self.selected.as_deref().and_then(|s| self.terminal_of(s))?;
         let agent = terminal.agent.clone()?;
         let status = terminal.status.clone();
+        let bar = self.board.bars.get(&agent).filter(|b| !b.stale).map(|b| b.bar.clone());
         let holds = self
             .board
             .tickets
             .get(project)
             .map_or(0, |rows| rows.iter().filter(|r| r.holder() == Some(agent.as_str())).count());
-        let online = status.as_ref().is_some_and(|s| s.online);
-        let driver = status.as_ref().map(|s| s.driver.as_str()).unwrap_or("");
-        let (glyph, word, colour) = match driver {
-            "wait" => ("‖", "held", p().warning),
-            "stop" => ("✎", "you type", p().danger),
-            "boot" => ("…", "boot", p().info),
-            "loop" => ("▶", "auto", p().success),
-            _ => ("·", "—", p().muted),
-        };
+        let online = bar.is_some() || status.as_ref().is_some_and(|s| s.online);
         let item = || div().flex().items_center().gap_1().flex_none();
         let sep = || div().text_color(p().border).child("│");
+        let loud = |text: &'static str| {
+            div()
+                .flex_none()
+                .px_1p5()
+                .rounded_sm()
+                .bg(p().danger)
+                .text_color(crate::theme::on(p().danger))
+                .child(text)
+        };
 
+        // ── Who drives the loop ──
+        let presence = bar.as_ref().map(|b| b.presence.clone()).or_else(|| status.as_ref().map(|s| s.driver.clone()));
+        let (glyph, word, colour) = match (presence.as_deref(), bar.as_ref().map(|b| b.afk.mode.as_str())) {
+            (Some("stop"), _) => ("✎", "you type".to_string(), p().danger),
+            (_, Some("wait_inf")) => ("‖", "held".to_string(), p().danger),
+            (_, Some("wait_10m")) => {
+                let left = bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref()));
+                ("‖", left.map_or("held".into(), |s| format!("held {}", ago(s))), p().warning)
+            }
+            (Some("wait"), _) => ("‖", "held".to_string(), p().warning),
+            (Some("boot"), _) => ("…", "boot".to_string(), p().info),
+            (Some("loop"), _) => ("▶", "auto".to_string(), p().success),
+            _ => ("·", "—".to_string(), p().muted),
+        };
         let afk = item()
             .id("agent-afk")
             .px_1p5()
@@ -73,31 +119,55 @@ impl Shell {
             row
         });
 
-        let state = status.as_ref().filter(|_| online).map(|s| {
-            let what = match s.state.as_str() {
-                "busy" => "working",
-                "boot" => "starting",
-                _ => "idle",
-            };
-            let since = s.since.map(|since| format!(" · {}", ago(now().saturating_sub(since)))).unwrap_or_default();
-            item()
-                .text_color(if s.state == "busy" { p().accent } else { p().muted })
-                .child(format!("{what}{since}"))
-        });
-        let unseen = status.as_ref().map_or(0, |s| s.unseen);
+        // ── What its Claude does ──
+        let phase = bar.as_ref().map(|b| b.phase.clone()).or_else(|| status.as_ref().map(|s| s.state.clone()));
+        let what = match phase.as_deref() {
+            Some("busy") => "working",
+            Some("boot") => "starting",
+            _ => "idle",
+        };
+        let since = match &bar {
+            Some(b) if b.phase == "boot" => b
+                .boot
+                .as_ref()
+                .and_then(|boot| parse_time(&boot.started_at))
+                .map(|s| format!(" · {}", ago(now().saturating_sub(s)))),
+            _ => status
+                .as_ref()
+                .and_then(|s| s.since)
+                .map(|s| format!(" · {}", ago(now().saturating_sub(s)))),
+        }
+        .unwrap_or_default();
+        let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
+        let state = item()
+            .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
+            .child(format!("{what}{since}{info}"));
+        let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
+
+        // ── The rest, from the loop when it tells ──
+        let unseen = bar
+            .as_ref()
+            .and_then(|b| b.counters.as_ref())
+            .and_then(|c| c.events)
+            .or_else(|| status.as_ref().map(|s| s.unseen))
+            .unwrap_or(0);
+        let backlog = bar.as_ref().and_then(|b| b.counters.as_ref()).and_then(|c| c.backlog);
+        let wake = bar.as_ref().and_then(|b| until(b.next_wake_at.as_deref()));
         let credit = status.as_ref().and_then(|s| s.credit);
         let cwd = status.as_ref().and_then(|s| s.cwd.clone()).map(|cwd| home_short(&cwd));
+        let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
+        let target = (agent.clone(), project.to_string());
 
         Some(
             div()
                 .id("agent-bar")
+                .relative()
                 .flex()
                 .flex_none()
                 .items_center()
                 .gap_2()
                 .h(px(BAR_HEIGHT))
                 .px_2()
-                .overflow_hidden()
                 .bg(p().surface)
                 .border_t_1()
                 .border_color(p().border)
@@ -107,22 +177,182 @@ impl Shell {
                 .children(afk_choices)
                 .child(sep())
                 .child(if online {
-                    item().children(state).into_any_element()
+                    state.into_any_element()
                 } else {
                     item().text_color(p().danger).child("offline").into_any_element()
+                })
+                .children(dialog.map(|_| item().text_color(p().warning).child("waits for an answer")))
+                .when_some(bar.as_ref(), |d, b| {
+                    let a = &b.alerts;
+                    d.when(a.trust_dialog, |d| d.child(loud("trust this folder?")))
+                        .when(a.not_logged_in, |d| d.child(loud("not logged in")))
+                        .when(a.api_unreachable, |d| d.child(loud("API unreachable")))
+                        .when(a.link_down, |d| d.child(loud("loop link down")))
+                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable")))
+                        .when(b.prompt.visible, |d| {
+                            d.child(item().text_color(if b.prompt.has_input { p().accent } else { p().muted }).child("❯"))
+                        })
+                        .when(b.human_typing, |d| d.child(item().text_color(p().danger).child("⌨")))
+                        .when(b.proxy_alive, |d| d.child(item().child("⇄")))
+                        .when(b.zen, |d| d.child(item().child("zen")))
                 })
                 .child(sep())
                 .child(item().when(unseen > 0, |d| d.text_color(p().text)).child(format!(
                     "{unseen} event{}",
                     if unseen == 1 { "" } else { "s" }
                 )))
-                .child(item().when(holds > 0, |d| d.text_color(p().text)).child(format!("holds {holds}")))
+                .child(
+                    item()
+                        .id("agent-backlog")
+                        .px_1()
+                        .rounded_sm()
+                        .cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .when(backlog_open, |d| d.bg(p().active))
+                        .when(holds > 0 || backlog.is_some_and(|b| b > 0), |d| d.text_color(p().text))
+                        .child(match backlog {
+                            Some(b) => format!("backlog {b} · holds {holds}"),
+                            None => format!("holds {holds}"),
+                        })
+                        .on_click(cx.listener(move |shell, _, _, cx| {
+                            shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
+                        })),
+                )
+                .children(wake.map(|s| item().child(format!("wake in {}", ago(s)))))
                 .children(credit.map(|c| item().child(format!("credit {c} min"))))
                 .child(div().flex_1())
                 .child(item().text_color(p().text).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
+                .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .into_any_element(),
         )
+    }
+
+    /// The agent's own backlog, over its bar: its tickets by tier, a click
+    /// opens one in the panel.
+    fn backlog_list(&self, view: &BacklogView, cx: &mut Context<Self>) -> AnyElement {
+        let mut list = div()
+            .id("agent-backlog-list")
+            .absolute()
+            .bottom(px(BAR_HEIGHT))
+            .left(px(8.))
+            .w(px(460.))
+            .max_h(px(360.))
+            .overflow_y_scroll()
+            .occlude()
+            .flex()
+            .flex_col()
+            .p_2()
+            .gap_0p5()
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().border)
+            .shadow_lg()
+            .text_sm()
+            .text_color(p().text)
+            .child(div().text_xs().text_color(p().muted).pb_1().child(format!("{}'s backlog", view.agent)));
+        match &view.read {
+            None => list = list.child(div().text_color(p().muted).child("reading…")),
+            Some(Err(error)) => list = list.child(div().text_color(p().danger).child(error.clone())),
+            Some(Ok(backlog)) if backlog.rows.iter().all(|r| r.backlog_tier.is_none()) => {
+                list = list.child(div().text_color(p().muted).child("nothing in its backlog"));
+            }
+            Some(Ok(backlog)) => {
+                let mut rows: Vec<_> = backlog.rows.iter().filter(|r| r.backlog_tier.is_some()).collect();
+                rows.sort_by_key(|r| r.backlog_tier);
+                let mut last = None;
+                for row in rows {
+                    if last != Some(row.backlog_tier) {
+                        last = Some(row.backlog_tier);
+                        list = list.child(
+                            div()
+                                .pt_1()
+                                .text_xs()
+                                .font_weight(FontWeight::BOLD)
+                                .text_color(p().muted)
+                                .child(tier(row.backlog_tier).to_uppercase()),
+                        );
+                    }
+                    let (project, ticket) = (row.project.clone(), row.id);
+                    list = list.child(
+                        div()
+                            .id(SharedString::from(format!("backlog-{ticket}")))
+                            .flex()
+                            .gap_2()
+                            .px_1()
+                            .rounded_sm()
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover))
+                            .child(div().flex_none().text_color(p().muted).child(format!("#{ticket}")))
+                            .child(div().flex_1().min_w_0().truncate().child(row.title.clone()))
+                            .on_click(cx.listener(move |shell, _, _, cx| {
+                                shell.backlog_view = None;
+                                if !shell.settings.panel_open {
+                                    shell.toggle_panel(cx);
+                                }
+                                shell.panel.update(cx, |panel, cx| panel.open_in(Some(project.clone()), ticket, cx));
+                                cx.notify();
+                            })),
+                    );
+                }
+            }
+        }
+        list.into_any_element()
+    }
+
+    /// Opens (reading it) or closes the agent's backlog over its bar.
+    fn toggle_backlog(&mut self, agent: String, project: String, cx: &mut Context<Self>) {
+        if self.backlog_view.as_ref().is_some_and(|v| v.agent == agent) {
+            self.backlog_view = None;
+            cx.notify();
+            return;
+        }
+        self.backlog_view = Some(BacklogView { agent: agent.clone(), read: None });
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let read = cx
+                .background_executor()
+                .spawn({
+                    let agent = agent.clone();
+                    async move { aiball.agent_backlog(&agent, &project) }
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                if let Some(view) = shell.backlog_view.as_mut().filter(|v| v.agent == agent) {
+                    view.read = Some(read.map_err(|e| short_error(&format!("{e:#}"))));
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    /// While the bar shows a countdown (a hold, the next wake, a boot), it
+    /// is drawn again every second.
+    pub(super) fn tick_agent_bar(cx: &mut Context<Self>) {
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(Duration::from_secs(1)).await;
+                let alive = this.update(cx, |shell, cx| {
+                    let counting = shell
+                        .selected
+                        .as_deref()
+                        .and_then(|s| shell.terminal_of(s))
+                        .and_then(|(_, t)| t.agent.as_ref())
+                        .and_then(|a| shell.board.bars.get(a))
+                        .is_some_and(|b| !b.stale && counts_down(&b.bar));
+                    if counting {
+                        cx.notify();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     /// Holds or frees the agent's loop through aiball; the bar follows at
@@ -151,6 +381,11 @@ impl Shell {
     }
 }
 
+/// The bar shows a time that moves.
+fn counts_down(bar: &AgentBar) -> bool {
+    bar.afk.expires_at.is_some() || bar.next_wake_at.is_some() || bar.boot.is_some()
+}
+
 /// A path with the home directory as `~`.
 fn home_short(path: &str) -> String {
     match std::env::var("HOME") {
@@ -170,7 +405,7 @@ fn short_error(error: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::short_error;
+    use super::{short_error, tier};
 
     #[test]
     fn an_error_says_what_aiball_said() {
@@ -179,5 +414,12 @@ mod tests {
             "AFK: node-relayed loop"
         );
         assert_eq!(short_error("socket gone"), "AFK: socket gone");
+    }
+
+    #[test]
+    fn tiers_have_names() {
+        assert_eq!(tier(Some(-1)), "critical");
+        assert_eq!(tier(Some(1)), "yours");
+        assert_eq!(tier(None), "other");
     }
 }

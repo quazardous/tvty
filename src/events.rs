@@ -31,7 +31,8 @@ impl Change {
             .map(|p| Change::Project(p.to_string()));
         match event.get("type")?.as_str()? {
             "hello" => None,
-            "consumer_changed" => Some(Change::Consumers),
+            // An agent's state, or its loop bar.
+            "consumer_changed" | "agent_bar" => Some(Change::Consumers),
             "message_created" | "message_decided" | "message_edited" | "message_noted" => {
                 Some(project.unwrap_or(Change::All))
             }

@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::Path;
 use std::process::Command;
 
-use crate::aiball::{Aiball, Consumer, TicketRow};
+use crate::aiball::{Aiball, BarRead, Consumer, TicketRow};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminal {
@@ -53,6 +53,8 @@ pub struct Board {
     pub tickets: HashMap<String, Vec<TicketRow>>,
     /// The critical ticket of each project, if any.
     pub critical: HashMap<String, u64>,
+    /// The loop bar of each agent with a terminal, when its loop pushes one.
+    pub bars: HashMap<String, BarRead>,
 }
 
 const LOOP_PREFIX: &str = "cl-";
@@ -77,7 +79,27 @@ pub fn discover(aiball: &mut Aiball) -> Board {
     for name in on_board(&board) {
         read_project(aiball, &mut board, &name);
     }
+    read_bars(aiball, &mut board);
     board
+}
+
+/// The loop bars of the agents that have a terminal here.
+fn read_bars(aiball: &Aiball, board: &mut Board) {
+    board.bars.clear();
+    let agents: Vec<String> = board
+        .projects
+        .iter()
+        .flat_map(|p| p.terminals.iter().filter_map(|t| t.agent.clone()))
+        .collect();
+    for agent in agents {
+        match aiball.agent_bar(&agent) {
+            Ok(Some(bar)) => {
+                board.bars.insert(agent, bar);
+            }
+            Ok(None) => {}
+            Err(error) => log::debug!("bar of {agent}: {error:#}"),
+        }
+    }
 }
 
 /// What moved on the board since the last read, from aiball's live feed.
@@ -112,6 +134,7 @@ pub fn update(aiball: &mut Aiball, previous: &Board, changes: &Changes) -> Board
             }
             Err(error) => log::warn!("aiball: {error:#}"),
         }
+        read_bars(aiball, &mut board);
     }
     for name in on_board(&board) {
         // A project newly shown has never been read.

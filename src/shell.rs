@@ -85,8 +85,9 @@ pub struct Shell {
     /// The panel as it was before going full screen, to find it so when
     /// coming back: `Some(None)` its list, `Some(Some(..))` a ticket.
     compact: Option<Option<(Option<String>, u64)>>,
-    /// The agent bar's AFK choices are open.
+    /// The agent bar's AFK choices are open; its agent's backlog is open.
     afk_menu: bool,
+    backlog_view: Option<agentbar::BacklogView>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -337,6 +338,7 @@ impl Shell {
         })
         .detach();
 
+        Self::tick_agent_bar(cx);
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
         Self::refresh_loop(aiball.clone(), feed.clone(), wake, cx);
@@ -357,6 +359,7 @@ impl Shell {
             full_list_return: false,
             compact: None,
             afk_menu: false,
+            backlog_view: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -916,6 +919,10 @@ impl Shell {
             self.set_terminal_font(None, cx);
         } else if m.control && m.shift && key == "n" {
             self.open_new_ticket(None, None, window, cx);
+        } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
+            self.backlog_view = None;
+            self.afk_menu = false;
+            cx.notify();
         } else if key == "escape" && self.new_ticket_shown {
             self.close_new_ticket(window, cx);
         } else if m.control && m.shift && key == "l" {

@@ -43,6 +43,94 @@ pub struct Consumer {
     pub wait_credit: Option<Vec<WaitCredit>>,
 }
 
+/// An agent's loop bar, as its loop pushes it to aiball: what claude-loop
+/// paints in tmux's status line, as facts and absolute times.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct AgentBar {
+    /// `boot`, `idle` or `busy`.
+    pub phase: String,
+    /// `boot`, `stop` (a human types), `wait` (held) or `loop`.
+    pub presence: String,
+    pub afk: BarAfk,
+    pub prompt: BarPrompt,
+    pub human_typing: bool,
+    pub marker: BarMarker,
+    pub alerts: BarAlerts,
+    pub proxy_alive: bool,
+    pub zen: bool,
+    pub counters: Option<BarCounters>,
+    pub next_wake_at: Option<String>,
+    pub boot: Option<BarBoot>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarAfk {
+    /// `off`, `wait_10m` or `wait_inf`.
+    pub mode: String,
+    pub expires_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarPrompt {
+    pub visible: bool,
+    pub has_input: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarMarker {
+    /// A passing word: `retry 3`, `compacting`, `resuming`…
+    pub info: Option<String>,
+    pub health_prompt: bool,
+    pub resume_picker: bool,
+    pub resume_mode_picker: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarAlerts {
+    pub link_down: bool,
+    pub daemon_down: bool,
+    pub not_logged_in: bool,
+    pub trust_dialog: bool,
+    pub api_unreachable: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarCounters {
+    pub open: Option<u32>,
+    pub backlog: Option<u32>,
+    pub events: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarBoot {
+    pub started_at: String,
+    pub deadline_at: Option<String>,
+}
+
+/// The last bar an agent's loop pushed; `stale` once the loop is gone.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarRead {
+    pub bar: AgentBar,
+    pub stale: bool,
+}
+
+/// An agent's own backlog, as it sees it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct AgentBacklog {
+    #[serde(default)]
+    pub rows: Vec<BacklogRow>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct BacklogRow {
+    pub id: u64,
+    pub project: String,
+    pub title: String,
+    /// -1 critical, 0 hot, 1 actionable, 2 follow-up, 3 waiting on them,
+    /// 4 blocked.
+    pub backlog_tier: Option<i64>,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct WaitCredit {
     pub project: String,
@@ -442,6 +530,21 @@ impl Aiball {
         )?;
         let answer: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
+    }
+
+    /// An agent's loop bar; `None` when its loop never pushed one (a loop
+    /// started before aiball served bars, or no loop at all).
+    pub fn agent_bar(&self, agent: &str) -> anyhow::Result<Option<BarRead>> {
+        match self.request("GET", &format!("/api/consumers/{}/bar", encode(agent)), None) {
+            Ok(body) => Ok(Some(serde_json::from_str(&body).context("the agent's bar")?)),
+            Err(error) if format!("{error}").contains(": 404") => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
+    /// An agent's own backlog, in `project`.
+    pub fn agent_backlog(&self, agent: &str, project: &str) -> anyhow::Result<AgentBacklog> {
+        self.get(&format!("/api/consumers/{}/backlog?project={}", encode(agent), encode(project)))
     }
 
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`

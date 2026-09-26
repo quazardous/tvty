@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The agent's bar now says all that claude-loop's bar says, once the loop
+  pushes it to aiball: a hold's time left, the passing state, dialogs and
+  alerts, the prompt and a human typing, the proxy, the next wake — and a
+  click on its backlog lists the agent's own backlog by tier.
+
 - aiball's comment count on every ticket row, in the panel and the full
   list: a bubble and the number, green when you spoke last (a clock while
   comments wait for moderation); a thin dotted stripe on a row where your

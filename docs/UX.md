@@ -175,13 +175,21 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
 
 Under an agent's terminal, one line: what claude-loop's tmux status line
 says, drawn by tvty from aiball (never read from tmux), about **the agent**
-— the panel beside it is about the project. Left to right: who drives the
-loop (▶ auto, ‖ held, ✎ you type) — a click offers auto, hold 10 min, hold,
-through aiball (`POST /api/agents/:id/afk`) —; its Claude's state and for
-how long, or offline; its events not seen yet; the tickets it holds; its
-wait credit; its name and where it works. A gesture aiball refuses is said
-in the bar. Its own backlog and the rest of claude-loop's bar (alerts, next
-wake, prompt, typing) come with aiball's API for them.
+— the panel beside it is about the project. Once the loop pushes its bar
+to aiball (`/api/consumers/:id/bar`, and `agent_bar` on the live feed), all
+of it; before (a loop started earlier), what the agent's state says.
+
+Left to right: who drives the loop (▶ auto, ‖ held — with the time left
+when timed —, ✎ you type) — a click offers auto, hold 10 min, hold, through
+aiball (`POST /api/agents/:id/afk`) —; its Claude's phase, for how long, and
+the passing word (`retry 2`, `compacting`); "waits for an answer" when a
+dialog is up; the alerts in red (trust this folder?, not logged in, API
+unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
+it holds text), ⌨ while a human types, ⇄ the proxy; its events; its backlog
+and the tickets it holds — a click lists **its own backlog** by tier
+(`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
+its wait credit; its name and where it works. A gesture aiball refuses
+comes as a notification. The countdowns move every second.
 
 ## The terminal comes to you
 
