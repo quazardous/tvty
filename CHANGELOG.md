@@ -209,6 +209,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening tvty no longer raises a notification for every ticket already
+  waiting on you: only what comes after is news.
+
 - A new colour theme reaches the terminals at once: they waited for their
   program's next output to take it.
 

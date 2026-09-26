@@ -79,6 +79,11 @@ pub struct Live {
     /// Whether the tickets were ever received (their first value files
     /// nothing).
     tickets_seen: bool,
+    /// Whether the agents were ever received.
+    agents_seen: bool,
+    /// Who the subscriptions run as: a ticket row is its reader's (unread,
+    /// whose turn), so another user's rows are another board.
+    user: String,
 }
 
 impl Live {
@@ -87,6 +92,12 @@ impl Live {
     pub fn plan(&mut self, user: &str) -> Plan {
         self.subscriptions.clear();
         self.early.clear();
+        if self.user != user {
+            // The rows come again, as this user reads them: nothing in them
+            // is news, and the board is not theirs until they are in.
+            self.user = user.to_string();
+            self.tickets_seen = false;
+        }
         let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar];
         if !user.is_empty() {
             kinds.push(Kind::Pings);
@@ -190,6 +201,7 @@ impl Live {
             }
             Kind::State => {
                 self.consumers = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
+                self.agents_seen = true;
                 Vec::new()
             }
             Kind::Bar => {
@@ -318,6 +330,12 @@ impl Live {
         self.consumers.values().filter_map(|c| serde_json::from_value(c.clone()).ok()).collect()
     }
 
+    /// The tickets and the agents were received: the board says what
+    /// aiball has, not what has not arrived yet.
+    pub fn ready(&self) -> bool {
+        self.tickets_seen && self.agents_seen
+    }
+
     /// How many subscriptions are up.
     pub fn subscriptions(&self) -> usize {
         self.subscriptions.len()
@@ -421,6 +439,30 @@ mod tests {
         // Resuming names the epoch and the last seq.
         let plan = live.plan("david");
         assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 15 }));
+    }
+
+    #[test]
+    fn another_user_is_another_board() {
+        let mut live = Live::default();
+        let answers = |seq: u64| vec![
+            Ok(json!({ "id": "t", "epoch": "e1", "seq": seq, "replayed": false, "value": { "demo": [row(1, "approved")] } })),
+            Ok(json!({ "id": "s", "epoch": "e1", "seq": seq, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "b", "epoch": "e1", "seq": seq, "replayed": false, "value": {} })),
+        ];
+        let plan = live.plan("");
+        live.subscribed(plan, answers(10));
+        assert!(live.ready());
+        // Connected again as the user: not ready until their rows are in,
+        // and none of them is filed.
+        let plan = live.plan("david");
+        assert!(!live.ready());
+        let mut theirs = answers(11);
+        theirs[0] = Ok(json!({ "id": "t", "epoch": "e1", "seq": 11, "replayed": false,
+                               "value": { "demo": [row(1, "approved"), row(2, "approved")] } }));
+        theirs.push(Ok(json!({ "id": "p", "epoch": "e1", "seq": 11, "replayed": false, "value": { "unread": 0 } })));
+        let updates = live.subscribed(plan, theirs);
+        assert!(live.ready());
+        assert!(!updates.iter().any(|u| matches!(u, Update::Filed(_))));
     }
 
     #[test]

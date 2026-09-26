@@ -566,7 +566,16 @@ impl Shell {
                         // The user's pings are one's own: subscribed as a human.
                         let text = |key: &str| notice.params.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
                         let user = if text("kind") == "human" { text("consumer") } else { String::new() };
-                        let Ok((Some(wire), plan)) = this.update(cx, |shell, _| (shell.wire.clone(), shell.live.plan(&user))) else { break };
+                        let planned = this.update(cx, |shell, _| {
+                            let plan = shell.live.plan(&user);
+                            // Another user's board is coming: what waits
+                            // starts again from it.
+                            if !shell.live.ready() {
+                                shell.waiting = None;
+                            }
+                            (shell.wire.clone(), plan)
+                        });
+                        let Ok((Some(wire), plan)) = planned else { break };
                         let (plan, answers, whoami) = cx
                             .background_executor()
                             .spawn(async move {
@@ -805,6 +814,13 @@ impl Shell {
     /// Notifies what newly waits on the user: a decision or
     /// something unread on a ticket an agent with a terminal holds.
     fn update_needs(&mut self, cx: &mut Context<Self>) {
+        // Before aiball's board arrived (or arrived again as another
+        // user), everything would look new: what waits then is where to
+        // start from.
+        if !self.live.ready() {
+            self.waiting = None;
+            return;
+        }
         let mut now = HashSet::new();
         let mut found = Vec::new();
         for project in &self.board.projects {
