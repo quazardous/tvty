@@ -77,6 +77,7 @@ impl Shell {
                 body,
                 before: 0.,
                 after: 0.,
+                windowed: None,
             };
             list = list.child(section.render(cx.listener(move |shell, _, _, cx| {
                 let folded = &mut shell.settings.sessions_folded;

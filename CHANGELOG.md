@@ -222,6 +222,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A ticket list that grew or moved on its own (rows pushed by aiball, a
+  section above shrinking) no longer leaves blank rows until the mouse
+  moves.
+
 - Pings raised notifications again: none came since tvty took aiball's
   bus.
 

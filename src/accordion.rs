@@ -37,6 +37,16 @@ pub struct Section {
     /// that the scroll keeps the whole list's height.
     pub before: f32,
     pub after: f32,
+    /// For a windowed section: what [`window`] drew, and whose view to draw
+    /// again when the section's size or scroll turned out different.
+    pub windowed: Option<Windowed>,
+}
+
+/// What a windowed section drew: the rows, their height, and its view.
+pub struct Windowed {
+    pub drawn: std::ops::Range<usize>,
+    pub row: f32,
+    pub owner: EntityId,
 }
 
 /// The rows of a section worth drawing when each is `row` pixels high:
@@ -58,7 +68,25 @@ pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<
 impl Section {
     /// The section, its title folding it through `on_toggle`.
     pub fn render(self, on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Div {
-        let Self { id, title, count, folded, keep, scroll, body, before, after } = self;
+        let Self { id, title, count, folded, keep, scroll, body, before, after, windowed } = self;
+        // The rows were chosen from the last frame's size and scroll. Once
+        // this one is laid out, the choice is checked: a list that grew or
+        // moved (rows came, a section above folded) would leave blank rows
+        // until something else drew it again, so its view draws again now.
+        let recheck = windowed.filter(|_| !folded).map(|w| {
+            let scroll = scroll.clone();
+            canvas(
+                move |_, win, _| {
+                    if window(count, w.row, &scroll) != w.drawn {
+                        let owner = w.owner;
+                        win.on_next_frame(move |_, cx| cx.notify(owner));
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_0()
+        });
         let header = div()
             .id(SharedString::from(format!("{id}-title")))
             .flex()
@@ -111,6 +139,8 @@ impl Section {
                                 .child(Scrollbar::new(&scroll).axis(ScrollbarAxis::Vertical).viewport_from_layout()),
                         ),
                 )
+                // After the rows: by then this frame's size and scroll are known.
+                .children(recheck)
             })
     }
 }

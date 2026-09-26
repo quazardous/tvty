@@ -779,6 +779,7 @@ impl TicketPanel {
                 before: shown.start as f32 * ROW_HEIGHT,
                 after: (count - shown.end) as f32 * ROW_HEIGHT,
                 scroll,
+                windowed: Some(crate::accordion::Windowed { drawn: shown.clone(), row: ROW_HEIGHT, owner: cx.entity_id() }),
             };
             list = list.child(section.render(cx.listener(move |panel, _, _, cx| {
                 if !panel.folded.remove(&band) {
