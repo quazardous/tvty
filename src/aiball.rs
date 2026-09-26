@@ -585,22 +585,14 @@ impl Aiball {
         if quiet {
             message["scope"] = json!("internal");
         }
-        let answer = self.post("/api/messages", message)?;
+        let answer: Value = self.rpc("message.post", message)?;
         answer.get("id").and_then(Value::as_u64).context("the new comment has no id")
     }
 
     /// Files a new ticket, labels included; answers its id.
     pub fn create(&self, ticket: &NewTicket) -> anyhow::Result<u64> {
-        let body = new_ticket_message(ticket).to_string();
-        // Like every client that files tickets: aiball tags the platform.
-        let answer = self.request_bytes(
-            "POST",
-            "/api/messages",
-            "application/json",
-            &[("x-aiball-platform", std::env::consts::OS)],
-            body.as_bytes(),
-        )?;
-        let answer: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
+        // aiball tags the platform, which the bus connection declares.
+        let answer: Value = self.rpc("message.post", new_ticket_message(ticket))?;
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
     }
 
@@ -644,14 +636,14 @@ impl Aiball {
     }
 
     pub fn set_priority(&self, ticket: u64, priority: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{ticket}/edit"), json!({ "priority": priority }))
-            .map(drop)
+        self.rpc_do("message.edit", json!({ "id": ticket, "priority": priority }))
     }
 
     /// Edits a ticket's fields: `{"title": …}`, `{"priority": …}`,
     /// `{"intent": …}`, `{"level": …}`, `{"scope": …}`, `{"body": …}`.
-    pub fn edit(&self, message: u64, fields: Value) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{message}/edit"), fields).map(drop)
+    pub fn edit(&self, message: u64, mut fields: Value) -> anyhow::Result<()> {
+        fields["id"] = json!(message);
+        self.rpc_do("message.edit", fields)
     }
 
     pub fn add_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
@@ -692,7 +684,7 @@ impl Aiball {
     /// Assigns the ticket to `who`, or releases it (`None`).
     pub fn assign(&self, ticket: u64, who: Option<&str>) -> anyhow::Result<()> {
         match who {
-            Some(who) => self.post(&format!("/api/tickets/{ticket}/assign"), json!({ "assignee": who })).map(drop),
+            Some(who) => self.rpc_do("ticket.assign", json!({ "id": ticket, "assignee": who })),
             None => self.rpc_do("ticket.release", json!({ "id": ticket })),
         }
     }
@@ -704,11 +696,7 @@ impl Aiball {
 
     /// Relates the ticket to `target`; `ignored` removes the relation.
     pub fn relate(&self, ticket: u64, target: u64, kind: &str) -> anyhow::Result<()> {
-        self.post(
-            &format!("/api/tickets/{ticket}/relations"),
-            json!({ "target_ticket_id": target, "kind": kind }),
-        )
-        .map(drop)
+        self.rpc_do("ticket.relate", json!({ "id": ticket, "target_ticket_id": target, "kind": kind }))
     }
 
     pub fn move_ticket(&self, ticket: u64, project: &str) -> anyhow::Result<()> {
@@ -732,8 +720,8 @@ impl Aiball {
 
     /// Marks an agent's comment as a step, or unmarks it.
     pub fn set_step(&self, comment: u64, step: bool) -> anyhow::Result<()> {
-        let verb = if step { "step" } else { "unstep" };
-        self.post(&format!("/api/messages/{comment}/{verb}"), json!({})).map(drop)
+        let method = if step { "message.step" } else { "message.unstep" };
+        self.rpc_do(method, json!({ "id": comment }))
     }
 
     /// Votes on a comment: 1, -1, or 0 to take the vote back.
@@ -779,14 +767,14 @@ impl Aiball {
 
     /// Moderation: approve or reject a pending ticket or comment.
     pub fn moderate(&self, message: u64, approve: bool) -> anyhow::Result<()> {
-        let verb = if approve { "approve" } else { "reject" };
-        self.post(&format!("/api/messages/{message}/{verb}"), json!({})).map(drop)
+        let method = if approve { "message.approve" } else { "message.reject" };
+        self.rpc_do(method, json!({ "id": message }))
     }
 
     /// Closes or reopens a ticket.
     pub fn set_closed(&self, project: &str, ticket: u64, closed: bool) -> anyhow::Result<()> {
-        self.post(
-            "/api/messages",
+        self.rpc_do(
+            "message.post",
             json!({
                 "project": project,
                 "kind": if closed { "ticket_closed" } else { "ticket_reopened" },
@@ -794,14 +782,12 @@ impl Aiball {
                 "parent_id": ticket,
             }),
         )
-        .map(drop)
     }
 
     /// Accept or reject the decision a comment carries.
     pub fn decide(&self, comment: u64, accept: bool) -> anyhow::Result<()> {
         let status = if accept { "accepted" } else { "rejected" };
-        self.post(&format!("/api/messages/{comment}/decide"), json!({ "status": status }))
-            .map(drop)
+        self.rpc_do("message.decide", json!({ "id": comment, "status": status }))
     }
 
     /// A read whose answer is taken as it comes.
@@ -812,11 +798,6 @@ impl Aiball {
     fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
         let body = self.request("GET", path, None)?;
         serde_json::from_str(&body).with_context(|| format!("GET {path}"))
-    }
-
-    fn post(&self, path: &str, body: Value) -> anyhow::Result<Value> {
-        let answer = self.request("POST", path, Some(body))?;
-        Ok(serde_json::from_str(&answer).unwrap_or(Value::Null))
     }
 
     fn request(&self, method: &str, path: &str, body: Option<Value>) -> anyhow::Result<String> {

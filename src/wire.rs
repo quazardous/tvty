@@ -152,6 +152,8 @@ fn connect(user: &str) -> anyhow::Result<Socket> {
     let stream = std::os::unix::net::UnixStream::connect(crate::aiball::socket_path()).context("aiball's socket")?;
     let mut request = "ws://aiball/bus".into_client_request()?;
     request.headers_mut().insert("x-aiball-consumer", user.parse()?);
+    // What the client runs on: aiball tags the tickets filed with it.
+    request.headers_mut().insert("x-aiball-platform", std::env::consts::OS.parse()?);
     let (socket, _) = tungstenite::client(request, stream).map_err(|e| anyhow!("/bus: {e}"))?;
     // Short reads, so that calls waiting to go out are not held up.
     socket.get_ref().set_read_timeout(Some(Duration::from_millis(20)))?;
