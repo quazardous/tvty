@@ -2814,8 +2814,8 @@ fn options_ticket_list() -> impl IntoElement {
         .child(line(glyph(Glyph::Resolution, p().success), Glyph::Resolution.meaning().into()))
         .child(line(glyph(Glyph::Wontfix, p().muted), Glyph::Wontfix.meaning().into()))
         .child(line(glyph(Glyph::Escalation, p().danger), Glyph::Escalation.meaning().into()))
-        .child(line(glyph(Glyph::Step, p().muted), Glyph::Step.meaning().into()))
-        .child(line(glyph(Glyph::StalledStep, p().muted), Glyph::StalledStep.meaning().into()))
+        .child(line(glyph(Glyph::Step, p().accent), format!("{} — always blue", Glyph::Step.meaning())))
+        .child(line(glyph(Glyph::StalledStep, p().warning), format!("{} — always amber", Glyph::StalledStep.meaning())))
         .child(line(glyph(Glyph::Rejected, p().danger), format!("{} — always red", Glyph::Rejected.meaning())))
         .child(line(glyph(Glyph::ClosedResolved, p().muted), Glyph::ClosedResolved.meaning().into()))
         .child(line(glyph(Glyph::Closed, p().muted), Glyph::Closed.meaning().into()))
@@ -2830,8 +2830,15 @@ fn options_ticket_list() -> impl IntoElement {
         .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
         .child(option_group("The rest"))
         .child(line(
-            div().font_weight(FontWeight::BOLD).child("Title").into_any_element(),
-            "bold: unread — and nothing else says it".into(),
+            div()
+                .flex()
+                .items_center()
+                .gap_1()
+                .child(div().flex_none().size(px(7.)).rounded_full().bg(p().accent))
+                .child(div().text_color(p().accent).child("#12"))
+                .child(div().font_weight(FontWeight::BOLD).child("Title"))
+                .into_any_element(),
+            "unread: something new on it for you — the blue dot, the number in blue, the title in bold".into(),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::Comments, p().success, 12., "3").text_xs().text_color(p().success).into_any_element(),
