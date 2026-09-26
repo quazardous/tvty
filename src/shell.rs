@@ -449,6 +449,7 @@ impl Shell {
                     if !changes.all && !wait.is_zero() {
                         cx.background_executor().timer(wait).await;
                         while let Ok(change) = wake.try_recv() {
+                            announce(&this, cx, &change);
                             add(&mut changes, change);
                         }
                     }
@@ -488,11 +489,13 @@ impl Shell {
                     _ = timer => {}
                     change = wake.next() => {
                         if let Some(change) = change {
+                            announce(&this, cx, &change);
                             add(&mut changes, change);
                         }
                     }
                 };
                 while let Ok(change) = wake.try_recv() {
+                    announce(&this, cx, &change);
                     add(&mut changes, change);
                 }
                 let since = full_at.elapsed();
@@ -511,6 +514,14 @@ impl Shell {
         })
         .detach();
 
+        /// A ticket filed on the board is said, whoever filed it.
+        fn announce(this: &WeakEntity<Shell>, cx: &mut AsyncApp, change: &events::Change) {
+            if let events::Change::Filed(filed) = change {
+                let filed = filed.clone();
+                let _ = this.update(cx, |shell, cx| shell.announce_filed(filed, cx));
+            }
+        }
+
         fn add(changes: &mut sessions::Changes, change: events::Change) {
             match change {
                 events::Change::All => changes.all = true,
@@ -518,8 +529,29 @@ impl Shell {
                 events::Change::Project(project) => {
                     changes.projects.insert(project);
                 }
+                events::Change::Filed(filed) => {
+                    changes.projects.insert(filed.project);
+                }
             }
         }
+    }
+
+    /// A new ticket on a project of the board: blue from an agent, orange
+    /// when it waits for moderation, green when the user filed it (from the
+    /// web UI, say; filed from tvty, the same notice replaces tvty's own).
+    fn announce_filed(&mut self, filed: events::Filed, cx: &mut Context<Self>) {
+        if !self.board.projects.iter().any(|p| p.on_board && p.name == filed.project) {
+            return;
+        }
+        let about = Some((filed.project.clone(), filed.ticket));
+        let activity = if filed.by == self.aiball.user {
+            Activity::done(about, format!("filed — {}", filed.title))
+        } else if filed.pending {
+            Activity::news(filed.by, Kind::Decision, about, format!("{} — a new ticket to moderate", filed.title))
+        } else {
+            Activity::news(filed.by, Kind::News, about, format!("{} — a new ticket", filed.title))
+        };
+        activity::publish(cx, activity);
     }
 
     fn set_board(&mut self, aiball: Aiball, board: Board, cx: &mut Context<Self>) {
@@ -563,7 +595,14 @@ impl Shell {
                         greeted = true;
                     }
                     crate::pings::Push::Ping(ping) => {
-                        let kind = if ping.urgent { Kind::Error } else { Kind::News };
+                        // Urgent in red, waiting for moderation in orange, else blue.
+                        let kind = if ping.urgent {
+                            Kind::Error
+                        } else if ping.pending {
+                            Kind::Decision
+                        } else {
+                            Kind::News
+                        };
                         // The agent's terminal, when it has one here.
                         let session = shell
                             .board

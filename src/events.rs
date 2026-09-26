@@ -19,6 +19,41 @@ pub enum Change {
     Consumers,
     /// Something wider, or unknown: everything.
     All,
+    /// A ticket was filed (its project's tickets moved too).
+    Filed(Filed),
+}
+
+/// A new ticket, as the event carries it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Filed {
+    pub project: String,
+    pub ticket: u64,
+    pub title: String,
+    pub by: String,
+    /// It waits for moderation.
+    pub pending: bool,
+}
+
+impl Filed {
+    /// The ticket a `message_created` event files, if it files one.
+    pub fn of(event: &str) -> Option<Self> {
+        let event: Value = serde_json::from_str(event).ok()?;
+        if event.get("type")?.as_str()? != "message_created" {
+            return None;
+        }
+        let data = event.get("data")?;
+        if data.get("kind")?.as_str()? != "ticket_created" {
+            return None;
+        }
+        let text = |key: &str| data.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+        Some(Self {
+            project: text("project"),
+            ticket: data.get("id")?.as_u64()?,
+            title: text("title"),
+            by: text("by_agent"),
+            pending: data.get("status").and_then(Value::as_str) == Some("pending"),
+        })
+    }
 }
 
 impl Change {
@@ -97,7 +132,8 @@ fn listen<S: std::io::Read + std::io::Write>(
         let tungstenite::Message::Text(text) = message else {
             continue;
         };
-        let Some(change) = Change::of(&text) else {
+        // A new ticket says so itself: it carries what to notify.
+        let Some(change) = Filed::of(&text).map(Change::Filed).or_else(|| Change::of(&text)) else {
             continue;
         };
         if changed.unbounded_send(change).is_err() {
@@ -124,3 +160,18 @@ fn connect_local() -> anyhow::Result<tungstenite::WebSocket<std::net::TcpStream>
     anyhow::bail!("no local socket on this platform")
 }
 
+#[cfg(test)]
+mod tests {
+    use super::Filed;
+
+    #[test]
+    fn a_ticket_filed_is_read_from_its_event() {
+        let event = r#"{"type":"message_created","data":{"id":14,"project":"demo","kind":"ticket_created","title":"A title","by_agent":"demo-crew","status":"pending"}}"#;
+        assert_eq!(
+            Filed::of(event),
+            Some(Filed { project: "demo".into(), ticket: 14, title: "A title".into(), by: "demo-crew".into(), pending: true })
+        );
+        let comment = r#"{"type":"message_created","data":{"id":15,"project":"demo","kind":"comment_added","ticket_id":14}}"#;
+        assert_eq!(Filed::of(comment), None);
+    }
+}

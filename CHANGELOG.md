@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A ticket filed on a project of your board is notified, whoever filed it
+  and wherever: an agent's in blue, one waiting for moderation in orange,
+  yours (from aiball's web UI, say) in green.
+
 - Your own gestures are notified once aiball has them ("#12 closed",
   "decision accepted", "filed"), in green; a refusal always is, in red.
   Options hide your own. A ticket a notification is about shines in its
@@ -30,10 +34,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The sessions list has a header, "Sessions", in line with the tickets
   panel's, and a ‹ that folds it; the panel's › now opens its header, on
   the side it folds away from.
-
-- The agent bar turns the loop's tmux status line off and on ("tmux line
-  on / off"): with it off, the bar under the terminal is the only one.
-  Loops started before aiball published the setting do not offer it.
 
 - aiball's pings reach tvty: an agent answering you, mentioning you or
   proposing a decision comes as a notification; opening it marks it read

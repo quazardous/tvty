@@ -31,6 +31,8 @@ pub struct PingInfo {
     pub what: String,
     /// The ticket's intent is `panic`.
     pub urgent: bool,
+    /// The ticket waits for moderation.
+    pub pending: bool,
 }
 
 /// Follows the user's pings on a thread of its own, reconnecting when the
@@ -122,6 +124,7 @@ fn parse(event: &str, data: &str, aiball: &Aiball) -> Option<Push> {
                         from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
                         what: "something new".into(),
                         urgent,
+                        pending: false,
                     }));
                 }
             };
@@ -131,7 +134,9 @@ fn parse(event: &str, data: &str, aiball: &Aiball) -> Option<Push> {
                 None => (head.by_agent.clone(), what_it_is(&head.kind, head.decision_kind())),
             };
             let title = head.title.clone().unwrap_or_default();
-            Some(Push::Ping(PingInfo { ticket, project: head.project, title, from, what, urgent }))
+            let pending = head.status == "pending";
+            let what = if pending && comment.is_none() { "a new ticket to moderate".to_string() } else { what };
+            Some(Push::Ping(PingInfo { ticket, project: head.project, title, from, what, urgent, pending }))
         }
         _ => None,
     }
@@ -170,6 +175,7 @@ fn missed_since(aiball: &Aiball, since: &str) -> Vec<PingInfo> {
                 from: text("by_agent"),
                 what: what_it_is(&text("kind"), decision),
                 urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
+                pending: text("status") == "pending",
             })
         })
         .collect();

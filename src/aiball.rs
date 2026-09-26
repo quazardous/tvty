@@ -61,11 +61,6 @@ pub struct AgentBar {
     pub counters: Option<BarCounters>,
     pub next_wake_at: Option<String>,
     pub boot: Option<BarBoot>,
-    /// Who draws the bar: `tmux` (its status line) or `external` (a host
-    /// such as tvty, the tmux line off). Absent from a loop started before
-    /// aiball published it: such a loop cannot switch.
-    #[serde(default)]
-    pub host: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -130,6 +125,9 @@ pub struct Message {
     pub title: Option<String>,
     #[serde(default)]
     pub meta: Option<String>,
+    /// Moderation: `approved`, `pending`, `rejected`.
+    #[serde(default)]
+    pub status: String,
 }
 
 impl Message {
@@ -597,12 +595,6 @@ impl Aiball {
 
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
-    /// Who draws the agent's bar: `tmux` or `external` (the tmux line
-    /// off); aiball relays it to the loop.
-    pub fn set_bar_host(&self, agent: &str, host: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/consumers/{}/bar-host", encode(agent)), json!({ "host": host })).map(drop)
-    }
-
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {
         self.post(&format!("/api/agents/{}/afk", encode(agent)), json!({ "action": action })).map(drop)
     }
