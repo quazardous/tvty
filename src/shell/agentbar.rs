@@ -153,6 +153,10 @@ impl Shell {
             .unwrap_or(0);
         let backlog = bar.as_ref().and_then(|b| b.counters.as_ref()).and_then(|c| c.backlog);
         let wake = bar.as_ref().and_then(|b| until(b.next_wake_at.as_deref()));
+        // Work waits for the loop (events, backlog): the envelope stands, with
+        // the countdown to the next wake once it is armed — as claude-loop's
+        // tmux line shows it.
+        let pending = unseen > 0 || backlog.is_some_and(|b| b > 0);
         let credit = status.as_ref().and_then(|s| s.credit);
         let cwd = status.as_ref().and_then(|s| s.cwd.clone()).map(|cwd| home_short(&cwd));
         let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
@@ -218,7 +222,14 @@ impl Shell {
                             shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
                         })),
                 )
-                .children(wake.map(|s| item().child(format!("wake in {}", ago(s)))))
+                .when(pending || wake.is_some(), |d| {
+                    d.child(
+                        item()
+                            .when(wake.is_some(), |d| d.text_color(p().text))
+                            .child("✉")
+                            .children(wake.map(ago)),
+                    )
+                })
                 .children(credit.map(|c| item().child(format!("credit {c} min"))))
                 .child(div().flex_1())
                 .child(item().text_color(p().text).child(agent.clone()))
@@ -331,19 +342,44 @@ impl Shell {
 
     /// While the bar shows a countdown (a hold, the next wake, a boot), it
     /// is drawn again every second.
-    pub(super) fn tick_agent_bar(cx: &mut Context<Self>) {
+    /// The times the window shows, as text: the sessions' states (for how
+    /// long), and the selected agent's bar.
+    fn clock_face(&self) -> Vec<String> {
+        let now = now();
+        let mut face: Vec<String> = self
+            .board
+            .projects
+            .iter()
+            .flat_map(|p| &p.terminals)
+            .filter_map(|t| t.status.as_ref().filter(|s| s.online)?.since)
+            .map(|since| ago(now.saturating_sub(since)))
+            .collect();
+        let bar = self
+            .selected
+            .as_deref()
+            .and_then(|s| self.terminal_of(s))
+            .and_then(|(_, t)| t.agent.as_ref())
+            .and_then(|a| self.board.bars.get(a))
+            .filter(|b| !b.stale);
+        if let Some(bar) = bar {
+            face.extend(bar_times(&bar.bar));
+        }
+        face
+    }
+
+    /// The clock: every second, the times the window shows (the sessions'
+    /// states, the selected agent's bar) are read as text, and the window is
+    /// drawn again only when one of them changed — once a minute for most,
+    /// every second only for what is under a minute.
+    pub(super) fn tick_clock(cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
+            let mut shown = Vec::new();
             loop {
                 cx.background_executor().timer(Duration::from_secs(1)).await;
                 let alive = this.update(cx, |shell, cx| {
-                    let counting = shell
-                        .selected
-                        .as_deref()
-                        .and_then(|s| shell.terminal_of(s))
-                        .and_then(|(_, t)| t.agent.as_ref())
-                        .and_then(|a| shell.board.bars.get(a))
-                        .is_some_and(|b| !b.stale && counts_down(&b.bar));
-                    if counting {
+                    let face = shell.clock_face();
+                    if face != shown {
+                        shown = face;
                         cx.notify();
                     }
                 });
@@ -381,9 +417,16 @@ impl Shell {
     }
 }
 
-/// The bar shows a time that moves.
-fn counts_down(bar: &AgentBar) -> bool {
-    bar.afk.expires_at.is_some() || bar.next_wake_at.is_some() || bar.boot.is_some()
+/// The times a bar shows, as text.
+fn bar_times(bar: &AgentBar) -> impl Iterator<Item = String> {
+    [
+        until(bar.afk.expires_at.as_deref()),
+        until(bar.next_wake_at.as_deref()),
+        bar.boot.as_ref().and_then(|b| parse_time(&b.started_at)).map(|s| now().saturating_sub(s)),
+    ]
+    .into_iter()
+    .flatten()
+    .map(ago)
 }
 
 /// A path with the home directory as `~`.

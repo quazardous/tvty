@@ -369,7 +369,7 @@ impl Shell {
         })
         .detach();
 
-        Self::tick_agent_bar(cx);
+        Self::tick_clock(cx);
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<()>();
         Self::local_loop(wake, cx);
 
@@ -455,8 +455,6 @@ impl Shell {
                         shell.local = local;
                         shell.rebuild(cx);
                     }
-                    // Redraw now and then: the states say for how long.
-                    cx.notify();
                 });
                 if alive.is_err() {
                     break;

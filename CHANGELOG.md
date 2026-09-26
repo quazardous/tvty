@@ -172,6 +172,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The agent's bar shows claude-loop's envelope: ✉ while work waits for
+  the loop, with the countdown to its next wake once armed (`✉ 54s`).
+- The window is drawn again only when a time it shows changes (once a
+  minute for most), not every few seconds.
+
 - The board, the agents' states and bars, and the pings come pushed by
   aiball over its bus, as data: tvty no longer reads the board again
   when something moves, nor polls it; after a drop it resumes where it
