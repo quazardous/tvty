@@ -60,6 +60,11 @@ const SIDEBAR_WIDTH: f32 = 290.;
 const SIDEBAR_MIN: f32 = 230.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
+/// The sessions list's rows: a project's heading, a session with its
+/// state's line, a bare tmux session.
+const SESSION_HEADING: f32 = 30.;
+const SESSION_ROW: f32 = 51.;
+const SESSION_ROW_BARE: f32 = 32.;
 /// A folded side: just enough for a few dots saying what waits, beside
 /// the window's resize band (6 px) when the side is at the window's edge.
 const FOLDED_WIDTH: f32 = 14.;
@@ -1878,8 +1883,13 @@ impl Shell {
             let critical = self.board.critical.get(&project.name).copied();
             // A project shows the sum of what it asks, collapsed or not.
             let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
+            // Fixed heights: the list is laid out on every frame of the
+            // shell, and rows the layout must measure cost dearly.
             list = list.child(
                 div()
+                    .h(px(SESSION_HEADING))
+                    .flex_none()
+                    .overflow_hidden()
                     .flex()
                     .items_center()
                     .gap_2()
@@ -1922,9 +1932,13 @@ impl Shell {
                 let open = self.terminals.contains_key(&session);
                 let alerts = self.alerts_of(&project.name, terminal.agent.as_deref());
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
+                let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
                 list = list.child(
                     div()
                         .id(SharedString::from(format!("terminal-{session}")))
+                        .h(px(height))
+                        .flex_none()
+                        .overflow_hidden()
                         .flex()
                         .gap_2()
                         .pl_1()

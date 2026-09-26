@@ -128,11 +128,21 @@ First numbers (24/09, labwc headless, Radeon 680M):
 
 On 312 tickets (26/09, debug, labwc headless), `scripts/perf-frames`:
 
-| | before | rows of fixed height, only the visible ones laid out |
-|---|---|---|
-| at rest (8 s) | 34 frames, mean 108 ms, 3.9 s of CPU | 34 frames, mean 18 ms, 0.7 s |
-| hover (4 s) | 49 frames, mean 108 ms, 5.7 s | 58 frames, mean 23 ms, 1.5 s |
-| typing (20 keys) | 32 frames, mean 122 ms, 3.6 s | 43 frames, mean 22 ms, 0.9 s |
+| | before | ticket rows: fixed height, only those in view | + panel and terminal reused, sessions rows fixed |
+|---|---|---|---|
+| at rest (8 s) | 34 frames, mean 108 ms, 3.9 s of CPU | 34 frames, mean 18 ms, 0.7 s | 32 frames, mean 7.8 ms, 0.32 s |
+| hover (4 s) | 49 frames, mean 108 ms, 5.7 s | 58 frames, mean 23 ms, 1.5 s | 59 frames, mean 9.5 ms, 0.68 s |
+| typing (20 keys) | 32 frames, mean 122 ms, 3.6 s | 43 frames, mean 22 ms, 0.9 s | 44 frames, mean 9.9 ms, 0.48 s |
+
+The frames "at rest" are the test loop's own: its spinner and tmux's clock.
+What is left of a frame is mostly the terminal's paint (about 5 ms).
+
+Two things GPUI does that shape tvty's views: a view's notify marks all
+its ancestors dirty, and a *cached* view that draws again makes every view
+inside it draw again. So the shell is drawn plainly (its render is cheap),
+the terminal and the ticket panel are cached inside it — reused whenever
+they did not change — and anything the shell lays out itself on every
+frame (the sessions list, the bars) keeps fixed heights.
 
 ## What the first slice measures
 

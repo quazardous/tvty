@@ -87,8 +87,7 @@ fn main() {
     });
 }
 
-/// Holds the shell as a cached view: the kit's Root draws its child every
-/// frame, this lets GPUI reuse the shell's last drawing until it changes.
+/// The window's content: the shell, and the probe that times each frame.
 struct Frame(Entity<shell::Shell>);
 
 impl Render for Frame {
@@ -99,7 +98,11 @@ impl Render for Frame {
         div()
             .relative()
             .size_full()
-            .child(self.0.clone().cached(StyleRefinement::default().size_full()))
+            // Not cached: a cached view that draws again makes every view
+            // inside it draw again (GPUI's `refreshing`). Drawn plainly, the
+            // shell's own render is cheap, and the cached views inside it —
+            // the terminal, the panel — are reused unless they changed.
+            .child(self.0.clone())
             .child(div().absolute().child(stats::Probe))
     }
 }

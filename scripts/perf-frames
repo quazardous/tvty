@@ -10,6 +10,7 @@
 #   hover   — the pointer glides down the ticket list and back, 4 s;
 #   typing  — 20 keys typed in the terminal.
 # For each: frames, the slowest and the mean, and the CPU tvty used.
+# SIDEBAR=0 / PANEL=0: with the sessions list / the ticket panel folded.
 # Load a large board first: scripts/fake-aiball-load.py.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -36,7 +37,11 @@ for p in $(pgrep -x tvty); do
 done
 [ -n "$pid" ] || { echo "no test tvty running" >&2; exit 1; }
 $CTL click $CONF 90 "$LOOP_Y" >/dev/null
-sleep 4
+sleep 3
+# Folded after the loop is chosen, from their headers' chevrons.
+[ "${SIDEBAR:-1}" = 0 ] && $CTL click $CONF 285 59 >/dev/null
+[ "${PANEL:-1}" = 0 ] && $CTL click $CONF 870 59 >/dev/null
+sleep 1
 
 ticks() { awk '{print $14+$15}' /proc/$pid/stat; }
 measure() { # name, then the command that makes the moment
