@@ -96,7 +96,8 @@ pub struct Shell {
     backlog_view: Option<agentbar::BacklogView>,
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
-    sidebar_tab: loopstabs::Tab,
+    /// The sessions list's sections' scrolls: live, idle, shut.
+    session_scrolls: [ScrollHandle; 3],
     new_session: Option<loopstabs::NewSession>,
     starting: Option<String>,
     open_when_running: Option<String>,
@@ -383,7 +384,7 @@ impl Shell {
             compact: None,
             afk_menu: false,
             backlog_view: None,
-            sidebar_tab: Default::default(),
+            session_scrolls: Default::default(),
             new_session: None,
             starting: None,
             open_when_running: None,
@@ -1814,11 +1815,7 @@ impl Shell {
 
     /// The projects' list: its tabs on the left, then the tab's list.
     fn sidebar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let rest = width - 44.;
-        let content = match self.sidebar_tab {
-            loopstabs::Tab::Active => self.active_list(rest, cx).into_any_element(),
-            _ => self.other_tab(rest, cx),
-        };
+        let content = self.sessions_list(cx);
         // Its header lines up with the tickets panel's: the name, and the
         // chevron that folds the list towards the window's edge.
         let header = div()
@@ -1846,30 +1843,20 @@ impl Shell {
             .w(px(width))
             .h_full()
             .bg(p().surface)
-            .child(self.tab_rail(cx))
             .child(
                 div()
                     .flex()
                     .flex_col()
-                    .w(px(rest))
+                    .w(px(width))
                     .h_full()
                     .child(header)
-                    .child(div().flex_1().min_h_0().child(content)),
+                    .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
     }
 
     /// The sessions that run, by project; "+ session" opens one.
-    fn active_list(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut list = div()
-            .id("projects")
-            .flex()
-            .flex_col()
-            .w(px(width))
-            .flex_none()
-            .h_full()
-            .py_2()
-            .bg(p().surface)
-            .text_sm();
+    pub(super) fn live_list(&self, cx: &mut Context<Self>) -> Div {
+        let mut list = div().flex().flex_col();
         if self.board.projects.is_empty() {
             list = list.child(div().px_3().text_color(p().muted).child("No session"));
         }
@@ -1966,7 +1953,7 @@ impl Shell {
                 );
             }
         }
-        list.overflow_y_scrollbar()
+        list
     }
 
     /// The slider as a portfolio: the window fades behind, and the groups of

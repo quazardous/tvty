@@ -28,8 +28,6 @@ pub struct CollapsePanel;
 
 /// A ticket row's height in the panel, near enough: two lines and padding.
 const ROW_HEIGHT: f32 = 56.;
-/// A band's title in the panel, with its padding.
-const BAND_TITLE_HEIGHT: f32 = 28.;
 
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
@@ -700,7 +698,7 @@ impl TicketPanel {
         // pushes the others out of sight.
         // When even the bands' minimums do not fit, the list scrolls as a
         // whole rather than letting them overlap.
-        let mut list = div().id("ticket-list").flex().flex_col().flex_1().min_h_0().overflow_y_scroll().pb_1();
+        let mut list = crate::accordion::list("ticket-list").pb_1();
         if self.tickets.is_empty() {
             return list.child(hint("No open ticket.")).into_any_element();
         }
@@ -708,73 +706,22 @@ impl TicketPanel {
         while at < rows.len() {
             let band = rows[at].0.band;
             let end = rows[at..].iter().position(|(s, _)| s.band != band).map_or(rows.len(), |n| at + n);
-            let folded = self.folded.contains(&band);
-            let header = div()
-                .id(SharedString::from(format!("band-{band:?}")))
-                .flex()
-                .flex_none()
-                .items_center()
-                .gap_1()
-                .px_3()
-                .pt_2()
-                .pb_1()
-                .text_xs()
-                .font_weight(FontWeight::BOLD)
-                .text_color(p().muted)
-                .cursor_pointer()
-                .hover(|d| d.text_color(p().text))
-                .child(div().w(px(10.)).child(if folded { "▸" } else { "▾" }))
-                .child(band.title().to_uppercase())
-                .child(div().font_weight(FontWeight::NORMAL).child(format!("{}", end - at)))
-                .on_click(cx.listener(move |panel, _, _, cx| {
-                    if !panel.folded.remove(&band) {
-                        panel.folded.insert(band);
-                    }
-                    cx.notify();
-                }));
-            // A band shares the height down to its title and two rows (all of
-        // them when it has fewer), never below — its rows would spill over
-        // the next band —, never above its content either.
-        let keep_rows = if folded { 0 } else { (end - at).min(2) };
-        let mut section = div()
-            .flex()
-            .flex_col()
-            .flex_initial()
-            .min_h(px(BAND_TITLE_HEIGHT + keep_rows as f32 * ROW_HEIGHT))
-            .child(header);
-            if !folded {
-                let scroll = self.scrolls.get(&band).cloned().unwrap_or_default();
-                let mut rows_el = div()
-                    .id(SharedString::from(format!("band-rows-{band:?}")))
-                    .flex()
-                    .flex_col()
-                    .flex_initial()
-                    .min_h_0()
-                    .track_scroll(&scroll)
-                    .overflow_y_scroll();
-                for (state, ticket) in &rows[at..end] {
-                    rows_el = rows_el.child(self.row(ticket, *state, cx));
+            let section = crate::accordion::Section {
+                id: SharedString::from(format!("band-{band:?}")),
+                title: band.title().to_string(),
+                count: end - at,
+                folded: self.folded.contains(&band),
+                // Two rows, or all of them when fewer.
+                keep: (end - at).min(2) as f32 * ROW_HEIGHT,
+                scroll: self.scrolls.get(&band).cloned().unwrap_or_default(),
+                body: rows[at..end].iter().map(|(state, ticket)| self.row(ticket, *state, cx).into_any_element()).collect(),
+            };
+            list = list.child(section.render(cx.listener(move |panel, _, _, cx| {
+                if !panel.folded.remove(&band) {
+                    panel.folded.insert(band);
                 }
-                // A band shrinks to share the height, but never below two
-                // rows (or all of them, when it has fewer).
-                let keep = (end - at).min(2) as f32 * ROW_HEIGHT;
-                section = section.child(
-                    div()
-                        .relative()
-                        .flex()
-                        .flex_col()
-                        .flex_initial()
-                        .min_h(px(keep))
-                        .child(rows_el)
-                        .child(
-                            div()
-                                .absolute()
-                                .inset_0()
-                                .child(Scrollbar::new(&scroll).axis(ScrollbarAxis::Vertical).viewport_from_layout()),
-                        ),
-                );
-            }
-            list = list.child(section);
+                cx.notify();
+            })));
             at = end;
         }
         list.into_any_element()

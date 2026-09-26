@@ -1,15 +1,14 @@
-//! The projects' list, as three vertical tabs: the sessions that run
-//! (Active), the loops this machine knows that are stopped (Inactive, one
-//! click starts one again, where it worked, for its agent), and the agents
-//! aiball knows with no loop here (Closed, one click opens one where the
-//! agent works). "+ session" on a project opens one: a working directory
+//! The sessions list, in three foldable sections ([`crate::accordion`]):
+//! the sessions that run (live), the loops this machine knows that are
+//! stopped (idle, one click starts one again, where it worked, for its
+//! agent), and the agents aiball knows with no loop here (shut, one click
+//! opens one where the agent works). "+ session" on a project opens one: a working directory
 //! (proposed, checked) and an agent. claude-loop starts it, detached, in
 //! that directory — never tvty's —, and tvty opens it once it runs.
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
@@ -17,12 +16,11 @@ use crate::loops::{KnownLoop, Start};
 use crate::notify::{self, Kind, Notice};
 use crate::theme::p;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub(super) enum Tab {
-    #[default]
-    Active,
-    Inactive,
-    Closed,
+/// The idle and shut sections.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Other {
+    Idle,
+    Shut,
 }
 
 /// "+ session" on a project: where, and for whom.
@@ -56,61 +54,48 @@ impl Shell {
             .collect()
     }
 
-    /// The rail of tabs, on the list's left.
-    pub(super) fn tab_rail(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// The three sections, each folded or not as the user left it.
+    pub(super) fn sessions_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let running: usize = self.board.projects.iter().map(|p| p.terminals.len()).sum();
-        let tabs = [
-            (Tab::Active, "live", running),
-            (Tab::Inactive, "idle", self.inactive().len()),
-            (Tab::Closed, "shut", self.closed().len()),
-        ];
-        let mut rail = div()
-            .flex()
-            .flex_col()
-            .flex_none()
-            .w(px(44.))
-            .h_full()
-            .py_2()
-            .gap_1()
-            .border_r_1()
-            .border_color(p().border);
-        for (tab, word, count) in tabs {
-            let on = self.sidebar_tab == tab;
-            rail = rail.child(
-                div()
-                    .id(SharedString::from(format!("tab-{word}")))
-                    .flex()
-                    .flex_col()
-                    .items_center()
-                    .py_1()
-                    .mx_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(p().active).text_color(p().text))
-                    .when(!on, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
-                    .child(div().text_sm().font_weight(FontWeight::BOLD).child(count.to_string()))
-                    .child(div().text_xs().child(word))
-                    .on_click(cx.listener(move |shell, _, _, cx| {
-                        shell.sidebar_tab = tab;
-                        cx.notify();
-                    })),
-            );
+        let groups = [("live", running), ("idle", self.inactive().len()), ("shut", self.closed().len())];
+        let mut list = crate::accordion::list("sessions").pb_1();
+        for (i, (word, count)) in groups.into_iter().enumerate() {
+            let folded = self.settings.sessions_folded.iter().any(|f| f == word);
+            let body = match (folded, i) {
+                (true, _) => Vec::new(),
+                (false, 0) => vec![self.live_list(cx).into_any_element()],
+                (false, 1) => vec![self.other_list(Other::Idle, cx)],
+                (false, _) => vec![self.other_list(Other::Shut, cx)],
+            };
+            let section = crate::accordion::Section {
+                id: SharedString::from(format!("sessions-{word}")),
+                title: word.to_string(),
+                count,
+                folded,
+                // Two sessions, or the line saying there is none.
+                keep: (count.min(2) as f32 * 44.).max(24.),
+                scroll: self.session_scrolls[i].clone(),
+                body,
+            };
+            list = list.child(section.render(cx.listener(move |shell, _, _, cx| {
+                let folded = &mut shell.settings.sessions_folded;
+                match folded.iter().position(|f| f == word) {
+                    Some(at) => {
+                        folded.remove(at);
+                    }
+                    None => folded.push(word.to_string()),
+                }
+                shell.settings.save();
+                cx.notify();
+            })));
         }
-        rail
+        list.into_any_element()
     }
 
-    /// The Inactive and Closed tabs' lists; the Active one is the projects'
+    /// The idle and shut sections' lists; the live one is the projects'
     /// list itself.
-    pub(super) fn other_tab(&self, width: f32, cx: &mut Context<Self>) -> AnyElement {
-        let mut list = div()
-            .id("sessions-other")
-            .flex()
-            .flex_col()
-            .w(px(width))
-            .flex_none()
-            .h_full()
-            .py_2()
-            .text_sm();
+    fn other_list(&self, which: Other, cx: &mut Context<Self>) -> AnyElement {
+        let mut list = div().flex().flex_col();
         let heading = |text: String| {
             div()
                 .px_3()
@@ -141,8 +126,8 @@ impl Shell {
                 .child(div().text_xs().text_color(p().muted).truncate().child(home_short(cwd)))
                 .on_click(cx.listener(move |shell, _, _, cx| shell.start_loop(start.clone(), cx)))
         };
-        match self.sidebar_tab {
-            Tab::Inactive => {
+        match which {
+            Other::Idle => {
                 let loops = self.inactive();
                 if loops.is_empty() {
                     list = list.child(div().px_3().text_color(p().muted).child("No stopped loop"));
@@ -164,7 +149,7 @@ impl Shell {
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
                 }
             }
-            _ => {
+            Other::Shut => {
                 let homes = self.closed();
                 if homes.is_empty() {
                     list = list.child(div().px_3().text_color(p().muted).child("No agent without a loop"));
@@ -175,7 +160,7 @@ impl Shell {
                 }
             }
         }
-        list.overflow_y_scroll().into_any_element()
+        list.into_any_element()
     }
 
     /// "+ session" on a project: opens its form, prefilled — the directory
@@ -306,7 +291,6 @@ impl Shell {
                 match done {
                     Ok(name) => {
                         shell.new_session = None;
-                        shell.sidebar_tab = Tab::Active;
                         shell.open_when_running = Some(name.clone());
                         notify::push(cx, Notice::new(Kind::Info, "tvty", format!("started {name} in {}", home_short(&start.cwd))));
                         let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);

@@ -35,6 +35,8 @@ pub struct Settings {
     pub notify_seconds: Option<u64>,
     /// The project the last new ticket went to.
     pub last_ticket_project: Option<String>,
+    /// The sessions list's folded sections (`live`, `idle`, `shut`).
+    pub sessions_folded: Vec<String>,
 }
 
 impl Default for Settings {
@@ -53,6 +55,7 @@ impl Default for Settings {
             notify_seconds: None,
             terminal_font_size: None,
             window_font_size: None,
+            sessions_folded: vec!["idle".into(), "shut".into()],
         }
     }
 }

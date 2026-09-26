@@ -1,6 +1,7 @@
 //! tvty — Terminal Velocity: a native terminal for working with many AI
 //! agents, their terminals grouped by project and their tickets beside.
 
+mod accordion;
 mod aiball;
 mod bus;
 mod composer;

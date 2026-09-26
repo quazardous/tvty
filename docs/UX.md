@@ -20,9 +20,11 @@ such; open points are listed at the end.
 
 ## Opening a session
 
-The projects' list has three vertical tabs, on a rail at its left, each
-with its count: **live** (the sessions that run, by project — the list as
-it was), **idle** (the loops this machine knows, from claude-loop's state
+The sessions list ("Sessions", ‹ folds it) has three foldable sections,
+each with its count, like the ticket list's bands (one component,
+`src/accordion.rs`: ▾/▸ and a click, each section scrolls on its own and
+they share the height): **live** (the sessions that run, by project),
+**idle** (the loops this machine knows, from claude-loop's state
 directory, that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start
 opens one where the agent works). "+ session" on a project opens a small

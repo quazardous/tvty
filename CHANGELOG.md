@@ -159,6 +159,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The sessions list drops its vertical tabs for three foldable sections,
+  live, idle and shut, drawn like the ticket list's bands; what is folded
+  is remembered (idle and shut start folded).
+
 - A new ticket is filed whole, its tags, assignee, level, milestone and
   parent in the same call: aiball files all of it or refuses all of it,
   and says why. No more "filed, but not all of it".
