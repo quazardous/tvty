@@ -67,7 +67,7 @@ a pending plan, a pending resolution, a queue and a closed one.
 `make aiball-down` drops it all.
 
 The test tvty points at it already (`AIBALL_SOCK` for the API, `AIBALL_URL`
-for its live feed, served on the TCP port only). To open a session at
+for its live feed, a fallback when the socket does not serve it). To open a session at
 start:
 
 ```bash

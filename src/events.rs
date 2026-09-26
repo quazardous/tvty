@@ -1,8 +1,8 @@
 //! aiball's live feed (`/ws`): every change on the board — a message
 //! posted, a decision taken, an agent's state — so tvty reads again what
 //! moved, when it moves, instead of everything every few seconds. Read-only;
-//! aiball serves it on its TCP port only (`$AIBALL_URL`, default
-//! `http://127.0.0.1:7777`).
+//! over aiball's local socket, where the same user is trusted, else its TCP
+//! port (`$AIBALL_URL`, default `http://127.0.0.1:7777`).
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
