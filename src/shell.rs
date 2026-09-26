@@ -830,6 +830,14 @@ impl Shell {
             self.toggle_options(window, cx);
         } else if key == "escape" && self.options.is_some() {
             self.toggle_options(window, cx);
+        // Ctrl+Shift+= / − / 0: with shift held, the key may come as the
+        // shifted character, shift then consumed ("+", "_", ")").
+        } else if m.control && (key == "+" || m.shift && key == "=") {
+            self.step_terminal_font(1., cx);
+        } else if m.control && (key == "_" || m.shift && key == "-") {
+            self.step_terminal_font(-1., cx);
+        } else if m.control && (key == ")" || m.shift && key == "0") {
+            self.set_terminal_font(None, cx);
         } else if m.control && m.shift && key == "n" {
             self.open_new_ticket(None, None, window, cx);
         } else if key == "escape" && self.new_ticket_shown {
@@ -1195,11 +1203,36 @@ impl Shell {
             cx,
             |shell, name, _, cx| shell.set_terminal_theme(name, cx),
         );
+        let terminal_font = crate::terminal::font_size();
+        let window_font = theme::window_font();
+        let sizes = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .child(option_group("Sizes"))
+            .child(option_stepper(
+                "Terminal font",
+                "The terminals' text, 8 to 32 px. Ctrl+Shift+= / Ctrl+Shift+− / Ctrl+Shift+0 too.",
+                format!("{terminal_font} px"),
+                cx.listener(|shell, _, _, cx| shell.step_terminal_font(-1., cx)),
+                cx.listener(|shell, _, _, cx| shell.step_terminal_font(1., cx)),
+                cx.listener(|shell, _, _, cx| shell.set_terminal_font(None, cx)),
+            ))
+            .child(option_stepper(
+                "Window text",
+                "Everything around the terminals — lists, tickets, menus —, 12 to 22 px.",
+                format!("{window_font} px"),
+                cx.listener(move |shell, _, window, cx| shell.set_window_font(Some(window_font - 1.), window, cx)),
+                cx.listener(move |shell, _, window, cx| shell.set_window_font(Some(window_font + 1.), window, cx)),
+                cx.listener(|shell, _, window, cx| shell.set_window_font(None, window, cx)),
+            ));
         div()
             .flex()
             .flex_col()
             .gap_1()
             .max_w(px(720.))
+            .child(sizes)
+            .child(option_group("Colours"))
             .child(option_note(
                 "The window's colour theme, and the terminals': the window's, or one of their own — a dark terminal in a light window. Ctrl+Shift+K steps through the window's.",
             ))
@@ -1358,6 +1391,31 @@ impl Shell {
         theme::apply_terminal(name.as_deref(), cx);
         self.settings.terminal_theme = name.map(|n| n.to_string());
         self.settings.save();
+        cx.notify();
+    }
+
+    /// The terminals' font size (`None`: the default): every terminal
+    /// takes it at its next frame, its PTY resized once it settles.
+    fn set_terminal_font(&mut self, size: Option<f32>, cx: &mut Context<Self>) {
+        let kept = crate::terminal::set_font_size(size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
+        self.settings.terminal_font_size = (kept != crate::terminal::FONT_SIZE_DEFAULT).then_some(kept);
+        self.settings.save();
+        for terminal in self.terminals.values() {
+            terminal.update(cx, |_, cx| cx.notify());
+        }
+        cx.notify();
+    }
+
+    fn step_terminal_font(&mut self, step: f32, cx: &mut Context<Self>) {
+        self.set_terminal_font(Some(crate::terminal::font_size() + step), cx);
+    }
+
+    /// The window's text size (`None`: the default).
+    fn set_window_font(&mut self, size: Option<f32>, window: &mut Window, cx: &mut Context<Self>) {
+        let kept = theme::set_window_font(size, cx);
+        self.settings.window_font_size = (kept != theme::WINDOW_FONT_DEFAULT).then_some(kept);
+        self.settings.save();
+        window.refresh();
         cx.notify();
     }
 
@@ -2190,6 +2248,53 @@ fn option_row(
                 .child(action)
                 .on_click(on_click),
         )
+}
+
+/// A size: its name and what it does, − the value +, and back to default.
+fn option_stepper(
+    name: &'static str,
+    about: &'static str,
+    value: String,
+    minus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    plus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+    reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let button = |id: &str, label: &'static str| {
+        div()
+            .id(SharedString::from(format!("options-{id}-{name}")))
+            .flex_none()
+            .px_3()
+            .py_1()
+            .rounded_md()
+            .border_1()
+            .border_color(p().border)
+            .cursor_pointer()
+            .hover(|d| d.bg(p().hover))
+            .child(label)
+    };
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .p_3()
+        .rounded_md()
+        .bg(p().surface)
+        .border_1()
+        .border_color(p().border)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .flex_1()
+                .min_w_0()
+                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().text_sm().text_color(p().muted).child(about)),
+        )
+        .child(button("minus", "−").on_click(minus))
+        .child(div().w(px(56.)).flex_none().text_center().child(value))
+        .child(button("plus", "+").on_click(plus))
+        .child(button("reset", "Default").on_click(reset))
 }
 
 fn options_shortcuts() -> impl IntoElement {

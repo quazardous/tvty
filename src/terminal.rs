@@ -25,7 +25,24 @@ use crate::stats;
 const FONT_FAMILY: &str = "Source Code Pro";
 /// Tried in order for glyphs the main font lacks (emoji, CJK, symbols).
 const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
-const FONT_SIZE: f32 = 14.;
+/// The terminals' font size, in pixels: by default, and its bounds.
+pub const FONT_SIZE_DEFAULT: f32 = 14.;
+pub const FONT_SIZE_MIN: f32 = 8.;
+pub const FONT_SIZE_MAX: f32 = 32.;
+/// The size chosen, as `f32` bits: one for every terminal.
+static FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x4160_0000);
+
+/// Sets the terminals' font size, within its bounds; answers the size kept.
+/// Each terminal takes it at its next frame (its grid, then its PTY, resize).
+pub fn set_font_size(size: f32) -> f32 {
+    let size = size.round().clamp(FONT_SIZE_MIN, FONT_SIZE_MAX);
+    FONT_SIZE.store(size.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    size
+}
+
+pub fn font_size() -> f32 {
+    f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
+}
 const LINE_HEIGHT: f32 = 1.3;
 
 /// Forwards the emulator's events (from its I/O thread) to the view.
@@ -567,13 +584,14 @@ impl Element for TerminalElement {
             }
             None => (0, usize::MAX),
         };
+        let chosen = font_size();
         let font_size = match &self.view {
-            Some(_) => px(FONT_SIZE),
+            Some(_) => px(chosen),
             None => {
                 use alacritty_terminal::grid::Dimensions as _;
                 let columns = self.term.lock().columns().min(keep_columns).max(1) as f32;
-                let fit = f32::from(bounds.size.width) / (columns * f32::from(advance(px(FONT_SIZE))));
-                px((FONT_SIZE * fit).max(2.))
+                let fit = f32::from(bounds.size.width) / (columns * f32::from(advance(px(chosen))));
+                px((chosen * fit).max(2.))
             }
         };
         let cell = size(advance(font_size), (font_size * LINE_HEIGHT).round());

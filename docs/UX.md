@@ -198,6 +198,16 @@ The terminals can have a theme of their own — a dark terminal in a light
 window, as many like it: in the options' Appearance, next to the window's
 theme. By default they follow the window's.
 
+## Sizes
+
+Two sizes, in Options > Appearance, kept in `state.json`: the terminals'
+font (8 to 32 px, 14 by default; ctrl+shift+= / ctrl+shift+− / ctrl+shift+0
+too — shift so that no key is taken from the programs in the terminal) and
+the window's text (12 to 22 px, 16 by default: the kit's size, which sets
+everything else). A new terminal size applies at once: each grid is laid
+out again, and its PTY — the tmux session — resized once it settles. The
+cards keep their size: they fit the screen to themselves.
+
 ## Options
 
 A full page (⚙ in the title bar, or ctrl+,) with its sections on the left:
@@ -223,6 +233,7 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 | ctrl+shift+space | the gallery; type to filter, arrows move, enter opens, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+n | a new ticket; ctrl+enter files it, esc keeps the draft |
+| ctrl+shift+= / − / 0 | terminal font bigger / smaller / default |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |

@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Font sizes of your own, in Options > Appearance: the terminals' (8 to
+  32 px, also ctrl+shift+= / − / 0) and the window's text (12 to 22 px).
+  Both are remembered.
+
 - File a ticket from tvty: + in the ticket panel or the full list,
   ctrl+shift+n, or a sub-ticket from a ticket's full view. A full-screen
   form, laid out as a ticket's detail (project, intent, priority, scope,

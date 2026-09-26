@@ -60,6 +60,26 @@ static TERMINAL: LazyLock<RwLock<TerminalColours>> =
 /// The terminals' own theme; `None`: the window's.
 static TERMINAL_THEME: RwLock<Option<SharedString>> = RwLock::new(None);
 
+/// The window's text size (the kit's, which sets the rem): by default, its
+/// bounds, and the one chosen, `None` for the default.
+pub const WINDOW_FONT_DEFAULT: f32 = 16.;
+pub const WINDOW_FONT_MIN: f32 = 12.;
+pub const WINDOW_FONT_MAX: f32 = 22.;
+static WINDOW_FONT: RwLock<Option<f32>> = RwLock::new(None);
+
+/// Sets the window's text size (`None`: the default); answers the size kept.
+pub fn set_window_font(size: Option<f32>, cx: &mut App) -> f32 {
+    let size = size.map(|s| s.round().clamp(WINDOW_FONT_MIN, WINDOW_FONT_MAX));
+    *WINDOW_FONT.write().unwrap() = size;
+    let size = size.unwrap_or(WINDOW_FONT_DEFAULT);
+    Theme::global_mut(cx).font_size = px(size);
+    size
+}
+
+pub fn window_font() -> f32 {
+    WINDOW_FONT.read().unwrap().unwrap_or(WINDOW_FONT_DEFAULT)
+}
+
 /// The active palette.
 pub fn p() -> Palette {
     *PALETTE.read().unwrap()
@@ -159,6 +179,8 @@ pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
         }
     }
     Theme::change(mode, window, cx);
+    // A theme may carry its own text size: the user's choice stays.
+    Theme::global_mut(cx).font_size = px(window_font());
     // The kit's monospace font, where it uses one, is the terminal's.
     Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
     // Scrollbars stay visible: they say where a long list stands.
