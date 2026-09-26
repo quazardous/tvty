@@ -121,7 +121,9 @@ pub enum Stripe {
     Dashed,
     /// Your turn, without a decision: answer the agent who spoke last.
     Neutral,
-    /// Not your turn.
+    /// Your word is the last: you wait on them (a discreet dotted line).
+    Waiting,
+    /// Not your turn, and not your word last.
     None,
 }
 
@@ -152,7 +154,11 @@ pub fn of(row: &TicketRow, user: &str) -> RowState {
             (state.band, state.turn, state.glyph)
         }
     };
-    RowState { band, turn, glyph, stripe: stripe(turn, decision, row.pending_decision_is_latest) }
+    let mut stripe = stripe(turn, decision, row.pending_decision_is_latest);
+    if stripe == Stripe::None && row.last_speaker.as_deref() == Some(user) {
+        stripe = Stripe::Waiting;
+    }
+    RowState { band, turn, glyph, stripe }
 }
 
 fn stripe(turn: Turn, decision: bool, decision_is_latest: bool) -> Stripe {
@@ -249,7 +255,13 @@ mod tests {
         let mut r = row();
         r.comment_count = 2;
         let state = of(&r, "david");
-        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::None));
+        // Your word is the last: you wait, and the stripe says so.
+        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::Waiting));
+        // Someone else's word last, still not yours to move: no stripe.
+        r.last_speaker = Some("demo-crew".into());
+        r.turn = Some("them".into());
+        r.band = Some(4);
+        assert_eq!(of(&r, "david").stripe, Stripe::None);
     }
 
     #[test]

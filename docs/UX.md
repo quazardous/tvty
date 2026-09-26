@@ -71,9 +71,13 @@ the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
   emoji would show grey.
 - **The stripe says whose turn**: coloured and solid when a decision waits
   on you and is the last message, dashed when the talk went on after it,
-  neutral when an agent answered you, none when the ball is with the agent.
-- Then who spoke last and how many messages, the agent holding it (🔥 when
-  active), ⚠N on the critical ticket, a high priority, the time.
+  neutral when an agent answered you, a thin dotted line when your word is
+  the last (you wait), none otherwise.
+- Then who spoke last and aiball's **comment count** (a bubble and the
+  number, green when you spoke last; a clock while comments wait for
+  moderation), the agent holding it (🔥 when active), ⚠N on the critical
+  ticket, a high priority, the time. A thread full screen is headed by the
+  same count and who spoke last.
 
 The legend is in the options page, under "Ticket list".
 

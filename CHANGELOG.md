@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- aiball's comment count on every ticket row, in the panel and the full
+  list: a bubble and the number, green when you spoke last (a clock while
+  comments wait for moderation); a thin dotted stripe on a row where your
+  word is the last; and the count, with who spoke last, heading a thread
+  full screen.
+
 - Notifications in the window's top left corner, above everything: stacked,
   at most five, gone after six seconds unless hovered (both set in Options),
   the ticket each is about shining in the lists meanwhile. They replace the

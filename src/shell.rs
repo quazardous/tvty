@@ -2449,13 +2449,17 @@ fn options_ticket_list() -> impl IntoElement {
         .child(line(glyph(Glyph::Escalation, p().danger), Glyph::Escalation.meaning().into()))
         .child(line(glyph(Glyph::Step, p().muted), Glyph::Step.meaning().into()))
         .child(line(glyph(Glyph::StalledStep, p().muted), Glyph::StalledStep.meaning().into()))
-        .child(line(glyph(Glyph::Rejected, p().muted), Glyph::Rejected.meaning().into()))
+        .child(line(glyph(Glyph::Rejected, p().danger), format!("{} — always red", Glyph::Rejected.meaning())))
         .child(line(glyph(Glyph::ClosedResolved, p().muted), Glyph::ClosedResolved.meaning().into()))
         .child(line(glyph(Glyph::Closed, p().muted), Glyph::Closed.meaning().into()))
         .child(option_group("Stripe — whose turn"))
         .child(line(stripe(p().warning, false), "a decision waits on you, and it is the last message".into()))
         .child(line(stripe(p().warning, true), "a decision waits on you, but the talk went on after it".into()))
         .child(line(stripe(p().border, false), "your turn: an agent answered you".into()))
+        .child(line(
+            div().h(px(18.)).border_l_1().border_dashed().border_color(p().muted.opacity(0.6)).into_any_element(),
+            "thin and dotted: your word is the last, you wait".into(),
+        ))
         .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
         .child(option_group("The rest"))
         .child(line(
@@ -2463,8 +2467,12 @@ fn options_ticket_list() -> impl IntoElement {
             "bold: unread — and nothing else says it".into(),
         ))
         .child(line(
-            div().text_xs().text_color(p().muted).child("you · 3 msg").into_any_element(),
-            "who spoke last, and how many messages".into(),
+            crate::icons::labelled(crate::icons::Icon::Comments, p().success, 12., "3").text_xs().text_color(p().success).into_any_element(),
+            "comments; green when you spoke last, grey when someone else did".into(),
+        ))
+        .child(line(
+            crate::icons::labelled(crate::icons::Icon::PendingComments, p().warning, 12., "1").text_xs().text_color(p().warning).into_any_element(),
+            "comments waiting for moderation".into(),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::Hot, p().warning, 12., "agent")

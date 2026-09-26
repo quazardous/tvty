@@ -433,6 +433,7 @@ impl FullList {
                         .text_color(p().muted),
                 )
             })
+            .children(crate::panel::comment_count(ticket, &self.aiball.user).map(|c| c.flex_none().text_xs()))
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| {
                 d.child(div().flex_none().text_xs().text_color(p().muted).child(when))
             });
@@ -455,7 +456,7 @@ impl FullList {
             facts.push(format!("{held} {}", who(holder)));
         }
         if let Some(speaker) = &ticket.last_speaker {
-            facts.push(format!("{} spoke last · {} msg", who(speaker), ticket.comment_count));
+            facts.push(format!("{} spoke last", who(speaker)));
         }
         if let Some(usage) = &ticket.token_usage {
             let total = usage.tokens_in + usage.tokens_out + usage.cache_w;

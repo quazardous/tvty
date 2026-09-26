@@ -811,9 +811,8 @@ impl TicketPanel {
             .gap_x_2()
             .text_xs()
             .text_color(p().muted)
-            .when_some(speaker, |d, who| {
-                d.child(format!("{who} · {} msg", ticket.comment_count))
-            })
+            .when_some(speaker, |d, who| d.child(who))
+            .children(comment_count(ticket, &self.aiball.user))
             .when_some(ticket.holder().map(str::to_string), |d, holder| {
                 d.child(if ticket.hot {
                     icons::labelled(Icon::Hot, p().warning, 12., holder).into_any_element()
@@ -1367,6 +1366,21 @@ impl TicketPanel {
 
         // ── Full screen: the invariants on the left third ───────────────
         let left = self.invariants(ticket, turn_line, chips_row(chips), &user, cx);
+        // How much was said, and whose word is the last: the list's count.
+        let said: Vec<&Comment> = thread.comments.iter().filter(|c| c.kind == "comment_added").collect();
+        let count = said.last().map(|last| {
+            let mine = last.by_agent == user;
+            let colour = if mine { p().success } else { p().muted };
+            let who = if mine { "you".to_string() } else { last.by_agent.clone() };
+            icons::labelled(
+                Icon::Comments,
+                colour,
+                13.,
+                format!("{} comment{} · {who} spoke last", said.len(), if said.len() == 1 { "" } else { "s" }),
+            )
+            .text_xs()
+            .text_color(colour)
+        });
         let fold = div()
             .id("fold-all")
             .px_2()
@@ -1423,6 +1437,7 @@ impl TicketPanel {
                                             .pt_2()
                                             .children(summary_full)
                                             .child(div().flex_1())
+                                            .children(count)
                                             .child(fold),
                                     )
                                     .child(first)
@@ -2269,8 +2284,29 @@ pub(crate) fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
         .map(|d| match stripe {
             Stripe::Solid | Stripe::Neutral => d.bg(colour),
             Stripe::Dashed => d.border_l_3().border_dashed().border_color(colour),
+            // You spoke last: a thin dotted line, so waiting shows too.
+            Stripe::Waiting => d.border_l_1().border_dashed().border_color(p().muted.opacity(0.6)),
             Stripe::None => d,
         })
+}
+
+/// aiball's comment count: a bubble and the number, green when the user
+/// spoke last; a clock and the number while comments wait for moderation.
+pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Div> {
+    if ticket.pending_comment_count > 0 {
+        return Some(icons::labelled(
+            Icon::PendingComments,
+            p().warning,
+            12.,
+            ticket.pending_comment_count.to_string(),
+        ).text_color(p().warning));
+    }
+    if ticket.comment_count == 0 && ticket.last_speaker.is_none() {
+        return None;
+    }
+    let mine = ticket.last_speaker.as_deref() == Some(user);
+    let colour = if mine { p().success } else { p().muted };
+    Some(icons::labelled(Icon::Comments, colour, 12., ticket.comment_count.to_string()).text_color(colour))
 }
 
 /// A decision, as a chip: the list's glyphs, and "superseded" when a newer

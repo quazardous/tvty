@@ -48,6 +48,8 @@ icons! {
     PriorityHigh => "arrow_shape_up.svg",
     PriorityUrgent => "arrow_shape_up_stack.svg",
     PriorityLow => "low_priority.svg",
+    Comments => "chat_bubble.svg",
+    PendingComments => "schedule.svg",
 }
 
 impl AssetSource for Assets {
