@@ -167,6 +167,18 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   so every gesture carries its why. The rest (snooze, editing, relations,
   votes) stays in aiball's web UI.
 
+## The agent's bar
+
+Under an agent's terminal, one line: what claude-loop's tmux status line
+says, drawn by tvty from aiball (never read from tmux), about **the agent**
+— the panel beside it is about the project. Left to right: who drives the
+loop (▶ auto, ‖ held, ✎ you type) — a click offers auto, hold 10 min, hold,
+through aiball (`POST /api/agents/:id/afk`) —; its Claude's state and for
+how long, or offline; its events not seen yet; the tickets it holds; its
+wait credit; its name and where it works. A gesture aiball refuses is said
+in the bar. Its own backlog and the rest of claude-loop's bar (alerts, next
+wake, prompt, typing) come with aiball's API for them.
+
 ## The terminal comes to you
 
 When something newly waits on the user from an agent — a decision, or

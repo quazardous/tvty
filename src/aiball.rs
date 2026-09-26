@@ -35,6 +35,18 @@ pub struct Consumer {
     pub state_human_word: Option<String>,
     /// The loop is connected to aiball right now.
     pub present: Option<bool>,
+    /// Its events not seen yet.
+    #[serde(default)]
+    pub ping_unseen: Option<u32>,
+    /// Its wait credit, per project.
+    #[serde(default)]
+    pub wait_credit: Option<Vec<WaitCredit>>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct WaitCredit {
+    pub project: String,
+    pub balance: i64,
 }
 
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
@@ -413,6 +425,12 @@ impl Aiball {
         )?;
         let answer: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
+    }
+
+    /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
+    /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
+    pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {
+        self.post(&format!("/api/agents/{}/afk", encode(agent)), json!({ "action": action })).map(drop)
     }
 
     /// Marks a question (`- [ ]` in a comment) answered by a comment.

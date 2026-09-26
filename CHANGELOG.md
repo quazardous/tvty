@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- An agent's bar under its terminal: who drives its loop (with a click to
+  hold it or let it run), its Claude's state, its events, the tickets it
+  holds, its wait credit and where it works — from aiball, like the rest.
+
 - Font sizes of your own, in Options > Appearance: the terminals' (8 to
   32 px, also ctrl+shift+= / − / 0) and the window's text (12 to 22 px).
   Both are remembered.

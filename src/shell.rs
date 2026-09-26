@@ -21,6 +21,8 @@ use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::fulllist::{CloseFullList, FullList, OpenTicket};
 use crate::newticket::{AskNewTicket, CloseNewTicket, Created, NewTicketForm};
+
+mod agentbar;
 use crate::panel::{BoardChanged, CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
@@ -80,6 +82,9 @@ pub struct Shell {
     /// The panel as it was before going full screen, to find it so when
     /// coming back: `Some(None)` its list, `Some(Some(..))` a ticket.
     compact: Option<Option<(Option<String>, u64)>>,
+    /// The agent bar's AFK choices are open; the last AFK gesture failed.
+    afk_menu: bool,
+    afk_error: Option<String>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -347,6 +352,8 @@ impl Shell {
             full_list_shown: false,
             full_list_return: false,
             compact: None,
+            afk_menu: false,
+            afk_error: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -2034,18 +2041,28 @@ impl Render for Shell {
         if self.dragged && !cx.has_active_drag() {
             self.end_resize(window, cx);
         }
+        let bar = self.agent_bar(cx);
         let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
             // The terminal slides in on every switch. A relative offset, not a
             // margin: the terminal keeps its size, so tmux is not resized.
+            // Under it, its agent's bar, which does not slide.
             Some(terminal) => div()
-                .relative()
                 .size_full()
-                .child(terminal.clone())
-                .with_animation(
-                    SharedString::from(format!("switch-{}", self.switches)),
-                    Animation::new(Duration::from_millis(240)).with_easing(|t| 1. - (1. - t).powi(3)),
-                    |d, t| d.left(px(60. * (1. - t))).opacity(0.25 + 0.75 * t),
+                .flex()
+                .flex_col()
+                .child(
+                    div()
+                        .relative()
+                        .flex_1()
+                        .min_h_0()
+                        .child(terminal.clone())
+                        .with_animation(
+                            SharedString::from(format!("switch-{}", self.switches)),
+                            Animation::new(Duration::from_millis(240)).with_easing(|t| 1. - (1. - t).powi(3)),
+                            |d, t| d.left(px(60. * (1. - t))).opacity(0.25 + 0.75 * t),
+                        ),
                 )
+                .children(bar)
                 .into_any_element(),
             None => div()
                 .size_full()

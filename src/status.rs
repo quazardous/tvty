@@ -64,7 +64,7 @@ impl Status {
     }
 }
 
-fn now() -> u64 {
+pub(crate) fn now() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
@@ -72,7 +72,7 @@ fn now() -> u64 {
 }
 
 /// `42s`, `3m`, `2h`, `5d`.
-fn ago(seconds: u64) -> String {
+pub(crate) fn ago(seconds: u64) -> String {
     match seconds {
         0..60 => format!("{seconds}s"),
         60..3600 => format!("{}m", seconds / 60),
