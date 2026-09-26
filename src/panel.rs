@@ -875,7 +875,10 @@ impl TicketPanel {
                         div()
                             .flex()
                             .gap_2()
-                            .child(div().flex_none().text_color(p().muted).child(format!("#{id}")))
+                            .items_center()
+                            // Unread: a blue dot and the number in blue, then the bold title.
+                            .when(ticket.unread, |d| d.child(div().flex_none().size(px(7.)).rounded_full().bg(p().accent)))
+                            .child(div().flex_none().text_color(if ticket.unread { p().accent } else { p().muted }).child(format!("#{id}")))
                             .child(
                                 div()
                                     .flex_1()

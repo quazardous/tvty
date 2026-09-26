@@ -179,6 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- An unread ticket shows it more: a blue dot and its number in blue before
+  its bold title, in the panel and the full-screen list.
+
 - The long lists of choices are searched as you type, not laid out whole:
   in a new ticket the project, tags, milestone and assignee (Enter takes
   the first match, ✕ drops a choice), in a ticket's detail the tags,

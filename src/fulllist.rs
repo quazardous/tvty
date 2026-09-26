@@ -413,7 +413,10 @@ impl FullList {
             .flex()
             .items_center()
             .gap_2()
-            .child(div().flex_none().text_color(p().muted).child(format!("#{}", ticket.id)))
+            .items_center()
+            // Unread: a blue dot and the number in blue, then the bold title.
+            .when(ticket.unread, |d| d.child(div().flex_none().size(px(7.)).rounded_full().bg(p().accent)))
+            .child(div().flex_none().text_color(if ticket.unread { p().accent } else { p().muted }).child(format!("#{}", ticket.id)))
             .when(self.scope.is_none(), |d| {
                 d.child(div().flex_none().text_xs().text_color(p().accent).child(ticket.project.clone()))
             })
