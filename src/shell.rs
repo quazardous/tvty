@@ -1819,6 +1819,27 @@ impl Shell {
             loopstabs::Tab::Active => self.active_list(rest, cx).into_any_element(),
             _ => self.other_tab(rest, cx),
         };
+        // Its header lines up with the tickets panel's: the name, and the
+        // chevron that folds the list towards the window's edge.
+        let header = div()
+            .flex()
+            .flex_none()
+            .items_center()
+            .h(px(36.))
+            .px_3()
+            .border_b_1()
+            .border_color(p().border)
+            .child(div().font_weight(FontWeight::BOLD).child("Sessions"))
+            .child(div().flex_1())
+            .child(
+                div()
+                    .id("sidebar-collapse")
+                    .px_1()
+                    .cursor_pointer()
+                    .text_color(p().accent)
+                    .child("‹")
+                    .on_click(cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx))),
+            );
         div()
             .flex()
             .flex_none()
@@ -1826,7 +1847,15 @@ impl Shell {
             .h_full()
             .bg(p().surface)
             .child(self.tab_rail(cx))
-            .child(content)
+            .child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .w(px(rest))
+                    .h_full()
+                    .child(header)
+                    .child(div().flex_1().min_h_0().child(content)),
+            )
     }
 
     /// The sessions that run, by project; "+ session" opens one.

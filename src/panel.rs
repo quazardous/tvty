@@ -2165,6 +2165,16 @@ impl Render for TicketPanel {
             .px_3()
             .border_b_1()
             .border_color(p().border)
+            // First, the chevron that folds the panel towards the window's edge.
+            .child(
+                div()
+                    .id("collapse")
+                    .px_1()
+                    .cursor_pointer()
+                    .text_color(p().accent)
+                    .child("›")
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
+            )
             .when(self.detail.is_some(), |d| {
                 d.child(
                     div()
@@ -2218,15 +2228,6 @@ impl Render for TicketPanel {
                     .text_color(p().accent)
                     .child("⤢")
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenFullList))),
-            )
-            .child(
-                div()
-                    .id("collapse")
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(p().accent)
-                    .child("›")
-                    .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             );
         let content = match &self.detail {
             Some(detail) => self.detail(detail, cx),

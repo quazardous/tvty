@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The sessions list has a header, "Sessions", in line with the tickets
+  panel's, and a ‹ that folds it; the panel's › now opens its header, on
+  the side it folds away from.
+
 - The agent bar turns the loop's tmux status line off and on ("tmux line
   on / off"): with it off, the bar under the terminal is the only one.
   Loops started before aiball published the setting do not offer it.
