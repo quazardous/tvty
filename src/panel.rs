@@ -2242,11 +2242,18 @@ fn folded_line(text: String) -> impl IntoElement {
     div().text_color(p().muted).truncate().child(text)
 }
 
-/// Coloured when it waits on you, muted otherwise.
+/// Coloured when it waits on you, muted otherwise; a step always coloured.
 pub(crate) fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
     // A rejection is news for everyone, not only for whose turn it is.
     if glyph == Glyph::Rejected {
         return p().danger;
+    }
+    // A step is the agent's own marker, never the reader's turn: blue, or
+    // amber once it went quiet — as aiball's web UI shows them.
+    match glyph {
+        Glyph::Step => return p().accent,
+        Glyph::StalledStep => return p().warning,
+        _ => {}
     }
     if !yours {
         return p().muted;

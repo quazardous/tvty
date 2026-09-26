@@ -172,6 +172,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- In the ticket lists, a step (`then: continue`) keeps its colour whoever's
+  turn it is: blue, amber once it went quiet, as in aiball's web UI.
+
 - The agent's bar shows claude-loop's envelope: ✉ while work waits for
   the loop, with the countdown to its next wake once armed (`✉ 54s`).
 - The window is drawn again only when a time it shows changes (once a
