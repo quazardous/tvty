@@ -437,6 +437,9 @@ impl FullList {
             });
 
         let mut facts: Vec<String> = Vec::new();
+        if state.glyph == Some(crate::rowstate::Glyph::Rejected) {
+            facts.push("rejected".into());
+        }
         if let Some(intent) = &ticket.intent {
             facts.push(intent.clone());
         }

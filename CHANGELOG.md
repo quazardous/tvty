@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A rejected plan or resolution shows as aiball shows it: a red ⊗ on the
+  ticket, whoever's turn it is (it was a grey arrow once the ball was the
+  agent's), with "rejected" in the full list.
+
 - The title bar is a fifth taller (41 px), easier to grab; the panel's
   new-ticket button reads "+ New", in a frame, instead of a lone "+".
 

@@ -64,7 +64,7 @@ the reader (`/api/inbox?v=tvty`); tvty applies the same rules itself
 - **One state icon**, always in the same place — Google's Material Symbols,
   as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
   `check_circle` resolution, `block` wontfix, `priority_high` escalation,
-  `play_circle` step (`pause_circle` when it went quiet), `undo` rejected,
+  `play_circle` step (`pause_circle` when it went quiet), `cancel` rejected (always red),
   `task_alt` / `lock` closed. Coloured when it waits on you, muted
   otherwise; a decision wins over a later step. The flame (an agent active
   lately), the critical warning and the priority arrows are icons too: an

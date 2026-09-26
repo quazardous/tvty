@@ -2234,6 +2234,10 @@ fn folded_line(text: String) -> impl IntoElement {
 
 /// Coloured when it waits on you, muted otherwise.
 pub(crate) fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
+    // A rejection is news for everyone, not only for whose turn it is.
+    if glyph == Glyph::Rejected {
+        return p().danger;
+    }
     if !yours {
         return p().muted;
     }
@@ -2276,7 +2280,7 @@ fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
     match state {
         DecisionState::Pending => icons::pill(icons::of_kind(kind), format!("{noun} · pending"), p().warning).into_any_element(),
         DecisionState::Accepted => icons::pill(Icon::Resolution, format!("{noun} accepted"), p().success).into_any_element(),
-        DecisionState::Rejected => icons::pill(Icon::Wontfix, format!("{noun} rejected"), p().danger).into_any_element(),
+        DecisionState::Rejected => icons::pill(Icon::Rejected, format!("{noun} rejected"), p().danger).into_any_element(),
         DecisionState::Superseded => div()
             .flex_none()
             .px_1p5()

@@ -40,7 +40,7 @@ icons! {
     Escalation => "priority_high.svg",
     Step => "play_circle.svg",
     StalledStep => "pause_circle.svg",
-    Rejected => "undo.svg",
+    Rejected => "cancel.svg",
     ClosedResolved => "task_alt.svg",
     Closed => "lock.svg",
     Hot => "local_fire_department.svg",
