@@ -4,8 +4,7 @@
 #
 #   scripts/fake-aiball up     start the daemon, seed it, start the demo loops
 #   scripts/fake-aiball down   stop the loops and the daemon, drop its data
-#   scripts/fake-aiball env    print what points tvty at it (socket, and the
-#                              HTTP port its live feed is on)
+#   scripts/fake-aiball env    print what points tvty at it (its socket)
 #
 # Everything lives in dev/fake-aiball/: its own AIBALL_HOME, config dir, port
 # (7797) and socket. The demo project `demo` has two agents, demo-claude and
@@ -50,7 +49,7 @@ case "${1:-}" in
         echo "fake aiball down"
         ;;
     env)
-        echo "AIBALL_SOCK=$SOCK AIBALL_URL=http://127.0.0.1:7797"
+        echo "AIBALL_SOCK=$SOCK"
         ;;
     *)
         sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'

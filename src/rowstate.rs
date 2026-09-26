@@ -1,8 +1,7 @@
 //! What a ticket row tells at a glance: its band in the list, whose turn it
 //! is, one state glyph, and the stripe on its left. aiball computes the band,
-//! the turn and the glyph when asked (`/api/inbox?v=tvty`); an aiball that
-//! predates them gets the same rules applied here, from the row's flags (see
-//! docs/UX.md, "The ticket list").
+//! the turn and the glyph (`/api/inbox?v=tvty`); tvty draws them, and derives
+//! only the stripe (see docs/UX.md, "The ticket list").
 
 use crate::aiball::TicketRow;
 
@@ -135,26 +134,18 @@ pub struct RowState {
     pub stripe: Stripe,
 }
 
-/// `user` is who reads the list: the one whose turn "you" means.
+/// `user` is who reads the list: the one whose turn "you" means. The band,
+/// the turn and the glyph are aiball's (`/api/inbox?v=tvty`); one it leaves
+/// out, or does not name the way tvty knows, reads as nothing to show.
 pub fn of(row: &TicketRow, user: &str) -> RowState {
-    let decision = row.pending_decision();
-    let local = || computed(row, user);
-    let (band, turn, glyph) = match row.band.and_then(Band::from_server) {
-        Some(band) => {
-            let turn = match row.turn.as_deref() {
-                Some("you") => Turn::You,
-                Some("them") => Turn::Them,
-                Some("none") => Turn::Nobody,
-                _ => local().turn,
-            };
-            (band, turn, row.state_glyph.as_deref().and_then(Glyph::from_server))
-        }
-        None => {
-            let state = local();
-            (state.band, state.turn, state.glyph)
-        }
+    let band = row.band.and_then(Band::from_server).unwrap_or(Band::Open);
+    let turn = match row.turn.as_deref() {
+        Some("you") => Turn::You,
+        Some("them") => Turn::Them,
+        _ => Turn::Nobody,
     };
-    let mut stripe = stripe(turn, decision, row.pending_decision_is_latest);
+    let glyph = row.state_glyph.as_deref().and_then(Glyph::from_server);
+    let mut stripe = stripe(turn, row.pending_decision(), row.pending_decision_is_latest);
     if stripe == Stripe::None && row.last_speaker.as_deref() == Some(user) {
         stripe = Stripe::Waiting;
     }
@@ -168,72 +159,6 @@ fn stripe(turn: Turn, decision: bool, decision_is_latest: bool) -> Stripe {
         Turn::You => Stripe::Neutral,
         _ => Stripe::None,
     }
-}
-
-/// The same rules, from the row's flags, for an aiball that does not
-/// compute them.
-fn computed(row: &TicketRow, user: &str) -> RowState {
-    let moderation = row.status == "pending" || row.pending_comment_count > 0;
-    let decision = row.pending_decision();
-    let agent_on_it = row.holder().is_some() || row.latest_is_step;
-
-    let band = if row.closed {
-        Band::Closed
-    } else if moderation {
-        Band::Moderate
-    } else if decision {
-        Band::Decide
-    } else if row.unread {
-        Band::Unread
-    } else if agent_on_it {
-        Band::AgentOnIt
-    } else {
-        Band::Open
-    };
-
-    let turn = if row.closed {
-        Turn::Nobody
-    } else if moderation || decision {
-        Turn::You
-    } else if row.latest_is_step {
-        Turn::Them
-    } else {
-        // aiball's rule (src/db/last-actor-gate.ts): yours when someone else
-        // acted last, or when you are the only one on it. From the row we
-        // only see comments: a ticket you filed that nobody answered is
-        // yours. (Closes, reopens and decisions count for aiball, not here —
-        // the reason to have aiball compute the turn itself.)
-        match row.last_speaker.as_deref() {
-            Some(speaker) if speaker == user && row.comment_count == 0 => Turn::You,
-            Some(speaker) if speaker == user => Turn::Them,
-            Some(_) => Turn::You,
-            None => Turn::Nobody,
-        }
-    };
-
-    // The last decision is what blocks, so it wins over a step posted
-    // after it; closed states win over everything.
-    let glyph = if row.closed {
-        Some(if row.resolved { Glyph::ClosedResolved } else { Glyph::Closed })
-    } else if row.pending_escalation {
-        Some(Glyph::Escalation)
-    } else if row.pending_plan {
-        Some(Glyph::Plan)
-    } else if row.pending_resolution {
-        Some(Glyph::Resolution)
-    } else if row.pending_wontfix {
-        Some(Glyph::Wontfix)
-    } else if row.stalled_step {
-        Some(Glyph::StalledStep)
-    } else if row.latest_is_step {
-        Some(Glyph::Step)
-    } else if row.latest_plan_rejected || row.latest_resolution_rejected {
-        Some(Glyph::Rejected)
-    } else {
-        None
-    };
-
-    RowState { band, turn, glyph, stripe: stripe(turn, decision, row.pending_decision_is_latest) }
 }
 
 #[cfg(test)]
@@ -251,107 +176,53 @@ mod tests {
     }
 
     #[test]
-    fn you_spoke_last_it_is_their_turn() {
+    fn a_fresh_decision_waits_on_you() {
         let mut r = row();
-        r.comment_count = 2;
-        let state = of(&r, "david");
-        // Your word is the last: you wait, and the stripe says so.
-        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::Waiting));
-        // Someone else's word last, still not yours to move: no stripe.
-        r.last_speaker = Some("demo-crew".into());
-        r.turn = Some("them".into());
-        r.band = Some(4);
-        assert_eq!(of(&r, "david").stripe, Stripe::None);
-    }
-
-    #[test]
-    fn alone_on_it_it_is_yours() {
-        // Filed by you, nobody answered: aiball's rule says yours.
-        let state = of(&row(), "david");
-        assert_eq!((state.turn, state.stripe), (Turn::You, Stripe::Neutral));
-    }
-
-    #[test]
-    fn an_agent_spoke_last_it_is_your_turn() {
-        let mut r = row();
-        r.last_speaker = Some("demo-claude".into());
-        let state = of(&r, "david");
-        assert_eq!((state.turn, state.stripe), (Turn::You, Stripe::Neutral));
-    }
-
-    #[test]
-    fn a_fresh_plan_waits_on_you() {
-        let mut r = row();
+        r.band = Some(1);
+        r.turn = Some("you".into());
+        r.state_glyph = Some("plan".into());
         r.pending_plan = true;
         r.pending_decision_is_latest = true;
         let state = of(&r, "david");
         assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Decide, Turn::You, Some(Glyph::Plan), Stripe::Solid));
+        // The talk went on after it.
         r.pending_decision_is_latest = false;
         assert_eq!(of(&r, "david").stripe, Stripe::Dashed);
     }
 
     #[test]
-    fn a_decision_wins_over_a_later_step() {
+    fn your_turn_without_a_decision() {
         let mut r = row();
-        r.pending_resolution = true;
-        r.latest_is_step = true;
-        let state = of(&r, "david");
-        assert_eq!((state.glyph, state.turn), (Some(Glyph::Resolution), Turn::You));
-    }
-
-    #[test]
-    fn a_step_is_the_agents_turn() {
-        let mut r = row();
-        r.latest_is_step = true;
-        r.claimant = Some("demo-claude".into());
-        r.last_speaker = Some("demo-claude".into());
-        let state = of(&r, "david");
-        assert_eq!((state.band, state.turn, state.glyph), (Band::AgentOnIt, Turn::Them, Some(Glyph::Step)));
-        r.stalled_step = true;
-        assert_eq!(of(&r, "david").glyph, Some(Glyph::StalledStep));
-    }
-
-    #[test]
-    fn a_rejected_resolution_is_the_agents_turn() {
-        let mut r = row();
-        // The proposal, then your rejection: you spoke last.
-        r.comment_count = 2;
-        r.latest_resolution_rejected = true;
-        let state = of(&r, "david");
-        assert_eq!((state.glyph, state.turn), (Some(Glyph::Rejected), Turn::Them));
-    }
-
-    #[test]
-    fn the_servers_fields_win() {
-        // aiball counts a decision taken without a comment: the agent spoke
-        // last, but it is not your turn.
-        let mut r = row();
-        r.last_speaker = Some("demo-claude".into());
-        r.turn = Some("them".into());
         r.band = Some(4);
-        r.state_glyph = None;
-        let state = of(&r, "david");
-        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Them, None, Stripe::None));
-
-        r.pending_plan = true;
-        r.pending_decision_is_latest = true;
         r.turn = Some("you".into());
-        r.band = Some(1);
-        r.state_glyph = Some("plan".into());
-        let state = of(&r, "david");
-        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Decide, Turn::You, Some(Glyph::Plan), Stripe::Solid));
+        r.last_speaker = Some("demo-claude".into());
+        assert_eq!(of(&r, "david").stripe, Stripe::Neutral);
     }
 
     #[test]
-    fn moderation_comes_first_and_closed_last() {
+    fn your_word_last_you_wait() {
         let mut r = row();
-        r.status = "pending".into();
-        r.unread = true;
-        assert_eq!(of(&r, "david").band, Band::Moderate);
+        r.band = Some(4);
+        r.turn = Some("them".into());
+        assert_eq!(of(&r, "david").stripe, Stripe::Waiting);
+        // Someone else's word last, not yours to move: no stripe.
+        r.last_speaker = Some("demo-crew".into());
+        assert_eq!(of(&r, "david").stripe, Stripe::None);
+    }
+
+    #[test]
+    fn a_rejection_has_its_glyph() {
         let mut r = row();
-        r.closed = true;
-        r.resolved = true;
+        r.band = Some(3);
+        r.turn = Some("them".into());
+        r.state_glyph = Some("rejected".into());
         let state = of(&r, "david");
-        assert_eq!((state.band, state.turn, state.glyph), (Band::Closed, Turn::Nobody, Some(Glyph::ClosedResolved)));
+        assert_eq!((state.band, state.glyph), (Band::AgentOnIt, Some(Glyph::Rejected)));
+    }
+
+    #[test]
+    fn what_aiball_leaves_out_shows_nothing() {
+        let state = of(&row(), "demo-crew");
+        assert_eq!((state.band, state.turn, state.glyph, state.stripe), (Band::Open, Turn::Nobody, None, Stripe::None));
     }
 }

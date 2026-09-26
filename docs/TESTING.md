@@ -44,7 +44,7 @@ never shows in — nor touches — the user's own tvty:
 - **its own settings** (`XDG_CONFIG_HOME=dev/tvty-wbox/config`, the
   projects' list folded to start with): the user's `state.json` is never
   read nor written;
-- **the throwaway aiball** below (`AIBALL_SOCK`, `AIBALL_URL`), never the
+- **the throwaway aiball** below (`AIBALL_SOCK`), never the
   user's board.
 - **its own loops**: `CLAUDE_LOOP_STATE_ROOT=dev/claude-loop` and
   `CL_CLAUDE_CMD` set to fake-claude, so a loop a test starts (the idle
@@ -70,8 +70,8 @@ the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
 a pending plan, a pending resolution, a queue and a closed one.
 `make aiball-down` drops it all.
 
-The test tvty points at it already (`AIBALL_SOCK` for the API, `AIBALL_URL`
-for its live feed, a fallback when the socket does not serve it). To open a session at
+The test tvty points at it already (`AIBALL_SOCK`: the API and its live
+feed). To open a session at
 start:
 
 ```bash

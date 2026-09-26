@@ -62,7 +62,7 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> Li
         .and_then(|path| std::fs::read(path).ok());
     let bytes = match local {
         Some(bytes) => bytes,
-        None => match aiball.upload_bytes(reference) {
+        None => match aiball.upload_bytes(&api_ref(reference)) {
             Ok(bytes) => bytes,
             Err(error) => {
                 log::debug!("image {reference}: {error:#}");
@@ -80,6 +80,13 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> Li
         "data:{content_type};base64,{}",
         base64::engine::general_purpose::STANDARD.encode(bytes)
     ))
+}
+
+/// `/uploads/<sha>.<ext>` → `/api/uploads/<sha>`: aiball's documented
+/// reference form, and its API route.
+fn api_ref(reference: &str) -> String {
+    let file = reference.trim_start_matches("/uploads/");
+    format!("/api/uploads/{}", file.split('.').next().unwrap_or(file))
 }
 
 fn content_type_of(reference: &str) -> &'static str {
@@ -123,7 +130,7 @@ pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, rewrite};
+    use super::{Link, api_ref, rewrite};
 
     fn link(reference: &str) -> Link {
         match reference {
@@ -145,6 +152,11 @@ mod tests {
     fn what_cannot_show_says_so() {
         assert_eq!(rewrite("![x](/uploads/big.png)", &link), "*(image too large to show here)*");
         assert_eq!(rewrite("a ![x](/uploads/gone.png) b", &link), "a *(image unavailable)* b");
+    }
+
+    #[test]
+    fn an_upload_is_read_under_the_api() {
+        assert_eq!(api_ref("/uploads/ab12.png"), "/api/uploads/ab12");
     }
 
     #[test]

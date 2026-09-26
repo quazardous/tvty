@@ -1,8 +1,7 @@
 //! aiball's live feed (`/ws`): every change on the board — a message
 //! posted, a decision taken, an agent's state — so tvty reads again what
 //! moved, when it moves, instead of everything every few seconds. Read-only;
-//! over aiball's local socket, where the same user is trusted, else its TCP
-//! port (`$AIBALL_URL`, default `http://127.0.0.1:7777`).
+//! over aiball's local socket, where the same user is trusted.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,22 +59,15 @@ impl Feed {
     pub fn start(changed: UnboundedSender<Change>) -> Self {
         let feed = Self::default();
         let connected = feed.connected.clone();
-        let url = ws_url();
         std::thread::Builder::new()
             .name("aiball-feed".into())
             .spawn(move || {
                 loop {
                     let alive = match connect_local() {
                         Ok(socket) => listen(socket, "the local socket", &changed, &connected),
-                        Err(local) => {
-                            log::debug!("aiball feed: local socket: {local}");
-                            match tungstenite::connect(&url) {
-                                Ok((socket, _)) => listen(socket, &url, &changed, &connected),
-                                Err(error) => {
-                                    log::debug!("aiball feed: {url}: {error}");
-                                    true
-                                }
-                            }
+                        Err(error) => {
+                            log::debug!("aiball feed: local socket: {error}");
+                            true
                         }
                     };
                     if !alive || changed.is_closed() {
@@ -132,13 +124,3 @@ fn connect_local() -> anyhow::Result<tungstenite::WebSocket<std::net::TcpStream>
     anyhow::bail!("no local socket on this platform")
 }
 
-fn ws_url() -> String {
-    let base = std::env::var("AIBALL_URL").unwrap_or_else(|_| "http://127.0.0.1:7777".into());
-    let base = base.trim_end_matches('/');
-    let base = base
-        .strip_prefix("https://")
-        .map(|rest| format!("wss://{rest}"))
-        .or_else(|| base.strip_prefix("http://").map(|rest| format!("ws://{rest}")))
-        .unwrap_or_else(|| base.to_string());
-    format!("{base}/ws")
-}

@@ -2485,7 +2485,7 @@ fn options_ticket_list() -> impl IntoElement {
         .flex_col()
         .max_w(px(760.))
         .child(option_note(
-            "A prototype of the ticket list proposed on the board: computed in tvty from the same rows as aiball's web UI.",
+            "The ticket list as aiball computes it for you: the band, whose turn and the state glyph are aiball's; the stripe is tvty's.",
         ))
         .child(option_group("Order"));
     for band in [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open] {

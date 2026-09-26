@@ -193,7 +193,7 @@ pub struct TicketRow {
     pub latest_resolution_rejected: bool,
     /// Computed by aiball for the reader when asked with `v=tvty`: whose
     /// turn (`you`, `them`, `none`), the sorting band (0 to 5) and the state
-    /// glyph's name. Absent from an aiball that predates them.
+    /// glyph's name.
     pub turn: Option<String>,
     pub band: Option<u8>,
     pub state_glyph: Option<String>,
@@ -752,7 +752,7 @@ impl Aiball {
         self.request_bytes(method, path, "application/json", &[], body.as_bytes())
     }
 
-    /// An upload's bytes, through the socket.
+    /// An upload's bytes, through the socket (`/api/uploads/<sha>`).
     pub fn upload_bytes(&self, reference: &str) -> anyhow::Result<Vec<u8>> {
         self.request_raw("GET", reference, "application/octet-stream", &[], &[])
     }

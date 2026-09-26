@@ -89,10 +89,7 @@ pub fn start(start: &Start) -> anyhow::Result<String> {
     if !output.status.success() {
         bail!("claude-loop start: {}", last_line(&said));
     }
-    // claude-loop says "loop '<name>' started"; the plate is the fallback.
-    if let Some(name) = said.split("loop '").nth(1).and_then(|rest| rest.split('\'').next()) {
-        return Ok(name.to_string());
-    }
+    // The loop's plate says where it works and for whom: its name is there.
     known()
         .into_iter()
         .find(|l| Path::new(&l.cwd) == cwd && (start.agent.is_none() || l.consumer == start.agent))
