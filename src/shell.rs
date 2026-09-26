@@ -1947,17 +1947,38 @@ impl Shell {
     /// Starts a shell the daemon's host holds, in the home directory, and
     /// opens it once it is listed.
     fn new_terminal(&mut self, cx: &mut Context<Self>) {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        self.open_shell("term", home, cx);
+    }
+
+    /// Starts a shell in a project's folder: listed with the project, after
+    /// its agents.
+    fn new_project_terminal(&mut self, project: &str, cx: &mut Context<Self>) {
+        let Some(folder) = self.project_folder(project) else {
+            activity::publish(cx, Activity::failed(None, "new terminal", format!("no folder known for {project}")));
+            return;
+        };
+        // A session's name takes letters, digits, `.`, `_` and `-`.
+        let prefix: String = project
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' })
+            .collect();
+        self.open_shell(&prefix, folder, cx);
+    }
+
+    /// Starts a shell on the daemon's host, named `<prefix>-<n>`, in `cwd`,
+    /// and opens it once it is listed.
+    fn open_shell(&mut self, prefix: &str, cwd: String, cx: &mut Context<Self>) {
         // Every name the host knows, a stopped session's too (it keeps its name
         // until it is removed).
         let taken: std::collections::HashSet<String> = self.live.session_names().into_iter().collect();
-        let name = (1..).map(|n| format!("term-{n}")).find(|n| !taken.contains(n)).expect("a free name");
+        let name = (1..).map(|n| format!("{prefix}-{n}")).find(|n| !taken.contains(n)).expect("a free name");
         let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let started = {
                 let name = name.clone();
-                cx.background_executor().spawn(async move { aiball.start_terminal(&name, &[shell], &home) }).await
+                cx.background_executor().spawn(async move { aiball.start_terminal(&name, &[shell], &cwd) }).await
             };
             let _ = this.update(cx, |shell, cx| match started {
                 Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
@@ -2076,6 +2097,23 @@ impl Shell {
                                     shell.ask_new_session(name.clone(), window, cx)
                                 })),
                         )
+                    })
+                    // A plain shell in the project's folder, listed with it.
+                    .when(project.on_board, |d| {
+                        let name = project.name.clone();
+                        d.child(
+                            div()
+                                .id(SharedString::from(format!("new-shell-{name}")))
+                                .px_1()
+                                .rounded_sm()
+                                .text_xs()
+                                .text_color(p().accent)
+                                .cursor_pointer()
+                                .hover(|d| d.bg(p().hover))
+                                .child(">_")
+                                .tip("a terminal in the project's folder, listed with it")
+                                .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
+                        )
                     }),
             )
             .children(self.new_session_form(&project.name, cx));
@@ -2142,6 +2180,17 @@ impl Shell {
                                                     .text_color(p().muted)
                                                     .child("⇄")
                                                     .tip("its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                            )
+                                        })
+                                        // A shell the host holds, without Claude.
+                                        .when(terminal.agent.is_none() && terminal.attach.is_some(), |d| {
+                                            d.child(
+                                                div()
+                                                    .id("shell")
+                                                    .text_xs()
+                                                    .text_color(p().muted)
+                                                    .child(">_")
+                                                    .tip("a terminal on aiball's host, without Claude"),
                                             )
                                         })
                                         // Its Claude Code waits for a restart (the button is on its bar).

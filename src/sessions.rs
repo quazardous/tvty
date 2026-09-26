@@ -1,8 +1,10 @@
 //! Which terminals there are: the tmux sessions on this machine, grouped by
 //! project. A claude-loop session (`cl-*`) is matched to its aiball agent by
 //! its directory, which gives it a project and a name; any other session
-//! lands in a "tmux" group. With them, the open tickets of each project, as
-//! aiball pushes them (see [`crate::live`]).
+//! lands in a "tmux" group. The shells aiball's host holds go with the
+//! project whose folder they started in, or in a "terminals" group. With
+//! them, the open tickets of each project, as aiball pushes them (see
+//! [`crate::live`]).
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -89,23 +91,59 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
         }
     }
     board.projects = projects;
-    // The daemon's own terminals, before tmux's.
-    let hosted: Vec<Terminal> = live
-        .terminals()
-        .into_iter()
-        .map(|(name, attach)| Terminal {
-            session: format!("{HOSTED_PREFIX}{name}"),
-            label: name,
+    // The daemon's own terminals: with the project they started in, after
+    // its agents; the others together, before tmux's.
+    let folders = folders(&board.homes, &board.known);
+    let mut hosted = Vec::new();
+    for t in live.terminals() {
+        let terminal = Terminal {
+            session: format!("{HOSTED_PREFIX}{}", t.name),
+            label: t.name,
             agent: None,
             status: None,
-            attach: Some(attach),
-        })
-        .collect();
+            attach: Some(t.socket),
+        };
+        let Some(project) = t.cwd.as_deref().and_then(|cwd| project_at(cwd, &folders)) else {
+            hosted.push(terminal);
+            continue;
+        };
+        match board.projects.iter_mut().find(|p| p.name == project) {
+            Some(p) => p.terminals.push(terminal),
+            None => {
+                // Its project has no agent here: listed in its place, by name.
+                let at = board
+                    .projects
+                    .iter()
+                    .position(|p| p.name == OTHER_GROUP || p.name.to_lowercase() > project.to_lowercase())
+                    .unwrap_or(board.projects.len());
+                board.projects.insert(at, Project { name: project.to_string(), on_board: true, terminals: vec![terminal] });
+            }
+        }
+    }
     if !hosted.is_empty() {
         let at = board.projects.iter().position(|p| p.name == OTHER_GROUP).unwrap_or(board.projects.len());
         board.projects.insert(at, Project { name: HOSTED_GROUP.into(), on_board: false, terminals: hosted });
     }
     board
+}
+
+/// The folders of aiball's projects: where their agents work and their
+/// loops run. (folder, project)
+fn folders<'a>(homes: &'a [(String, Option<String>, String)], known: &'a [crate::loops::KnownLoop]) -> Vec<(&'a str, &'a str)> {
+    let homes = homes.iter().filter_map(|(_, project, cwd)| Some((cwd.as_str(), project.as_deref()?)));
+    let loops = known.iter().filter_map(|l| Some((l.cwd.as_str(), l.project.as_deref()?)));
+    homes.chain(loops).collect()
+}
+
+/// The project a directory belongs to: the one whose folder holds it, the
+/// deepest when folders nest.
+fn project_at<'a>(cwd: &str, folders: &[(&str, &'a str)]) -> Option<&'a str> {
+    let cwd = Path::new(cwd);
+    folders
+        .iter()
+        .filter(|(folder, _)| cwd.starts_with(folder))
+        .max_by_key(|(folder, _)| folder.len())
+        .map(|(_, project)| *project)
 }
 
 /// The agents aiball knows with a working directory.
@@ -246,7 +284,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, group};
+    use super::{HOSTED_PREFIX, group, project_at};
     use crate::aiball::Consumer;
     use serde_json::json;
 
@@ -275,5 +313,17 @@ mod tests {
         assert_eq!(hosted[0].attach.as_deref(), Some("/h/hosted/attach.sock"));
         let looped = by("looped");
         assert_eq!((looped[0].session.as_str(), looped[0].attach.is_none()), ("cl-looped", true));
+    }
+
+    #[test]
+    fn a_terminal_goes_with_the_project_it_started_in() {
+        let folders = [("/w/app", "app"), ("/w/app/sub", "sub"), ("/w/other", "other")];
+        assert_eq!(project_at("/w/app", &folders), Some("app"));
+        assert_eq!(project_at("/w/app/src/deep", &folders), Some("app"));
+        // Nested folders: the deepest decides.
+        assert_eq!(project_at("/w/app/sub/x", &folders), Some("sub"));
+        // A name that only begins like a folder is not in it.
+        assert_eq!(project_at("/w/apple", &folders), None);
+        assert_eq!(project_at("/home", &folders), None);
     }
 }

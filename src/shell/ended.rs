@@ -78,7 +78,7 @@ impl Shell {
         // A terminal of the daemon's whose program ended: closing it removes
         // it from the host, so that it does not linger there.
         if let Some(name) = ended.session.strip_prefix(crate::sessions::HOSTED_PREFIX).map(str::to_string) {
-            let hosted_terminal = !self.live.terminals().iter().any(|(n, _)| *n == name)
+            let hosted_terminal = !self.live.terminals().iter().any(|t| t.name == name)
                 && self.live.session_names().contains(&name);
             if hosted_terminal {
                 let aiball = self.aiball.clone();

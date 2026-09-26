@@ -61,6 +61,16 @@ pub struct Filed {
     pub pending: bool,
 }
 
+/// A shell the daemon's host holds, without an agent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HostedTerminal {
+    pub name: String,
+    /// The socket it is attached to over.
+    pub socket: String,
+    /// Where it started: what places it with a project.
+    pub cwd: Option<String>,
+}
+
 /// Subscribing: what to call, and how to take the answers back.
 pub struct Plan {
     calls: Vec<(Kind, Value)>,
@@ -364,13 +374,19 @@ impl Live {
     }
 
     /// The host's running sessions without an agent, once they can be
-    /// attached to: (name, attach socket).
-    pub fn terminals(&self) -> Vec<(String, String)> {
+    /// attached to.
+    pub fn terminals(&self) -> Vec<HostedTerminal> {
         self.sessions
             .iter()
             .filter(|(_, s)| s.get("agent").is_none_or(Value::is_null))
             .filter(|(_, s)| s.get("running").and_then(Value::as_bool) != Some(false))
-            .filter_map(|(name, s)| Some((name.clone(), s.pointer("/attach/socket")?.as_str()?.to_string())))
+            .filter_map(|(name, s)| {
+                Some(HostedTerminal {
+                    name: name.clone(),
+                    socket: s.pointer("/attach/socket")?.as_str()?.to_string(),
+                    cwd: s.get("cwd").and_then(Value::as_str).map(str::to_string),
+                })
+            })
             .collect()
     }
 
@@ -521,19 +537,20 @@ mod tests {
             Ok(json!({ "id": "s", "epoch": "e1", "seq": 1, "replayed": false, "value": {} })),
             Ok(json!({ "id": "b", "epoch": "e1", "seq": 1, "replayed": false, "value": {} })),
             Ok(json!({ "id": "h", "epoch": "e1", "seq": 1, "replayed": false, "value": {
-                "plain": { "name": "plain", "agent": null, "running": true, "attach": { "socket": "/s/plain" } },
+                "plain": { "name": "plain", "agent": null, "running": true, "cwd": "/w", "attach": { "socket": "/s/plain" } },
                 "crew": { "name": "crew", "agent": "demo-crew", "running": true, "attach": { "socket": "/s/crew" } },
             } })),
         ];
         live.subscribed(plan, answers);
-        assert_eq!(live.terminals(), vec![("plain".to_string(), "/s/plain".to_string())]);
+        let names = |live: &Live| live.terminals().into_iter().map(|t| (t.name, t.socket, t.cwd)).collect::<Vec<_>>();
+        assert_eq!(names(&live), vec![("plain".to_string(), "/s/plain".to_string(), Some("/w".to_string()))]);
         // Started later: `{ name, session }`; stopped: `session: null`.
         live.event(&json!({ "subscription": "h", "subject": "session.two.state", "seq": 2, "data": {
             "name": "two", "session": { "name": "two", "agent": null, "running": true, "attach": { "socket": "/s/two" } } } }));
         assert_eq!(live.terminals().len(), 2);
         live.event(&json!({ "subscription": "h", "subject": "session.plain.state", "seq": 3,
                             "data": { "name": "plain", "session": null } }));
-        assert_eq!(live.terminals(), vec![("two".to_string(), "/s/two".to_string())]);
+        assert_eq!(names(&live), vec![("two".to_string(), "/s/two".to_string(), None)]);
     }
 
     #[test]

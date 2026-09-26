@@ -12,6 +12,12 @@ A new one gets its tooltip with it.
 - **Tabs are grouped by project.** A project can have **several terminals**
   (one per agent: a lead, crew agents, a cto…), so the grouping is two-level:
   the project, then its terminals.
+- A project's **`>_`** opens a plain shell (no Claude) on aiball's host, in
+  the project's folder, named `<project>-1`, `<project>-2`… It is listed
+  with the project, after its agents, marked `>_`: a shell the host holds
+  goes with the project whose folder it **started** in (a `cd` later does
+  not move it). "+ terminal" opens one in the home directory, listed under
+  "terminals".
 - Each terminal carries its agent's name, its current ticket, and its alerts
   (unread, a decision waiting for you, the critical ticket, a human awaited).
 - A project shows the sum of its terminals' alerts, so a collapsed project

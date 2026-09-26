@@ -168,12 +168,20 @@ impl Shell {
         list.into_any_element()
     }
 
+    /// Where a project works: its main loop's directory, or one of its
+    /// agents'.
+    pub(super) fn project_folder(&self, project: &str) -> Option<String> {
+        let known = self.board.known.iter().find(|l| l.project.as_deref() == Some(project) && l.role.is_none());
+        let home = self.board.homes.iter().find(|h| h.1.as_deref() == Some(project));
+        known.map(|l| l.cwd.clone()).or_else(|| home.map(|h| h.2.clone()))
+    }
+
     /// "+ session" on a project: opens its form, prefilled — the directory
     /// of a loop or an agent of the project, and its agent.
     pub(super) fn ask_new_session(&mut self, project: String, window: &mut Window, cx: &mut Context<Self>) {
         let known = self.board.known.iter().find(|l| l.project.as_deref() == Some(project.as_str()) && l.role.is_none());
         let home = self.board.homes.iter().find(|h| h.1.as_deref() == Some(project.as_str()));
-        let cwd_value = known.map(|l| l.cwd.clone()).or_else(|| home.map(|h| h.2.clone())).unwrap_or_default();
+        let cwd_value = self.project_folder(&project).unwrap_or_default();
         let agent_value = known.and_then(|l| l.consumer.clone()).or_else(|| home.map(|h| h.0.clone())).unwrap_or_default();
         let cwd = cx.new(|cx| InputState::new(window, cx).placeholder("working directory").default_value(cwd_value));
         let agent = cx.new(|cx| InputState::new(window, cx).placeholder("agent").default_value(agent_value));
