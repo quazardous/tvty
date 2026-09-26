@@ -26,6 +26,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments' bubble, the priority, the holder, the critical ticket, the
   sessions' marks and state line, the agent bar's glyphs.
 
+### Changed
+
+- "+ session" starts the agent on aiball's host by default, without
+  tmux; untick the box for claude-loop's tmux.
+
 ### Fixed
 
 - "+ terminal" no longer fails with `HOST_BUSY` when a terminal of the

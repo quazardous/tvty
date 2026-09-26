@@ -28,7 +28,8 @@ pub(super) struct NewSession {
     cwd: Entity<InputState>,
     agent: Entity<InputState>,
     crew: bool,
-    /// Started on aiball's host (no tmux) rather than in claude-loop's tmux.
+    /// Started on aiball's host (no tmux), the default; unticked, in
+    /// claude-loop's tmux.
     on_host: bool,
     busy: bool,
 }
@@ -183,7 +184,7 @@ impl Shell {
             }
         })
         .detach();
-        self.new_session = Some(NewSession { project, cwd, agent, crew: false, on_host: false, busy: false });
+        self.new_session = Some(NewSession { project, cwd, agent, crew: false, on_host: true, busy: false });
         cx.notify();
     }
 

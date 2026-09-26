@@ -33,9 +33,12 @@ directory, that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start
 opens one where the agent works). "+ session" on a project opens a small
 form: the working directory — proposed from the project's loops or agents,
-checked as it is typed —, the agent, and whether it is a crew agent.
-tvty never starts anything itself: it calls `claude-loop start
---no-attach` **in that directory**, then opens the session once it runs.
+checked as it is typed —, the agent, whether it is a crew agent, and
+where it runs: **on aiball's host** (the default, no tmux: aiball's
+`session.start`, then tvty attaches over the session's socket) or, box
+unticked, in claude-loop's tmux (`claude-loop start --no-attach`). Either
+way it starts **in that directory**, and tvty never starts Claude itself:
+it opens the session once it runs.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
