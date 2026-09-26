@@ -94,6 +94,8 @@ pub struct Shell {
     compact: Option<Option<(Option<String>, u64)>>,
     /// The agent bar's AFK choices are open; its agent's backlog is open.
     afk_menu: bool,
+    /// The agent whose Claude is being restarted.
+    restarting: Option<String>,
     backlog_view: Option<agentbar::BacklogView>,
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
@@ -389,6 +391,7 @@ impl Shell {
             full_list_return: false,
             compact: None,
             afk_menu: false,
+            restarting: None,
             backlog_view: None,
             session_scrolls: Default::default(),
             new_session: None,
@@ -1982,6 +1985,11 @@ impl Shell {
                 let open = self.terminals.contains_key(&session);
                 let alerts = self.alerts_of(&project.name, terminal.agent.as_deref());
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
+                let restart = terminal
+                    .agent
+                    .as_ref()
+                    .and_then(|a| self.board.bars.get(a))
+                    .is_some_and(|b| !b.stale && b.bar.restart_needed);
                 let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
                 list = list.child(
                     div()
@@ -2020,6 +2028,8 @@ impl Shell {
                                         // Green: the terminal already runs in tvty.
                                         .child(div().w(px(7.)).when(open, |d| d.child(dot(p().success))))
                                         .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
+                                        // Its Claude Code waits for a restart (the button is on its bar).
+                                        .when(restart, |d| d.child(div().text_color(p().warning).child("⟳")))
                                         .child(alerts.badges()),
                                 )
                                 .when_some(terminal.status.as_ref(), |d, status| d.child(status.line())),

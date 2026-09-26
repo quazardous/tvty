@@ -142,6 +142,25 @@ impl Shell {
         let state = item()
             .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
             .child(format!("{what}{since}{info}"));
+        // Claude Code updated itself: a click restarts it, once idle.
+        let restart = bar.as_ref().is_some_and(|b| b.restart_needed).then(|| {
+            let restarting = self.restarting.as_deref() == Some(agent.as_str());
+            let target = agent.clone();
+            item()
+                .id("agent-restart")
+                .px_1p5()
+                .rounded_sm()
+                .border_1()
+                .border_color(p().warning)
+                .text_color(p().warning)
+                .when(!restarting, |d| {
+                    d.cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.restart_claude(target.clone(), cx)))
+                })
+                .child("⟳")
+                .child(if restarting { "restarting…" } else { "restart" })
+        });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
         // ── The rest, from the loop when it tells ──
@@ -185,6 +204,7 @@ impl Shell {
                 } else {
                     item().text_color(p().danger).child("offline").into_any_element()
                 })
+                .children(restart)
                 .children(dialog.map(|_| item().text_color(p().warning).child("waits for an answer")))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
@@ -387,6 +407,37 @@ impl Shell {
                     break;
                 }
             }
+        })
+        .detach();
+    }
+
+    /// Restarts the agent's Claude Code (it installed an update): aiball
+    /// waits for it to be idle, restarts it resuming its conversation, and
+    /// tells the agent to carry on. Its bar then no longer asks for it.
+    fn restart_claude(&mut self, agent: String, cx: &mut Context<Self>) {
+        self.restarting = Some(agent.clone());
+        cx.notify();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let name = agent.clone();
+            let done = cx.background_executor().spawn(async move { aiball.restart_claude(&name) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                shell.restarting = None;
+                let activity = match done {
+                    Ok(()) => crate::activity::Activity::done(None, format!("restarted {agent}'s Claude")),
+                    Err(error) => {
+                        let error = format!("{error:#}");
+                        let why = if error.contains("(NOT_IDLE)") {
+                            "Claude is busy — try again once it is idle".to_string()
+                        } else {
+                            short_error(&error)
+                        };
+                        crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), why)
+                    }
+                };
+                crate::activity::publish(cx, activity);
+                cx.notify();
+            });
         })
         .detach();
     }

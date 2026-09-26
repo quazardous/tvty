@@ -61,6 +61,9 @@ pub struct AgentBar {
     pub counters: Option<BarCounters>,
     pub next_wake_at: Option<String>,
     pub boot: Option<BarBoot>,
+    /// Its Claude Code installed an update and waits for a restart.
+    #[serde(default)]
+    pub restart_needed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -578,6 +581,12 @@ impl Aiball {
         self.rpc_do("consumer.afk", json!({ "name": agent, "action": action }))
     }
 
+    /// Restarts an agent's Claude Code once it is idle, resuming its
+    /// conversation; refused with `NOT_IDLE` while it works.
+    pub fn restart_claude(&self, agent: &str) -> anyhow::Result<()> {
+        self.rpc_do("consumer.restart_claude", json!({ "name": agent }))
+    }
+
     /// Marks a question (`- [ ]` in a comment) answered by a comment.
     pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
         self.rpc_do("message.answer_question", json!({ "id": message, "qid": question, "answered_in": answered_in }))
@@ -929,5 +938,29 @@ mod new_ticket_tests {
             (m["tags"].clone(), m["assignee"].clone(), m["milestone"].clone(), m["level"].clone()),
             (json!(["ui"]), json!("demo-crew"), json!(7), json!("roadmap"))
         );
+    }
+}
+
+#[cfg(test)]
+mod bar_tests {
+    use super::AgentBar;
+    use serde_json::json;
+
+    fn bar() -> serde_json::Value {
+        json!({ "phase": "idle", "presence": "loop", "afk": { "mode": "off", "expires_at": null },
+                "prompt": { "visible": true, "has_input": false }, "human_typing": false,
+                "marker": { "info": null, "health_prompt": false, "resume_picker": false, "resume_mode_picker": false },
+                "alerts": { "link_down": false, "daemon_down": false, "not_logged_in": false, "trust_dialog": false, "api_unreachable": false },
+                "proxy_alive": true, "zen": false, "counters": null, "next_wake_at": null, "boot": null, "host": "external" })
+    }
+
+    #[test]
+    fn a_bar_says_when_claude_waits_for_a_restart() {
+        let plain: AgentBar = serde_json::from_value(bar()).unwrap();
+        assert!(!plain.restart_needed);
+        let mut updated = bar();
+        updated["restart_needed"] = json!(true);
+        let updated: AgentBar = serde_json::from_value(updated).unwrap();
+        assert!(updated.restart_needed);
     }
 }

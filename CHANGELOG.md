@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A restart button in the agent's bar when its Claude Code installed an
+  update (⟳ on its row in the sessions list too): aiball restarts it once
+  idle, resuming the conversation.
+
 - tvty starts aiball when it is not running (its systemd user service,
   detached: aiball never lives and dies with tvty), or says it is missing.
   A test's aiball, set by `AIBALL_SOCK`, is never started.
