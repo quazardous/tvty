@@ -56,12 +56,15 @@ project's tickets meanwhile; the loop shows under idle.
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
   on each. Click one, or type to filter; the arrows move the blue border
   (it starts on the current terminal), enter opens it. The overview.
-- **Tabs**: over the terminal, one tab per terminal of its group (a
-  project, "terminals", "tmux"): its agents, then its shells, each with its
-  state and its alerts, the one shown underlined. A click or ctrl+pgup /
-  ctrl+pgdn moves along them; "+" opens a shell in the project's folder
-  (in the home directory for "terminals"). The list on the left stays as
-  it is: every terminal, with its state.
+- **Tabs**: over the terminal, the terminals of its group (a project,
+  "terminals", "tmux") open in tvty, as in a browser: its agents, then its
+  shells, each with its state and its alerts, the one shown underlined. A
+  click or ctrl+pgup / ctrl+pgdn moves along them; "+" opens a shell in the
+  project's folder (in the home directory for "terminals"). **×** (on the
+  tab shown and the one under the pointer, or a middle click) closes a tab:
+  for an agent or a tmux session, only tvty's view goes — Claude runs on;
+  a shell of aiball's host stops, as a terminal's tab does. The list on the
+  left keeps every terminal, with its state; a click there opens a tab again.
 - **Slider** (alt-tab, as a portfolio), by group: holding ctrl+tab dims the
   window and brings each group forward as a **stack** of cards, offset down
   and to the right (four at most, then "+n"), under a single header — the

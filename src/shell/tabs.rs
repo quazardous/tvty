@@ -1,6 +1,7 @@
-//! The tabs over the terminal: one per terminal of the selected terminal's
-//! group (a project, "terminals", "tmux"), its agents first, then its
-//! shells. Ctrl+PgUp / Ctrl+PgDn move along them; "+" opens a shell in the
+//! The tabs over the terminal: the terminals of the shown one's group (a
+//! project, "terminals", "tmux") open in tvty, its agents first, then its
+//! shells. × closes a tab: tvty's view only, but a shell of aiball's host
+//! stops. Ctrl+PgUp / Ctrl+PgDn move along them; "+" opens a shell in the
 //! group's folder. The slider moves between groups, the tabs within one.
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -8,7 +9,7 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::panel::dot;
-use crate::sessions::{self, Project};
+use crate::sessions::{self, Project, Terminal};
 use crate::theme::p;
 use crate::tip::Tip as _;
 
@@ -22,10 +23,62 @@ impl Shell {
         self.board.projects.iter().find(|p| p.name == project)
     }
 
+    /// The tabs of the group shown: its terminals open in tvty, and the one
+    /// shown. The list keeps them all.
+    fn tabs(&self) -> Vec<&Terminal> {
+        let Some(group) = self.selected_group() else { return Vec::new() };
+        group
+            .terminals
+            .iter()
+            .filter(|t| self.terminals.contains_key(&t.session) || self.selected.as_deref() == Some(t.session.as_str()))
+            .collect()
+    }
+
+    /// × on a tab: tvty's view goes; the terminal shown moves to the tab
+    /// next to it. An agent's Claude, a tmux session, go on without it; a
+    /// shell on aiball's host has no other life, and stops.
+    pub(super) fn close_tab(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
+        let tabs: Vec<String> = self.tabs().iter().map(|t| t.session.clone()).collect();
+        let shell = self
+            .terminal_of(&session)
+            .is_some_and(|(_, t)| t.agent.is_none() && t.attach.is_some());
+        let next = (self.selected.as_deref() == Some(session.as_str()))
+            .then(|| {
+                let at = tabs.iter().position(|s| *s == session)?;
+                tabs.get(at + 1).or_else(|| at.checked_sub(1).and_then(|i| tabs.get(i))).cloned()
+            })
+            .flatten();
+        self.terminals.remove(&session);
+        if shell {
+            if let Some(name) = session.strip_prefix(sessions::HOSTED_PREFIX).map(str::to_string) {
+                let aiball = self.aiball.clone();
+                cx.background_executor()
+                    .spawn(async move {
+                        if let Err(error) = aiball.stop_terminal(&name) {
+                            log::warn!("stopping terminal {name}: {error:#}");
+                        }
+                    })
+                    .detach();
+            }
+        }
+        if self.selected.as_deref() == Some(session.as_str()) {
+            match next {
+                Some(next) => self.select(next, window, cx),
+                None => {
+                    self.selected = None;
+                    self.sync_panel(cx);
+                }
+            }
+        }
+        cx.notify();
+    }
+
     /// Ctrl+PgDn (1) / Ctrl+PgUp (-1): the next tab of the group, round.
     pub(super) fn step_tab(&mut self, step: isize, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(group) = self.selected_group() else { return };
-        let sessions: Vec<String> = group.terminals.iter().map(|t| t.session.clone()).collect();
+        let sessions: Vec<String> = self.tabs().iter().map(|t| t.session.clone()).collect();
+        if sessions.is_empty() {
+            return;
+        }
         let Some(at) = self.selected.as_ref().and_then(|s| sessions.iter().position(|o| o == s)) else { return };
         let next = sessions[(at as isize + step).rem_euclid(sessions.len() as isize) as usize].clone();
         self.select(next, window, cx);
@@ -46,8 +99,10 @@ impl Shell {
             .bg(p().surface)
             .border_b_1()
             .border_color(p().border);
-        for terminal in &group.terminals {
+        for terminal in self.tabs() {
             let session = terminal.session.clone();
+            let closing = session.clone();
+            let middle = session.clone();
             let selected = self.selected.as_deref() == Some(session.as_str());
             let state = terminal.status.as_ref().and_then(|s| s.colour());
             let shell = terminal.agent.is_none() && terminal.attach.is_some();
@@ -72,7 +127,29 @@ impl Shell {
                     .when(shell, |d| d.child(div().text_xs().text_color(p().muted).child(">_")))
                     .child(terminal.label.clone())
                     .child(alerts.badges(format!("tab-{session}")))
+                    // ×: shown on the tab shown, and on the one under the pointer.
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("tab-close-{session}")))
+                            .flex_none()
+                            .px_1()
+                            .rounded_sm()
+                            .text_xs()
+                            .text_color(p().muted)
+                            .when(!selected, |d| d.opacity(0.).group_hover(SharedString::from(format!("tab-group-{session}")), |s| s.opacity(1.)))
+                            .hover(|d| d.bg(p().hover).text_color(p().text))
+                            .child("×")
+                            .tip(if shell { "close: stops this terminal" } else { "close the tab: its Claude goes on" })
+                            .on_click(cx.listener(move |shell, _, window, cx| {
+                                cx.stop_propagation();
+                                shell.close_tab(closing.clone(), window, cx);
+                            })),
+                    )
+                    .group(SharedString::from(format!("tab-group-{session}")))
                     .tip(if shell { "a terminal on aiball's host, without Claude" } else { "ctrl+pgup / ctrl+pgdn: the tab before, after" })
+                    .on_mouse_down(MouseButton::Middle, cx.listener(move |shell, _, window, cx| {
+                        shell.close_tab(middle.clone(), window, cx);
+                    }))
                     .on_click(cx.listener(move |shell, _, window, cx| shell.select(session.clone(), window, cx))),
             );
         }
