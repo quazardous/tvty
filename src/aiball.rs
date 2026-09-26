@@ -555,8 +555,7 @@ impl Aiball {
         answer.get("id").and_then(Value::as_u64).context("the new comment has no id")
     }
 
-    /// Files a new ticket; answers its id. What aiball takes on its own
-    /// route (tags, assignee, milestone) is the caller's to add after.
+    /// Files a new ticket, labels included; answers its id.
     pub fn create(&self, ticket: &NewTicket) -> anyhow::Result<u64> {
         let body = new_ticket_message(ticket).to_string();
         // Like every client that files tickets: aiball tags the platform.
@@ -892,11 +891,18 @@ pub struct NewTicket {
     pub priority: String,
     pub scope: String,
     pub parent: Option<u64>,
+    /// Tag names.
+    pub tags: Vec<String>,
+    pub assignee: Option<String>,
+    /// A milestone's id.
+    pub milestone: Option<u64>,
+    pub level: String,
 }
 
-/// The message that files `ticket`, as aiball's web UI sends it: the
-/// defaults (normal priority, default scope) and empty fields left out.
-/// Its author is the caller, whom aiball knows from the connection.
+/// The message that files `ticket` whole, labels included: aiball checks
+/// everything first and files it at once, or refuses it at once. The
+/// defaults (normal priority, default scope, a task) and empty fields left
+/// out; its author is the caller, whom aiball knows from the connection.
 pub fn new_ticket_message(ticket: &NewTicket) -> Value {
     let mut message = json!({
         "project": ticket.project,
@@ -917,6 +923,18 @@ pub fn new_ticket_message(ticket: &NewTicket) -> Value {
     if let Some(parent) = ticket.parent {
         message["parent_id"] = json!(parent);
     }
+    if !ticket.tags.is_empty() {
+        message["tags"] = json!(ticket.tags);
+    }
+    if let Some(assignee) = &ticket.assignee {
+        message["assignee"] = json!(assignee);
+    }
+    if let Some(milestone) = ticket.milestone {
+        message["milestone"] = json!(milestone);
+    }
+    if ticket.level != "task" {
+        message["level"] = json!(ticket.level);
+    }
     message
 }
 
@@ -935,6 +953,10 @@ mod new_ticket_tests {
             priority: "normal".into(),
             scope: "default".into(),
             parent: None,
+            tags: Vec::new(),
+            assignee: None,
+            milestone: None,
+            level: "task".into(),
         }
     }
 
@@ -951,5 +973,21 @@ mod new_ticket_tests {
         let t = NewTicket { summary: "short".into(), priority: "high".into(), scope: "internal".into(), parent: Some(12), ..ticket() };
         let m = new_ticket_message(&t);
         assert_eq!((m["summary"].clone(), m["priority"].clone(), m["scope"].clone(), m["parent_id"].clone()), (json!("short"), json!("high"), json!("internal"), json!(12)));
+    }
+
+    #[test]
+    fn the_labels_go_in_the_same_message() {
+        let t = NewTicket {
+            tags: vec!["ui".into()],
+            assignee: Some("demo-crew".into()),
+            milestone: Some(7),
+            level: "roadmap".into(),
+            ..ticket()
+        };
+        let m = new_ticket_message(&t);
+        assert_eq!(
+            (m["tags"].clone(), m["assignee"].clone(), m["milestone"].clone(), m["level"].clone()),
+            (json!(["ui"]), json!("demo-crew"), json!(7), json!("roadmap"))
+        );
     }
 }

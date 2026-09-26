@@ -22,11 +22,10 @@ use crate::theme::p;
 /// The form puts itself away (Esc, ✕); the draft stays.
 pub struct CloseNewTicket;
 
-/// A ticket was filed: the shell opens it. `warnings`: what did not follow.
+/// A ticket was filed: the shell opens it.
 pub struct Created {
     pub project: String,
     pub ticket: u64,
-    pub warnings: Vec<String>,
 }
 
 const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
@@ -278,10 +277,11 @@ impl NewTicketForm {
             priority: self.priority.into(),
             scope: self.scope.into(),
             parent: self.parent.or(self.typed_parent),
+            tags: self.tags.iter().cloned().collect(),
+            assignee: self.assignee.clone(),
+            milestone: self.milestone.as_ref().map(|(id, _)| *id),
+            level: self.level.into(),
         };
-        let (tags, assignee, milestone) = (self.tags.clone(), self.assignee.clone(), self.milestone.clone());
-        // aiball takes the level after the ticket exists (a human's gesture).
-        let level = (self.level != "task").then_some(self.level);
         let aiball = self.aiball.clone();
         let window_handle = window.window_handle();
         self.busy = true;
@@ -292,38 +292,16 @@ impl NewTicketForm {
             let filed = cx
                 .background_executor()
                 .spawn(async move {
-                    let id = aiball.create(&ticket)?;
-                    let mut warnings = Vec::new();
-                    for tag in &tags {
-                        if let Err(error) = aiball.add_tag(id, tag) {
-                            warnings.push(format!("tag {tag}: {error:#}"));
-                        }
-                    }
-                    if let Some(who) = &assignee {
-                        if let Err(error) = aiball.assign(id, Some(who)) {
-                            warnings.push(format!("assign to {who}: {error:#}"));
-                        }
-                    }
-                    if let Some(level) = level {
-                        if let Err(error) = aiball.edit(id, serde_json::json!({ "level": level })) {
-                            warnings.push(format!("level {level}: {error:#}"));
-                        }
-                    }
-                    if let Some((milestone, name)) = &milestone {
-                        if let Err(error) = aiball.set_milestone(id, Some(*milestone)) {
-                            warnings.push(format!("milestone {name}: {error:#}"));
-                        }
-                    }
-                    anyhow::Ok((id, warnings))
+                    aiball.create(&ticket)
                 })
                 .await;
             let _ = cx.update_window(window_handle, |_, window, cx| {
                 let _ = this.update(cx, |form, cx| {
                     form.busy = false;
                     match filed {
-                        Ok((ticket, warnings)) => {
+                        Ok(ticket) => {
                             form.clear(window, cx);
-                            cx.emit(Created { project, ticket, warnings });
+                            cx.emit(Created { project, ticket });
                         }
                         Err(error) => form.error = Some(format!("{error:#}")),
                     }

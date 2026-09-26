@@ -690,18 +690,10 @@ impl Shell {
                         shell.toggle_panel(cx);
                     }
                     let (project, ticket) = (created.project.clone(), created.ticket);
-                    let warnings = created.warnings.clone();
                     shell.panel.update(cx, |panel, cx| {
                         panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);
                     });
-                    if !warnings.is_empty() {
-                        notify::push(
-                            cx,
-                            Notice::new(Kind::Info, "tvty", format!("filed, but not all of it: {}", warnings.join("; ")))
-                                .about(project, ticket),
-                        );
-                    }
                     let _ = shell.refresh_now.unbounded_send(events::Change::All);
                     cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
                     cx.notify();

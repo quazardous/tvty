@@ -151,6 +151,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A new ticket is filed whole, its tags, assignee, level, milestone and
+  parent in the same call: aiball files all of it or refuses all of it,
+  and says why. No more "filed, but not all of it".
+
 - tvty no longer names its user in what it writes to aiball: aiball takes
   the author from the connection, and refuses a body naming someone else.
 
