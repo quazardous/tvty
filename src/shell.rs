@@ -2211,6 +2211,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = crate::stats::Timing::new("shell");
         // A loop just started runs now: open it.
         if let Some(name) = self.open_when_running.clone().filter(|n| self.terminal_of(n).is_some()) {
             self.open_when_running = None;
@@ -2236,7 +2237,9 @@ impl Render for Shell {
                         .relative()
                         .flex_1()
                         .min_h_0()
-                        .child(terminal.clone())
+                        // Its own drawing, reused until it changes: the rest
+                        // of the window does not move with its output.
+                        .child(terminal.clone().cached(StyleRefinement::default().size_full()))
                         .with_animation(
                             SharedString::from(format!("switch-{}", self.switches)),
                             Animation::new(Duration::from_millis(240)).with_easing(|t| 1. - (1. - t).powi(3)),
@@ -2292,7 +2295,7 @@ impl Render for Shell {
                 .w(px(self.panel_width(window) + EDGE_WIDTH))
                 .h_full()
                 .child(self.edge(Side::Right, cx))
-                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
+                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone().cached(StyleRefinement::default().size_full())))
                 .into_any_element()
         } else {
             let alerts = self
@@ -2370,7 +2373,7 @@ impl Render for Shell {
             .child(keep_focus)
             .children(full_list)
             .when(panel_full, |d| {
-                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone()))
+                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone().cached(StyleRefinement::default().size_full())))
             })
             .children(new_ticket)
             .children(options);

@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# perf-frames — what tvty's frames cost, in wbox, on the throwaway aiball.
+#
+#   scripts/perf-frames [LOOP_Y]
+#
+# Launches the test tvty (sessions list and ticket panel open), selects the
+# live loop at LOOP_Y in the sessions list (default: the first one), then
+# measures three moments from TVTY_STATS (docs/TESTING.md):
+#   rest    — nothing touched, 8 s;
+#   hover   — the pointer glides down the ticket list and back, 4 s;
+#   typing  — 20 keys typed in the terminal.
+# For each: frames, the slowest and the mean, and the CPU tvty used.
+# Load a large board first: scripts/fake-aiball-load.py.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+LOG=dev/tvty-wbox/log/tvty-stats.log
+STATE=dev/tvty-wbox/config/tvty/state.json
+CTL="${WBOX_PYTHON:-../wbox-mcp/.venv/bin/python3} scripts/wbox_ctl.py"
+CONF=dev/tvty-wbox/config.yaml
+LOOP_Y="${1:-152}"
+
+make wbox-down >/dev/null 2>&1 || true
+python3 - "$STATE" <<'EOF'
+import json, sys, os
+path = sys.argv[1]
+state = json.load(open(path)) if os.path.exists(path) else {}
+state.update(sidebar_open=True, panel_open=True, sessions_folded=["idle", "shut"])
+json.dump(state, open(path, "w"))
+EOF
+make wbox-up >/dev/null
+sleep 5
+pid=""
+for p in $(pgrep -x tvty); do
+    tr '\0' '\n' < /proc/$p/environ | grep -q "fake-aiball" && pid=$p
+done
+[ -n "$pid" ] || { echo "no test tvty running" >&2; exit 1; }
+$CTL click $CONF 90 "$LOOP_Y" >/dev/null
+sleep 4
+
+ticks() { awk '{print $14+$15}' /proc/$pid/stat; }
+measure() { # name, then the command that makes the moment
+    local name=$1; shift
+    : > "$LOG"
+    local t1; t1=$(ticks)
+    "$@"
+    local t2; t2=$(ticks)
+    python3 - "$name" "$LOG" "$((t2 - t1))" <<'EOF'
+import re, sys
+name, log, ticks = sys.argv[1], sys.argv[2], int(sys.argv[3])
+frames = total = worst = 0.0
+for line in open(log):
+    m = re.match(r"window (\d+) frames, max ([\d.]+) ms, total ([\d.]+) ms", line)
+    if m:
+        frames += int(m[1]); worst = max(worst, float(m[2])); total += float(m[3])
+mean = total / frames if frames else 0
+print(f"{name:7} {int(frames):4} frames  max {worst:6.1f} ms  mean {mean:5.1f} ms  cpu {ticks * 10} ms")
+EOF
+}
+rest() { sleep 8; }
+hover() {
+    $CTL move $CONF 1000 100 1000 700 40 2 >/dev/null
+    $CTL move $CONF 1000 700 1000 100 40 2 >/dev/null
+}
+typing() {
+    $CTL click $CONF 500 400 >/dev/null
+    $CTL type $CONF "abcdefghijklmnopqrst" >/dev/null
+    sleep 2
+}
+measure rest rest
+measure hover hover
+measure typing typing
+make wbox-down >/dev/null 2>&1 || true

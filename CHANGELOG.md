@@ -181,6 +181,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- tvty no longer slows down as the board grows: a ticket list lays out
+  only the rows in view, all of the same height. On 300 tickets a frame
+  went from about 110 ms to about 20 ms, and tvty at rest from half a
+  core to a tenth.
+
 - A ping from aiball is no longer lost when its ticket cannot be read
   back, and the pings sent while tvty's stream was down come once it is
   back.

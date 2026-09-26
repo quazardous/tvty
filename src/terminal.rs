@@ -455,6 +455,7 @@ impl Focusable for TerminalView {
 
 impl Render for TerminalView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = crate::stats::Timing::new("terminal");
         div()
             .id("terminal")
             .track_focus(&self.focus)

@@ -727,15 +727,24 @@ impl TicketPanel {
         while at < rows.len() {
             let band = rows[at].0.band;
             let end = rows[at..].iter().position(|(s, _)| s.band != band).map_or(rows.len(), |n| at + n);
+            let count = end - at;
+            let scroll = self.scrolls.get(&band).cloned().unwrap_or_default();
+            // Only the rows in view are laid out: a band of hundreds stays cheap.
+            let shown = crate::accordion::window(count, ROW_HEIGHT, &scroll);
             let section = crate::accordion::Section {
                 id: SharedString::from(format!("band-{band:?}")),
                 title: band.title().to_string(),
-                count: end - at,
+                count,
                 folded: self.folded.contains(&band),
                 // Two rows, or all of them when fewer.
-                keep: (end - at).min(2) as f32 * ROW_HEIGHT,
-                scroll: self.scrolls.get(&band).cloned().unwrap_or_default(),
-                body: rows[at..end].iter().map(|(state, ticket)| self.row(ticket, *state, cx).into_any_element()).collect(),
+                keep: count.min(2) as f32 * ROW_HEIGHT,
+                body: rows[at + shown.start..at + shown.end]
+                    .iter()
+                    .map(|(state, ticket)| self.row(ticket, *state, cx).into_any_element())
+                    .collect(),
+                before: shown.start as f32 * ROW_HEIGHT,
+                after: (count - shown.end) as f32 * ROW_HEIGHT,
+                scroll,
             };
             list = list.child(section.render(cx.listener(move |panel, _, _, cx| {
                 if !panel.folded.remove(&band) {
@@ -774,7 +783,8 @@ impl TicketPanel {
         });
         let meta = div()
             .flex()
-            .flex_wrap()
+            .overflow_hidden()
+            .whitespace_nowrap()
             .items_center()
             .gap_x_2()
             .text_xs()
@@ -800,6 +810,9 @@ impl TicketPanel {
 
         div()
             .id(("ticket", id))
+            .h(px(ROW_HEIGHT))
+            .flex_none()
+            .overflow_hidden()
             .flex()
             .gap_2()
             .pl_2()
@@ -2126,6 +2139,7 @@ impl TicketPanel {
 
 impl Render for TicketPanel {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = crate::stats::Timing::new("panel");
         let header = div()
             .flex()
             .items_center()

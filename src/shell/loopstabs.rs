@@ -75,6 +75,8 @@ impl Shell {
                 keep: (count.min(2) as f32 * 44.).max(24.),
                 scroll: self.session_scrolls[i].clone(),
                 body,
+                before: 0.,
+                after: 0.,
             };
             list = list.child(section.render(cx.listener(move |shell, _, _, cx| {
                 let folded = &mut shell.settings.sessions_folded;

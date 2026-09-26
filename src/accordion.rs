@@ -31,13 +31,34 @@ pub struct Section {
     pub keep: f32,
     /// Its scroll, kept by the owner across renders.
     pub scroll: ScrollHandle,
+    /// The rows drawn: all of them, or those of [`window`].
     pub body: Vec<AnyElement>,
+    /// The height of the rows left out above and below the drawn ones, so
+    /// that the scroll keeps the whole list's height.
+    pub before: f32,
+    pub after: f32,
+}
+
+/// The rows of a section worth drawing when each is `row` pixels high:
+/// those its scroll showed at the last frame, and a few around. The others
+/// are not laid out at all — with hundreds of rows, that is what keeps a
+/// frame cheap.
+pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<usize> {
+    let top = (-f32::from(scroll.offset().y)).max(0.);
+    let height = match f32::from(scroll.bounds().size.height) {
+        // Not laid out yet: a screenful.
+        h if h <= 0. => 1200.,
+        h => h,
+    };
+    let first = ((top / row) as usize).saturating_sub(2).min(count);
+    let last = (((top + height) / row).ceil() as usize + 2).min(count);
+    first..last
 }
 
 impl Section {
     /// The section, its title folding it through `on_toggle`.
     pub fn render(self, on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Div {
-        let Self { id, title, count, folded, keep, scroll, body } = self;
+        let Self { id, title, count, folded, keep, scroll, body, before, after } = self;
         let header = div()
             .id(SharedString::from(format!("{id}-title")))
             .flex()
@@ -72,7 +93,9 @@ impl Section {
                     .min_h_0()
                     .track_scroll(&scroll)
                     .overflow_y_scroll()
-                    .children(body);
+                    .when(before > 0., |d| d.child(div().flex_none().h(px(before))))
+                    .children(body)
+                    .when(after > 0., |d| d.child(div().flex_none().h(px(after))));
                 d.child(
                     div()
                         .relative()

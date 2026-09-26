@@ -23,6 +23,8 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
     wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N)
+    wbox_ctl.py move   CONFIG [-s key=value ...] X1 Y1 X2 Y2 STEPS SECONDS
+                       (the pointer glides, no button: hovering, to measure it)
     wbox_ctl.py hold   CONFIG [-s key=value ...] MODIFIER KEY TIMES [--name NAME]
                        (env WBOX_HOLD_THEN=right,down: more keys held, a shot
                        each; WBOX_HOLD_CANCEL=1: Escape before the release)
@@ -196,6 +198,24 @@ def main():
         client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.RELEASED))
         client._send(vp, 4)
         client.roundtrip()
+        result = {"ok": True}
+    elif command == "move":
+        # Glide the pointer from X1 Y1 to X2 Y2 in STEPS over SECONDS, no
+        # button pressed: what a hand does passing over a list.
+        if len(args) != 6:
+            sys.exit("move needs X1 Y1 X2 Y2 STEPS SECONDS")
+        x1, y1, x2, y2, steps = (int(a) for a in args[:5])
+        seconds = float(args[5])
+        _warm_up(comp, x1, y1)
+        import time as clock
+        client = comp._vptr_client()
+        vp = client._ensure_vptr()
+        steps = max(1, steps)
+        for i in range(0, steps + 1):
+            client._motion(vp, x1 + (x2 - x1) * i // steps, y1 + (y2 - y1) * i // steps)
+            client._send(vp, 4)
+            client.roundtrip()
+            clock.sleep(seconds / steps)
         result = {"ok": True}
     elif command == "hold":
         # Hold a modifier, tap a key N times, screenshot, then release: a

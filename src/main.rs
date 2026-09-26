@@ -71,7 +71,10 @@ fn main() {
                     ..gpui_kit::component::TitleBar::window_options()
                 },
                 |window, cx| {
-                    let view = cx.new(|cx| shell::Shell::new(selected, window, cx));
+                    let shell = cx.new(|cx| shell::Shell::new(selected, window, cx));
+                    // The shell draws again only when it changes: a terminal's
+                    // output or a hover in the panel redraws just that view.
+                    let view = cx.new(|_| Frame(shell));
                     // Root draws the window's frame; no shadow around it: where
                     // the compositor does not show it as transparent, it reads
                     // as a wide dark border.
@@ -82,4 +85,21 @@ fn main() {
         })
         .detach();
     });
+}
+
+/// Holds the shell as a cached view: the kit's Root draws its child every
+/// frame, this lets GPUI reuse the shell's last drawing until it changes.
+struct Frame(Entity<shell::Shell>);
+
+impl Render for Frame {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        // Every frame passes here: the probe times the whole frame, cached
+        // parts included (TVTY_STATS).
+        stats::window_started();
+        div()
+            .relative()
+            .size_full()
+            .child(self.0.clone().cached(StyleRefinement::default().size_full()))
+            .child(div().absolute().child(stats::Probe))
+    }
 }

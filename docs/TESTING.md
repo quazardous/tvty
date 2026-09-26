@@ -103,6 +103,18 @@ With `TVTY_STATS=<file>` (set in the wbox config, to
   talked. The second is a full second: a burst shorter than that reads low,
   so measure on a sustained stream (`tvty-flood`).
 
+- `window <n> frames, max <ms>, total <ms>, <view> <n>× max <ms>…` — each
+  second the window was drawn: every frame, from the frame view's render to
+  its last paint, then how often each view rendered and the phases (`tree`,
+  `layout+prepaint`, `paint`).
+
+A board the size of a real one: `scripts/fake-aiball-load.py
+$PWD/dev/fake-aiball/home/sock 300` files 300 tickets on the throwaway
+aiball (it refuses any other socket). Then `scripts/perf-frames` launches
+the test tvty, selects a live loop and reports three moments — at rest,
+the pointer gliding over the ticket list, typing in the terminal — as
+frames, the slowest and the mean, and the CPU tvty used.
+
 To start tvty on one session, without clicking:
 `scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/test-tvty tvty-flood"`.
 
@@ -113,6 +125,14 @@ First numbers (24/09, labwc headless, Radeon 680M):
 | keystroke → echo | 3–15 ms | 1–4 ms |
 | sustained flood | ~37 fps | ~60 fps (the output's refresh) |
 | grid preparation, worst per second | 35–60 ms | 6–29 ms |
+
+On 312 tickets (26/09, debug, labwc headless), `scripts/perf-frames`:
+
+| | before | rows of fixed height, only the visible ones laid out |
+|---|---|---|
+| at rest (8 s) | 34 frames, mean 108 ms, 3.9 s of CPU | 34 frames, mean 18 ms, 0.7 s |
+| hover (4 s) | 49 frames, mean 108 ms, 5.7 s | 58 frames, mean 23 ms, 1.5 s |
+| typing (20 keys) | 32 frames, mean 122 ms, 3.6 s | 43 frames, mean 22 ms, 0.9 s |
 
 ## What the first slice measures
 

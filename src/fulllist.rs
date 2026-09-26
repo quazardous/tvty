@@ -545,6 +545,7 @@ impl FullList {
 
 impl Render for FullList {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let _timing = crate::stats::Timing::new("fulllist");
         let query = self.search.read(cx).value().trim().to_lowercase();
         let rows = self.rows();
         let side = self.side(&rows, &query, cx);
