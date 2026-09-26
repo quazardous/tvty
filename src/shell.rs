@@ -2106,6 +2106,10 @@ impl Shell {
                                         // Green: the terminal already runs in tvty.
                                         .child(div().w(px(7.)).when(open, |d| d.child(dot(p().success))))
                                         .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
+                                        // Its Claude runs in claude-loop (through tmux), not on aiball's host.
+                                        .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
+                                            d.child(div().text_xs().text_color(p().muted).child("⇄"))
+                                        })
                                         // Its Claude Code waits for a restart (the button is on its bar).
                                         .when(restart, |d| d.child(div().text_color(p().warning).child("⟳")))
                                         .child(alerts.badges()),

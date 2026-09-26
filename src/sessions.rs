@@ -117,8 +117,43 @@ fn homes(consumers: &[Consumer]) -> Vec<(String, Option<String>, String)> {
         .collect()
 }
 
+/// An agent's Claude, as aiball centralises it.
+fn status_of(c: &Consumer) -> Option<Status> {
+    Some(Status {
+        state: c.state.clone()?,
+        since: c.state_since.as_deref().and_then(crate::status::parse_time),
+        driver: c.state_human_word.clone().unwrap_or_default(),
+        online: c.present.unwrap_or(false),
+        unseen: c.ping_unseen.unwrap_or(0),
+        cwd: c.cwd.clone(),
+    })
+}
+
+/// Two ways a loop's terminal is there: aiball's host runs it (opened over
+/// its attach socket), or claude-loop runs it in tmux (opened through tmux).
 fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project> {
     let mut projects: BTreeMap<String, (bool, Vec<Terminal>)> = BTreeMap::new();
+    // The agents aiball's host runs.
+    let hosted: Vec<(&Consumer, &str)> = consumers
+        .iter()
+        .filter(|c| c.kind == "agent")
+        .filter_map(|c| Some((c, c.session.as_ref()?.socket()?)))
+        .collect();
+    for (c, socket) in &hosted {
+        let (project, on_board) = match &c.project {
+            Some(project) => (project.clone(), true),
+            None => (c.cwd.as_deref().map(basename).unwrap_or_else(|| c.consumer_id.clone()), false),
+        };
+        let entry = projects.entry(project).or_default();
+        entry.0 |= on_board;
+        entry.1.push(Terminal {
+            session: format!("{HOSTED_PREFIX}{}", c.consumer_id),
+            label: c.consumer_id.clone(),
+            attach: Some(socket.to_string()),
+            agent: Some(c.consumer_id.clone()),
+            status: status_of(c),
+        });
+    }
     for (session, path) in sessions {
         let agent = session
             .starts_with(LOOP_PREFIX)
@@ -128,6 +163,10 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
                     .find(|c| c.kind == "agent" && c.cwd.as_deref() == Some(path.as_str()))
             })
             .flatten();
+        // One place per agent: the host's, when both are seen for a moment.
+        if agent.is_some_and(|a| hosted.iter().any(|(h, _)| h.consumer_id == a.consumer_id)) {
+            continue;
+        }
         let (project, on_board, label) = match agent {
             Some(c) => match &c.project {
                 Some(project) => (project.clone(), true, c.consumer_id.clone()),
@@ -143,16 +182,7 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
             label,
             attach: None,
             agent: agent.map(|c| c.consumer_id.clone()),
-            status: agent.and_then(|c| {
-                Some(Status {
-                    state: c.state.clone()?,
-                    since: c.state_since.as_deref().and_then(crate::status::parse_time),
-                    driver: c.state_human_word.clone().unwrap_or_default(),
-                    online: c.present.unwrap_or(false),
-                    unseen: c.ping_unseen.unwrap_or(0),
-                    cwd: c.cwd.clone(),
-                })
-            }),
+            status: agent.and_then(status_of),
         });
     }
     // Plain tmux sessions last: the projects are what tvty is for.
@@ -212,4 +242,38 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
     let text = String::from_utf8_lossy(&output.stdout);
     let (columns, lines) = text.trim().split_once(' ')?;
     Some((columns.parse().ok()?, lines.parse().ok()?))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HOSTED_PREFIX, group};
+    use crate::aiball::Consumer;
+    use serde_json::json;
+
+    fn agent(id: &str, cwd: &str, session: serde_json::Value) -> Consumer {
+        serde_json::from_value(json!({ "consumer_id": id, "kind": "agent", "cwd": cwd, "project": "demo",
+                                        "state": "idle", "session": session })).unwrap()
+    }
+
+    #[test]
+    fn an_agent_on_the_host_opens_over_its_socket_and_one_in_claude_loop_through_tmux() {
+        let consumers = vec![
+            agent("hosted", "/w/hosted", json!({ "running": true, "attach": { "socket": "/h/hosted/attach.sock" } })),
+            agent("looped", "/w/looped", json!(null)),
+        ];
+        let tmux = vec![
+            ("cl-looped".to_string(), "/w/looped".to_string()),
+            // The host's agent seen in tmux a moment too: the host wins.
+            ("cl-hosted".to_string(), "/w/hosted".to_string()),
+        ];
+        let projects = group(tmux, &consumers);
+        let demo = projects.iter().find(|p| p.name == "demo").unwrap();
+        let by = |label: &str| demo.terminals.iter().filter(|t| t.label == label).collect::<Vec<_>>();
+        let hosted = by("hosted");
+        assert_eq!(hosted.len(), 1);
+        assert_eq!(hosted[0].session, format!("{HOSTED_PREFIX}hosted"));
+        assert_eq!(hosted[0].attach.as_deref(), Some("/h/hosted/attach.sock"));
+        let looped = by("looped");
+        assert_eq!((looped[0].session.as_str(), looped[0].attach.is_none()), ("cl-looped", true));
+    }
 }

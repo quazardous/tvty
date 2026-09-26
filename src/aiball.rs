@@ -38,6 +38,32 @@ pub struct Consumer {
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,
+    /// The session aiball's host runs for it, when its Claude runs there
+    /// (not in claude-loop's tmux).
+    #[serde(default)]
+    pub session: Option<HostedSession>,
+}
+
+/// An agent's session on aiball's host.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct HostedSession {
+    #[serde(default)]
+    pub running: bool,
+    #[serde(default)]
+    pub attach: Option<AttachPoint>,
+}
+
+/// Where a client attaches: a socket on this machine, or none (`reason`).
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct AttachPoint {
+    pub socket: Option<String>,
+}
+
+impl HostedSession {
+    /// Its attach socket, while it runs.
+    pub fn socket(&self) -> Option<&str> {
+        self.attach.as_ref().and_then(|a| a.socket.as_deref()).filter(|_| self.running)
+    }
 }
 
 /// An agent's loop bar, as its loop pushes it to aiball: what claude-loop
