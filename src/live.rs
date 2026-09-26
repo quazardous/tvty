@@ -252,27 +252,14 @@ impl Live {
                 }
             }
             Kind::State => {
-                let agent = data.get("consumer_id").and_then(Value::as_str).map(str::to_string).or_else(|| middle(subject));
+                // The whole entry, as `consumer.list` builds it; `null` once
+                // the agent is gone.
+                let agent = middle(subject).or_else(|| data.get("consumer_id").and_then(Value::as_str).map(str::to_string));
                 let Some(agent) = agent else { return Vec::new() };
-                if data.get("deleted").and_then(Value::as_bool) == Some(true) {
+                if data.is_null() {
                     self.consumers.remove(&agent);
-                    return vec![Update::Board];
-                }
-                // The whole entry, or what changed of it — whose names are
-                // not always the entry's.
-                let entry = self.consumers.entry(agent.clone()).or_insert_with(|| json!({ "consumer_id": agent }));
-                if let (Some(entry), Some(changed)) = (entry.as_object_mut(), data.as_object()) {
-                    if changed.contains_key("state") && entry.get("state") != changed.get("state") {
-                        entry.insert("state_since".into(), json!(crate::status::format_time(std::time::SystemTime::now())));
-                    }
-                    for (key, value) in changed {
-                        let key = match key.as_str() {
-                            "running" => "present",
-                            "human_word" => "state_human_word",
-                            key => key,
-                        };
-                        entry.insert(key.to_string(), value.clone());
-                    }
+                } else {
+                    self.consumers.insert(agent, data.clone());
                 }
                 vec![Update::Board]
             }
@@ -413,14 +400,14 @@ mod tests {
                             "data": { "op": "remove", "id": 1, "project": "demo" } }));
         assert_eq!(live.tickets()["demo"].iter().map(|t| t.id).collect::<Vec<_>>(), vec![2]);
 
-        // A loop's presence and state, under aiball's event names.
+        // An agent's entry, whole, then gone.
         live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 13,
-                            "data": { "consumer_id": "demo-crew", "running": true } }));
-        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 14,
-                            "data": { "consumer_id": "demo-crew", "state": "busy", "human_word": "loop" } }));
+                            "data": { "consumer_id": "demo-crew", "kind": "agent", "present": true, "state": "busy",
+                                      "state_since": "2026-09-26T14:00:00Z" } }));
         let crew = &live.consumers()[0];
-        assert_eq!((crew.present, crew.state.as_deref(), crew.state_human_word.as_deref()), (Some(true), Some("busy"), Some("loop")));
-        assert!(crew.state_since.is_some());
+        assert_eq!((crew.present, crew.state.as_deref()), (Some(true), Some("busy")));
+        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 14, "data": null }));
+        assert!(live.consumers().is_empty());
 
         // A ping says who and what, without reading the message.
         let ping = live.event(&json!({ "subscription": "p", "subject": "user.david.pings", "seq": 15,
@@ -442,7 +429,7 @@ mod tests {
         let plan = live.plan("");
         assert!(live
             .event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 11,
-                            "data": { "consumer_id": "demo-crew", "state": "busy" } }))
+                            "data": { "consumer_id": "demo-crew", "kind": "agent", "state": "busy" } }))
             .is_empty());
         let answers = vec![
             Ok(json!({ "id": "t", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
