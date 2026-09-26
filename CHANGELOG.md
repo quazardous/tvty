@@ -179,6 +179,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Notifications show in the terminal's top right corner (the window's
+  while a full screen covers it), the newest highest.
+
 - The agent's bar no longer shows its wait credit.
 
 - An unread ticket shows it more: a blue dot and its number in blue before
@@ -218,6 +221,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now optimised even there.
 
 ### Fixed
+
+- Pings raised notifications again: none came since tvty took aiball's
+  bus.
 
 - Opening tvty no longer raises a notification for every ticket already
   waiting on you: only what comes after is news.

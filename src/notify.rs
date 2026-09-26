@@ -1,5 +1,5 @@
-//! Notifications: in the window's bottom left corner, above everything, a
-//! little translucent; stacked bottom up, the newest lowest, at most N; each
+//! Notifications: in the terminal's top right corner, above everything, a
+//! little translucent; stacked top down, the newest highest, at most N; each
 //! gone after a few seconds, unless the pointer is on it. While one is up,
 //! its ticket shines in every list shown ([`lit`]).
 //!
@@ -205,9 +205,10 @@ fn colour(kind: Kind) -> Hsla {
     }
 }
 
-/// The stack, for the window's bottom left corner, above everything: the
-/// newest in the corner, the older ones above it.
-pub fn stack(cx: &App) -> Option<AnyElement> {
+/// The stack, `top` and `right` from the window's top right corner (the
+/// terminal's, where the shell puts it), above everything: the newest in
+/// the corner, the older ones under it.
+pub fn stack(top: f32, right: f32, cx: &App) -> Option<AnyElement> {
     let shown = &cx.global::<Notices>().shown;
     if shown.is_empty() {
         return None;
@@ -215,13 +216,13 @@ pub fn stack(cx: &App) -> Option<AnyElement> {
     let mut column = div()
         .id("notices")
         .absolute()
-        .bottom(px(12.))
-        .left(px(12.))
+        .top(px(top))
+        .right(px(right))
         .w(px(380.))
         .flex()
-        .flex_col_reverse()
+        .flex_col()
         .gap_2();
-    for notice in shown {
+    for notice in shown.iter().rev() {
         let (id, colour) = (notice.id, colour(notice.kind));
         let open = notice.clone();
         let what = match &notice.ticket {

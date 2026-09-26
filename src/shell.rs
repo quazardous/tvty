@@ -63,6 +63,8 @@ const SESSION_ROW_BARE: f32 = 32.;
 /// A folded side: just enough for a few dots saying what waits, beside
 /// the window's resize band (6 px) when the side is at the window's edge.
 const FOLDED_WIDTH: f32 = 14.;
+/// Between the notices and the terminal's edges.
+const NOTICE_MARGIN: f32 = 12.;
 /// The strip between a side and the terminal, holding the toggle grip.
 const EDGE_WIDTH: f32 = 8.;
 
@@ -1503,7 +1505,7 @@ impl Shell {
                     .gap_2()
                     .child(option_stepper(
                         "Shown at most",
-                        "In the bottom left corner, the newest lowest; older ones make room.",
+                        "In the terminal's top right corner, the newest highest; older ones make room.",
                         max.to_string(),
                         cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max.saturating_sub(1).max(1), seconds, cx)),
                         cx.listener(move |shell, _, _, cx| shell.set_notify_limits((max + 1).min(10), seconds, cx)),
@@ -2409,6 +2411,19 @@ impl Render for Shell {
                 .unwrap_or_default();
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
+        // The notices sit in the terminal's top right corner: left of the
+        // panel, or of its folded edge; a full screen covers the terminal,
+        // then the window's corner.
+        let paddings = window_paddings(window);
+        let covered = panel_full || self.options.is_some() || self.full_list_shown || self.new_ticket_shown;
+        let notices_top = f32::from(paddings.top) + TITLE_BAR_HEIGHT + NOTICE_MARGIN;
+        let notices_right = f32::from(paddings.right)
+            + NOTICE_MARGIN
+            + match () {
+                _ if covered => 0.,
+                _ if self.settings.panel_open => self.panel_width(window) + EDGE_WIDTH,
+                _ => FOLDED_WIDTH,
+            };
         let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
         let options = self.options.map(|section| self.options_view(section, window, cx));
         let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
@@ -2535,7 +2550,7 @@ impl Render for Shell {
             .children(menu)
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
-            .children(notify::stack(cx))
+            .children(notify::stack(notices_top, notices_right, cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }
