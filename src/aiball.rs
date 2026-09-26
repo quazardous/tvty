@@ -165,6 +165,23 @@ pub struct Thread {
     pub ticket: TicketHeader,
     #[serde(default)]
     pub comments: Vec<Comment>,
+    /// The uploads its texts cite, as aiball resolves them.
+    #[serde(default)]
+    pub attachments: Vec<Attachment>,
+}
+
+/// An upload a thread cites (`/uploads/<sha>.<ext>`).
+#[derive(Clone, Debug, Deserialize)]
+pub struct Attachment {
+    /// The path the texts cite.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub content_type: Option<String>,
+    pub bytes: Option<u64>,
+    /// `file://…` where aiball keeps it, and whether that is this machine.
+    pub uri: Option<String>,
+    #[serde(default)]
+    pub local: bool,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -632,7 +649,11 @@ impl Aiball {
         self.request_bytes(method, path, "application/json", &[], body.as_bytes())
     }
 
-    #[cfg(unix)]
+    /// An upload's bytes, through the socket.
+    pub fn upload_bytes(&self, reference: &str) -> anyhow::Result<Vec<u8>> {
+        self.request_raw("GET", reference, "application/octet-stream", &[], &[])
+    }
+
     fn request_bytes(
         &self,
         method: &str,
@@ -641,6 +662,19 @@ impl Aiball {
         headers: &[(&str, &str)],
         body: &[u8],
     ) -> anyhow::Result<String> {
+        let answer = self.request_raw(method, path, content_type, headers, body)?;
+        Ok(String::from_utf8_lossy(&answer).into_owned())
+    }
+
+    #[cfg(unix)]
+    fn request_raw(
+        &self,
+        method: &str,
+        path: &str,
+        content_type: &str,
+        headers: &[(&str, &str)],
+        body: &[u8],
+    ) -> anyhow::Result<Vec<u8>> {
         use std::os::unix::net::UnixStream;
 
         let mut stream = UnixStream::connect(&self.socket)
@@ -659,19 +693,20 @@ impl Aiball {
         stream.write_all(body)?;
         let mut answer = Vec::new();
         stream.read_to_end(&mut answer)?;
-        let answer = String::from_utf8_lossy(&answer);
-        let (head, body) = answer
-            .split_once("\r\n\r\n")
+        let split = answer
+            .windows(4)
+            .position(|w| w == b"\r\n\r\n")
             .context("malformed answer from aiball")?;
+        let (head, body) = (String::from_utf8_lossy(&answer[..split]), &answer[split + 4..]);
         let status = head.split(' ').nth(1).unwrap_or("");
         if !status.starts_with('2') {
-            bail!("{method} {path}: {status} {}", body.trim());
+            bail!("{method} {path}: {status} {}", String::from_utf8_lossy(body).trim());
         }
-        Ok(body.to_string())
+        Ok(body.to_vec())
     }
 
     #[cfg(not(unix))]
-    fn request_bytes(&self, _: &str, _: &str, _: &str, _: &[(&str, &str)], _: &[u8]) -> anyhow::Result<String> {
+    fn request_raw(&self, _: &str, _: &str, _: &str, _: &[(&str, &str)], _: &[u8]) -> anyhow::Result<Vec<u8>> {
         bail!("aiball's socket is Unix only for now")
     }
 }

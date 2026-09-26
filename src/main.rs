@@ -6,6 +6,7 @@ mod composer;
 mod events;
 mod fulllist;
 mod icons;
+mod images;
 mod newticket;
 mod options;
 mod panel;

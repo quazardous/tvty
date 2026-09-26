@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Images in a ticket's thread show: they were never loaded, and each one
+  wrote an error on the standard output. One that cannot be read says
+  "image unavailable" (or "too large", past 5 MB) instead.
+
 - A rejected plan or resolution shows as aiball shows it: a red ⊗ on the
   ticket, whoever's turn it is (it was a grey arrow once the ball was the
   agent's), with "rejected" in the full list.

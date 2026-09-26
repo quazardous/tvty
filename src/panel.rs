@@ -136,6 +136,8 @@ pub struct TicketPanel {
     comment_editing: Option<u64>,
     confirm_delete: Option<u64>,
     edit_comment: Entity<TextareaState>,
+    /// The threads' images, read once.
+    images: crate::images::Cache,
 }
 
 impl EventEmitter<BoardChanged> for TicketPanel {}
@@ -193,6 +195,7 @@ impl TicketPanel {
             comment_editing: None,
             confirm_delete: None,
             edit_comment,
+            images: Default::default(),
         }
     }
 
@@ -442,11 +445,16 @@ impl TicketPanel {
     /// Reads the thread again; `mark_read` clears its unread for the user.
     fn load(&mut self, ticket: u64, mark_read: bool, cx: &mut Context<Self>) {
         let aiball = self.aiball.clone();
+        let images = self.images.clone();
         cx.spawn(async move |this, cx| {
             let thread = cx
                 .background_executor()
                 .spawn(async move {
-                    let thread = aiball.thread(ticket);
+                    let mut thread = aiball.thread(ticket);
+                    // Its images go in its texts, which cannot load them.
+                    if let Ok(thread) = thread.as_mut() {
+                        crate::images::inline(thread, &aiball, &images);
+                    }
                     if mark_read && thread.is_ok() {
                         let _ = aiball.mark_read(ticket);
                     }
