@@ -205,8 +205,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The agent's bar no longer shows its wait credit.
 
-- An unread ticket shows it more: a blue dot and its number in blue before
-  its bold title, in the panel and the full-screen list.
+- An unread ticket shows it more: its comments' bubble turns blue, beside
+  its bold title; the bubble is grey when you spoke last, lighter grey when
+  someone else did and you read it.
 
 - The long lists of choices are searched as you type, not laid out whole:
   in a new ticket the project, tags, milestone and assignee (Enter takes

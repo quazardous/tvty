@@ -79,8 +79,10 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
   first within a band. In the panel each band is a section: a click on its
   title folds it, and each scrolls on its own — a long band never pushes
   the others out of sight.
-- **Unread is a mark, not a band**: a blue dot, the number in blue and the
-  title in bold; read titles step back. The ticket keeps its band.
+- **Unread is a mark, not a band**: the comments' bubble in blue, and the
+  title in bold; read titles step back. The ticket keeps its band. The
+  bubble is grey when you spoke last, lighter grey when someone else did
+  and you read it.
 - **One state icon**, always in the same place — Google's Material Symbols,
   as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
   `check_circle` resolution, `block` wontfix, `priority_high` escalation,

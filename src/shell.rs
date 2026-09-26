@@ -2830,19 +2830,19 @@ fn options_ticket_list() -> impl IntoElement {
         .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
         .child(option_group("The rest"))
         .child(line(
-            div()
-                .flex()
-                .items_center()
-                .gap_1()
-                .child(div().flex_none().size(px(7.)).rounded_full().bg(p().accent))
-                .child(div().text_color(p().accent).child("#12"))
-                .child(div().font_weight(FontWeight::BOLD).child("Title"))
-                .into_any_element(),
-            "unread: something new on it for you — the blue dot, the number in blue, the title in bold".into(),
+            crate::icons::labelled(crate::icons::Icon::Comments, p().accent, 12., "3").text_xs().text_color(p().accent).into_any_element(),
+            "comments, blue: something new on it for you, unread (its title in bold too)".into(),
         ))
         .child(line(
-            crate::icons::labelled(crate::icons::Icon::Comments, p().success, 12., "3").text_xs().text_color(p().success).into_any_element(),
-            "comments; green when you spoke last, grey when someone else did".into(),
+            crate::icons::labelled(crate::icons::Icon::Comments, p().muted, 12., "3").text_xs().text_color(p().muted).into_any_element(),
+            "grey: you spoke last".into(),
+        ))
+        .child(line(
+            crate::icons::labelled(crate::icons::Icon::Comments, p().muted.opacity(0.55), 12., "3")
+                .text_xs()
+                .text_color(p().muted.opacity(0.55))
+                .into_any_element(),
+            "lighter grey: someone else spoke last, and you read it".into(),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::PendingComments, p().warning, 12., "1").text_xs().text_color(p().warning).into_any_element(),

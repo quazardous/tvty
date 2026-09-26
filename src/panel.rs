@@ -878,9 +878,7 @@ impl TicketPanel {
                             .flex()
                             .gap_2()
                             .items_center()
-                            // Unread: a blue dot and the number in blue, then the bold title.
-                            .when(ticket.unread, |d| d.child(div().flex_none().size(px(7.)).rounded_full().bg(p().accent)))
-                            .child(div().flex_none().text_color(if ticket.unread { p().accent } else { p().muted }).child(format!("#{id}")))
+                            .child(div().flex_none().text_color(p().muted).child(format!("#{id}")))
                             .child(
                                 div()
                                     .flex_1()
@@ -2422,8 +2420,10 @@ impl TicketPanel {
     }
 }
 
-/// aiball's comment count: a bubble and the number, green when the user
-/// spoke last; a clock and the number while comments wait for moderation.
+/// aiball's comment count: a bubble and the number — blue when something
+/// is unread, grey when the user spoke last, lighter grey when someone else
+/// did and all is read; a clock and the number while comments wait for
+/// moderation.
 pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Div> {
     if ticket.pending_comment_count > 0 {
         return Some(icons::labelled(
@@ -2437,7 +2437,13 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Div> {
         return None;
     }
     let mine = ticket.last_speaker.as_deref() == Some(user);
-    let colour = if mine { p().success } else { p().muted };
+    let colour = if ticket.unread {
+        p().accent
+    } else if mine {
+        p().muted
+    } else {
+        p().muted.opacity(0.55)
+    };
     Some(icons::labelled(Icon::Comments, colour, 12., ticket.comment_count.to_string()).text_color(colour))
 }
 
