@@ -618,6 +618,11 @@ impl Aiball {
         self.rpc_do("session.start", json!({ "name": name, "argv": argv, "cwd": cwd }))
     }
 
+    /// Removes a terminal the daemon's host holds (its program ended, or not).
+    pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
+        self.rpc_do("session.stop", json!({ "name": name }))
+    }
+
     /// Restarts an agent's Claude Code once it is idle, resuming its
     /// conversation; refused with `NOT_IDLE` while it works.
     pub fn restart_claude(&self, agent: &str) -> anyhow::Result<()> {

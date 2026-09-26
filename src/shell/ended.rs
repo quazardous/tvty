@@ -75,6 +75,22 @@ impl Shell {
     /// Esc on the end screen: back to the terminal used before, if any.
     pub(super) fn close_ended(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ended) = self.ended.take() else { return };
+        // A terminal of the daemon's whose program ended: closing it removes
+        // it from the host, so that it does not linger there.
+        if let Some(name) = ended.session.strip_prefix(crate::sessions::HOSTED_PREFIX).map(str::to_string) {
+            let hosted_terminal = !self.live.terminals().iter().any(|(n, _)| *n == name)
+                && self.live.session_names().contains(&name);
+            if hosted_terminal {
+                let aiball = self.aiball.clone();
+                cx.background_executor()
+                    .spawn(async move {
+                        if let Err(error) = aiball.stop_terminal(&name) {
+                            log::warn!("removing terminal {name}: {error:#}");
+                        }
+                    })
+                    .detach();
+            }
+        }
         self.recent.retain(|s| *s != ended.session);
         let previous = self.recent.iter().find(|s| self.terminal_of(s).is_some()).cloned();
         match previous {

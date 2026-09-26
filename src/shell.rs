@@ -1947,7 +1947,9 @@ impl Shell {
     /// Starts a shell the daemon's host holds, in the home directory, and
     /// opens it once it is listed.
     fn new_terminal(&mut self, cx: &mut Context<Self>) {
-        let taken: std::collections::HashSet<String> = self.live.terminals().into_iter().map(|(name, _)| name).collect();
+        // Every name the host knows, a stopped session's too (it keeps its name
+        // until it is removed).
+        let taken: std::collections::HashSet<String> = self.live.session_names().into_iter().collect();
         let name = (1..).map(|n| format!("term-{n}")).find(|n| !taken.contains(n)).expect("a free name");
         let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());

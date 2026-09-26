@@ -26,6 +26,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comments' bubble, the priority, the holder, the critical ticket, the
   sessions' marks and state line, the agent bar's glyphs.
 
+### Fixed
+
+- "+ terminal" no longer fails with `HOST_BUSY` when a terminal of the
+  same name ended on aiball's host: it takes a free name, and closing an
+  ended terminal releases its name.
+
 ## [0.1.0] - 2026-09-26
 
 The first version: everything tvty does as of this day.

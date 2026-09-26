@@ -374,6 +374,12 @@ impl Live {
             .collect()
     }
 
+    /// Every session the host knows without an agent, running or not: the
+    /// names a new one must not take.
+    pub fn session_names(&self) -> Vec<String> {
+        self.sessions.keys().cloned().collect()
+    }
+
     /// How many subscriptions are up.
     pub fn subscriptions(&self) -> usize {
         self.subscriptions.len()
