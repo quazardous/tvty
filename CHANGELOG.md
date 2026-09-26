@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Closing the tab shown goes back to the terminal used before it, in its
+  group or another, rather than to an empty window.
+
 ### Fixed
 
 - A terminal closed from its tab leaves the list at once, not once aiball's

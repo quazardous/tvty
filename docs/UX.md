@@ -63,7 +63,8 @@ project's tickets meanwhile; the loop shows under idle.
   project's folder (in the home directory for "terminals"). **×** (on the
   tab shown and the one under the pointer, or a middle click) closes a tab:
   for an agent or a tmux session, only tvty's view goes — Claude runs on;
-  a shell of aiball's host stops, as a terminal's tab does. The list on the
+  a shell of aiball's host stops, as a terminal's tab does. Closing the
+  tab shown goes back to the terminal used before it, of any group. The list on the
   left keeps every terminal, with its state; a click there opens a tab again.
 - **Slider** (alt-tab, as a portfolio), by group: holding ctrl+tab dims the
   window and brings each group forward as a **stack** of cards, offset down

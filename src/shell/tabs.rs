@@ -36,21 +36,18 @@ impl Shell {
             .collect()
     }
 
-    /// × on a tab: tvty's view goes; the terminal shown moves to the tab
-    /// next to it. An agent's Claude, a tmux session, go on without it; a
+    /// × on a tab: tvty's view goes; the terminal shown goes back to the one
+    /// used before it. An agent's Claude, a tmux session, go on without it; a
     /// shell on aiball's host has no other life, and stops.
     pub(super) fn close_tab(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
-        let tabs: Vec<String> = self.tabs().iter().map(|t| t.session.clone()).collect();
         let shell = self
             .terminal_of(&session)
             .is_some_and(|(_, t)| t.agent.is_none() && t.attach.is_some());
-        let next = (self.selected.as_deref() == Some(session.as_str()))
-            .then(|| {
-                let at = tabs.iter().position(|s| *s == session)?;
-                tabs.get(at + 1).or_else(|| at.checked_sub(1).and_then(|i| tabs.get(i))).cloned()
-            })
-            .flatten();
         self.terminals.remove(&session);
+        // Back to the terminal used before it, still open in tvty — of this
+        // group or another, as the end screen's Close does.
+        self.recent.retain(|s| *s != session);
+        let next = self.recent.iter().find(|s| self.terminals.contains_key(*s)).cloned();
         if shell {
             // Gone from the list now, not once the host has stopped it.
             self.stopping.insert(session.clone());
