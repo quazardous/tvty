@@ -880,7 +880,8 @@ impl Shell {
             if let Some(list) = self.full_list.clone() {
                 list.update(cx, |list, cx| {
                     list.set_scope(None, cx);
-                    list.set_band(Some(crate::rowstate::Band::Unread), cx);
+                    list.set_band(None, cx);
+                    list.set_unread_only(true, cx);
                 });
             }
             return;
@@ -2742,11 +2743,10 @@ fn options_ticket_list() -> impl IntoElement {
             "The ticket list as aiball computes it for you: the band, whose turn and the state glyph are aiball's; the stripe is tvty's.",
         ))
         .child(option_group("Order"));
-    for band in [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open] {
+    for band in [Band::Moderate, Band::Decide, Band::AgentOnIt, Band::Open] {
         let what = match band {
             Band::Moderate => "the ticket, or comments on it, wait for moderation",
             Band::Decide => "a plan, a resolution, a wontfix or an escalation waits for your decision",
-            Band::Unread => "something new on it",
             Band::AgentOnIt => "an agent holds it or is on a step",
             _ => "open, nothing pressing",
         };

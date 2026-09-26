@@ -75,11 +75,12 @@ The band, whose turn it is and the state glyph are computed by aiball for
 the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
 
 - **Bands**: agents on it first — the work under way —, then to moderate,
-  waiting on you (a decision), unread, open. The most recent activity
+  waiting on you (a decision), open. The most recent activity
   first within a band. In the panel each band is a section: a click on its
   title folds it, and each scrolls on its own — a long band never pushes
   the others out of sight.
-- **Weight says unread**, and nothing else does; read titles step back.
+- **Unread is a mark, not a band**: a blue dot, the number in blue and the
+  title in bold; read titles step back. The ticket keeps its band.
 - **One state icon**, always in the same place — Google's Material Symbols,
   as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
   `check_circle` resolution, `block` wontfix, `priority_high` escalation,
@@ -249,7 +250,7 @@ bus (`user.<me>.pings`, over the socket), with the board itself. Each ping
 ticket — is a notification (red for a panic); a click opens its ticket
 (and the agent's terminal, when it has one here), which marks it read in
 aiball, so its web UI agrees. At start, one notification sums up the pings
-waiting unread; a click opens the full list on the Unread band. A ticket
+waiting unread; a click opens the full list filtered to the unread. A ticket
 has one notification at a time, the newest.
 
 Views talk through an internal bus (`src/bus.rs`): one publishes a signal

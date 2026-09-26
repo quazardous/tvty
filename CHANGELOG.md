@@ -179,6 +179,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Unread is no longer a band of the ticket lists: an unread ticket keeps
+  its band (agents on it, open…) and shows its blue mark. The full list
+  has an Unread filter instead.
+
 - The lists' section titles stand out: a band with a line above and below,
   the title in full colour, the count in a pill.
 

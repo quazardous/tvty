@@ -12,8 +12,6 @@ pub enum Band {
     Moderate,
     /// A plan, resolution, wontfix or escalation waits for your decision.
     Decide,
-    /// Something new on it.
-    Unread,
     /// An agent holds it or is on a step.
     AgentOnIt,
     /// Open, nothing pressing.
@@ -29,15 +27,15 @@ impl Band {
             Band::AgentOnIt => 0,
             Band::Moderate => 1,
             Band::Decide => 2,
-            Band::Unread => 3,
-            Band::Open => 4,
-            Band::Closed => 5,
+            Band::Open => 3,
+            Band::Closed => 4,
         }
     }
 
-    /// aiball's band number, 0 to 5, in this order.
+    /// aiball's band number, 0 to 4, in this order. Unread is not a band:
+    /// a row's mark, which the row shows.
     fn from_server(band: u8) -> Option<Band> {
-        [Band::Moderate, Band::Decide, Band::Unread, Band::AgentOnIt, Band::Open, Band::Closed]
+        [Band::Moderate, Band::Decide, Band::AgentOnIt, Band::Open, Band::Closed]
             .get(band as usize)
             .copied()
     }
@@ -46,7 +44,6 @@ impl Band {
         match self {
             Band::Moderate => "To moderate",
             Band::Decide => "Waiting on you",
-            Band::Unread => "Unread",
             Band::AgentOnIt => "Agents on it",
             Band::Open => "Open",
             Band::Closed => "Closed",
@@ -193,7 +190,7 @@ mod tests {
     #[test]
     fn your_turn_without_a_decision() {
         let mut r = row();
-        r.band = Some(4);
+        r.band = Some(3);
         r.turn = Some("you".into());
         r.last_speaker = Some("demo-claude".into());
         assert_eq!(of(&r, "david").stripe, Stripe::Neutral);
@@ -202,7 +199,7 @@ mod tests {
     #[test]
     fn your_word_last_you_wait() {
         let mut r = row();
-        r.band = Some(4);
+        r.band = Some(3);
         r.turn = Some("them".into());
         assert_eq!(of(&r, "david").stripe, Stripe::Waiting);
         // Someone else's word last, not yours to move: no stripe.
@@ -213,7 +210,7 @@ mod tests {
     #[test]
     fn a_rejection_has_its_glyph() {
         let mut r = row();
-        r.band = Some(3);
+        r.band = Some(2);
         r.turn = Some("them".into());
         r.state_glyph = Some("rejected".into());
         let state = of(&r, "david");

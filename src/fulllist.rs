@@ -20,7 +20,7 @@ use crate::theme::p;
 /// Closed tickets read per project when the list shows them too.
 const ALL_LIMIT: usize = 300;
 
-const BANDS: [Band; 6] = [Band::AgentOnIt, Band::Moderate, Band::Decide, Band::Unread, Band::Open, Band::Closed];
+const BANDS: [Band; 5] = [Band::AgentOnIt, Band::Moderate, Band::Decide, Band::Open, Band::Closed];
 
 /// How the list is ordered: one list, not bands — the bands filter.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -74,6 +74,8 @@ pub struct FullList {
     reversed: bool,
     /// Closed tickets too, read on demand.
     with_closed: bool,
+    /// Only what has something new for the user.
+    unread_only: bool,
     all: HashMap<String, Vec<TicketRow>>,
     loading: bool,
     tags: BTreeSet<String>,
@@ -110,6 +112,7 @@ impl FullList {
             sort: Sort::Activity,
             reversed: false,
             with_closed: false,
+            unread_only: false,
             all: HashMap::new(),
             loading: false,
             tags: BTreeSet::new(),
@@ -144,6 +147,12 @@ impl FullList {
             Some(project) => vec![project.clone()],
             None => self.projects.clone(),
         }
+    }
+
+    /// Shows only what has something new for the user (or everything).
+    pub fn set_unread_only(&mut self, unread_only: bool, cx: &mut Context<Self>) {
+        self.unread_only = unread_only;
+        cx.notify();
     }
 
     /// Shows only this band (`None`: all).
@@ -321,6 +330,9 @@ impl FullList {
                     })))
                     .child(self.toggle("with-closed", "All", self.with_closed, cx.listener(|list, _, _, cx| {
                         list.set_with_closed(true, cx)
+                    })))
+                    .child(self.toggle("unread-only", "Unread", self.unread_only, cx.listener(|list, _, _, cx| {
+                        list.set_unread_only(!list.unread_only, cx)
                     })))
                     .when(self.loading, |d| d.child(div().text_xs().text_color(p().muted).child("reading…"))),
             )
@@ -555,7 +567,7 @@ impl Render for FullList {
 
         let shown: Vec<&(RowState, &TicketRow)> = rows
             .iter()
-            .filter(|(s, t)| self.band.is_none_or(|b| s.band == b) && self.matches(t, &query))
+            .filter(|(s, t)| self.band.is_none_or(|b| s.band == b) && (!self.unread_only || t.unread) && self.matches(t, &query))
             .collect();
         let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
         for (state, ticket) in &shown {
