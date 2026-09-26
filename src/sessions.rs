@@ -20,6 +20,9 @@ pub struct Terminal {
     pub agent: Option<String>,
     /// Its Claude's state, as aiball has it.
     pub status: Option<Status>,
+    /// The attach socket of a session a host holds: opened over it, not
+    /// through tmux.
+    pub attach: Option<String>,
 }
 
 /// A loop's Claude, as aiball centralises it.
@@ -62,6 +65,10 @@ pub struct Board {
 
 const LOOP_PREFIX: &str = "cl-";
 const OTHER_GROUP: &str = "tmux";
+/// The group of the terminals the daemon's host holds (no agent).
+const HOSTED_GROUP: &str = "terminals";
+/// What names a hosted terminal's session, apart from tmux's.
+pub const HOSTED_PREFIX: &str = "host:";
 
 /// The board, from what aiball pushed (`live`) and the tmux sessions of this
 /// machine. Cheap: nothing is read from aiball.
@@ -82,6 +89,22 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
         }
     }
     board.projects = projects;
+    // The daemon's own terminals, before tmux's.
+    let hosted: Vec<Terminal> = live
+        .terminals()
+        .into_iter()
+        .map(|(name, attach)| Terminal {
+            session: format!("{HOSTED_PREFIX}{name}"),
+            label: name,
+            agent: None,
+            status: None,
+            attach,
+        })
+        .collect();
+    if !hosted.is_empty() {
+        let at = board.projects.iter().position(|p| p.name == OTHER_GROUP).unwrap_or(board.projects.len());
+        board.projects.insert(at, Project { name: HOSTED_GROUP.into(), on_board: false, terminals: hosted });
+    }
     board
 }
 
@@ -118,6 +141,7 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
         entry.1.push(Terminal {
             session,
             label,
+            attach: None,
             agent: agent.map(|c| c.consumer_id.clone()),
             status: agent.and_then(|c| {
                 Some(Status {

@@ -3,6 +3,7 @@
 
 mod accordion;
 mod activity;
+mod attach;
 mod aiball;
 mod bus;
 mod daemon;

@@ -63,9 +63,19 @@ pub struct Ended;
 
 impl EventEmitter<Ended> for TerminalView {}
 
+/// Where the terminal's bytes come from and its keys go.
+enum Backend {
+    /// A program in a PTY of tvty's own (today, a tmux client).
+    Pty(Notifier),
+    /// A session a host holds, attached to over its socket.
+    Attach(Arc<crate::attach::Attach>),
+    /// A session that could not be reached: the view shows its end.
+    Closed,
+}
+
 pub struct TerminalView {
     term: Arc<FairMutex<Term<Listener>>>,
-    notifier: Notifier,
+    backend: Backend,
     focus: FocusHandle,
     /// Grid size last sent to the PTY: (columns, lines).
     grid_size: (u16, u16),
@@ -90,7 +100,14 @@ impl Drop for TerminalView {
     /// Stops the PTY's event loop, so the child (a tmux client) goes with the
     /// view — a card's watcher must not stay attached once the slider closes.
     fn drop(&mut self) {
-        let _ = self.notifier.0.send(Msg::Shutdown);
+        match &self.backend {
+            Backend::Pty(notifier) => {
+                let _ = notifier.0.send(Msg::Shutdown);
+            }
+            // The session goes on: only this client leaves.
+            Backend::Attach(attach) => attach.close(),
+            Backend::Closed => {}
+        }
     }
 }
 
@@ -112,6 +129,30 @@ impl TerminalView {
         Ok(view)
     }
 
+    /// Attaches to a session a host holds (aiball's session host, or a
+    /// loop's proxy), over its attach socket: no tmux.
+    /// A session that cannot be reached ends at once (the end screen).
+    pub fn attach(socket: &std::path::Path, cx: &mut Context<Self>) -> Self {
+        let (tx, rx) = unbounded();
+        let listener = Listener(tx);
+        let (columns, lines) = (80u16, 24u16);
+        let term = Term::new(Config::default(), &TermSize::new(columns as usize, lines as usize), listener.clone());
+        let term = Arc::new(FairMutex::new(term));
+        let backend = match crate::attach::Attach::connect(socket, (columns, lines), term.clone(), listener.clone()) {
+            Ok(attach) => {
+                // Opened to be shown: this client's size is the one to use.
+                attach.focus();
+                Backend::Attach(attach)
+            }
+            Err(error) => {
+                log::warn!("attach {}: {error:#}", socket.display());
+                listener.send_event(Event::Exit);
+                Backend::Closed
+            }
+        };
+        Self::with(term, backend, rx, cx)
+    }
+
     /// Its screen, live, to draw elsewhere (a card).
     pub fn screen(&self) -> Snapshot {
         Snapshot { term: self.term.clone() }
@@ -119,7 +160,7 @@ impl TerminalView {
 
     /// Spawns `program args` in a new PTY.
     pub fn new(program: &str, args: &[&str], cx: &mut Context<Self>) -> anyhow::Result<Self> {
-        let (tx, mut rx) = unbounded();
+        let (tx, rx) = unbounded();
         let listener = Listener(tx);
         let (columns, lines) = (80u16, 24u16);
         let term = Term::new(
@@ -151,7 +192,20 @@ impl TerminalView {
         let event_loop = EventLoop::new(term.clone(), listener, pty, false, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
+        Ok(Self::with(term, Backend::Pty(notifier), rx, cx))
+    }
 
+    fn with(
+        term: Arc<FairMutex<Term<Listener>>>,
+        backend: Backend,
+        mut rx: futures::channel::mpsc::UnboundedReceiver<Event>,
+        cx: &mut Context<Self>,
+    ) -> Self {
+        // One lock: the same mutex taken twice in one statement deadlocks.
+        let (columns, lines) = {
+            let term = term.lock();
+            (term.columns() as u16, term.screen_lines() as u16)
+        };
         // Drain the emulator's events on the UI thread. A burst of output sends
         // many Wakeups; they collapse into one repaint per frame.
         cx.spawn(async move |this, cx| {
@@ -164,9 +218,9 @@ impl TerminalView {
         })
         .detach();
 
-        Ok(Self {
+        Self {
             term,
-            notifier,
+            backend,
             focus: cx.focus_handle(),
             grid_size: (columns, lines),
             pending_size: None,
@@ -177,7 +231,7 @@ impl TerminalView {
             scroll_remainder: 0.,
             tmux_scroll: None,
             selecting: false,
-        })
+        }
     }
 
     pub fn focus_handle(&self) -> &FocusHandle {
@@ -211,7 +265,11 @@ impl TerminalView {
     }
 
     fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
-        self.notifier.notify(bytes);
+        match &self.backend {
+            Backend::Pty(notifier) => notifier.notify(bytes),
+            Backend::Attach(attach) => attach.input(&bytes.into()),
+            Backend::Closed => {}
+        }
     }
 
     fn window_size(&self) -> WindowSize {
@@ -262,12 +320,17 @@ impl TerminalView {
         self.term
             .lock()
             .resize(TermSize::new(columns as usize, lines as usize));
-        self.notifier.on_resize(WindowSize {
-            num_cols: columns,
-            num_lines: lines,
-            cell_width: f32::from(cell.width) as u16,
-            cell_height: f32::from(cell.height) as u16,
-        });
+        match &mut self.backend {
+            Backend::Pty(notifier) => notifier.on_resize(WindowSize {
+                num_cols: columns,
+                num_lines: lines,
+                cell_width: f32::from(cell.width) as u16,
+                cell_height: f32::from(cell.height) as u16,
+            }),
+            // The session's size follows once this client owns it (`size`).
+            Backend::Attach(attach) => attach.resize(columns, lines),
+            Backend::Closed => {}
+        }
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {

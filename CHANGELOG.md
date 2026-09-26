@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The terminals aiball's daemon holds (sessions without an agent) are
+  listed under "terminals" and opened without tmux, over aiball's attach
+  protocol; they outlive tvty.
+
 - Colour emoji in the terminals, drawn from a colour emoji font in
   `~/.local/share/tvty/fonts/` (`make emoji-font` fetches Noto Color
   Emoji); fonts put there are loaded at start.

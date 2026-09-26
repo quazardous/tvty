@@ -88,7 +88,9 @@ impl Shell {
     }
 
     pub(super) fn ended_view(&self, ended: &EndedSession, cx: &mut Context<Self>) -> AnyElement {
-        let who = ended.agent.clone().unwrap_or_else(|| ended.session.clone());
+        // A hosted terminal is named without the key that sets it apart from tmux's.
+        let name = ended.session.strip_prefix(crate::sessions::HOSTED_PREFIX).unwrap_or(&ended.session).to_string();
+        let who = ended.agent.clone().unwrap_or_else(|| name.clone());
         let starting = self.starting.is_some();
         let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
             div()
@@ -130,7 +132,7 @@ impl Shell {
                         (Some(project), Some(start)) => format!("{project} · {}", home_short(&start.cwd)),
                         (Some(project), None) => project.clone(),
                         (None, Some(start)) => home_short(&start.cwd),
-                        (None, None) => ended.session.clone(),
+                        (None, None) => name.clone(),
                     }),
             )
             .child(

@@ -21,6 +21,8 @@ enum Kind {
     State,
     Bar,
     Pings,
+    /// The sessions the daemon's host holds (terminals without an agent too).
+    Sessions,
 }
 
 impl Kind {
@@ -30,6 +32,7 @@ impl Kind {
             Kind::State => "agent.*.state".into(),
             Kind::Bar => "agent.*.bar".into(),
             Kind::Pings => format!("user.{user}.pings"),
+            Kind::Sessions => "session.*.state".into(),
         }
     }
 }
@@ -72,6 +75,8 @@ pub struct Live {
     tickets: BTreeMap<String, Vec<TicketRow>>,
     /// The daemon's epoch and the last event's seq: what `since` resumes.
     since: Option<(Value, u64)>,
+    /// The host's sessions, by name, as `session.*.state` has them.
+    sessions: BTreeMap<String, Value>,
     /// Subscriptions by id.
     subscriptions: HashMap<String, Kind>,
     /// Events whose subscription's answer is not in yet.
@@ -101,7 +106,7 @@ impl Live {
             self.tickets_seen = false;
             self.since = None;
         }
-        let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar];
+        let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar, Kind::Sessions];
         if !user.is_empty() {
             kinds.push(Kind::Pings);
         }
@@ -220,6 +225,10 @@ impl Live {
                 let unread = value.get("unread").and_then(Value::as_u64).unwrap_or(0) as u32;
                 vec![Update::Unread(unread)]
             }
+            Kind::Sessions => {
+                self.sessions = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
+                Vec::new()
+            }
         }
     }
 
@@ -294,6 +303,17 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Pings => self.ping(data).map(Update::Ping).into_iter().collect(),
+            // A session's whole state, or `null` once it is gone.
+            Kind::Sessions => {
+                let name = middle(subject).or_else(|| data.get("name").and_then(Value::as_str).map(str::to_string));
+                let Some(name) = name else { return Vec::new() };
+                if data.is_null() {
+                    self.sessions.remove(&name);
+                } else {
+                    self.sessions.insert(name, data.clone());
+                }
+                vec![Update::Board]
+            }
         }
     }
 
@@ -337,6 +357,16 @@ impl Live {
     /// aiball has, not what has not arrived yet.
     pub fn ready(&self) -> bool {
         self.tickets_seen && self.agents_seen
+    }
+
+    /// The host's running sessions without an agent: (name, attach socket).
+    pub fn terminals(&self) -> Vec<(String, Option<String>)> {
+        self.sessions
+            .iter()
+            .filter(|(_, s)| s.get("agent").is_none_or(Value::is_null))
+            .filter(|(_, s)| s.get("running").and_then(Value::as_bool) != Some(false))
+            .map(|(name, s)| (name.clone(), s.pointer("/attach/socket").and_then(Value::as_str).map(str::to_string)))
+            .collect()
     }
 
     /// How many subscriptions are up.
@@ -406,6 +436,7 @@ mod tests {
             Ok(json!({ "id": "t", "epoch": "e1", "seq": 10, "replayed": false, "value": { "demo": [row(1, "approved")] } })),
             Ok(json!({ "id": "s", "epoch": "e1", "seq": 10, "replayed": false, "value": { "demo-crew": { "consumer_id": "demo-crew", "kind": "agent" } } })),
             Ok(json!({ "id": "b", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "h", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
             Ok(json!({ "id": "p", "epoch": "e1", "seq": 10, "replayed": false, "value": { "unread": 3 } })),
         ];
         let updates = live.subscribed(plan, answers);
@@ -463,10 +494,31 @@ mod tests {
         let mut theirs = answers(11);
         theirs[0] = Ok(json!({ "id": "t", "epoch": "e1", "seq": 11, "replayed": false,
                                "value": { "demo": [row(1, "approved"), row(2, "approved")] } }));
+        theirs.push(Ok(json!({ "id": "h", "epoch": "e1", "seq": 11, "replayed": false, "value": {} })));
         theirs.push(Ok(json!({ "id": "p", "epoch": "e1", "seq": 11, "replayed": false, "value": { "unread": 0 } })));
         let updates = live.subscribed(plan, theirs);
         assert!(live.ready());
         assert!(!updates.iter().any(|u| matches!(u, Update::Filed(_))));
+    }
+
+    #[test]
+    fn the_hosts_terminals_are_its_sessions_without_an_agent() {
+        let mut live = Live::default();
+        let plan = live.plan("");
+        let answers = vec![
+            Ok(json!({ "id": "t", "epoch": "e1", "seq": 1, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "s", "epoch": "e1", "seq": 1, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "b", "epoch": "e1", "seq": 1, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "h", "epoch": "e1", "seq": 1, "replayed": false, "value": {
+                "plain": { "name": "plain", "agent": null, "running": true, "attach": { "socket": "/s/plain" } },
+                "crew": { "name": "crew", "agent": "demo-crew", "running": true, "attach": { "socket": "/s/crew" } },
+            } })),
+        ];
+        live.subscribed(plan, answers);
+        assert_eq!(live.terminals(), vec![("plain".to_string(), Some("/s/plain".to_string()))]);
+        // Gone: `null`.
+        live.event(&json!({ "subscription": "h", "subject": "session.plain.state", "seq": 2, "data": null }));
+        assert!(live.terminals().is_empty());
     }
 
     #[test]

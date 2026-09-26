@@ -946,7 +946,13 @@ impl Shell {
         let terminal = match self.terminals.get(&session) {
             Some(terminal) => terminal.clone(),
             None => {
-                let terminal = cx.new(|cx| TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"));
+                // A session a host holds is attached to over its socket; the
+                // others through tmux.
+                let socket = self.terminal_of(&session).and_then(|(_, t)| t.attach.clone());
+                let terminal = cx.new(|cx| match &socket {
+                    Some(socket) => TerminalView::attach(std::path::Path::new(socket), cx),
+                    None => TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"),
+                });
                 self.watch_end(session.clone(), &terminal, window, cx);
                 self.terminals.insert(session.clone(), terminal.clone());
                 terminal
