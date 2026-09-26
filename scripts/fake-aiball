@@ -13,6 +13,10 @@
 # running fake-claude in dev/fake-aiball/demo/{lead,crew}.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The demo loops run on the test tmux server (scripts/test-env); the
+# daemon keeps its own socket and config below.
+TMUX_TMPDIR="$ROOT/dev/tmux"; export TMUX_TMPDIR; unset TMUX
+mkdir -p "$TMUX_TMPDIR"
 AIBALL="$(dirname "$ROOT")/aiball"
 DIR="$ROOT/dev/fake-aiball"
 HOME_DIR="$DIR/home"

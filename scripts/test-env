@@ -1,0 +1,18 @@
+# Sourced by everything that tests tvty: a test tvty lives apart from the
+# user's own. It has
+# - its own tmux server (TMUX_TMPDIR): the test sessions are not listed in
+#   the user's tvty, and a test tvty cannot see — let alone attach — a real
+#   agent's loop;
+# - its own settings (XDG_CONFIG_HOME): the user's state.json is never read
+#   nor written;
+# - the throwaway aiball (AIBALL_SOCK): never the user's board.
+# TVTY_ROOT is the repository; set it before sourcing, or it is found here.
+: "${TVTY_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+export TMUX_TMPDIR="$TVTY_ROOT/dev/tmux"
+export XDG_CONFIG_HOME="$TVTY_ROOT/dev/tvty-wbox/config"
+export AIBALL_SOCK="$TVTY_ROOT/dev/fake-aiball/home/sock"
+export AIBALL_URL="http://127.0.0.1:7797"
+unset TMUX
+mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty"
+# The projects' list starts folded: nothing to click by accident.
+[ -f "$XDG_CONFIG_HOME/tvty/state.json" ] || echo '{"sidebar_open": false}' >"$XDG_CONFIG_HOME/tvty/state.json"

@@ -49,11 +49,14 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   from a script and records `.cast` — use it to stress rendering and measure.
 - `make fake-up` / `sim-up` / `flood-up` / `fake-down` wrap them
   (`scripts/fake-loop`, tmux sessions `tvty-fake`, `tvty-sim`, `tvty-flood`).
-  tvty lists them under "tmux". **Never click a real agent's loop in wbox**:
-  attaching resizes it for every client, david's included.
+  tvty lists them under "tmux".
 - **fake aiball** (`make aiball-up`): a throwaway daemon with a `demo`
   project, for the ticket panel. Its gestures act as david: never try them
   on the real board.
+- **A test tvty lives apart** (`scripts/test-env`, `scripts/test-tvty`,
+  wbox's command): its own tmux server (`dev/tmux`), its own settings, the
+  fake aiball. Nothing of it shows in david's tvty, and it cannot see his
+  loops. To show david something, post a screenshot on the ticket.
 
 ## Conventions
 

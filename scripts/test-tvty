@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# test-tvty — runs tvty apart from the user's own (see scripts/test-env):
+# the test tmux server, the test settings, the throwaway aiball (started if
+# it is not up). Arguments go to tvty (a session to open).
+set -euo pipefail
+TVTY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+. "$TVTY_ROOT/scripts/test-env"
+"$TVTY_ROOT/scripts/fake-aiball" up >/dev/null
+export TVTY_STATS="${TVTY_STATS-$TVTY_ROOT/dev/tvty-wbox/log/tvty-stats.log}"
+exec "$TVTY_ROOT/target/debug/tvty" "$@"

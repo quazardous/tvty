@@ -14,8 +14,10 @@ timeouts:
   app_render: 3
   stop: 10
 app:
-  # From the repo root, wherever wbox runs from; TVTY_STATS: see docs/TESTING.md.
-  command: sh -c 'r=$(git rev-parse --show-toplevel) && TVTY_STATS=$r/dev/tvty-wbox/log/tvty-stats.log exec $r/target/debug/tvty'
+  # From the repo root, wherever wbox runs from. scripts/test-tvty keeps the
+  # test tvty apart from the user's: its own tmux server, settings and
+  # aiball (see scripts/test-env); TVTY_STATS: see docs/TESTING.md.
+  command: sh -c 'r=$(git rev-parse --show-toplevel) && exec $r/scripts/test-tvty'
   env: {}
 tools:
   build:

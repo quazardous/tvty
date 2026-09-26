@@ -32,8 +32,28 @@ claude-loops on purpose: a loop registered for this directory
 would clash with the agent's own. For the whole chain, start one elsewhere
 with `claude-loop start --command "$(realpath ../aiball/bin/fake-claude)"`.
 
-**Never click a real agent's loop inside wbox**: attaching resizes its tmux
-window to tvty's for every client, the user's own included.
+## A test tvty lives apart
+
+Everything that tests tvty goes through `scripts/test-env`, so that a test
+never shows in — nor touches — the user's own tvty:
+
+- **its own tmux server** (`TMUX_TMPDIR=dev/tmux`): the fake sessions and
+  the demo loops run there, so the user's tvty does not list them, and a
+  test tvty cannot even see a real agent's loop — let alone attach it,
+  which would resize it for every client, the user's own included;
+- **its own settings** (`XDG_CONFIG_HOME=dev/tvty-wbox/config`, the
+  projects' list folded to start with): the user's `state.json` is never
+  read nor written;
+- **the throwaway aiball** below (`AIBALL_SOCK`, `AIBALL_URL`), never the
+  user's board.
+
+`scripts/test-tvty [SESSION]` runs tvty so (starting the throwaway aiball
+if it is not up); it is wbox's command. To look at the test tmux server
+from a shell: `TMUX_TMPDIR=dev/tmux tmux ls` (with `TMUX` unset, which
+wins otherwise).
+
+To show the user something, post a wbox screenshot on the ticket: never a
+test session on their tmux server.
 
 ## A board to click on
 
@@ -46,14 +66,12 @@ the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
 a pending plan, a pending resolution, a queue and a closed one.
 `make aiball-down` drops it all.
 
-Point tvty at it with `AIBALL_SOCK` (the API) and `AIBALL_URL` (its live
-feed, served on the TCP port only); `scripts/fake-aiball env` prints both.
-Give it its own `XDG_CONFIG_HOME` too, so a test run does not rewrite your
-remembered panel width:
+The test tvty points at it already (`AIBALL_SOCK` for the API, `AIBALL_URL`
+for its live feed, served on the TCP port only). To open a session at
+start:
 
 ```bash
-scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml \
-  -s "app.command=env $(scripts/fake-aiball env) XDG_CONFIG_HOME=/tmp/tvty-test $PWD/target/debug/tvty cl-demo-lead"
+scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/test-tvty cl-demo-lead"
 ```
 
 ## Gestures wbox has no tool for
@@ -82,7 +100,7 @@ With `TVTY_STATS=<file>` (set in the wbox config, to
   so measure on a sustained stream (`tvty-flood`).
 
 To start tvty on one session, without clicking:
-`scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/target/release/tvty tvty-flood"`.
+`scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/test-tvty tvty-flood"`.
 
 First numbers (24/09, labwc headless, Radeon 680M):
 
