@@ -41,11 +41,12 @@ impl Hello {
     }
 }
 
-/// A call on its way: its frame, and where its answer goes.
-struct Outgoing {
-    frame: String,
-    id: u64,
-    answer: Sender<anyhow::Result<Value>>,
+/// What goes to the connection's thread.
+enum Outgoing {
+    /// A call: its frame, and where its answer goes.
+    Call { frame: String, id: u64, answer: Sender<anyhow::Result<Value>> },
+    /// Connect again, as the user now set.
+    Reconnect,
 }
 
 /// The bus, as the rest of tvty holds it: cheap to clone.
@@ -54,6 +55,8 @@ pub struct Wire {
     outgoing: Sender<Outgoing>,
     next_id: Arc<Mutex<u64>>,
     hello: Arc<Mutex<Option<Hello>>>,
+    /// Who the connection runs as (the local socket trusts the header).
+    user: Arc<Mutex<String>>,
 }
 
 impl Wire {
@@ -62,12 +65,24 @@ impl Wire {
     pub fn start(user: String, notices: UnboundedSender<Notification>) -> Self {
         let (outgoing, queue) = mpsc::channel::<Outgoing>();
         let hello = Arc::new(Mutex::new(None));
-        let wire = Self { outgoing, next_id: Arc::new(Mutex::new(1)), hello: hello.clone() };
+        let user = Arc::new(Mutex::new(user));
+        let wire = Self { outgoing, next_id: Arc::new(Mutex::new(1)), hello: hello.clone(), user: user.clone() };
         std::thread::Builder::new()
             .name("aiball-bus".into())
             .spawn(move || run(user, queue, notices, hello))
             .expect("failed to start the bus thread");
         wire
+    }
+
+    /// Runs as `user` from now on: connects again when it changed. The
+    /// connection opens before tvty knows who the user is (it reads the
+    /// consumers to find out), then runs as them — writes need it.
+    pub fn set_user(&self, user: &str) {
+        let Ok(mut current) = self.user.lock() else { return };
+        if *current != user {
+            *current = user.to_string();
+            let _ = self.outgoing.send(Outgoing::Reconnect);
+        }
     }
 
     /// Who the connection runs as, once the daemon greeted it.
@@ -84,7 +99,7 @@ impl Wire {
         };
         let frame = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         let (answer, answered) = mpsc::channel();
-        self.outgoing.send(Outgoing { frame, id, answer }).map_err(|_| anyhow!("the bus is gone"))?;
+        self.outgoing.send(Outgoing::Call { frame, id, answer }).map_err(|_| anyhow!("the bus is gone"))?;
         match answered.recv_timeout(CALL_TIMEOUT) {
             Ok(result) => result,
             Err(RecvTimeoutError::Timeout) => Err(anyhow!("{method}: no answer from aiball's bus")),
@@ -94,25 +109,34 @@ impl Wire {
 }
 
 /// The connection's thread: connect, serve, reconnect, until tvty is gone.
-fn run(user: String, queue: Receiver<Outgoing>, notices: UnboundedSender<Notification>, hello: Arc<Mutex<Option<Hello>>>) {
+fn run(user: Arc<Mutex<String>>, queue: Receiver<Outgoing>, notices: UnboundedSender<Notification>, hello: Arc<Mutex<Option<Hello>>>) {
     loop {
-        match connect(&user) {
+        let as_user = user.lock().map(|u| u.clone()).unwrap_or_default();
+        let asked_again = match connect(&as_user) {
             Ok(socket) => serve(socket, &queue, &notices, &hello),
-            Err(error) => log::debug!("aiball bus: {error:#}"),
-        }
+            Err(error) => {
+                log::debug!("aiball bus: {error:#}");
+                false
+            }
+        };
         if let Ok(mut h) = hello.lock() {
             *h = None;
         }
         if notices.is_closed() {
             return;
         }
+        // A new user: connect again at once.
+        if asked_again {
+            continue;
+        }
         // While down, calls fail at once rather than wait.
         let until = std::time::Instant::now() + Duration::from_secs(5);
         while let Some(left) = until.checked_duration_since(std::time::Instant::now()) {
             match queue.recv_timeout(left) {
-                Ok(call) => {
-                    let _ = call.answer.send(Err(anyhow!("aiball's bus is not connected")));
+                Ok(Outgoing::Call { answer, .. }) => {
+                    let _ = answer.send(Err(anyhow!("aiball's bus is not connected")));
                 }
+                Ok(Outgoing::Reconnect) => break,
                 Err(RecvTimeoutError::Timeout) => break,
                 Err(RecvTimeoutError::Disconnected) => return,
             }
@@ -134,17 +158,28 @@ fn connect(user: &str) -> anyhow::Result<Socket> {
     Ok(socket)
 }
 
-/// Sends the calls queued and reads what comes, until the connection drops.
-fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSender<Notification>, hello: &Mutex<Option<Hello>>) {
+/// Sends the calls queued and reads what comes, until the connection drops
+/// (`false`) or another user is asked for (`true`).
+fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSender<Notification>, hello: &Mutex<Option<Hello>>) -> bool {
     log::info!("aiball bus: connected");
     let mut waiting: HashMap<u64, Sender<anyhow::Result<Value>>> = HashMap::new();
+    let mut asked_again = false;
     'connected: loop {
-        while let Ok(call) = queue.try_recv() {
-            if let Err(error) = socket.send(tungstenite::Message::text(call.frame)) {
-                let _ = call.answer.send(Err(anyhow!("aiball's bus: {error}")));
-                break 'connected;
+        while let Ok(outgoing) = queue.try_recv() {
+            match outgoing {
+                Outgoing::Call { frame, id, answer } => {
+                    if let Err(error) = socket.send(tungstenite::Message::text(frame)) {
+                        let _ = answer.send(Err(anyhow!("aiball's bus: {error}")));
+                        break 'connected;
+                    }
+                    waiting.insert(id, answer);
+                }
+                Outgoing::Reconnect => {
+                    asked_again = true;
+                    let _ = socket.close(None);
+                    break 'connected;
+                }
             }
-            waiting.insert(call.id, call.answer);
         }
         match socket.read() {
             Ok(tungstenite::Message::Text(text)) => {
@@ -183,6 +218,7 @@ fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSend
     for (_, answer) in waiting {
         let _ = answer.send(Err(anyhow!("aiball's bus dropped before answering")));
     }
+    asked_again
 }
 
 /// What a frame from the daemon holds.

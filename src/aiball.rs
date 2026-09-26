@@ -490,7 +490,29 @@ impl Comment {
     }
 }
 
+/// aiball's bus, shared by every copy of [`Aiball`]: the calls aiball has
+/// made methods go through it.
+static WIRE: std::sync::OnceLock<crate::wire::Wire> = std::sync::OnceLock::new();
+
+/// Opens aiball's bus, once, as `user` for now; its notifications go to
+/// `notices`.
+pub fn start_wire(user: &str, notices: futures::channel::mpsc::UnboundedSender<crate::wire::Notification>) -> crate::wire::Wire {
+    WIRE.get_or_init(|| crate::wire::Wire::start(user.to_string(), notices)).clone()
+}
+
 impl Aiball {
+    /// A method of aiball's bus: its answer, read as `T`.
+    fn rpc<T: DeserializeOwned>(&self, method: &str, params: Value) -> anyhow::Result<T> {
+        let wire = WIRE.get().context("aiball's bus is not open")?;
+        let answer = wire.call(method, params)?;
+        serde_json::from_value(answer).with_context(|| format!("{method}: an answer tvty does not read"))
+    }
+
+    /// A method of aiball's bus whose answer does not matter.
+    fn rpc_do(&self, method: &str, params: Value) -> anyhow::Result<()> {
+        self.rpc::<Value>(method, params).map(drop)
+    }
+
     /// [`socket_path`]; acting as `$TVTY_USER`,
     /// else as the local owner until [`Aiball::find_user`] knows better.
     pub fn from_env() -> Self {
@@ -512,10 +534,14 @@ impl Aiball {
         {
             self.user = human.consumer_id.clone();
         }
+        // The bus runs as the user too: the author of a write is the caller.
+        if let Some(wire) = WIRE.get() {
+            wire.set_user(&self.user);
+        }
     }
 
     pub fn consumers(&self) -> anyhow::Result<Vec<Consumer>> {
-        self.get("/api/consumers")
+        self.rpc("consumer.list", json!({}))
     }
 
     /// The open tickets of a project, as the web UI's list rows.
@@ -537,8 +563,7 @@ impl Aiball {
     }
 
     pub fn mark_read(&self, ticket: u64) -> anyhow::Result<()> {
-        self.post(&format!("/api/tickets/{ticket}/mark-read"), json!({}))
-            .map(drop)
+        self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
     /// Posts a comment; `quiet`: without notifying anyone (scope
@@ -576,45 +601,40 @@ impl Aiball {
     /// An agent's loop bar; `None` when its loop never pushed one (a loop
     /// started before aiball served bars, or no loop at all).
     pub fn agent_bar(&self, agent: &str) -> anyhow::Result<Option<BarRead>> {
-        match self.request("GET", &format!("/api/consumers/{}/bar", encode(agent)), None) {
-            Ok(body) => Ok(Some(serde_json::from_str(&body).context("the agent's bar")?)),
-            Err(error) if format!("{error}").contains(": 404") => Ok(None),
+        match self.rpc("consumer.bar", json!({ "consumer_id": agent })) {
+            Ok(bar) => Ok(Some(bar)),
+            Err(error) if format!("{error:#}").contains("(NOT_FOUND)") => Ok(None),
             Err(error) => Err(error),
         }
     }
 
     /// A message: a ticket or a comment.
     pub fn message(&self, id: u64) -> anyhow::Result<Message> {
-        self.get(&format!("/api/messages/{id}"))
+        self.rpc("message.get", json!({ "id": id }))
     }
 
     /// An agent's own backlog, in `project`.
     pub fn agent_backlog(&self, agent: &str, project: &str) -> anyhow::Result<AgentBacklog> {
-        self.get(&format!("/api/consumers/{}/backlog?project={}", encode(agent), encode(project)))
+        self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project }))
     }
 
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/agents/{}/afk", encode(agent)), json!({ "action": action })).map(drop)
+        self.rpc_do("consumer.afk", json!({ "name": agent, "action": action }))
     }
 
     /// Marks a question (`- [ ]` in a comment) answered by a comment.
     pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
-        self.post(
-            &format!("/api/messages/{message}/questions/{}/answer", encode(question)),
-            json!({ "answered_in": answered_in }),
-        )
-        .map(drop)
+        self.rpc_do("message.answer_question", json!({ "id": message, "qid": question, "answered_in": answered_in }))
     }
 
     /// Snoozes a ticket until `until` (ISO 8601), or wakes it (`None`).
     pub fn snooze(&self, ticket: u64, until: Option<&str>) -> anyhow::Result<()> {
         match until {
-            Some(until) => self.post(&format!("/api/tickets/{ticket}/postpone"), json!({ "until": until })),
-            None => self.post(&format!("/api/tickets/{ticket}/unsnooze"), json!({})),
+            Some(until) => self.rpc_do("ticket.postpone", json!({ "id": ticket, "until": until })),
+            None => self.rpc_do("ticket.unsnooze", json!({ "id": ticket })),
         }
-        .map(drop)
     }
 
     pub fn set_priority(&self, ticket: u64, priority: &str) -> anyhow::Result<()> {
@@ -629,24 +649,22 @@ impl Aiball {
     }
 
     pub fn add_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{ticket}/tags"), json!({ "tag": tag }))
-            .map(drop)
+        self.rpc_do("message.add_tag", json!({ "id": ticket, "tag": tag }))
     }
 
     pub fn remove_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
-        self.request("DELETE", &format!("/api/messages/{ticket}/tags/{}", encode(tag)), None)
-            .map(drop)
+        self.rpc_do("message.remove_tag", json!({ "id": ticket, "tag": tag }))
     }
 
     /// The tags a project's tickets can carry.
     pub fn tag_catalog(&self, project: &str) -> anyhow::Result<Vec<String>> {
-        let tags: Vec<Tag> = self.get(&format!("/api/tags?project={}", encode(project)))?;
+        let tags: Vec<Tag> = self.rpc("tag.list", json!({ "project": project }))?;
         Ok(tags.into_iter().map(|t| t.name).collect())
     }
 
     /// A project's milestones not yet released: (id, title).
     pub fn milestones(&self, project: &str) -> anyhow::Result<Vec<(u64, String)>> {
-        let answer: Value = self.get(&format!("/api/projects/{}/milestones", encode(project)))?;
+        let answer: Value = self.rpc("project.milestones", json!({ "project": project }))?;
         Ok(answer
             .get("milestones")
             .and_then(Value::as_array)
@@ -662,22 +680,20 @@ impl Aiball {
     }
 
     pub fn set_milestone(&self, ticket: u64, milestone: Option<u64>) -> anyhow::Result<()> {
-        self.post(&format!("/api/tickets/{ticket}/milestone"), json!({ "milestone_id": milestone }))
-            .map(drop)
+        self.rpc_do("ticket.set_milestone", json!({ "id": ticket, "milestone_id": milestone }))
     }
 
     /// Assigns the ticket to `who`, or releases it (`None`).
     pub fn assign(&self, ticket: u64, who: Option<&str>) -> anyhow::Result<()> {
         match who {
-            Some(who) => self.post(&format!("/api/tickets/{ticket}/assign"), json!({ "assignee": who })),
-            None => self.post(&format!("/api/tickets/{ticket}/release"), json!({})),
+            Some(who) => self.post(&format!("/api/tickets/{ticket}/assign"), json!({ "assignee": who })).map(drop),
+            None => self.rpc_do("ticket.release", json!({ "id": ticket })),
         }
-        .map(drop)
     }
 
     /// Makes `who` the ticket's reporter (its owner).
     pub fn set_owner(&self, ticket: u64, who: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/tickets/{ticket}/owner"), json!({ "owner": who })).map(drop)
+        self.rpc_do("ticket.set_owner", json!({ "id": ticket, "owner": who }))
     }
 
     /// Relates the ticket to `target`; `ignored` removes the relation.
@@ -690,22 +706,22 @@ impl Aiball {
     }
 
     pub fn move_ticket(&self, ticket: u64, project: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/tickets/{ticket}/move"), json!({ "project": project })).map(drop)
+        self.rpc_do("ticket.move", json!({ "id": ticket, "project": project }))
     }
 
     /// Deletes a comment (aiball keeps a tombstone).
     pub fn delete_comment(&self, comment: u64) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{comment}/delete"), json!({})).map(drop)
+        self.rpc_do("message.delete", json!({ "id": comment }))
     }
 
     /// Makes a comment a pending decision of `kind`.
     pub fn classify(&self, comment: u64, kind: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{comment}/promote"), json!({ "kind": kind })).map(drop)
+        self.rpc_do("message.promote", json!({ "id": comment, "kind": kind }))
     }
 
     /// Takes a pending decision off a comment.
     pub fn untag(&self, comment: u64) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{comment}/untag"), json!({})).map(drop)
+        self.rpc_do("message.untag", json!({ "id": comment }))
     }
 
     /// Marks an agent's comment as a step, or unmarks it.
@@ -716,12 +732,12 @@ impl Aiball {
 
     /// Votes on a comment: 1, -1, or 0 to take the vote back.
     pub fn vote(&self, comment: u64, value: i64) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{comment}/vote"), json!({ "value": value })).map(drop)
+        self.rpc_do("message.vote", json!({ "id": comment, "value": value }))
     }
 
     /// Makes a comment unread again for those it notified.
     pub fn resurface(&self, comment: u64) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{comment}/resurface"), json!({})).map(drop)
+        self.rpc_do("message.resurface", json!({ "id": comment }))
     }
 
     /// Who can be @mentioned: projects, then agents.
@@ -737,7 +753,7 @@ impl Aiball {
             projects: Vec<String>,
             agents: Vec<String>,
         }
-        let s: Suggestions = self.get("/api/mention-suggestions")?;
+        let s: Suggestions = self.rpc("mention.suggestions", json!({}))?;
         Ok((s.projects, s.agents))
     }
 

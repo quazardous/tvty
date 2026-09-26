@@ -317,6 +317,9 @@ impl Alerts {
 impl Shell {
     pub fn new(selected: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let aiball = Aiball::from_env();
+        // aiball's bus first: the first read of the board goes through it.
+        let (notices, wire_notices) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
+        let wire = crate::aiball::start_wire(&aiball.user, notices);
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
         // What the views say to whom it may concern.
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
@@ -421,6 +424,8 @@ impl Shell {
             focus: cx.focus_handle(),
             refresh_now,
         };
+        shell.wire = Some(wire);
+        shell.follow_wire(wire_notices, cx);
         let newest_first = shell.settings.thread_newest_first;
         shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
@@ -564,7 +569,6 @@ impl Shell {
         self.aiball = aiball;
         if !self.pings_followed && !self.aiball.user.is_empty() {
             self.pings_followed = true;
-            self.start_wire(cx);
             self.follow_pings(cx);
         }
         if self.board != board {
@@ -580,11 +584,11 @@ impl Shell {
 
     /// aiball's pings to the user, as notifications: one summing up what
     /// waits unread at start, then one per ping as it comes.
-    /// Opens aiball's bus as the user. Its notifications are only logged
-    /// for now: the subscriptions come with aiball's methods for tvty.
-    fn start_wire(&mut self, cx: &mut Context<Self>) {
-        let (notices, mut incoming) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
-        self.wire = Some(crate::wire::Wire::start(self.aiball.user.clone(), notices));
+    /// Follows aiball's bus, opened at start as the local owner until the
+    /// user is known (reading the consumers tells who), then as them. Its
+    /// notifications are only logged for now: the subscriptions come with
+    /// aiball's methods for tvty.
+    fn follow_wire(&mut self, mut incoming: futures::channel::mpsc::UnboundedReceiver<crate::wire::Notification>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             use futures::StreamExt as _;
             while let Some(notice) = incoming.next().await {
