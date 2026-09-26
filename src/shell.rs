@@ -426,6 +426,17 @@ impl Shell {
         };
         shell.wire = Some(wire);
         shell.follow_wire(wire_notices, cx);
+        // aiball not running: start it (detached), or say it is missing.
+        cx.spawn(async move |_, cx| {
+            let found = cx.background_executor().spawn(async { crate::daemon::ensure() }).await;
+            let said = match found {
+                crate::daemon::Start::Running => return,
+                crate::daemon::Start::Started => Activity::news("tvty", Kind::Info, None, "aiball was not running: started it"),
+                crate::daemon::Start::Missing(why) => Activity::news("tvty", Kind::Error, None, why),
+            };
+            let _ = cx.update(|cx| activity::publish(cx, said));
+        })
+        .detach();
         let newest_first = shell.settings.thread_newest_first;
         shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {

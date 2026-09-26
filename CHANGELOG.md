@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- tvty starts aiball when it is not running (its systemd user service,
+  detached: aiball never lives and dies with tvty), or says it is missing.
+  A test's aiball, set by `AIBALL_SOCK`, is never started.
+
 - tvty keeps a permanent connection to aiball's bus (JSON-RPC over the
   local socket), and says in Options > About who aiball sees it as. The
   board moves onto it as aiball's methods for tvty arrive.

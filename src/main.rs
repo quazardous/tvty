@@ -5,6 +5,7 @@ mod accordion;
 mod activity;
 mod aiball;
 mod bus;
+mod daemon;
 mod composer;
 mod events;
 mod fulllist;
