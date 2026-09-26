@@ -61,9 +61,6 @@ pub struct AgentBar {
     pub counters: Option<BarCounters>,
     pub next_wake_at: Option<String>,
     pub boot: Option<BarBoot>,
-    /// Its Claude Code installed an update and waits for a restart.
-    #[serde(default)]
-    pub restart_needed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -95,6 +92,9 @@ pub struct BarAlerts {
     pub not_logged_in: bool,
     pub trust_dialog: bool,
     pub api_unreachable: bool,
+    /// Its Claude Code installed an update and waits for a restart.
+    #[serde(default)]
+    pub restart_needed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -957,10 +957,10 @@ mod bar_tests {
     #[test]
     fn a_bar_says_when_claude_waits_for_a_restart() {
         let plain: AgentBar = serde_json::from_value(bar()).unwrap();
-        assert!(!plain.restart_needed);
+        assert!(!plain.alerts.restart_needed);
         let mut updated = bar();
-        updated["restart_needed"] = json!(true);
+        updated["alerts"]["restart_needed"] = json!(true);
         let updated: AgentBar = serde_json::from_value(updated).unwrap();
-        assert!(updated.restart_needed);
+        assert!(updated.alerts.restart_needed);
     }
 }

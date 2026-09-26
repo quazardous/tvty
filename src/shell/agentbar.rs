@@ -143,7 +143,7 @@ impl Shell {
             .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
             .child(format!("{what}{since}{info}"));
         // Claude Code updated itself: a click restarts it, once idle.
-        let restart = bar.as_ref().is_some_and(|b| b.restart_needed).then(|| {
+        let restart = bar.as_ref().is_some_and(|b| b.alerts.restart_needed).then(|| {
             let restarting = self.restarting.as_deref() == Some(agent.as_str());
             let target = agent.clone();
             item()

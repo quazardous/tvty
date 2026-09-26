@@ -1999,7 +1999,7 @@ impl Shell {
                     .agent
                     .as_ref()
                     .and_then(|a| self.board.bars.get(a))
-                    .is_some_and(|b| !b.stale && b.bar.restart_needed);
+                    .is_some_and(|b| !b.stale && b.bar.alerts.restart_needed);
                 let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
                 list = list.child(
                     div()
