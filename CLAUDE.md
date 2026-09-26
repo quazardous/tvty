@@ -70,4 +70,8 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   **French** (chat and ticket threads).
 - Commit locally as you go; **never push** (no remote yet) or publish without
   david's go.
+- **One version per day of work delivered**: at the day's end (or when david
+  asks), `[Unreleased]` becomes a dated version in `CHANGELOG.md` (SemVer:
+  anything Added → minor, Fixed alone → patch), `Cargo.toml` follows, and a
+  local tag `vX.Y.Z` marks it. Options > About shows the version and commit.
 - Tickets live on the `tvty` project of aiball — use the aiball skill.

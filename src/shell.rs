@@ -1661,7 +1661,11 @@ impl Shell {
             .map(|d| d.join("tvty").display().to_string())
             .unwrap_or_default();
         let rows = [
-            ("Version", env!("CARGO_PKG_VERSION").to_string()),
+            // The version and the commit it was built from (`+`: with changes not committed).
+            ("Version", match env!("TVTY_COMMIT") {
+                "" => env!("CARGO_PKG_VERSION").to_string(),
+                commit => format!("{} · {commit}", env!("CARGO_PKG_VERSION")),
+            }),
             ("aiball socket", crate::aiball::socket_path().display().to_string()),
             ("Acting as", self.aiball.user.clone()),
             (

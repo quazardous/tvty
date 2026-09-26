@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Options > About shows the commit tvty was built from, beside its version.
+
 - Two ways an agent's terminal runs, side by side: an agent on aiball's
   host is listed in its project and opened over its attach socket, without
   tmux; one still in claude-loop is opened through tmux and marked ⇄.
