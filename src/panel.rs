@@ -1662,14 +1662,14 @@ impl TicketPanel {
         }
 
         // ── People ──
-        let claim = match (&ticket.claimant, ticket.is_claim) {
-            (Some(claimant), true) => format!(
+        let claim = match &ticket.claimant {
+            Some(claimant) if ticket.held.lapsed() => format!("{} (lapsed)", who(claimant, user)),
+            Some(claimant) => format!(
                 "{}{}",
                 who(claimant, user),
                 ticket.claim_until.as_deref().map(|u| format!(", until {}", date(u))).unwrap_or_default()
             ),
-            (Some(claimant), false) => format!("{} (lapsed)", who(claimant, user)),
-            (None, _) => "—".into(),
+            None => "—".into(),
         };
         col = col
             .child(group("People"))
@@ -1703,7 +1703,7 @@ impl TicketPanel {
         ));
         if editing == Some(Editing::Assignee) {
             let mut list = choices();
-            if ticket.assignee.is_some() || ticket.is_claim {
+            if ticket.holder().is_some() {
                 list = list.child(choice(
                     "assign-release".into(),
                     "release".into(),

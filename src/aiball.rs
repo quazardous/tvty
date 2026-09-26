@@ -175,6 +175,9 @@ pub struct TicketRow {
     pub priority: Option<String>,
     pub claimant: Option<String>,
     pub assignee: Option<String>,
+    /// Who holds it now, and how (aiball's rule: see [`Holding`]).
+    #[serde(flatten)]
+    pub held: Holding,
     /// Something new on it for the user.
     #[serde(default)]
     pub unread: bool,
@@ -212,7 +215,7 @@ pub struct TicketRow {
     pub latest_plan_rejected: bool,
     #[serde(default)]
     pub latest_resolution_rejected: bool,
-    /// Computed by aiball for the reader when asked with `v=tvty`: whose
+    /// Computed by aiball for the reader when asked with `view=turn`: whose
     /// turn (`you`, `them`, `none`), the sorting band (0 to 5) and the state
     /// glyph's name.
     pub turn: Option<String>,
@@ -257,10 +260,29 @@ pub struct Critical {
     pub holds: u32,
 }
 
+/// Who holds a ticket now, as aiball says it on rows and headers alike.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Holding {
+    /// The assignee, else the claimant while the claim is live.
+    pub holder: Option<String>,
+    /// `assigned`, `claim`, `lapsed_claim` (a claimant on record, no holder).
+    pub held_as: Option<String>,
+}
+
+impl Holding {
+    pub fn assigned(&self) -> bool {
+        self.held_as.as_deref() == Some("assigned")
+    }
+
+    pub fn lapsed(&self) -> bool {
+        self.held_as.as_deref() == Some("lapsed_claim")
+    }
+}
+
 impl TicketRow {
-    /// The agent working on it: its assignee, else its claimant.
+    /// The agent working on it now.
     pub fn holder(&self) -> Option<&str> {
-        self.assignee.as_deref().or(self.claimant.as_deref())
+        self.held.holder.as_deref()
     }
 
     /// A plan, resolution, wontfix or escalation awaits a decision.
@@ -310,9 +332,8 @@ pub struct TicketHeader {
     pub priority: Option<String>,
     pub claimant: Option<String>,
     pub assignee: Option<String>,
-    /// The claim is still held (a lapsed one stays in `claimant`).
-    #[serde(default)]
-    pub is_claim: bool,
+    #[serde(flatten)]
+    pub held: Holding,
     /// The live step, when the last word is a `then: continue`.
     pub step: Option<Step>,
     pub critical: Option<Critical>,
@@ -425,11 +446,9 @@ impl TicketHeader {
         decision_of(self.meta.as_deref())
     }
 
-    /// Who works on it: its assignee, else whoever still holds the claim.
+    /// Who works on it now.
     pub fn holder(&self) -> Option<&str> {
-        self.assignee
-            .as_deref()
-            .or(self.claimant.as_deref().filter(|_| self.is_claim))
+        self.held.holder.as_deref()
     }
 }
 
@@ -498,14 +517,14 @@ impl Aiball {
 
     /// The open tickets of a project, as the web UI's list rows.
     pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
-        self.get(&format!("/api/inbox?project={}&open=1&v=tvty&sort=band", encode(project)))
+        self.get(&format!("/api/inbox?project={}&open=1&view=turn&sort=band", encode(project)))
     }
 
     /// A project's tickets, closed ones too: the most pressing first, at
     /// most `limit`.
     pub fn all_tickets(&self, project: &str, limit: usize) -> anyhow::Result<Vec<TicketRow>> {
         self.get(&format!(
-            "/api/inbox?project={}&v=tvty&sort=band&limit={limit}",
+            "/api/inbox?project={}&view=turn&sort=band&limit={limit}",
             encode(project)
         ))
     }

@@ -157,6 +157,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A ticket whose claim has expired no longer shows its former claimant as
+  the agent on it: tvty reads who holds a ticket from aiball, which now
+  says it on every row. The lists follow aiball's renamed turn view.
+
 - A ticket full screen no longer leaves the talk half empty with a
   scrollbar at the bottom: a long "where it stands" wraps under the count
   instead of widening the column. Images at the end of a sentence are

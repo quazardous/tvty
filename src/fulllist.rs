@@ -458,7 +458,7 @@ impl FullList {
             facts.push(format!("milestone {title}"));
         }
         if let Some(holder) = ticket.holder() {
-            let held = if ticket.assignee.is_some() { "assigned to" } else { "claimed by" };
+            let held = if ticket.held.assigned() { "assigned to" } else { "claimed by" };
             facts.push(format!("{held} {}", who(holder)));
         }
         if let Some(speaker) = &ticket.last_speaker {

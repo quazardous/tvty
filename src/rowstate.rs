@@ -1,6 +1,6 @@
 //! What a ticket row tells at a glance: its band in the list, whose turn it
 //! is, one state glyph, and the stripe on its left. aiball computes the band,
-//! the turn and the glyph (`/api/inbox?v=tvty`); tvty draws them, and derives
+//! the turn and the glyph (`/api/inbox?view=turn`); tvty draws them, and derives
 //! only the stripe (see docs/UX.md, "The ticket list").
 
 use crate::aiball::TicketRow;
@@ -135,7 +135,7 @@ pub struct RowState {
 }
 
 /// `user` is who reads the list: the one whose turn "you" means. The band,
-/// the turn and the glyph are aiball's (`/api/inbox?v=tvty`); one it leaves
+/// the turn and the glyph are aiball's (`/api/inbox?view=turn`); one it leaves
 /// out, or does not name the way tvty knows, reads as nothing to show.
 pub fn of(row: &TicketRow, user: &str) -> RowState {
     let band = row.band.and_then(Band::from_server).unwrap_or(Band::Open);

@@ -64,7 +64,7 @@ tvty never starts anything itself: it calls `claude-loop start
 ## The ticket list
 
 The band, whose turn it is and the state glyph are computed by aiball for
-the reader (`/api/inbox?v=tvty`); tvty draws them (`src/rowstate.rs`):
+the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
 
 - **Bands**: agents on it first — the work under way —, then to moderate,
   waiting on you (a decision), unread, open. The most recent activity

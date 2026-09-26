@@ -313,7 +313,7 @@ mod tests {
             "ticket": {
                 "id": 1, "title": "t", "body": "b", "by_agent": "david",
                 "created_at": "2026-09-24T10:00:00.000Z", "status": "approved",
-                "closed": false, "claimant": "demo-claude", "is_claim": true,
+                "closed": false, "claimant": "demo-claude", "holder": "demo-claude", "held_as": "claim",
                 "assignee": null, "priority": "normal", "meta": null
             },
             "comments": comments,
