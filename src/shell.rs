@@ -1681,6 +1681,8 @@ impl Shell {
         self.settings.theme = Some(name.to_string());
         self.settings.save();
         self.theme_menu = false;
+        // The terminals follow the window's theme unless they have their own.
+        self.redraw_terminals(cx);
         cx.notify();
     }
 
@@ -1688,7 +1690,17 @@ impl Shell {
         theme::apply_terminal(name.as_deref(), cx);
         self.settings.terminal_theme = name.map(|n| n.to_string());
         self.settings.save();
+        self.redraw_terminals(cx);
         cx.notify();
+    }
+
+    /// Every terminal (and card) drawn again now: each is a cached view,
+    /// which otherwise waits for its program's next output to take new
+    /// colours or a new font size.
+    fn redraw_terminals(&self, cx: &mut Context<Self>) {
+        for terminal in self.terminals.values().chain(self.watchers.values()) {
+            terminal.update(cx, |_, cx| cx.notify());
+        }
     }
 
     /// The terminals' font size (`None`: the default): every terminal
@@ -1697,9 +1709,7 @@ impl Shell {
         let kept = crate::terminal::set_font_size(size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
         self.settings.terminal_font_size = (kept != crate::terminal::FONT_SIZE_DEFAULT).then_some(kept);
         self.settings.save();
-        for terminal in self.terminals.values() {
-            terminal.update(cx, |_, cx| cx.notify());
-        }
+        self.redraw_terminals(cx);
         cx.notify();
     }
 

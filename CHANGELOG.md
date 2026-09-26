@@ -206,6 +206,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A new colour theme reaches the terminals at once: they waited for their
+  program's next output to take it.
+
 - tvty no longer slows down as the board grows: a ticket list lays out
   only the rows in view, all of the same height. On 300 tickets a frame
   went from about 110 ms to under 10 ms, and tvty at rest from half a
