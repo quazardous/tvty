@@ -422,7 +422,7 @@ impl Shell {
             let _ = this.update(cx, |shell, cx| {
                 shell.restarting = None;
                 let activity = match done {
-                    Ok(()) => crate::activity::Activity::done(None, format!("restarted {agent}'s Claude")),
+                    Ok(()) => crate::activity::Activity::done(None, format!("{agent}'s Claude restarts, resuming its conversation")),
                     Err(error) => {
                         let error = format!("{error:#}");
                         let why = if error.contains("(NOT_IDLE)") {
