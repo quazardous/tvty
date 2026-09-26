@@ -26,6 +26,7 @@ use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
 mod loopstabs;
+mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
@@ -96,6 +97,8 @@ pub struct Shell {
     new_session: Option<loopstabs::NewSession>,
     starting: Option<String>,
     open_when_running: Option<String>,
+    /// A thread's image, over the whole window.
+    viewer: Option<viewer::Viewer>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -313,6 +316,11 @@ impl Shell {
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
             Signal::AskNewTicket { project, parent } => shell.open_new_ticket(project.clone(), *parent, window, cx),
+            Signal::OpenPictures { pictures, index } => {
+                shell.viewer = Some(viewer::Viewer::new(pictures.clone(), *index));
+                window.focus(&shell.focus.clone(), cx);
+                cx.notify();
+            }
         })
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
@@ -372,6 +380,7 @@ impl Shell {
             new_session: None,
             starting: None,
             open_when_running: None,
+            viewer: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -904,6 +913,12 @@ impl Shell {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
+        if self.viewer.is_some() {
+            if self.viewer_key(key, window, cx) {
+                cx.stop_propagation();
+            }
+            return;
+        }
         if m.control && key == "enter" && notify::newest(cx).is_some() {
             if let Some(notice) = notify::newest(cx) {
                 notify::dismiss(cx, notice.id);
@@ -2297,6 +2312,7 @@ impl Render for Shell {
             )
             .child(body)
             .children(menu)
+            .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(cx))
     }

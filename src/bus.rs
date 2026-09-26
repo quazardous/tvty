@@ -22,6 +22,8 @@ pub enum Signal {
     AskNewTicket { project: Option<String>, parent: Option<u64> },
     /// Something changed on the board: read it again.
     BoardChanged,
+    /// Show a thread's images in the viewer, from this one.
+    OpenPictures { pictures: Vec<crate::images::Picture>, index: usize },
 }
 
 pub struct Bus;

@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Images in a thread open: a thumbnail in the compact panel, large full
+  screen, and a click shows it over the whole window — fitted, zoom with
+  the wheel or + / −, 1 for the real size, drag to move, ← → through the
+  thread's images, Esc to close.
+
 - Open a session from tvty: the projects' list gets three tabs — live,
   idle (stopped loops, one click starts one again where it worked) and
   shut (agents with no loop here) — and "+ session" on a project starts a

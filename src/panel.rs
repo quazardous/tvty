@@ -1097,7 +1097,7 @@ impl TicketPanel {
                 cx,
             ))
             .map(|d| match (&ticket.body, body_open) {
-                (Some(text), true) => d.child(TextView::markdown(("body", ticket.id), text.clone())),
+                (Some(text), true) => d.child(self.rich_text(format!("body-{}", ticket.id), text, cx)),
                 (Some(text), false) => d.child(folded_line(reading::first_line(Some(text)))),
                 (None, _) => d,
             });
@@ -1973,7 +1973,7 @@ impl TicketPanel {
                         ),
                 ),
                 (Shape::Folded(line), false, _) => d.child(folded_line(line.clone())),
-                (_, _, Some(text)) => d.child(TextView::markdown(("comment", comment.id), text.clone())),
+                (_, _, Some(text)) => d.child(self.rich_text(format!("comment-{}", comment.id), text, cx)),
                 _ => d,
             })
             .children(moderation)
@@ -2288,6 +2288,77 @@ pub(crate) fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
             Stripe::Waiting => d.border_l_1().border_dashed().border_color(p().muted.opacity(0.6)),
             Stripe::None => d,
         })
+}
+
+impl TicketPanel {
+    /// A text of the thread: its markdown, and its images alone on their
+    /// line drawn by tvty — a thumbnail in the panel, large full screen —,
+    /// a click opening the viewer.
+    fn rich_text(&self, id: String, text: &str, cx: &mut Context<Self>) -> Div {
+        let mut col = div().flex().flex_col().gap_1();
+        for (i, segment) in crate::images::segments(text, &self.images).into_iter().enumerate() {
+            col = match segment {
+                crate::images::Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("{id}-{i}")), md)),
+                crate::images::Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
+                crate::images::Segment::Pictures(pictures) => {
+                    let mut row = div().flex().flex_wrap().gap_2();
+                    for (j, picture) in pictures.into_iter().enumerate() {
+                        // A thumbnail keeps the image's proportions.
+                        let (max_w, max_h) = if self.full { (720., 480.) } else { (160., 100.) };
+                        let scale = (max_w / picture.width.max(1) as f32).min(max_h / picture.height.max(1) as f32).min(1.);
+                        let (w, h) = (picture.width as f32 * scale, picture.height as f32 * scale);
+                        let reference = picture.reference.clone();
+                        row = row.child(
+                            div()
+                                .id(SharedString::from(format!("{id}-pic-{i}-{j}")))
+                                .relative()
+                                .flex_none()
+                                .rounded_sm()
+                                .overflow_hidden()
+                                .border_1()
+                                .border_color(p().border)
+                                .cursor_pointer()
+                                .hover(|d| d.border_color(p().accent))
+                                .child(img(ImageSource::Image(picture.image.clone())).w(px(w)).h(px(h)))
+                                .when(!self.full, |d| {
+                                    d.child(
+                                        div()
+                                            .absolute()
+                                            .bottom_0()
+                                            .right_0()
+                                            .px_1()
+                                            .rounded_tl_sm()
+                                            .bg(p().bg.opacity(0.7))
+                                            .text_xs()
+                                            .text_color(p().text)
+                                            .child("⤢"),
+                                    )
+                                })
+                                .on_click(cx.listener(move |panel, _, _, cx| panel.open_picture(&reference, cx))),
+                        );
+                    }
+                    col.child(row)
+                }
+            };
+        }
+        col
+    }
+
+    /// Opens the viewer on an image, with the thread's others to go through.
+    fn open_picture(&mut self, reference: &str, cx: &mut Context<Self>) {
+        let Some(thread) = self.detail.as_ref().and_then(|d| d.thread.as_ref()) else { return };
+        let texts = thread.ticket.body.iter().chain(thread.comments.iter().filter_map(|c| c.body.as_ref()));
+        let mut pictures: Vec<crate::images::Picture> = Vec::new();
+        for text in texts {
+            for picture in crate::images::pictures(text, &self.images) {
+                if !pictures.iter().any(|p| p.reference == picture.reference) {
+                    pictures.push(picture);
+                }
+            }
+        }
+        let index = pictures.iter().position(|p| p.reference == reference).unwrap_or(0);
+        crate::bus::emit(cx, crate::bus::Signal::OpenPictures { pictures, index });
+    }
 }
 
 /// aiball's comment count: a bubble and the number, green when the user

@@ -1,40 +1,67 @@
 //! Images in a thread. aiball cites an upload as `/uploads/<sha>.<ext>`, a
-//! path on its web server; the kit's markdown loads an image only from a
-//! `data:` URL or over HTTP, and tvty talks to aiball over its socket. So an
-//! image is read — from aiball's own file when it is on this machine, else
-//! through the socket — and put in the text as a `data:` URL. One missing
-//! or too large says so in the text instead.
+//! path on its web server; tvty reads it — aiball's own file when it is on
+//! this machine, else `/api/uploads/<sha>` through the socket — once, and
+//! keeps it decoded.
+//!
+//! An image alone on its line (a pasted capture) is drawn by tvty itself: a
+//! thumbnail in the compact panel, large full screen, a click opening the
+//! viewer ([`segments`]). One inside a sentence goes to the kit's markdown as
+//! a `data:` URL ([`inline`]). One missing or too large says so instead.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use base64::Engine as _;
+use gpui_kit::{Image, ImageFormat};
 
 use crate::aiball::{Aiball, Attachment, Thread};
 
 /// Past this, an image stays out of the text.
 const MAX_BYTES: usize = 5 * 1024 * 1024;
 
-/// What an upload's link becomes.
-#[derive(Clone, Debug, PartialEq)]
-pub enum Link {
-    Data(String),
+/// An upload read and decoded.
+#[derive(Clone)]
+pub struct Picture {
+    /// The path the text cites, and what the text calls it.
+    pub reference: String,
+    pub alt: String,
+    pub image: Arc<Image>,
+    /// Its size in pixels.
+    pub width: u32,
+    pub height: u32,
+    /// Where aiball keeps it on this machine, if it is here.
+    pub path: Option<PathBuf>,
+    /// The same, as a `data:` URL, for an image inside a sentence.
+    data_url: String,
+}
+
+impl std::fmt::Debug for Picture {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Picture({} {}x{})", self.reference, self.width, self.height)
+    }
+}
+
+/// What an upload became once read.
+#[derive(Clone)]
+pub enum Entry {
+    Loaded(Picture),
     TooLarge,
     Missing,
 }
 
-/// Images read already, by the path the texts cite: shared between reads.
-pub type Cache = Arc<Mutex<HashMap<String, Link>>>;
+/// Uploads read already, by the path the texts cite: shared between reads.
+pub type Cache = Arc<Mutex<HashMap<String, Entry>>>;
 
-/// Puts the thread's images in its texts. Off the UI thread: it reads files
-/// and the socket.
+/// Reads the thread's images, and puts in its texts, as `data:` URLs, the
+/// ones inside a sentence. Off the UI thread: it reads files and the socket.
 pub fn inline(thread: &mut Thread, aiball: &Aiball, cache: &Cache) {
     let mut texts: Vec<&mut String> = thread.comments.iter_mut().filter_map(|c| c.body.as_mut()).collect();
     if let Some(body) = thread.ticket.body.as_mut() {
         texts.push(body);
     }
     let attachments = &thread.attachments;
-    let link = |reference: &str| -> Link {
+    let entry = |reference: &str| -> Entry {
         if let Some(known) = cache.lock().ok().and_then(|c| c.get(reference).cloned()) {
             return known;
         }
@@ -45,41 +72,66 @@ pub fn inline(thread: &mut Thread, aiball: &Aiball, cache: &Cache) {
         read
     };
     for text in texts {
-        if text.contains("](/uploads/") {
-            *text = rewrite(text, &link);
+        if !text.contains("](/uploads/") {
+            continue;
         }
+        // Read them all: those alone on their line are drawn from the cache.
+        for (_, reference) in cited(text) {
+            entry(&reference);
+        }
+        *text = rewrite(text, &|reference| match entry(reference) {
+            Entry::Loaded(p) => Link::Data(p.data_url),
+            Entry::TooLarge => Link::TooLarge,
+            Entry::Missing => Link::Missing,
+        });
     }
 }
 
-fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> Link {
+fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> Entry {
     if attachment.and_then(|a| a.bytes).is_some_and(|b| b as usize > MAX_BYTES) {
-        return Link::TooLarge;
+        return Entry::TooLarge;
     }
-    let local = attachment
+    let path = attachment
         .filter(|a| a.local)
         .and_then(|a| a.uri.as_deref())
         .and_then(|uri| uri.strip_prefix("file://"))
-        .and_then(|path| std::fs::read(path).ok());
-    let bytes = match local {
+        .map(PathBuf::from);
+    let bytes = match path.as_ref().and_then(|p| std::fs::read(p).ok()) {
         Some(bytes) => bytes,
         None => match aiball.upload_bytes(&api_ref(reference)) {
             Ok(bytes) => bytes,
             Err(error) => {
                 log::debug!("image {reference}: {error:#}");
-                return Link::Missing;
+                return Entry::Missing;
             }
         },
     };
     if bytes.len() > MAX_BYTES {
-        return Link::TooLarge;
+        return Entry::TooLarge;
     }
     let content_type = attachment
         .and_then(|a| a.content_type.clone())
         .unwrap_or_else(|| content_type_of(reference).to_string());
-    Link::Data(format!(
-        "data:{content_type};base64,{}",
-        base64::engine::general_purpose::STANDARD.encode(bytes)
-    ))
+    let Some(format) = ImageFormat::from_mime_type(&content_type) else {
+        return Entry::Missing;
+    };
+    let Ok((width, height)) = image::ImageReader::new(std::io::Cursor::new(&bytes))
+        .with_guessed_format()
+        .map_err(anyhow::Error::from)
+        .and_then(|r| r.into_dimensions().map_err(anyhow::Error::from))
+    else {
+        return Entry::Missing;
+    };
+    let data_url = format!("data:{content_type};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes));
+    Entry::Loaded(Picture {
+        reference: reference.to_string(),
+        alt: String::new(),
+        image: Arc::new(Image::from_bytes(format, bytes)),
+        width,
+        height,
+        path,
+        data_url,
+    })
 }
 
 /// `/uploads/<sha>.<ext>` → `/api/uploads/<sha>`: aiball's documented
@@ -99,9 +151,116 @@ fn content_type_of(reference: &str) -> &'static str {
     }
 }
 
-/// `text` with each image citing an upload (`![alt](/uploads/…)`) turned
-/// into what `link` makes of it. Plain links to uploads stay as they are.
+/// The images a text cites, `(alt, reference)`, in order.
+fn cited(text: &str) -> Vec<(String, String)> {
+    text.lines().flat_map(images_of_line).flatten().collect()
+}
+
+/// The images of a line, when the line holds nothing else: `None` otherwise.
+fn images_of_line(line: &str) -> Option<Vec<(String, String)>> {
+    let mut rest = line.trim();
+    let mut found = Vec::new();
+    while !rest.is_empty() {
+        let inner = rest.strip_prefix("![")?;
+        let (alt, after) = inner.split_once("](")?;
+        let (reference, tail) = after.split_once(')')?;
+        if !reference.starts_with("/uploads/") || alt.contains(['[', ']']) {
+            return None;
+        }
+        found.push((alt.to_string(), reference.to_string()));
+        rest = tail.trim_start();
+    }
+    (!found.is_empty()).then_some(found)
+}
+
+/// A piece of a text, as tvty draws it.
+pub enum Segment {
+    /// Markdown, for the kit.
+    Text(String),
+    /// Images alone on their line(s): drawn by tvty.
+    Pictures(Vec<Picture>),
+    /// What could not be shown, and why.
+    Note(&'static str),
+}
+
+/// A text cut into markdown and the images alone on their line, read from
+/// `cache` (see [`inline`]).
+pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
+    let known = cache.lock().map(|c| c.clone()).unwrap_or_default();
+    let mut out = Vec::new();
+    let mut prose = String::new();
+    for line in text.lines() {
+        match images_of_line(line) {
+            Some(images) => {
+                if !prose.trim().is_empty() {
+                    out.push(Segment::Text(std::mem::take(&mut prose)));
+                }
+                prose.clear();
+                let mut row = Vec::new();
+                for (alt, reference) in images {
+                    match known.get(&reference) {
+                        Some(Entry::Loaded(p)) => row.push(Picture { alt, ..p.clone() }),
+                        Some(Entry::TooLarge) => out.push(Segment::Note("image too large to show here")),
+                        _ => out.push(Segment::Note("image unavailable")),
+                    }
+                }
+                if !row.is_empty() {
+                    match out.last_mut() {
+                        Some(Segment::Pictures(before)) => before.extend(row),
+                        _ => out.push(Segment::Pictures(row)),
+                    }
+                }
+            }
+            None => {
+                prose.push_str(line);
+                prose.push('\n');
+            }
+        }
+    }
+    if !prose.trim().is_empty() {
+        out.push(Segment::Text(prose));
+    }
+    out
+}
+
+/// Every image a text shows alone on its line, in order: the viewer's.
+pub fn pictures(text: &str, cache: &Cache) -> Vec<Picture> {
+    segments(text, cache)
+        .into_iter()
+        .flat_map(|s| match s {
+            Segment::Pictures(p) => p,
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+/// What an upload's link becomes inside a sentence.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Link {
+    Data(String),
+    TooLarge,
+    Missing,
+}
+
+/// `text` with each image inside a sentence (`… ![alt](/uploads/…) …`)
+/// turned into what `link` makes of it. Images alone on their line stay —
+/// tvty draws them —, and so do plain links to uploads.
 pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
+    let mut out = String::with_capacity(text.len());
+    for (i, line) in text.split('\n').enumerate() {
+        if i > 0 {
+            out.push('\n');
+        }
+        if images_of_line(line).is_some() {
+            out.push_str(line);
+        } else {
+            out.push_str(&rewrite_line(line, link));
+        }
+    }
+    out
+}
+
+fn rewrite_line(text: &str, link: &dyn Fn(&str) -> Link) -> String {
     const START: &str = "](/uploads/";
     let mut out = String::with_capacity(text.len());
     let mut rest = text;
@@ -130,7 +289,7 @@ pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, api_ref, rewrite};
+    use super::{Link, api_ref, cited, images_of_line, rewrite};
 
     fn link(reference: &str) -> Link {
         match reference {
@@ -141,17 +300,27 @@ mod tests {
     }
 
     #[test]
-    fn images_become_data_urls() {
+    fn an_image_inside_a_sentence_becomes_a_data_url() {
         assert_eq!(
             rewrite("see ![shot](/uploads/a.png) here", &link),
             "see ![shot](data:image/png;base64,AAA) here"
         );
+        assert_eq!(rewrite("a ![x](/uploads/gone.png) b", &link), "a *(image unavailable)* b");
     }
 
     #[test]
-    fn what_cannot_show_says_so() {
-        assert_eq!(rewrite("![x](/uploads/big.png)", &link), "*(image too large to show here)*");
-        assert_eq!(rewrite("a ![x](/uploads/gone.png) b", &link), "a *(image unavailable)* b");
+    fn an_image_alone_on_its_line_stays_for_tvty() {
+        let text = "Look:\n![shot](/uploads/a.png)\nthen";
+        assert_eq!(rewrite(text, &link), text);
+        assert_eq!(cited(text), vec![("shot".to_string(), "/uploads/a.png".to_string())]);
+    }
+
+    #[test]
+    fn several_images_on_one_line_are_alone_too() {
+        let line = "![a](/uploads/a.png) ![b](/uploads/b.png)";
+        assert_eq!(images_of_line(line).map(|v| v.len()), Some(2));
+        assert_eq!(images_of_line("see ![a](/uploads/a.png)"), None);
+        assert_eq!(images_of_line("![a](https://x/y.png)"), None);
     }
 
     #[test]
@@ -161,7 +330,10 @@ mod tests {
 
     #[test]
     fn plain_links_stay() {
-        let text = "the [log](/uploads/log.txt) and ![a](/uploads/a.png)";
-        assert_eq!(rewrite(text, &link), "the [log](/uploads/log.txt) and ![a](data:image/png;base64,AAA)");
+        let text = "the [log](/uploads/log.txt) and, in a sentence, ![a](/uploads/a.png)";
+        assert_eq!(
+            rewrite(text, &link),
+            "the [log](/uploads/log.txt) and, in a sentence, ![a](data:image/png;base64,AAA)"
+        );
     }
 }

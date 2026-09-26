@@ -205,6 +205,18 @@ and the tickets it holds — a click lists **its own backlog** by tier
 its wait credit; its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
+## Images in a thread
+
+An image alone on its line — a pasted capture — is drawn by tvty: a
+thumbnail in the compact panel (about 160 × 100, its proportions kept, ⤢ in
+a corner), large full screen. A click opens the **viewer**, over the whole
+window: the image fitted first; the wheel zooms about the pointer, + and −
+too, 1 shows the real size, 0 or a double click fits again, a drag moves
+it, ← → go through the thread's images, Esc closes. Its bar names it (the
+text's alt, else its file), gives its size and zoom, and opens it in the
+default application when aiball keeps it on this machine. An image inside
+a sentence stays in the text.
+
 ## The terminal comes to you
 
 When something newly waits on the user from an agent — a decision, or
