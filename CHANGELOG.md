@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- tvty keeps a permanent connection to aiball's bus (JSON-RPC over the
+  local socket), and says in Options > About who aiball sees it as. The
+  board moves onto it as aiball's methods for tvty arrive.
+
 - A ticket filed on a project of your board is notified, whoever filed it
   and wherever: an agent's in blue, one waiting for moderation in orange,
   yours (from aiball's web UI, say) in green.

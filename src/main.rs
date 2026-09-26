@@ -26,6 +26,7 @@ mod terminal;
 mod thread;
 mod theme;
 mod wheel;
+mod wire;
 
 use gpui_kit::*;
 

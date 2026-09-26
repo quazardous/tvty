@@ -113,6 +113,10 @@ pub struct Shell {
     viewer: Option<viewer::Viewer>,
     /// The user's pings are followed (once tvty knows who the user is).
     pings_followed: bool,
+    /// aiball's bus, once the user is known.
+    wire: Option<crate::wire::Wire>,
+    /// What aiball's bus says the connection is (`bus.whoami`).
+    wire_whoami: Option<String>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -399,6 +403,8 @@ impl Shell {
             ended: None,
             viewer: None,
             pings_followed: false,
+            wire: None,
+            wire_whoami: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -558,6 +564,7 @@ impl Shell {
         self.aiball = aiball;
         if !self.pings_followed && !self.aiball.user.is_empty() {
             self.pings_followed = true;
+            self.start_wire(cx);
             self.follow_pings(cx);
         }
         if self.board != board {
@@ -573,6 +580,43 @@ impl Shell {
 
     /// aiball's pings to the user, as notifications: one summing up what
     /// waits unread at start, then one per ping as it comes.
+    /// Opens aiball's bus as the user. Its notifications are only logged
+    /// for now: the subscriptions come with aiball's methods for tvty.
+    fn start_wire(&mut self, cx: &mut Context<Self>) {
+        let (notices, mut incoming) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
+        self.wire = Some(crate::wire::Wire::start(self.aiball.user.clone(), notices));
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt as _;
+            while let Some(notice) = incoming.next().await {
+                log::debug!("aiball bus: {} {}", notice.method, notice.params);
+                // Greeted (again, after a drop): ask who the daemon sees.
+                if notice.method == "bus.hello" {
+                    let Ok(Some(wire)) = this.update(cx, |shell, _| shell.wire.clone()) else { break };
+                    let whoami = cx
+                        .background_executor()
+                        .spawn(async move { wire.call("bus.whoami", serde_json::json!({})) })
+                        .await;
+                    let said = match whoami {
+                        Ok(v) => format!(
+                            "{} ({}) over {}",
+                            v["consumer"].as_str().unwrap_or("?"),
+                            v["kind"].as_str().unwrap_or("?"),
+                            v["transport"].as_str().unwrap_or("?")
+                        ),
+                        Err(error) => format!("whoami failed: {error:#}"),
+                    };
+                    if this.update(cx, |shell, _| shell.wire_whoami = Some(said)).is_err() {
+                        break;
+                    }
+                }
+                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+    }
+
     fn follow_pings(&mut self, cx: &mut Context<Self>) {
         let (pushes, mut incoming) = futures::channel::mpsc::unbounded::<crate::pings::Push>();
         crate::pings::follow(self.aiball.clone(), pushes);
@@ -1631,6 +1675,14 @@ impl Shell {
             ("Version", env!("CARGO_PKG_VERSION").to_string()),
             ("aiball socket", crate::aiball::socket_path().display().to_string()),
             ("Acting as", self.aiball.user.clone()),
+            (
+                "aiball bus",
+                match (self.wire.as_ref().and_then(|w| w.hello()), &self.wire_whoami) {
+                    (Some(hello), Some(whoami)) => format!("version {}, as {whoami}", hello.version),
+                    (Some(hello), None) => format!("version {}, as {} ({})", hello.version, hello.consumer, hello.kind),
+                    (None, _) => "not connected".to_string(),
+                },
+            ),
             (
                 "Live feed",
                 if self.feed.connected() { "connected" } else { "down — the board is polled" }.to_string(),
