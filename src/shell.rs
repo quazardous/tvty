@@ -1269,7 +1269,21 @@ impl Shell {
             .iter()
             .flat_map(|p| p.terminals.iter().map(|t| t.session.clone()))
             .filter(|s| !self.terminals.contains_key(s))
+            .filter(|s| !s.starts_with(sessions::HOSTED_PREFIX))
             .collect();
+        // The host's sessions: an observer over their socket, no tmux.
+        let hosted: Vec<(String, String)> = self
+            .board
+            .projects
+            .iter()
+            .flat_map(|p| p.terminals.iter())
+            .filter(|t| !self.terminals.contains_key(&t.session) && !self.watchers.contains_key(&t.session))
+            .filter_map(|t| Some((t.session.clone(), t.attach.clone()?)))
+            .collect();
+        for (session, socket) in hosted {
+            let watcher = cx.new(|cx| TerminalView::observe(std::path::Path::new(&socket), cx));
+            self.watchers.insert(session, watcher);
+        }
         cx.spawn(async move |this, cx| {
             let sized = cx
                 .background_executor()

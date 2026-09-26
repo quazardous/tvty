@@ -133,12 +133,22 @@ impl TerminalView {
     /// loop's proxy), over its attach socket: no tmux.
     /// A session that cannot be reached ends at once (the end screen).
     pub fn attach(socket: &std::path::Path, cx: &mut Context<Self>) -> Self {
+        Self::attached(socket, true, cx)
+    }
+
+    /// Watches a session a host holds, over its attach socket, as an
+    /// observer: it never types nor resizes the session (a card).
+    pub fn observe(socket: &std::path::Path, cx: &mut Context<Self>) -> Self {
+        Self::attached(socket, false, cx)
+    }
+
+    fn attached(socket: &std::path::Path, interactive: bool, cx: &mut Context<Self>) -> Self {
         let (tx, rx) = unbounded();
         let listener = Listener(tx);
         let (columns, lines) = (80u16, 24u16);
         let term = Term::new(Config::default(), &TermSize::new(columns as usize, lines as usize), listener.clone());
         let term = Arc::new(FairMutex::new(term));
-        let backend = match crate::attach::Attach::connect(socket, (columns, lines), term.clone(), listener.clone()) {
+        let backend = match crate::attach::Attach::connect(socket, (columns, lines), interactive, term.clone(), listener.clone()) {
             Ok(attach) => Backend::Attach(attach),
             Err(error) => {
                 log::warn!("attach {}: {error:#}", socket.display());
@@ -151,7 +161,7 @@ impl TerminalView {
 
     /// Its screen, live, to draw elsewhere (a card).
     pub fn screen(&self) -> Snapshot {
-        Snapshot { term: self.term.clone() }
+        Snapshot { term: self.term.clone(), status_line: self.tmux_session.is_some() }
     }
 
     /// Spawns `program args` in a new PTY.
@@ -531,6 +541,7 @@ impl Render for TerminalView {
                 term: self.term.clone(),
                 view: Some(cx.entity()),
                 viewport: None,
+                status_line: false,
             })
             .when(self.exited, |d| {
                 d.child(
@@ -556,6 +567,9 @@ pub struct TerminalElement {
     /// Without a view: only the bottom `lines` × the first `columns` of the
     /// grid — a card's viewport, where a program such as Claude Code writes.
     viewport: Option<(usize, usize)>,
+    /// The grid's last row is tmux's status line: it does not count as
+    /// written, so that a shell's first rows stay in the viewport.
+    status_line: bool,
 }
 
 impl IntoElement for TerminalElement {
@@ -646,11 +660,14 @@ impl Element for TerminalElement {
                 .map(|s| s.width)
                 .unwrap_or(size * 0.6)
         };
-        // The rows above the viewport, and the columns it keeps.
+        // The rows above the viewport, and the columns it keeps: the viewport
+        // ends at the last row in use — the bottom for a program that fills
+        // the screen (Claude Code), the prompt for a shell that has written
+        // only its first rows.
         let (skip_lines, keep_columns) = match self.viewport {
             Some((lines, columns)) => {
-                use alacritty_terminal::grid::Dimensions as _;
-                (self.term.lock().screen_lines().saturating_sub(lines), columns)
+                let last = last_used_line(&self.term.lock(), self.status_line);
+                (last.saturating_add(1).saturating_sub(lines), columns)
             }
             None => (0, usize::MAX),
         };
@@ -1128,6 +1145,24 @@ fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad>
 /// gallery —, read-only, at a size that fits.
 pub struct Snapshot {
     term: Arc<FairMutex<Term<Listener>>>,
+    /// A tmux client's: its last row is tmux's status line.
+    status_line: bool,
+}
+
+/// The last row of the screen in use: the cursor's, or below it the last
+/// one with something written — tmux's status line left aside.
+fn last_used_line<T>(term: &Term<T>, status_line: bool) -> usize {
+    use alacritty_terminal::grid::Dimensions as _;
+    use alacritty_terminal::index::{Column, Line};
+    let grid = term.grid();
+    let rows = grid.screen_lines().saturating_sub(usize::from(status_line));
+    let cursor = (grid.cursor.point.line.0.max(0) as usize).min(rows.saturating_sub(1));
+    let columns = grid.columns();
+    let written = (0..rows)
+        .rev()
+        .find(|&line| (0..columns).any(|column| grid[Line(line as i32)][Column(column)].c != ' '))
+        .unwrap_or(0);
+    cursor.max(written)
 }
 
 impl Snapshot {
@@ -1137,6 +1172,7 @@ impl Snapshot {
             term: self.term.clone(),
             view: None,
             viewport: Some((lines, columns)),
+            status_line: self.status_line,
         }
     }
 }

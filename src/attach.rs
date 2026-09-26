@@ -55,7 +55,9 @@ impl Attach {
     /// emulator's `listener` hears of each change, and of the end.
     /// The connection is made on that thread: a session just started may
     /// take a moment to listen, and the view does not wait for it.
-    pub fn connect<L>(socket: &Path, size: (u16, u16), term: Arc<FairMutex<Term<L>>>, listener: L) -> anyhow::Result<Arc<Self>>
+    /// `interactive`: a client that types and whose size counts; else an
+    /// observer, which only watches (a card), and never resizes the session.
+    pub fn connect<L>(socket: &Path, size: (u16, u16), interactive: bool, term: Arc<FairMutex<Term<L>>>, listener: L) -> anyhow::Result<Arc<Self>>
     where
         L: EventListener + Clone + Send + 'static,
     {
@@ -66,7 +68,7 @@ impl Attach {
         });
         let (socket, this) = (socket.to_path_buf(), attach.clone());
         std::thread::Builder::new().name("attach".into()).spawn(move || {
-            match this.open(&socket) {
+            match this.open(&socket, interactive) {
                 Ok(reader) => read(reader, term, listener),
                 Err(error) => {
                     log::warn!("attach {}: {error:#}", socket.display());
@@ -78,8 +80,8 @@ impl Attach {
     }
 
     /// Connects (trying a while), says hello with the size wanted by then,
-    /// and takes the focus; answers the stream to read.
-    fn open(&self, socket: &Path) -> anyhow::Result<UnixStream> {
+    /// and, interactive, takes the focus; answers the stream to read.
+    fn open(&self, socket: &Path, interactive: bool) -> anyhow::Result<UnixStream> {
         let mut tries = 0;
         let stream = loop {
             match UnixStream::connect(socket) {
@@ -103,7 +105,7 @@ impl Attach {
             json!({
                 "version": 1,
                 "client": "tvty",
-                "mode": "interactive",
+                "mode": if interactive { "interactive" } else { "observer" },
                 "view": "stream",
                 "scrollback": SCROLLBACK,
                 "size": { "rows": lines, "cols": columns },
@@ -112,7 +114,9 @@ impl Attach {
             .as_bytes(),
         )?;
         // Opened to be shown: this client's size is the one to use.
-        self.focus();
+        if interactive {
+            self.focus();
+        }
         Ok(reader)
     }
 
