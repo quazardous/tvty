@@ -179,6 +179,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The agent's bar no longer shows its wait credit.
+
 - An unread ticket shows it more: a blue dot and its number in blue before
   its bold title, in the panel and the full-screen list.
 

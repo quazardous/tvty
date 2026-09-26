@@ -4,7 +4,7 @@
 //! hold or free it —, its Claude's phase and passing state, the dialogs and
 //! alerts, the prompt and a human typing, the proxy, its counters and its
 //! next wake. Before a loop pushes one, what the agent's state says. Then its
-//! events, the tickets it holds, its wait credit, where it works; a click on
+//! events, the tickets it holds, where it works; a click on
 //! its backlog lists it. Agent-centric: the panel beside it is the project's.
 
 use std::time::Duration;
@@ -176,7 +176,6 @@ impl Shell {
         // the countdown to the next wake once it is armed — as claude-loop's
         // tmux line shows it.
         let pending = unseen > 0 || backlog.is_some_and(|b| b > 0);
-        let credit = status.as_ref().and_then(|s| s.credit);
         let cwd = status.as_ref().and_then(|s| s.cwd.clone()).map(|cwd| home_short(&cwd));
         let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
         let target = (agent.clone(), project.to_string());
@@ -250,7 +249,6 @@ impl Shell {
                             .children(wake.map(ago)),
                     )
                 })
-                .children(credit.map(|c| item().child(format!("credit {c} min"))))
                 .child(div().flex_1())
                 .child(item().text_color(p().text).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))

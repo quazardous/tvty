@@ -38,9 +38,6 @@ pub struct Consumer {
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,
-    /// Its wait credit, per project.
-    #[serde(default)]
-    pub wait_credit: Option<Vec<WaitCredit>>,
 }
 
 /// An agent's loop bar, as its loop pushes it to aiball: what claude-loop
@@ -132,12 +129,6 @@ pub struct BacklogRow {
     /// -1 critical, 0 hot, 1 actionable, 2 follow-up, 3 waiting on them,
     /// 4 blocked.
     pub backlog_tier: Option<i64>,
-}
-
-#[derive(Clone, Debug, Deserialize)]
-pub struct WaitCredit {
-    pub project: String,
-    pub balance: i64,
 }
 
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]

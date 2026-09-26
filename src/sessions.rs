@@ -32,8 +32,6 @@ pub struct Status {
     pub online: bool,
     /// Its events not seen yet.
     pub unseen: u32,
-    /// Its wait credit in its project, in minutes.
-    pub credit: Option<i64>,
     /// Where its Claude works.
     pub cwd: Option<String>,
 }
@@ -128,12 +126,6 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
                     driver: c.state_human_word.clone().unwrap_or_default(),
                     online: c.present.unwrap_or(false),
                     unseen: c.ping_unseen.unwrap_or(0),
-                    credit: c
-                        .wait_credit
-                        .iter()
-                        .flatten()
-                        .find(|w| Some(&w.project) == c.project.as_ref())
-                        .map(|w| w.balance),
                     cwd: c.cwd.clone(),
                 })
             }),
