@@ -243,8 +243,8 @@ a gesture aiball refuses always does, in red. One place makes them all
 (`src/activity.rs`): the views publish what happened on the internal bus,
 never a notification themselves.
 
-**aiball's pings to the user** come too: tvty follows the stream aiball's
-web badge and the loops follow (`/api/events`, over the socket). Each ping
+**aiball's pings to the user** come too: tvty subscribes to them on aiball's
+bus (`user.<me>.pings`, over the socket), with the board itself. Each ping
 — an agent answered, mentioned you, proposes a plan or to close, a new
 ticket — is a notification (red for a panic); a click opens its ticket
 (and the agent's terminal, when it has one here), which marks it read in

@@ -366,7 +366,7 @@ impl Shell {
             let _ = this.update(cx, |shell, cx| {
                 match done {
                     Ok(()) => {
-                        let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
+                        let _ = shell.refresh_now.unbounded_send(());
                     }
                     Err(error) => crate::activity::publish(
                         cx,

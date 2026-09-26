@@ -1,13 +1,14 @@
 //! Which terminals there are: the tmux sessions on this machine, grouped by
 //! project. A claude-loop session (`cl-*`) is matched to its aiball agent by
 //! its directory, which gives it a project and a name; any other session
-//! lands in a "tmux" group. With them, the open tickets of each project.
+//! lands in a "tmux" group. With them, the open tickets of each project, as
+//! aiball pushes them (see [`crate::live`]).
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::process::Command;
 
-use crate::aiball::{Aiball, BarRead, Consumer, TicketRow};
+use crate::aiball::{BarRead, Consumer, TicketRow};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Terminal {
@@ -64,28 +65,25 @@ pub struct Board {
 const LOOP_PREFIX: &str = "cl-";
 const OTHER_GROUP: &str = "tmux";
 
-/// Blocking: runs `tmux ls` and asks aiball. Call it off the UI thread.
-/// Learns on the way who the user is (see [`Aiball::find_user`]).
-pub fn discover(aiball: &mut Aiball) -> Board {
-    let consumers = match aiball.consumers() {
-        Ok(consumers) => consumers,
-        Err(error) => {
-            log::warn!("aiball: {error:#}");
-            Vec::new()
+/// The board, from what aiball pushed (`live`) and the tmux sessions of this
+/// machine. Cheap: nothing is read from aiball.
+pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
+    let consumers = live.consumers();
+    let projects = group(sessions, &consumers);
+    let mut board = Board { known, homes: homes(&consumers), ..Default::default() };
+    for project in projects.iter().filter(|p| p.on_board) {
+        let tickets = live.tickets().get(&project.name).cloned().unwrap_or_default();
+        if let Some(critical) = tickets.iter().find(|t| t.critical.is_some()) {
+            board.critical.insert(project.name.clone(), critical.id);
         }
-    };
-    aiball.find_user(&consumers);
-    let projects = group(tmux_sessions(), &consumers);
-    let mut board = Board {
-        projects,
-        known: crate::loops::known(),
-        homes: homes(&consumers),
-        ..Default::default()
-    };
-    for name in on_board(&board) {
-        read_project(aiball, &mut board, &name);
+        board.tickets.insert(project.name.clone(), tickets);
     }
-    read_bars(aiball, &mut board);
+    for agent in projects.iter().flat_map(|p| p.terminals.iter().filter_map(|t| t.agent.as_ref())) {
+        if let Some(bar) = live.bars().get(agent) {
+            board.bars.insert(agent.clone(), bar.clone());
+        }
+    }
+    board.projects = projects;
     board
 }
 
@@ -96,94 +94,6 @@ fn homes(consumers: &[Consumer]) -> Vec<(String, Option<String>, String)> {
         .filter(|c| c.kind != "human")
         .filter_map(|c| Some((c.consumer_id.clone(), c.project.clone(), c.cwd.clone()?)))
         .collect()
-}
-
-/// The loop bars of the agents that have a terminal here.
-fn read_bars(aiball: &Aiball, board: &mut Board) {
-    board.bars.clear();
-    let agents: Vec<String> = board
-        .projects
-        .iter()
-        .flat_map(|p| p.terminals.iter().filter_map(|t| t.agent.clone()))
-        .collect();
-    for agent in agents {
-        match aiball.agent_bar(&agent) {
-            Ok(Some(bar)) => {
-                board.bars.insert(agent, bar);
-            }
-            Ok(None) => {}
-            Err(error) => log::debug!("bar of {agent}: {error:#}"),
-        }
-    }
-}
-
-/// What moved on the board since the last read, from aiball's live feed.
-#[derive(Debug, Default)]
-pub struct Changes {
-    /// Read everything again.
-    pub all: bool,
-    /// The agents (their state, their directory) or the tmux sessions.
-    pub consumers: bool,
-    /// Projects whose tickets moved.
-    pub projects: HashSet<String>,
-}
-
-impl Changes {
-    pub fn is_empty(&self) -> bool {
-        !self.all && !self.consumers && self.projects.is_empty()
-    }
-}
-
-/// Blocking. Reads again only what moved: aiball serves one request at a
-/// time, and a project's open tickets can cost it a second.
-pub fn update(aiball: &mut Aiball, previous: &Board, changes: &Changes) -> Board {
-    if changes.all {
-        return discover(aiball);
-    }
-    let mut board = previous.clone();
-    if changes.consumers {
-        match aiball.consumers() {
-            Ok(consumers) => {
-                aiball.find_user(&consumers);
-                board.projects = group(tmux_sessions(), &consumers);
-                board.known = crate::loops::known();
-                board.homes = homes(&consumers);
-            }
-            Err(error) => log::warn!("aiball: {error:#}"),
-        }
-        read_bars(aiball, &mut board);
-    }
-    for name in on_board(&board) {
-        // A project newly shown has never been read.
-        if !changes.projects.contains(&name) && board.tickets.contains_key(&name) {
-            continue;
-        }
-        read_project(aiball, &mut board, &name);
-    }
-    board
-}
-
-fn on_board(board: &Board) -> Vec<String> {
-    board
-        .projects
-        .iter()
-        .filter(|p| p.on_board)
-        .map(|p| p.name.clone())
-        .collect()
-}
-
-/// A project's open tickets; its critical ticket comes with them.
-fn read_project(aiball: &Aiball, board: &mut Board, name: &str) {
-    match aiball.open_tickets(name) {
-        Ok(tickets) => {
-            match tickets.iter().find(|t| t.critical.is_some()) {
-                Some(critical) => board.critical.insert(name.to_string(), critical.id),
-                None => board.critical.remove(name),
-            };
-            board.tickets.insert(name.to_string(), tickets);
-        }
-        Err(error) => log::warn!("aiball: {error:#}"),
-    }
 }
 
 fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project> {

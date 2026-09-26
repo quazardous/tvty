@@ -294,7 +294,7 @@ impl Shell {
                         shell.new_session = None;
                         shell.open_when_running = Some(name.clone());
                         crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
-                        let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
+                        let _ = shell.refresh_now.unbounded_send(());
                     }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {

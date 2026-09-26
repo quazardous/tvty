@@ -7,7 +7,7 @@
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
@@ -17,7 +17,6 @@ use gpui_kit::component::{TitleBar, window_paddings};
 use crate::aiball::{Aiball, TicketRow};
 use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
-use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::activity::{self, Activity};
 use crate::bus::{self, Signal};
@@ -37,13 +36,9 @@ use crate::terminal::TerminalView;
 
 /// How often the tmux sessions are listed (cheap: one `tmux ls`).
 const SESSIONS_EVERY: Duration = Duration::from_secs(3);
-/// How often the board is read when aiball's live feed is down.
-const POLL_EVERY: Duration = Duration::from_secs(5);
-/// The shortest time between two reads of the board: bursts of events are
-/// read at once, and aiball — one request at a time — is not flooded.
-const READ_GAP: Duration = Duration::from_secs(1);
-/// How often the board is read anyway, feed or not.
-const REREAD_EVERY: Duration = Duration::from_secs(60);
+/// How long the board waits after what the bus pushed before it is built
+/// again: a burst of events is built once.
+const REBUILD_AFTER: Duration = Duration::from_millis(100);
 /// How often the cards redraw while the slider or the gallery is up: they
 /// are live, this only paces them.
 const CARDS_EVERY: Duration = Duration::from_millis(100);
@@ -111,8 +106,8 @@ pub struct Shell {
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
     viewer: Option<viewer::Viewer>,
-    /// The user's pings are followed (once tvty knows who the user is).
-    pings_followed: bool,
+    /// The unread pings were said (once: a reconnection does not say it again).
+    pings_greeted: bool,
     /// aiball's bus, once the user is known.
     wire: Option<crate::wire::Wire>,
     /// What aiball's bus says the connection is (`bus.whoami`).
@@ -121,7 +116,12 @@ pub struct Shell {
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
     new_ticket_shown: bool,
-    feed: events::Feed,
+    /// The board as aiball pushes it on the bus.
+    live: crate::live::Live,
+    /// The tmux sessions and the loops of this machine, as last listed.
+    local: (Vec<(String, String)>, Vec<crate::loops::KnownLoop>),
+    /// The board is to be built again shortly.
+    rebuild_pending: bool,
     /// The slider is up, on this session.
     slider: Option<String>,
     /// Counts the slider's openings: each one replays its entrance.
@@ -146,8 +146,8 @@ pub struct Shell {
     theme_menu: bool,
 
     focus: FocusHandle,
-    /// Wakes the refresh loop before its next tick.
-    refresh_now: futures::channel::mpsc::UnboundedSender<events::Change>,
+    /// Lists the local sessions again now, before the next tick.
+    refresh_now: futures::channel::mpsc::UnboundedSender<()>,
 }
 
 /// An arrow over the cards: along them, or to the group above or below.
@@ -323,16 +323,8 @@ impl Shell {
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
         // What the views say to whom it may concern.
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
-            Signal::BoardChanged => {
-                // A gesture moved the selected terminal's project.
-                let change = shell
-                    .selected
-                    .as_deref()
-                    .and_then(|s| shell.terminal_of(s))
-                    .map(|(project, _)| events::Change::Project(project.to_string()))
-                    .unwrap_or(events::Change::All);
-                let _ = shell.refresh_now.unbounded_send(change);
-            }
+            // A gesture moved the board: aiball pushes what changed.
+            Signal::BoardChanged => {}
             Signal::Notices => cx.notify(),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
@@ -378,9 +370,8 @@ impl Shell {
         .detach();
 
         Self::tick_agent_bar(cx);
-        let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
-        let feed = events::Feed::start(refresh_now.clone());
-        Self::refresh_loop(aiball.clone(), feed.clone(), wake, cx);
+        let (refresh_now, wake) = futures::channel::mpsc::unbounded::<()>();
+        Self::local_loop(wake, cx);
 
         let mut shell = Self {
             aiball,
@@ -405,12 +396,14 @@ impl Shell {
             open_when_running: None,
             ended: None,
             viewer: None,
-            pings_followed: false,
+            pings_greeted: false,
             wire: None,
             wire_whoami: None,
             new_ticket: None,
             new_ticket_shown: false,
-            feed: feed.clone(),
+            live: Default::default(),
+            local: Default::default(),
+            rebuild_pending: false,
             slider: None,
             slider_shown: 0,
             gallery: None,
@@ -446,122 +439,44 @@ impl Shell {
         shell
     }
 
-    /// Reads the board when aiball's feed says it moved (or every few
-    /// seconds while the feed is down), and when the tmux sessions change.
-    fn refresh_loop(
-        mut reader: Aiball,
-        feed: events::Feed,
-        mut wake: futures::channel::mpsc::UnboundedReceiver<events::Change>,
-        cx: &mut Context<Self>,
-    ) {
+    /// Lists the tmux sessions and the loops of this machine every few
+    /// seconds, or at once when asked, and builds the board again when they
+    /// changed. What aiball says comes on its own, over the bus.
+    fn local_loop(mut wake: futures::channel::mpsc::UnboundedReceiver<()>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             use futures::{FutureExt as _, StreamExt as _};
-            let mut known = Vec::new();
-            let mut board = Board::default();
-            let mut read_at = Instant::now();
-            let mut full_at = Instant::now();
-            let mut changes = sessions::Changes {
-                all: true,
-                ..Default::default()
-            };
             loop {
-                if !changes.is_empty() {
-                    // Bursts come in one read, at most one read a second.
-                    let wait = READ_GAP.saturating_sub(read_at.elapsed());
-                    if !changes.all && !wait.is_zero() {
-                        cx.background_executor().timer(wait).await;
-                        while let Ok(change) = wake.try_recv() {
-                            announce(&this, cx, &change);
-                            add(&mut changes, change);
-                        }
+                let local = cx
+                    .background_executor()
+                    .spawn(async { (sessions::tmux_sessions(), crate::loops::known()) })
+                    .await;
+                let alive = this.update(cx, |shell, cx| {
+                    if shell.local != local {
+                        shell.local = local;
+                        shell.rebuild(cx);
                     }
-                    let all = changes.all;
-                    let taken = std::mem::take(&mut changes);
-                    let previous = board.clone();
-                    let (next, read, now) = cx
-                        .background_executor()
-                        .spawn(async move {
-                            let now = sessions::tmux_sessions();
-                            let read = sessions::update(&mut reader, &previous, &taken);
-                            (reader, read, now)
-                        })
-                        .await;
-                    reader = next;
-                    board = read;
-                    known = now;
-                    read_at = Instant::now();
-                    if all {
-                        full_at = read_at;
-                    }
-                    let (aiball, shown) = (reader.clone(), board.clone());
-                    if this
-                        .update(cx, |shell, cx| shell.set_board(aiball, shown, cx))
-                        .is_err()
-                    {
-                        break;
-                    }
-                }
-                // Redraw now and then: the states say for how long.
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    // Redraw now and then: the states say for how long.
+                    cx.notify();
+                });
+                if alive.is_err() {
                     break;
                 }
                 let timer = cx.background_executor().timer(SESSIONS_EVERY).fuse();
                 futures::pin_mut!(timer);
                 futures::select! {
                     _ = timer => {}
-                    change = wake.next() => {
-                        if let Some(change) = change {
-                            announce(&this, cx, &change);
-                            add(&mut changes, change);
-                        }
-                    }
+                    nudge = wake.next() => if nudge.is_none() { break },
                 };
-                while let Ok(change) = wake.try_recv() {
-                    announce(&this, cx, &change);
-                    add(&mut changes, change);
-                }
-                let since = full_at.elapsed();
-                if since >= REREAD_EVERY || (!feed.connected() && since >= POLL_EVERY) {
-                    changes.all = true;
-                }
-                if changes.is_empty() {
-                    let now = cx
-                        .background_executor()
-                        .spawn(async { sessions::tmux_sessions() })
-                        .await;
-                    // New or gone sessions: group the terminals again.
-                    changes.consumers = now != known;
-                }
+                while wake.try_recv().is_ok() {}
             }
         })
         .detach();
-
-        /// A ticket filed on the board is said, whoever filed it.
-        fn announce(this: &WeakEntity<Shell>, cx: &mut AsyncApp, change: &events::Change) {
-            if let events::Change::Filed(filed) = change {
-                let filed = filed.clone();
-                let _ = this.update(cx, |shell, cx| shell.announce_filed(filed, cx));
-            }
-        }
-
-        fn add(changes: &mut sessions::Changes, change: events::Change) {
-            match change {
-                events::Change::All => changes.all = true,
-                events::Change::Consumers => changes.consumers = true,
-                events::Change::Project(project) => {
-                    changes.projects.insert(project);
-                }
-                events::Change::Filed(filed) => {
-                    changes.projects.insert(filed.project);
-                }
-            }
-        }
     }
 
     /// A new ticket on a project of the board: blue from an agent, orange
     /// when it waits for moderation, green when the user filed it (from the
     /// web UI, say; filed from tvty, the same notice replaces tvty's own).
-    fn announce_filed(&mut self, filed: events::Filed, cx: &mut Context<Self>) {
+    fn announce_filed(&mut self, filed: crate::live::Filed, cx: &mut Context<Self>) {
         if !self.board.projects.iter().any(|p| p.on_board && p.name == filed.project) {
             return;
         }
@@ -576,12 +491,11 @@ impl Shell {
         activity::publish(cx, activity);
     }
 
-    fn set_board(&mut self, aiball: Aiball, board: Board, cx: &mut Context<Self>) {
-        self.aiball = aiball;
-        if !self.pings_followed && !self.aiball.user.is_empty() {
-            self.pings_followed = true;
-            self.follow_pings(cx);
-        }
+    /// Builds the board again from what aiball pushed and the local sessions.
+    fn rebuild(&mut self, cx: &mut Context<Self>) {
+        // Who the user is, from the humans aiball knows; the bus runs as them.
+        self.aiball.find_user(&self.live.consumers());
+        let board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
         if self.board != board {
             self.board = board;
             self.update_needs(cx);
@@ -591,40 +505,97 @@ impl Shell {
         self.sync_full_list(cx);
     }
 
-    // ── The user's pings ────────────────────────────────────────────────
+    /// The board moved on the bus: built again shortly, once for a burst.
+    fn board_moved(&mut self, cx: &mut Context<Self>) {
+        if self.rebuild_pending {
+            return;
+        }
+        self.rebuild_pending = true;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(REBUILD_AFTER).await;
+            let _ = this.update(cx, |shell, cx| {
+                shell.rebuild_pending = false;
+                shell.rebuild(cx);
+            });
+        })
+        .detach();
+    }
 
-    /// aiball's pings to the user, as notifications: one summing up what
-    /// waits unread at start, then one per ping as it comes.
+    /// What the bus's subscriptions said.
+    fn take_updates(&mut self, updates: Vec<crate::live::Update>, cx: &mut Context<Self>) {
+        use crate::live::Update;
+        for update in updates {
+            match update {
+                Update::Board => self.board_moved(cx),
+                Update::Filed(filed) => self.announce_filed(filed, cx),
+                Update::Ping(ping) => self.announce_ping(ping, cx),
+                Update::Unread(unread) => {
+                    if !self.pings_greeted && unread > 0 {
+                        let mut notice = Notice::new(
+                            Kind::Info,
+                            "aiball",
+                            format!("{unread} ping{} unread — a click lists them", if unread == 1 { "" } else { "s" }),
+                        );
+                        notice.unread_list = true;
+                        notify::push(cx, notice);
+                    }
+                    self.pings_greeted = true;
+                }
+            }
+        }
+    }
+
+    // ── aiball's bus ────────────────────────────────────────────────────
+
     /// Follows aiball's bus, opened at start as the local owner until the
-    /// user is known (reading the consumers tells who), then as them. Its
-    /// notifications are only logged for now: the subscriptions come with
-    /// aiball's methods for tvty.
+    /// user is known (the humans aiball knows tell who), then as them. On
+    /// each greeting — the first, after a drop, as another user — tvty
+    /// subscribes to the board and to the user's pings, resuming where it
+    /// was; their events keep the board up to date.
     fn follow_wire(&mut self, mut incoming: futures::channel::mpsc::UnboundedReceiver<crate::wire::Notification>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             use futures::StreamExt as _;
             while let Some(notice) = incoming.next().await {
-                log::debug!("aiball bus: {} {}", notice.method, notice.params);
-                // Greeted (again, after a drop): ask who the daemon sees.
-                if notice.method == "bus.hello" {
-                    let Ok(Some(wire)) = this.update(cx, |shell, _| shell.wire.clone()) else { break };
-                    let whoami = cx
-                        .background_executor()
-                        .spawn(async move { wire.call("bus.whoami", serde_json::json!({})) })
-                        .await;
-                    let said = match whoami {
-                        Ok(v) => format!(
-                            "{} ({}) over {}",
-                            v["consumer"].as_str().unwrap_or("?"),
-                            v["kind"].as_str().unwrap_or("?"),
-                            v["transport"].as_str().unwrap_or("?")
-                        ),
-                        Err(error) => format!("whoami failed: {error:#}"),
-                    };
-                    if this.update(cx, |shell, _| shell.wire_whoami = Some(said)).is_err() {
-                        break;
+                let alive = match notice.method.as_str() {
+                    "bus.event" => this.update(cx, |shell, cx| {
+                        let updates = shell.live.event(&notice.params);
+                        shell.take_updates(updates, cx);
+                    }),
+                    "bus.hello" => {
+                        // The user's pings are one's own: subscribed as a human.
+                        let text = |key: &str| notice.params.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+                        let user = if text("kind") == "human" { text("consumer") } else { String::new() };
+                        let Ok((Some(wire), plan)) = this.update(cx, |shell, _| (shell.wire.clone(), shell.live.plan(&user))) else { break };
+                        let (plan, answers, whoami) = cx
+                            .background_executor()
+                            .spawn(async move {
+                                let answers = crate::live::subscribe(&wire, &plan);
+                                let whoami = wire.call("bus.whoami", serde_json::json!({}));
+                                (plan, answers, whoami)
+                            })
+                            .await;
+                        let said = match whoami {
+                            Ok(v) => format!(
+                                "{} ({}) over {}",
+                                v["consumer"].as_str().unwrap_or("?"),
+                                v["kind"].as_str().unwrap_or("?"),
+                                v["transport"].as_str().unwrap_or("?")
+                            ),
+                            Err(error) => format!("whoami failed: {error:#}"),
+                        };
+                        this.update(cx, |shell, cx| {
+                            shell.wire_whoami = Some(said);
+                            let updates = shell.live.subscribed(plan, answers);
+                            shell.take_updates(updates, cx);
+                            cx.notify();
+                        })
                     }
-                }
-                if this.update(cx, |_, cx| cx.notify()).is_err() {
+                    _ => {
+                        log::debug!("aiball bus: {} {}", notice.method, notice.params);
+                        Ok(())
+                    }
+                };
+                if alive.is_err() {
                     break;
                 }
             }
@@ -632,55 +603,27 @@ impl Shell {
         .detach();
     }
 
-    fn follow_pings(&mut self, cx: &mut Context<Self>) {
-        let (pushes, mut incoming) = futures::channel::mpsc::unbounded::<crate::pings::Push>();
-        crate::pings::follow(self.aiball.clone(), pushes);
-        cx.spawn(async move |this, cx| {
-            use futures::StreamExt as _;
-            let mut greeted = false;
-            while let Some(push) = incoming.next().await {
-                let alive = this.update(cx, |shell, cx| match push {
-                    crate::pings::Push::Hello { unread } => {
-                        // Once: a reconnection does not say it again.
-                        if !greeted && unread > 0 {
-                            let mut notice = Notice::new(
-                                Kind::Info,
-                                "aiball",
-                                format!("{unread} ping{} unread — a click lists them", if unread == 1 { "" } else { "s" }),
-                            );
-                            notice.unread_list = true;
-                            notify::push(cx, notice);
-                        }
-                        greeted = true;
-                    }
-                    crate::pings::Push::Ping(ping) => {
-                        // Urgent in red, waiting for moderation in orange, else blue.
-                        let kind = if ping.urgent {
-                            Kind::Error
-                        } else if ping.pending {
-                            Kind::Decision
-                        } else {
-                            Kind::News
-                        };
-                        // The agent's terminal, when it has one here.
-                        let session = shell
-                            .board
-                            .projects
-                            .iter()
-                            .flat_map(|p| &p.terminals)
-                            .find(|t| t.agent.as_deref() == Some(ping.from.as_str()))
-                            .map(|t| t.session.clone());
-                        let text = if ping.title.is_empty() { ping.what.clone() } else { format!("{} — {}", ping.title, ping.what) };
-                        let about = (!ping.project.is_empty()).then(|| (ping.project.clone(), ping.ticket));
-                        activity::publish(cx, Activity::news(ping.from.clone(), kind, about, text).on(session));
-                    }
-                });
-                if alive.is_err() {
-                    break;
-                }
-            }
-        })
-        .detach();
+    /// A ping to the user, as a notification: urgent in red, waiting for
+    /// moderation in orange, else blue.
+    fn announce_ping(&mut self, ping: crate::pings::PingInfo, cx: &mut Context<Self>) {
+        let kind = if ping.urgent {
+            Kind::Error
+        } else if ping.pending {
+            Kind::Decision
+        } else {
+            Kind::News
+        };
+        // The agent's terminal, when it has one here.
+        let session = self
+            .board
+            .projects
+            .iter()
+            .flat_map(|p| &p.terminals)
+            .find(|t| t.agent.as_deref() == Some(ping.from.as_str()))
+            .map(|t| t.session.clone());
+        let text = if ping.title.is_empty() { ping.what.clone() } else { format!("{} — {}", ping.title, ping.what) };
+        let about = (!ping.project.is_empty()).then(|| (ping.project.clone(), ping.ticket));
+        activity::publish(cx, Activity::news(ping.from.clone(), kind, about, text).on(session));
     }
 
     // ── The ticket list, full screen ────────────────────────────────────
@@ -804,7 +747,7 @@ impl Shell {
                         panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);
                     });
-                    let _ = shell.refresh_now.unbounded_send(events::Change::All);
+                    let _ = shell.refresh_now.unbounded_send(());
                     cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
                     cx.notify();
                 })
@@ -1699,8 +1642,11 @@ impl Shell {
                 },
             ),
             (
-                "Live feed",
-                if self.feed.connected() { "connected" } else { "down — the board is polled" }.to_string(),
+                "Live board",
+                match self.live.subscriptions() {
+                    0 => "not subscribed".to_string(),
+                    n => format!("{n} subscriptions on the bus"),
+                },
             ),
             ("Theme", theme::current(cx).to_string()),
             (

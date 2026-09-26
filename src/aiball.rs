@@ -114,30 +114,6 @@ pub struct BarRead {
     pub stale: bool,
 }
 
-/// A message (a ticket or a comment), as `GET /api/messages/:id` gives it.
-#[derive(Clone, Debug, Deserialize)]
-pub struct Message {
-    pub kind: String,
-    pub by_agent: String,
-    #[serde(default)]
-    pub project: String,
-    #[serde(default)]
-    pub title: Option<String>,
-    #[serde(default)]
-    pub meta: Option<String>,
-    /// Moderation: `approved`, `pending`, `rejected`.
-    #[serde(default)]
-    pub status: String,
-}
-
-impl Message {
-    /// The decision it carries (`plan`, `resolution`…), if any.
-    pub fn decision_kind(&self) -> Option<String> {
-        let meta: Value = serde_json::from_str(self.meta.as_deref()?).ok()?;
-        meta.pointer("/decision/kind")?.as_str().map(str::to_string)
-    }
-}
-
 /// An agent's own backlog, as it sees it.
 #[derive(Clone, Debug, Deserialize)]
 pub struct AgentBacklog {
@@ -544,11 +520,6 @@ impl Aiball {
         self.rpc("consumer.list", json!({}))
     }
 
-    /// The open tickets of a project, as the web UI's list rows.
-    pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
-        self.inbox(json!({ "project": project, "open": true, "view": "turn", "sort": "band" }))
-    }
-
     /// A project's tickets, closed ones too: the most pressing first, at
     /// most `limit`.
     pub fn all_tickets(&self, project: &str, limit: usize) -> anyhow::Result<Vec<TicketRow>> {
@@ -594,21 +565,6 @@ impl Aiball {
         // aiball tags the platform, which the bus connection declares.
         let answer: Value = self.rpc("message.post", new_ticket_message(ticket))?;
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
-    }
-
-    /// An agent's loop bar; `None` when its loop never pushed one (a loop
-    /// started before aiball served bars, or no loop at all).
-    pub fn agent_bar(&self, agent: &str) -> anyhow::Result<Option<BarRead>> {
-        match self.rpc("consumer.bar", json!({ "consumer_id": agent })) {
-            Ok(bar) => Ok(Some(bar)),
-            Err(error) if format!("{error:#}").contains("(NOT_FOUND)") => Ok(None),
-            Err(error) => Err(error),
-        }
-    }
-
-    /// A message: a ticket or a comment.
-    pub fn message(&self, id: u64) -> anyhow::Result<Message> {
-        self.rpc("message.get", json!({ "id": id }))
     }
 
     /// An agent's own backlog, in `project`.
@@ -790,21 +746,6 @@ impl Aiball {
         self.rpc_do("message.decide", json!({ "id": comment, "status": status }))
     }
 
-    /// A read whose answer is taken as it comes.
-    pub fn get_value(&self, path: &str) -> anyhow::Result<Value> {
-        self.get(path)
-    }
-
-    fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
-        let body = self.request("GET", path, None)?;
-        serde_json::from_str(&body).with_context(|| format!("GET {path}"))
-    }
-
-    fn request(&self, method: &str, path: &str, body: Option<Value>) -> anyhow::Result<String> {
-        let body = body.map(|b| b.to_string()).unwrap_or_default();
-        self.request_bytes(method, path, "application/json", &[], body.as_bytes())
-    }
-
     /// An upload's bytes, through the socket (`/api/uploads/<sha>`).
     pub fn upload_bytes(&self, reference: &str) -> anyhow::Result<Vec<u8>> {
         self.request_raw("GET", reference, "application/octet-stream", &[], &[])
@@ -877,18 +818,6 @@ pub fn socket_path() -> PathBuf {
             let home = std::env::var("HOME").unwrap_or_default();
             PathBuf::from(home).join(".local/share/aiball/sock")
         })
-}
-
-/// Percent-encodes a path segment or query value.
-pub(crate) fn encode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                (b as char).to_string()
-            }
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 /// A ticket to file: what goes in the one call that creates it.

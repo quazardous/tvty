@@ -172,6 +172,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The board, the agents' states and bars, and the pings come pushed by
+  aiball over its bus, as data: tvty no longer reads the board again
+  when something moves, nor polls it; after a drop it resumes where it
+  was. Options > About says how many subscriptions are up.
+
 - The sessions list drops its vertical tabs for three foldable sections,
   live, idle and shut, drawn like the ticket list's bands; what is folded
   is remembered (idle and shut start folded).

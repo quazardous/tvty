@@ -46,7 +46,8 @@ Early. What works today:
 - switching: a slider (ctrl+tab) and a gallery of live thumbnails
   (ctrl+shift+space); the panel resizes and folds away;
 - colour themes, light and dark, for the window and the terminals;
-- live updates from aiball's event feed (`/ws`, over the same socket).
+- live updates pushed by aiball over one permanent connection (its bus:
+  JSON-RPC over a WebSocket on the same socket).
 
 Linux only for now; Windows and macOS are planned.
 
