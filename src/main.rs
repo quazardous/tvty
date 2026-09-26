@@ -2,6 +2,7 @@
 //! agents, their terminals grouped by project and their tickets beside.
 
 mod accordion;
+mod activity;
 mod aiball;
 mod bus;
 mod composer;
@@ -52,6 +53,7 @@ fn main() {
             settings.notify_max.unwrap_or(notify::MAX_DEFAULT),
             settings.notify_seconds.unwrap_or(notify::SECONDS_DEFAULT),
         );
+        activity::init(cx, settings.notify_own);
         wheel::set_speed(settings.scroll_speed);
         theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
         theme::set_window_font(settings.window_font_size, cx);

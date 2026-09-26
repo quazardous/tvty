@@ -19,6 +19,7 @@ use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
+use crate::activity::{self, Activity};
 use crate::bus::{self, Signal};
 use crate::fulllist::{CloseFullList, FullList};
 use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
@@ -329,6 +330,8 @@ impl Shell {
                 window.focus(&shell.focus.clone(), cx);
                 cx.notify();
             }
+            // The activity service's.
+            Signal::Activity(_) => {}
         })
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
@@ -556,19 +559,17 @@ impl Shell {
                     }
                     crate::pings::Push::Ping(ping) => {
                         let kind = if ping.urgent { Kind::Error } else { Kind::News };
-                        let mut notice = Notice::new(kind, ping.from.clone(), format!("{} — {}", ping.title, ping.what))
-                            .about(ping.project.clone(), ping.ticket);
                         // The agent's terminal, when it has one here.
-                        if let Some(t) = shell
+                        let session = shell
                             .board
                             .projects
                             .iter()
                             .flat_map(|p| &p.terminals)
                             .find(|t| t.agent.as_deref() == Some(ping.from.as_str()))
-                        {
-                            notice = notice.on(t.session.clone());
-                        }
-                        notify::push(cx, notice);
+                            .map(|t| t.session.clone());
+                        let text = if ping.title.is_empty() { ping.what.clone() } else { format!("{} — {}", ping.title, ping.what) };
+                        let about = (!ping.project.is_empty()).then(|| (ping.project.clone(), ping.ticket));
+                        activity::publish(cx, Activity::news(ping.from.clone(), kind, about, text).on(session));
                     }
                 });
                 if alive.is_err() {
@@ -695,6 +696,7 @@ impl Shell {
                         shell.toggle_panel(cx);
                     }
                     let (project, ticket) = (created.project.clone(), created.ticket);
+                    activity::publish(cx, Activity::done(Some((project.clone(), ticket)), "filed"));
                     shell.panel.update(cx, |panel, cx| {
                         panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);
@@ -792,11 +794,10 @@ impl Shell {
                         Wait::Decision => (Kind::Decision, "a decision waits on you"),
                         Wait::Unread => (Kind::News, "something new"),
                     };
-                    notify::push(
+                    activity::publish(
                         cx,
-                        Notice::new(kind, need.agent.clone(), format!("{} — {what}", need.title))
-                            .about(need.project.clone(), need.ticket)
-                            .on(need.session.clone()),
+                        Activity::news(need.agent.clone(), kind, Some((need.project.clone(), need.ticket)), format!("{} — {what}", need.title))
+                            .on(Some(need.session.clone())),
                     );
                 }
             }
@@ -1439,7 +1440,7 @@ impl Shell {
                     .gap_2()
                     .child(option_stepper(
                         "Shown at most",
-                        "In the top left corner, the newest first; older ones make room.",
+                        "In the bottom left corner, the newest lowest; older ones make room.",
                         max.to_string(),
                         cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max.saturating_sub(1).max(1), seconds, cx)),
                         cx.listener(move |shell, _, _, cx| shell.set_notify_limits((max + 1).min(10), seconds, cx)),
@@ -1455,6 +1456,18 @@ impl Shell {
                         cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max, (seconds + 1).min(30), cx)),
                         cx.listener(|shell, _, _, cx| {
                             shell.set_notify_limits(notify::limits(cx).0, notify::SECONDS_DEFAULT, cx)
+                        }),
+                    ))
+                    .child(option_row(
+                        "Your own gestures",
+                        "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
+                        if self.settings.notify_own { "shown".into() } else { "hidden".into() },
+                        if self.settings.notify_own { "Hide" } else { "Show" },
+                        cx.listener(|shell, _, _, cx| {
+                            shell.settings.notify_own = !shell.settings.notify_own;
+                            crate::activity::set_own(cx, shell.settings.notify_own);
+                            shell.settings.save();
+                            cx.notify();
                         }),
                     ))
             })

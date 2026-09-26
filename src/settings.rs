@@ -33,6 +33,8 @@ pub struct Settings {
     /// defaults.
     pub notify_max: Option<usize>,
     pub notify_seconds: Option<u64>,
+    /// The user's own gestures (closed, replied, decided…) notified too.
+    pub notify_own: bool,
     /// The project the last new ticket went to.
     pub last_ticket_project: Option<String>,
     /// The sessions list's folded sections (`live`, `idle`, `shut`).
@@ -53,6 +55,7 @@ impl Default for Settings {
             last_ticket_project: None,
             notify_max: None,
             notify_seconds: None,
+            notify_own: true,
             terminal_font_size: None,
             window_font_size: None,
             sessions_folded: vec!["idle".into(), "shut".into()],

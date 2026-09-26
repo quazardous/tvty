@@ -234,11 +234,14 @@ window's bottom left corner, above everything (full screens and gallery
 included), a little translucent. They stack bottom up, the newest in the
 corner, at most five; each goes after six seconds, unless the pointer is on it (both
 set in Options > Appearance). While one is up, its ticket **shines** in
-every list shown. A click, or ctrl+enter for the newest, brings that
+every list shown, in the notification's colour. A click, or ctrl+enter for the newest, brings that
 agent's terminal (it slides in) and opens the ticket in the panel; × lets
 it go. No switch happens on its own: the user may be typing elsewhere.
-tvty's own messages (a gesture aiball refused, a ticket filed without all
-it asked for) come the same way.
+The user's own gestures come the same way, once aiball has them — "#12
+closed", "decision accepted", "filed", in green (Options: hide them) — and
+a gesture aiball refuses always does, in red. One place makes them all
+(`src/activity.rs`): the views publish what happened on the internal bus,
+never a notification themselves.
 
 **aiball's pings to the user** come too: tvty follows the stream aiball's
 web badge and the loops follow (`/api/events`, over the socket). Each ping

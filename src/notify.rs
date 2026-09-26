@@ -24,6 +24,8 @@ pub enum Kind {
     News,
     /// tvty says something.
     Info,
+    /// A gesture of the user went through.
+    Done,
     /// Something failed.
     Error,
 }
@@ -143,8 +145,12 @@ pub fn newest(cx: &App) -> Option<Notice> {
 }
 
 /// Whether a notification about `ticket` is up: the lists shine it.
-pub fn lit(cx: &App, ticket: u64) -> bool {
-    cx.global::<Notices>().shown.iter().any(|n| n.ticket.as_ref().is_some_and(|t| t.1 == ticket))
+pub fn lit(cx: &App, ticket: u64) -> Option<Hsla> {
+    cx.global::<Notices>()
+        .shown
+        .iter()
+        .find(|n| n.ticket.as_ref().is_some_and(|t| t.1 == ticket))
+        .map(|n| colour(n.kind))
 }
 
 pub fn set_limits(cx: &mut App, max: usize, seconds: u64) {
@@ -194,6 +200,7 @@ fn colour(kind: Kind) -> Hsla {
         Kind::Decision => p().warning,
         Kind::News => p().accent,
         Kind::Info => p().info,
+        Kind::Done => p().success,
         Kind::Error => p().danger,
     }
 }
@@ -275,17 +282,15 @@ pub fn stack(cx: &App) -> Option<AnyElement> {
     Some(column.into_any_element())
 }
 
-/// The glow of a ticket a notification is about, on a list's row.
-pub fn halo<E: Styled>(row: E, lit: bool) -> E {
-    if !lit {
-        return row;
-    }
-    // A thin outline and a soft glow inside it: the row stays readable.
-    row.bg(p().accent.opacity(0.05)).shadow(vec![BoxShadow {
-        color: p().accent.opacity(0.7),
+/// The glow of a ticket a notification is about, on a list's row: the
+/// notification's colour, behind the row and around it, while it is shown.
+pub fn halo<E: Styled>(row: E, lit: Option<Hsla>) -> E {
+    let Some(colour) = lit else { return row };
+    row.bg(colour.opacity(0.12)).shadow(vec![BoxShadow {
+        color: colour.opacity(0.9),
         offset: point(px(0.), px(0.)),
-        blur_radius: px(6.),
-        spread_radius: px(-1.),
+        blur_radius: px(4.),
+        spread_radius: px(0.),
         inset: true,
     }])
 }

@@ -24,6 +24,8 @@ pub enum Signal {
     BoardChanged,
     /// Show a thread's images in the viewer, from this one.
     OpenPictures { pictures: Vec<crate::images::Picture>, index: usize },
+    /// Something happened: the activity service makes it a notification.
+    Activity(crate::activity::Activity),
 }
 
 pub struct Bus;

@@ -790,6 +790,11 @@ impl Aiball {
             .map(drop)
     }
 
+    /// A read whose answer is taken as it comes.
+    pub fn get_value(&self, path: &str) -> anyhow::Result<Value> {
+        self.get(path)
+    }
+
     fn get<T: DeserializeOwned>(&self, path: &str) -> anyhow::Result<T> {
         let body = self.request("GET", path, None)?;
         serde_json::from_str(&body).with_context(|| format!("GET {path}"))
@@ -880,7 +885,7 @@ pub fn socket_path() -> PathBuf {
 }
 
 /// Percent-encodes a path segment or query value.
-fn encode(s: &str) -> String {
+pub(crate) fn encode(s: &str) -> String {
     s.bytes()
         .map(|b| match b {
             b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {

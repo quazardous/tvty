@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Your own gestures are notified once aiball has them ("#12 closed",
+  "decision accepted", "filed"), in green; a refusal always is, in red.
+  Options hide your own. A ticket a notification is about shines in its
+  colour in the lists, clearly now.
+
 - The sessions list has a header, "Sessions", in line with the tickets
   panel's, and a ‹ that folds it; the panel's › now opens its header, on
   the side it folds away from.
@@ -175,6 +180,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   now optimised even there.
 
 ### Fixed
+
+- A ping from aiball is no longer lost when its ticket cannot be read
+  back, and the pings sent while tvty's stream was down come once it is
+  back.
 
 - When Claude quits in the terminal shown, tvty no longer leaves a dead
   "[exited]" screen: an end screen offers to start the loop again (Enter)

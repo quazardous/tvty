@@ -385,9 +385,9 @@ impl Shell {
                     Ok(()) => {
                         let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
                     }
-                    Err(error) => crate::notify::push(
+                    Err(error) => crate::activity::publish(
                         cx,
-                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, format!("tmux line: {}", short_error(&format!("{error:#}")))),
+                        crate::activity::Activity::failed(None, &format!("tmux line of {agent_name}"), short_error(&format!("{error:#}"))),
                     ),
                 }
                 cx.notify();
@@ -409,9 +409,9 @@ impl Shell {
                     Ok(()) => {
                         let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
                     }
-                    Err(error) => crate::notify::push(
+                    Err(error) => crate::activity::publish(
                         cx,
-                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, format!("hold: {}", short_error(&format!("{error:#}")))),
+                        crate::activity::Activity::failed(None, &format!("hold of {agent_name}"), short_error(&format!("{error:#}"))),
                     ),
                 }
                 cx.notify();

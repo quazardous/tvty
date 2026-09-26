@@ -13,7 +13,6 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::loops::{KnownLoop, Start};
-use crate::notify::{self, Kind, Notice};
 use crate::theme::p;
 
 /// The idle and shut sections.
@@ -292,14 +291,14 @@ impl Shell {
                     Ok(name) => {
                         shell.new_session = None;
                         shell.open_when_running = Some(name.clone());
-                        notify::push(cx, Notice::new(Kind::Info, "tvty", format!("started {name} in {}", home_short(&start.cwd))));
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
                         let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
                     }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {
                             form.busy = false;
                         }
-                        notify::push(cx, Notice::new(Kind::Error, "claude-loop", format!("{error:#}")));
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start", format!("{error:#}")));
                     }
                 }
                 cx.notify();

@@ -200,11 +200,13 @@ impl TicketPanel {
     /// A gesture on one comment: the menu closes once aiball has it.
     fn on_comment(
         &mut self,
+        what: &str,
         run: impl FnOnce(&Aiball) -> anyhow::Result<()> + Send + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         self.gesture(
+            what.to_string(),
             run,
             |panel, _, _| {
                 panel.comment_menu = None;
@@ -225,7 +227,7 @@ impl TicketPanel {
 
     fn edit_comment_save(&mut self, comment: u64, window: &mut Window, cx: &mut Context<Self>) {
         let body = self.edit_comment.read(cx).value().to_string();
-        self.on_comment(move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
+        self.on_comment("comment edited", move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
     }
 
     pub fn is_full(&self) -> bool {
@@ -325,12 +327,14 @@ impl TicketPanel {
     /// Changes an invariant: no reply is posted with it.
     fn change(
         &mut self,
+        what: impl Into<String>,
         run: impl FnOnce(&Aiball, u64) -> anyhow::Result<()> + Send + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) else { return };
         self.gesture(
+            what.into(),
             move |aiball| run(aiball, ticket),
             |panel, _, _| panel.editing = None,
             window,
@@ -344,14 +348,14 @@ impl TicketPanel {
         if title.is_empty() {
             return;
         }
-        self.change(move |aiball, ticket| aiball.edit(ticket, json!({ "title": title, "body": body })), window, cx);
+        self.change("title and body edited", move |aiball, ticket| aiball.edit(ticket, json!({ "title": title, "body": body })), window, cx);
     }
 
     fn add_relation(&mut self, kind: &'static str, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.relation_target.read(cx).value().to_string();
         let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
         self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
-        self.change(move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
+        self.change(format!("related to #{target} ({kind})"), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
     }
 
     pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {
@@ -481,17 +485,22 @@ impl TicketPanel {
     }
 
     /// Sends a gesture to aiball, then reads the thread and the board again.
+    /// Runs a gesture on the ticket shown; `what` says it to the activity
+    /// service ("closed", "plan accepted"), which notifies how it went.
     fn gesture(
         &mut self,
+        what: String,
         run: impl FnOnce(&Aiball) -> anyhow::Result<()> + Send + 'static,
         on_success: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        let scope_project = self.scope.as_ref().map(|s| s.project.clone());
         let Some(detail) = self.detail.as_mut() else {
             return;
         };
         let ticket = detail.ticket;
+        let about = detail.project.clone().or(scope_project).map(|project| (project, ticket));
         detail.busy = true;
         detail.error = None;
         let aiball = self.aiball.clone();
@@ -505,12 +514,16 @@ impl TicketPanel {
                             on_success(panel, window, cx);
                             panel.load(ticket, false, cx);
                             crate::bus::emit(cx, crate::bus::Signal::BoardChanged);
+                            if !what.is_empty() {
+                                crate::activity::publish(cx, crate::activity::Activity::done(about, what));
+                            }
                         }
                         Err(error) => {
                             if let Some(detail) = panel.detail.as_mut() {
                                 detail.busy = false;
                                 detail.error = Some(format!("{error:#}"));
                             }
+                            crate::activity::publish(cx, crate::activity::Activity::failed(about, &what, format!("{error:#}")));
                         }
                     }
                     cx.notify();
@@ -525,11 +538,18 @@ impl TicketPanel {
     /// why.
     fn act(
         &mut self,
+        what: &str,
         then: impl FnOnce(&Aiball, &str, u64) -> anyhow::Result<()> + Send + 'static,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
         let body = self.reply.read(cx).value().trim().to_string();
+        // What it says: the gesture, and the reply that carries its why.
+        let what = match (what.is_empty(), body.is_empty()) {
+            (true, _) => "reply posted".to_string(),
+            (false, true) => what.to_string(),
+            (false, false) => format!("{what}, with a reply"),
+        };
         let Some(detail) = self.detail.as_ref() else {
             return;
         };
@@ -543,6 +563,7 @@ impl TicketPanel {
         let ticket = detail.ticket;
         let (quiet, answers) = (detail.quiet, detail.answers.clone());
         self.gesture(
+            what,
             move |aiball| {
                 if !body.is_empty() {
                     let comment = aiball.reply(&project, ticket, &body, quiet)?;
@@ -574,11 +595,11 @@ impl TicketPanel {
             let at = std::time::SystemTime::now() + std::time::Duration::from_secs(h * 3600);
             crate::status::format_time(at)
         });
-        self.act(move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
+        self.act(if until.is_some() { "snoozed" } else { "woken" }, move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
     }
 
     fn set_priority(&mut self, priority: &'static str, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
+        self.act(&format!("priority {priority}"), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
     }
 
     fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
@@ -650,22 +671,22 @@ impl TicketPanel {
     }
 
     fn decide(&mut self, message: u64, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(move |aiball, _, _| aiball.decide(message, accept), window, cx);
+        self.act(if accept { "decision accepted" } else { "decision rejected" }, move |aiball, _, _| aiball.decide(message, accept), window, cx);
     }
 
     fn moderate(&mut self, message: u64, approve: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(move |aiball, _, _| aiball.moderate(message, approve), window, cx);
+        self.act(if approve { "approved" } else { "rejected in moderation" }, move |aiball, _, _| aiball.moderate(message, approve), window, cx);
     }
 
     fn set_closed(&mut self, closed: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(move |aiball, project, ticket| aiball.set_closed(project, ticket, closed), window, cx);
+        self.act(if closed { "closed" } else { "reopened" }, move |aiball, project, ticket| aiball.set_closed(project, ticket, closed), window, cx);
     }
 
     fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.reply.read(cx).value().trim().is_empty() {
             return;
         }
-        self.act(|_, _, _| Ok(()), window, cx);
+        self.act("", |_, _, _| Ok(()), window, cx);
     }
 
     fn toggle_fold(&mut self, id: u64, cx: &mut Context<Self>) {
@@ -1545,7 +1566,7 @@ impl TicketPanel {
                         value.as_deref() == Some(v),
                         cx,
                         Box::new(move |panel, window, cx| {
-                            panel.change(move |aiball, ticket| aiball.edit(ticket, json!({ field: v })), window, cx)
+                            panel.change(format!("{field} {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ field: v })), window, cx)
                         }),
                     ));
                 }
@@ -1560,7 +1581,7 @@ impl TicketPanel {
                 "none".into(),
                 milestone.is_none(),
                 cx,
-                Box::new(|panel, window, cx| panel.change(|aiball, ticket| aiball.set_milestone(ticket, None), window, cx)),
+                Box::new(|panel, window, cx| panel.change("milestone removed", |aiball, ticket| aiball.set_milestone(ticket, None), window, cx)),
             ));
             for (id, title) in &catalog.milestones {
                 let id = *id;
@@ -1569,7 +1590,7 @@ impl TicketPanel {
                     title.clone(),
                     milestone.as_deref() == Some(title.as_str()),
                     cx,
-                    Box::new(move |panel, window, cx| panel.change(move |aiball, ticket| aiball.set_milestone(ticket, Some(id)), window, cx)),
+                    Box::new(move |panel, window, cx| panel.change("milestone set", move |aiball, ticket| aiball.set_milestone(ticket, Some(id)), window, cx)),
                 ));
             }
             if catalog.milestones.is_empty() {
@@ -1598,6 +1619,7 @@ impl TicketPanel {
                     Box::new(move |panel, window, cx| {
                         let name = name.clone();
                         panel.change(
+                            if on { format!("tag {name} removed") } else { format!("tagged {name}") },
                             move |aiball, ticket| if on { aiball.remove_tag(ticket, &name) } else { aiball.add_tag(ticket, &name) },
                             window,
                             cx,
@@ -1635,7 +1657,7 @@ impl TicketPanel {
                     cx,
                     Box::new(move |panel, window, cx| {
                         let name = name.clone();
-                        panel.change(move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx)
+                        panel.change(format!("reporter now {name}"), move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx)
                     }),
                 ));
             }
@@ -1656,7 +1678,7 @@ impl TicketPanel {
                     "release".into(),
                     false,
                     cx,
-                    Box::new(|panel, window, cx| panel.change(|aiball, ticket| aiball.assign(ticket, None), window, cx)),
+                    Box::new(|panel, window, cx| panel.change("released", |aiball, ticket| aiball.assign(ticket, None), window, cx)),
                 ));
             }
             for agent in &catalog.agents {
@@ -1668,7 +1690,7 @@ impl TicketPanel {
                     cx,
                     Box::new(move |panel, window, cx| {
                         let name = name.clone();
-                        panel.change(move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
+                        panel.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
                     }),
                 ));
             }
@@ -1729,7 +1751,7 @@ impl TicketPanel {
                     .hover(|d| d.text_color(p().danger))
                     .child("✕")
                     .on_click(cx.listener(move |panel, _, window, cx| {
-                        panel.change(move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
+                        panel.change(format!("relation to #{target} removed"), move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
                     }))
             });
             col = col.child(
@@ -1778,7 +1800,7 @@ impl TicketPanel {
                     cx,
                     Box::new(move |panel, window, cx| {
                         let name = name.clone();
-                        panel.change(move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
+                        panel.change(format!("moved to {name}"), move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
                     }),
                 ));
             }
@@ -2004,7 +2026,7 @@ impl TicketPanel {
                         return;
                     }
                     if panel.confirm_delete == Some(id) {
-                        panel.on_comment(move |aiball| aiball.delete_comment(id), window, cx);
+                        panel.on_comment("comment deleted", move |aiball| aiball.delete_comment(id), window, cx);
                     } else {
                         panel.confirm_delete = Some(id);
                         cx.notify();
@@ -2021,20 +2043,20 @@ impl TicketPanel {
             }
             row = row.child(
                 item(&format!("classify-{kind}"), format!("as {}", reading::kind_noun(kind)), p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.classify(id, kind), window, cx))),
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(&format!("comment made a {}", reading::kind_noun(kind)), move |aiball| aiball.classify(id, kind), window, cx))),
             );
         }
         if current.is_some() {
             row = row.child(
                 item("untag", "no decision".into(), p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.untag(id), window, cx))),
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment("comment made plain", move |aiball| aiball.untag(id), window, cx))),
             );
         }
         if comment.by_agent != user && entry.decision.is_none() {
             let step = entry.step.is_some();
             row = row.child(
                 item("step", if step { "not a step".into() } else { "a step".into() }, p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.set_step(id, !step), window, cx))),
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(if step { "step unmarked" } else { "step marked" }, move |aiball| aiball.set_step(id, !step), window, cx))),
             );
         }
         let mine = comment.votes_summary.as_ref().and_then(|v| v.mine).unwrap_or(0);
@@ -2043,13 +2065,13 @@ impl TicketPanel {
             row = row.child(
                 item(key, if on { format!("{label} ✓") } else { label.to_string() }, p().text).on_click(cx.listener(move |panel, _, window, cx| {
                     let value = if on { 0 } else { value };
-                    panel.on_comment(move |aiball| aiball.vote(id, value), window, cx)
+                    panel.on_comment("voted", move |aiball| aiball.vote(id, value), window, cx)
                 })),
             );
         }
         row = row.child(
             item("resurface", "Resurface".into(), p().text)
-                .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(move |aiball| aiball.resurface(id), window, cx))),
+                .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment("comment resurfaced", move |aiball| aiball.resurface(id), window, cx))),
         );
         if let Some(hashid) = comment.hashid.clone() {
             row = row.child(item("copy", format!("#C.{hashid}"), p().muted).on_click(cx.listener(move |panel, _, _, cx| {

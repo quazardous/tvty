@@ -39,13 +39,17 @@ pub fn follow(aiball: Aiball, pushes: UnboundedSender<Push>) {
     std::thread::Builder::new()
         .name("aiball-pings".into())
         .spawn(move || {
+            // Once the stream dropped, what came meanwhile is read again on
+            // reconnecting: the unread pings since it dropped.
+            let mut dropped_at: Option<String> = None;
             loop {
-                if let Err(error) = listen(&aiball, &pushes) {
+                if let Err(error) = listen(&aiball, &pushes, dropped_at.take()) {
                     log::debug!("aiball pings: {error:#}");
                 }
                 if pushes.is_closed() {
                     return;
                 }
+                dropped_at = Some(crate::status::format_time(std::time::SystemTime::now()));
                 std::thread::sleep(Duration::from_secs(5));
             }
         })
@@ -53,7 +57,7 @@ pub fn follow(aiball: Aiball, pushes: UnboundedSender<Push>) {
 }
 
 #[cfg(unix)]
-fn listen(aiball: &Aiball, pushes: &UnboundedSender<Push>) -> anyhow::Result<()> {
+fn listen(aiball: &Aiball, pushes: &UnboundedSender<Push>, since: Option<String>) -> anyhow::Result<()> {
     let mut stream = std::os::unix::net::UnixStream::connect(crate::aiball::socket_path())?;
     // HTTP/1.0: the answer is not chunked, the stream is the body itself.
     write!(
@@ -67,7 +71,18 @@ fn listen(aiball: &Aiball, pushes: &UnboundedSender<Push>) -> anyhow::Result<()>
         if let Some(name) = line.strip_prefix("event:") {
             event = name.trim().to_string();
         } else if let Some(data) = line.strip_prefix("data:") {
-            if let Some(push) = parse(&event, data.trim(), aiball) {
+            let push = parse(&event, data.trim(), aiball);
+            // Connected again after a drop: the pings missed meanwhile, then
+            // the stream (the greeting's count is not shown twice).
+            if let (Some(Push::Hello { .. }), Some(since)) = (&push, since.as_deref()) {
+                for missed in missed_since(aiball, since) {
+                    if pushes.unbounded_send(Push::Ping(missed)).is_err() {
+                        return Ok(());
+                    }
+                }
+                continue;
+            }
+            if let Some(push) = push {
                 if pushes.unbounded_send(push).is_err() {
                     return Ok(());
                 }
@@ -80,7 +95,7 @@ fn listen(aiball: &Aiball, pushes: &UnboundedSender<Push>) -> anyhow::Result<()>
 }
 
 #[cfg(not(unix))]
-fn listen(_: &Aiball, _: &UnboundedSender<Push>) -> anyhow::Result<()> {
+fn listen(_: &Aiball, _: &UnboundedSender<Push>, _: Option<String>) -> anyhow::Result<()> {
     anyhow::bail!("aiball's socket is Unix only for now")
 }
 
@@ -92,8 +107,24 @@ fn parse(event: &str, data: &str, aiball: &Aiball) -> Option<Push> {
         "ping" => {
             let ticket = data.get("ticket_id")?.as_u64()?;
             let urgent = data.get("intent").and_then(Value::as_str) == Some("panic");
-            // A ticket is a message too: its title, project and reporter.
-            let head = aiball.message(ticket).ok()?;
+            // A ticket is a message too: its title, project and reporter. A
+            // ping whose details cannot be read is still shown, with what
+            // the ping says: never dropped.
+            let head = match aiball.message(ticket) {
+                Ok(head) => head,
+                Err(error) => {
+                    log::warn!("aiball ping on {ticket}: its ticket could not be read: {error:#}");
+                    let text = |key: &str| data.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+                    return Some(Push::Ping(PingInfo {
+                        ticket,
+                        project: text("project"),
+                        title: text("title"),
+                        from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
+                        what: "something new".into(),
+                        urgent,
+                    }));
+                }
+            };
             let comment = data.get("comment_id").and_then(Value::as_u64);
             let (from, what) = match comment.and_then(|c| aiball.message(c).ok()) {
                 Some(message) => (message.by_agent.clone(), what_it_is(&message.kind, message.decision_kind())),
@@ -104,6 +135,46 @@ fn parse(event: &str, data: &str, aiball: &Aiball) -> Option<Push> {
         }
         _ => None,
     }
+}
+
+/// The unread pings created since `since` (ISO 8601), oldest first: what
+/// the stream missed while it was down.
+fn missed_since(aiball: &Aiball, since: &str) -> Vec<PingInfo> {
+    let path = format!("/api/pings?consumer_id={}&unread=1&limit=50", crate::aiball::encode(&aiball.user));
+    let listed: Value = match aiball.get_value(&path) {
+        Ok(listed) => listed,
+        Err(error) => {
+            log::warn!("aiball pings missed while disconnected: {error:#}");
+            return Vec::new();
+        }
+    };
+    let mut missed: Vec<PingInfo> = listed
+        .get("pings")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|p| p.get("created_at").and_then(Value::as_str).is_some_and(|at| at > since))
+        .filter_map(|p| {
+            let message = p.get("message")?;
+            let text = |key: &str| message.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+            let ticket = message.get("ticket_id").and_then(Value::as_u64).or_else(|| message.get("id").and_then(Value::as_u64))?;
+            let decision = message
+                .get("meta")
+                .and_then(Value::as_str)
+                .and_then(|m| serde_json::from_str::<Value>(m).ok())
+                .and_then(|m| m.pointer("/decision/kind").and_then(Value::as_str).map(str::to_string));
+            Some(PingInfo {
+                ticket,
+                project: text("project"),
+                title: message.get("title").and_then(Value::as_str).unwrap_or_default().to_string(),
+                from: text("by_agent"),
+                what: what_it_is(&text("kind"), decision),
+                urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
+            })
+        })
+        .collect();
+    missed.reverse();
+    missed
 }
 
 /// What pinged, in a few words.
