@@ -685,7 +685,7 @@ impl Aiball {
 
     /// Makes `who` the ticket's reporter (its owner).
     pub fn set_owner(&self, ticket: u64, who: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/tickets/{ticket}/owner"), json!({ "by_agent": who })).map(drop)
+        self.post(&format!("/api/tickets/{ticket}/owner"), json!({ "owner": who })).map(drop)
     }
 
     /// Relates the ticket to `target`; `ignored` removes the relation.
