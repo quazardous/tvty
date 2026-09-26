@@ -139,11 +139,7 @@ impl TerminalView {
         let term = Term::new(Config::default(), &TermSize::new(columns as usize, lines as usize), listener.clone());
         let term = Arc::new(FairMutex::new(term));
         let backend = match crate::attach::Attach::connect(socket, (columns, lines), term.clone(), listener.clone()) {
-            Ok(attach) => {
-                // Opened to be shown: this client's size is the one to use.
-                attach.focus();
-                Backend::Attach(attach)
-            }
+            Ok(attach) => Backend::Attach(attach),
             Err(error) => {
                 log::warn!("attach {}: {error:#}", socket.display());
                 listener.send_event(Event::Exit);

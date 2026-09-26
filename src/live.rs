@@ -303,14 +303,18 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Pings => self.ping(data).map(Update::Ping).into_iter().collect(),
-            // A session's whole state, or `null` once it is gone.
+            // `{ name, session }`: the session as `session.list` gives it,
+            // or `null` once it stopped.
             Kind::Sessions => {
-                let name = middle(subject).or_else(|| data.get("name").and_then(Value::as_str).map(str::to_string));
+                let name = data.get("name").and_then(Value::as_str).map(str::to_string).or_else(|| middle(subject));
                 let Some(name) = name else { return Vec::new() };
-                if data.is_null() {
-                    self.sessions.remove(&name);
-                } else {
-                    self.sessions.insert(name, data.clone());
+                match data.get("session") {
+                    Some(session) if !session.is_null() => {
+                        self.sessions.insert(name, session.clone());
+                    }
+                    _ => {
+                        self.sessions.remove(&name);
+                    }
                 }
                 vec![Update::Board]
             }
@@ -359,13 +363,14 @@ impl Live {
         self.tickets_seen && self.agents_seen
     }
 
-    /// The host's running sessions without an agent: (name, attach socket).
-    pub fn terminals(&self) -> Vec<(String, Option<String>)> {
+    /// The host's running sessions without an agent, once they can be
+    /// attached to: (name, attach socket).
+    pub fn terminals(&self) -> Vec<(String, String)> {
         self.sessions
             .iter()
             .filter(|(_, s)| s.get("agent").is_none_or(Value::is_null))
             .filter(|(_, s)| s.get("running").and_then(Value::as_bool) != Some(false))
-            .map(|(name, s)| (name.clone(), s.pointer("/attach/socket").and_then(Value::as_str).map(str::to_string)))
+            .filter_map(|(name, s)| Some((name.clone(), s.pointer("/attach/socket")?.as_str()?.to_string())))
             .collect()
     }
 
@@ -515,10 +520,14 @@ mod tests {
             } })),
         ];
         live.subscribed(plan, answers);
-        assert_eq!(live.terminals(), vec![("plain".to_string(), Some("/s/plain".to_string()))]);
-        // Gone: `null`.
-        live.event(&json!({ "subscription": "h", "subject": "session.plain.state", "seq": 2, "data": null }));
-        assert!(live.terminals().is_empty());
+        assert_eq!(live.terminals(), vec![("plain".to_string(), "/s/plain".to_string())]);
+        // Started later: `{ name, session }`; stopped: `session: null`.
+        live.event(&json!({ "subscription": "h", "subject": "session.two.state", "seq": 2, "data": {
+            "name": "two", "session": { "name": "two", "agent": null, "running": true, "attach": { "socket": "/s/two" } } } }));
+        assert_eq!(live.terminals().len(), 2);
+        live.event(&json!({ "subscription": "h", "subject": "session.plain.state", "seq": 3,
+                            "data": { "name": "plain", "session": null } }));
+        assert_eq!(live.terminals(), vec![("two".to_string(), "/s/two".to_string())]);
     }
 
     #[test]

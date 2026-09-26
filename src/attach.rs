@@ -36,23 +36,69 @@ const ERROR: u8 = 0x0c;
 /// The history the snapshot brings above the screen.
 const SCROLLBACK: u32 = 2000;
 
+/// How long a session just started may take to listen on its socket.
+const READY_TRIES: u32 = 30;
+const READY_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
+
 /// The way to a session: what the view writes to it.
 pub struct Attach {
-    stream: Mutex<UnixStream>,
+    /// Once connected; what is written before is dropped (keys) or kept
+    /// for the hello (the size).
+    stream: Mutex<Option<UnixStream>>,
+    size: Mutex<(u16, u16)>,
+    closed: std::sync::atomic::AtomicBool,
 }
 
 impl Attach {
     /// Connects to `socket` as an interactive client of `size` (columns,
     /// lines), and feeds what comes to `term` on a thread of its own; the
     /// emulator's `listener` hears of each change, and of the end.
+    /// The connection is made on that thread: a session just started may
+    /// take a moment to listen, and the view does not wait for it.
     pub fn connect<L>(socket: &Path, size: (u16, u16), term: Arc<FairMutex<Term<L>>>, listener: L) -> anyhow::Result<Arc<Self>>
     where
         L: EventListener + Clone + Send + 'static,
     {
-        let stream = UnixStream::connect(socket)?;
+        let attach = Arc::new(Self {
+            stream: Mutex::new(None),
+            size: Mutex::new(size),
+            closed: std::sync::atomic::AtomicBool::new(false),
+        });
+        let (socket, this) = (socket.to_path_buf(), attach.clone());
+        std::thread::Builder::new().name("attach".into()).spawn(move || {
+            match this.open(&socket) {
+                Ok(reader) => read(reader, term, listener),
+                Err(error) => {
+                    log::warn!("attach {}: {error:#}", socket.display());
+                    listener.send_event(Event::Exit);
+                }
+            }
+        })?;
+        Ok(attach)
+    }
+
+    /// Connects (trying a while), says hello with the size wanted by then,
+    /// and takes the focus; answers the stream to read.
+    fn open(&self, socket: &Path) -> anyhow::Result<UnixStream> {
+        let mut tries = 0;
+        let stream = loop {
+            match UnixStream::connect(socket) {
+                Ok(stream) => break stream,
+                Err(error) if tries < READY_TRIES => {
+                    tries += 1;
+                    log::debug!("attach {}: not yet ({error})", socket.display());
+                    std::thread::sleep(READY_PAUSE);
+                }
+                Err(error) => return Err(error.into()),
+            }
+        };
         let reader = stream.try_clone()?;
-        let attach = Arc::new(Self { stream: Mutex::new(stream) });
-        attach.send(
+        *self.stream.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))? = Some(stream);
+        if self.closed.load(std::sync::atomic::Ordering::Relaxed) {
+            self.close();
+        }
+        let (columns, lines) = *self.size.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))?;
+        self.send(
             HELLO,
             json!({
                 "version": 1,
@@ -60,15 +106,14 @@ impl Attach {
                 "mode": "interactive",
                 "view": "stream",
                 "scrollback": SCROLLBACK,
-                "size": { "rows": size.1, "cols": size.0 },
+                "size": { "rows": lines, "cols": columns },
             })
             .to_string()
             .as_bytes(),
         )?;
-        std::thread::Builder::new()
-            .name("attach".into())
-            .spawn(move || read(reader, term, listener))?;
-        Ok(attach)
+        // Opened to be shown: this client's size is the one to use.
+        self.focus();
+        Ok(reader)
     }
 
     /// Keys, as typed or pasted.
@@ -78,6 +123,9 @@ impl Attach {
 
     /// The size this client would like (it takes it once it types).
     pub fn resize(&self, columns: u16, lines: u16) {
+        if let Ok(mut size) = self.size.lock() {
+            *size = (columns, lines);
+        }
         let _ = self.send(RESIZE, json!({ "rows": lines, "cols": columns }).to_string().as_bytes());
     }
 
@@ -88,8 +136,11 @@ impl Attach {
 
     /// Leaves the session (it goes on without this client).
     pub fn close(&self) {
+        self.closed.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Ok(stream) = self.stream.lock() {
-            let _ = stream.shutdown(std::net::Shutdown::Both);
+            if let Some(stream) = stream.as_ref() {
+                let _ = stream.shutdown(std::net::Shutdown::Both);
+            }
         }
     }
 
@@ -99,6 +150,8 @@ impl Attach {
         frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
         frame.extend_from_slice(payload);
         let mut stream = self.stream.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))?;
+        // Not connected yet: nothing to write to.
+        let Some(stream) = stream.as_mut() else { return Ok(()) };
         stream.write_all(&frame)?;
         Ok(())
     }

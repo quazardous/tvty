@@ -949,6 +949,11 @@ impl Shell {
                 // A session a host holds is attached to over its socket; the
                 // others through tmux.
                 let socket = self.terminal_of(&session).and_then(|(_, t)| t.attach.clone());
+                // A hosted session never goes through tmux: not listed (yet,
+                // or any more), nothing to open.
+                if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
+                    return;
+                }
                 let terminal = cx.new(|cx| match &socket {
                     Some(socket) => TerminalView::attach(std::path::Path::new(socket), cx),
                     None => TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"),
@@ -1919,6 +1924,30 @@ impl Shell {
             }))
     }
 
+    /// Starts a shell the daemon's host holds, in the home directory, and
+    /// opens it once it is listed.
+    fn new_terminal(&mut self, cx: &mut Context<Self>) {
+        let taken: std::collections::HashSet<String> = self.live.terminals().into_iter().map(|(name, _)| name).collect();
+        let name = (1..).map(|n| format!("term-{n}")).find(|n| !taken.contains(n)).expect("a free name");
+        let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let started = {
+                let name = name.clone();
+                cx.background_executor().spawn(async move { aiball.start_terminal(&name, &[shell], &home) }).await
+            };
+            let _ = this.update(cx, |shell, cx| match started {
+                Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
+                Err(error) => activity::publish(
+                    cx,
+                    Activity::failed(None, "new terminal", format!("{error:#}")),
+                ),
+            });
+        })
+        .detach();
+    }
+
     /// The projects' list: its tabs on the left, then the tab's list.
     fn sidebar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let content = self.sessions_list(cx);
@@ -1934,6 +1963,20 @@ impl Shell {
             .border_color(p().border)
             .child(div().font_weight(FontWeight::BOLD).child("Sessions"))
             .child(div().flex_1())
+            // A shell the daemon holds: it outlives tvty.
+            .child(
+                div()
+                    .id("new-terminal")
+                    .mr_2()
+                    .px_1p5()
+                    .rounded_sm()
+                    .text_xs()
+                    .text_color(p().accent)
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child("+ terminal")
+                    .on_click(cx.listener(|shell, _, _, cx| shell.new_terminal(cx))),
+            )
             .child(
                 div()
                     .id("sidebar-collapse")

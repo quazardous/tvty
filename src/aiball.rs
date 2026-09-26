@@ -572,6 +572,12 @@ impl Aiball {
         self.rpc_do("consumer.afk", json!({ "name": agent, "action": action }))
     }
 
+    /// Starts a terminal the daemon's host holds: `argv` in `cwd`, under
+    /// `name`. It lives on without tvty.
+    pub fn start_terminal(&self, name: &str, argv: &[String], cwd: &str) -> anyhow::Result<()> {
+        self.rpc_do("session.start", json!({ "name": name, "argv": argv, "cwd": cwd }))
+    }
+
     /// Restarts an agent's Claude Code once it is idle, resuming its
     /// conversation; refused with `NOT_IDLE` while it works.
     pub fn restart_claude(&self, agent: &str) -> anyhow::Result<()> {

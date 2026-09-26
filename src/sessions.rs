@@ -98,7 +98,7 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
             label: name,
             agent: None,
             status: None,
-            attach,
+            attach: Some(attach),
         })
         .collect();
     if !hosted.is_empty() {
