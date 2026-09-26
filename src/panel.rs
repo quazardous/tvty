@@ -19,6 +19,7 @@ use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
 use crate::composer;
 use crate::icons::{self, Icon};
+use crate::tip::Tip as _;
 use crate::theme::p;
 use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
 
@@ -827,20 +828,9 @@ impl TicketPanel {
             .text_color(p().muted)
             .when_some(speaker, |d, who| d.child(who))
             .children(comment_count(ticket, &self.aiball.user))
-            .when_some(ticket.holder().map(str::to_string), |d, holder| {
-                d.child(if ticket.hot {
-                    icons::labelled(Icon::Hot, p().warning, 12., holder).into_any_element()
-                } else {
-                    holder.into_any_element()
-                })
-            })
-            .when_some(ticket.critical.as_ref(), |d, critical| {
-                d.child(icons::pill(Icon::Critical, critical.holds.to_string(), p().danger))
-            })
-            .when_some(ticket.priority.as_deref().and_then(icons::priority), |d, icon| {
-                let priority = ticket.priority.as_deref().unwrap_or_default();
-                d.child(icons::icon(icon, icons::priority_colour(priority), 14.))
-            })
+            .children(holder_chip(ticket))
+            .children(critical_chip(ticket))
+            .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
 
@@ -862,9 +852,7 @@ impl TicketPanel {
                     .w(px(16.))
                     .pt_0p5()
                     .flex_none()
-                    .when_some(state.glyph, |d, glyph| {
-                        d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph), 16.))
-                    }),
+                    .when_some(state.glyph, |d, glyph| d.child(glyph_chip(glyph, glyph_colour(glyph), 16.))),
             )
             .child(
                 div()
@@ -2219,7 +2207,7 @@ impl Render for TicketPanel {
             // What the project's tickets ask of you, as its row in the
             // sessions list counts it: the critical one, decisions, unread.
             .when(self.scope.is_some(), |d| {
-                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges())
+                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
             })
             .child(div().flex_1())
             .child(
@@ -2424,27 +2412,67 @@ impl TicketPanel {
 /// is unread, grey when the user spoke last, lighter grey when someone else
 /// did and all is read; a clock and the number while comments wait for
 /// moderation.
-pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Div> {
+pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<Div>> {
     if ticket.pending_comment_count > 0 {
-        return Some(icons::labelled(
-            Icon::PendingComments,
-            p().warning,
-            12.,
-            ticket.pending_comment_count.to_string(),
-        ).text_color(p().warning));
+        let n = ticket.pending_comment_count;
+        return Some(
+            icons::labelled(Icon::PendingComments, p().warning, 12., n.to_string())
+                .text_color(p().warning)
+                .id("comments")
+                .tip(format!("{n} comment{} waiting for moderation", if n == 1 { "" } else { "s" })),
+        );
     }
     if ticket.comment_count == 0 && ticket.last_speaker.is_none() {
         return None;
     }
     let mine = ticket.last_speaker.as_deref() == Some(user);
-    let colour = if ticket.unread {
-        p().accent
+    let (colour, tip) = if ticket.unread {
+        (p().accent, "unread: something new on it for you")
     } else if mine {
-        p().muted
+        (p().muted, "you spoke last")
     } else {
-        p().muted.opacity(0.55)
+        (p().muted.opacity(0.55), "someone else spoke last, and you read it")
     };
-    Some(icons::labelled(Icon::Comments, colour, 12., ticket.comment_count.to_string()).text_color(colour))
+    let n = ticket.comment_count;
+    Some(
+        icons::labelled(Icon::Comments, colour, 12., n.to_string())
+            .text_color(colour)
+            .id("comments")
+            .tip(format!("{n} comment{} — {tip}", if n == 1 { "" } else { "s" })),
+    )
+}
+
+/// Who holds the ticket, and the flame when it was active lately.
+pub(crate) fn holder_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
+    let holder = ticket.holder()?.to_string();
+    let tip = if ticket.hot { format!("held by {holder}, active on it lately") } else { format!("held by {holder}") };
+    Some(if ticket.hot {
+        icons::labelled(Icon::Hot, p().warning, 12., holder).id("holder").tip(tip)
+    } else {
+        div().child(holder).id("holder").tip(tip)
+    })
+}
+
+/// The project's critical ticket: how many open tickets it holds.
+pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
+    let holds = ticket.critical.as_ref()?.holds;
+    Some(
+        icons::pill(Icon::Critical, holds.to_string(), p().danger)
+            .id("critical")
+            .tip(format!("the project's critical ticket: it holds {holds} open ticket{}", if holds == 1 { "" } else { "s" })),
+    )
+}
+
+/// The priority's glyph, when it is not normal.
+pub(crate) fn priority_chip(ticket: &TicketRow, size: f32) -> Option<Stateful<Div>> {
+    let priority = ticket.priority.as_deref()?;
+    let icon = icons::priority(priority)?;
+    Some(div().child(icons::icon(icon, icons::priority_colour(priority), size)).id("priority").tip(format!("priority: {priority}")))
+}
+
+/// The state glyph, saying what it means.
+pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32) -> Stateful<Div> {
+    div().child(icons::icon(icons::of_glyph(glyph), colour, size)).id("glyph").tip(glyph.meaning())
 }
 
 /// A decision, as a chip: the list's glyphs, and "superseded" when a newer

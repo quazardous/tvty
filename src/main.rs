@@ -29,6 +29,7 @@ mod status;
 mod terminal;
 mod thread;
 mod theme;
+mod tip;
 mod wheel;
 mod wire;
 

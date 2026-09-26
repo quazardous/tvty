@@ -15,6 +15,7 @@ use gpui_kit::*;
 use gpui_kit::component::{TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
+use crate::tip::Tip as _;
 use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::options::{SHORTCUTS, Section};
@@ -307,14 +308,29 @@ impl Alerts {
         self.colors().first().copied()
     }
 
-    pub(crate) fn badges(&self) -> impl IntoElement + use<> {
+    /// The badges, each saying what it counts under the pointer; `key` sets
+    /// them apart from the other badges of the window.
+    pub(crate) fn badges<K: Into<SharedString>>(&self, key: K) -> impl IntoElement + use<K> {
+        let key: SharedString = key.into();
+        let badge = |what: &str, text: String, colour: Hsla, tip: String| {
+            div().id(SharedString::from(format!("{key}-{what}"))).child(pill(text, colour)).tip(tip)
+        };
+        let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
         div()
             .flex()
             .items_center()
             .gap_1()
-            .when(self.critical, |d| d.child(pill("!", critical())))
-            .when(self.decisions > 0, |d| d.child(pill(self.decisions.to_string(), decision())))
-            .when(self.unread > 0, |d| d.child(pill(self.unread.to_string(), unread())))
+            .when(self.critical, |d| {
+                d.child(badge("critical", "!".into(), critical(), "the critical ticket is here: it holds the most open tickets".into()))
+            })
+            .when(self.decisions > 0, |d| {
+                let tip = format!("{} waiting for your decision", plural(self.decisions, "ticket", "tickets"));
+                d.child(badge("decisions", self.decisions.to_string(), decision(), tip))
+            })
+            .when(self.unread > 0, |d| {
+                let tip = format!("{} with something new for you", plural(self.unread, "ticket", "tickets"));
+                d.child(badge("unread", self.unread.to_string(), unread(), tip))
+            })
     }
 }
 
@@ -2041,7 +2057,7 @@ impl Shell {
                             .text_color(p().muted)
                             .child(project.name.to_uppercase()),
                     )
-                    .child(alerts.badges())
+                    .child(alerts.badges(format!("project-{}", project.name)))
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
@@ -2108,15 +2124,35 @@ impl Shell {
                                         .items_center()
                                         .gap_2()
                                         // Green: the terminal already runs in tvty.
-                                        .child(div().w(px(7.)).when(open, |d| d.child(dot(p().success))))
+                                        .child(
+                                            div()
+                                                .id("open")
+                                                .w(px(7.))
+                                                .when(open, |d| d.child(dot(p().success)).tip("open in tvty: its terminal runs here")),
+                                        )
                                         .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
                                         // Its Claude runs in claude-loop (through tmux), not on aiball's host.
                                         .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
-                                            d.child(div().text_xs().text_color(p().muted).child("⇄"))
+                                            d.child(
+                                                div()
+                                                    .id("looped")
+                                                    .text_xs()
+                                                    .text_color(p().muted)
+                                                    .child("⇄")
+                                                    .tip("its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                            )
                                         })
                                         // Its Claude Code waits for a restart (the button is on its bar).
-                                        .when(restart, |d| d.child(div().text_color(p().warning).child("⟳")))
-                                        .child(alerts.badges()),
+                                        .when(restart, |d| {
+                                            d.child(
+                                                div()
+                                                    .id("restart")
+                                                    .text_color(p().warning)
+                                                    .child("⟳")
+                                                    .tip("its Claude Code installed an update: restart it from its bar"),
+                                            )
+                                        })
+                                        .child(alerts.badges(format!("row-{}", terminal.session))),
                                 )
                                 .when_some(terminal.status.as_ref(), |d, status| d.child(status.line())),
                         )
@@ -2278,7 +2314,7 @@ impl Shell {
                     .bg(if chosen { p().active } else { p().surface })
                     .text_sm()
                     .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
-                    .child(alerts.badges()),
+                    .child(alerts.badges(format!("card-{}", terminal.session))),
             )
             .when_some(terminal.status.as_ref(), |d, status| {
                 d.child(div().px_2().pb_1().bg(p().surface).child(status.line()))

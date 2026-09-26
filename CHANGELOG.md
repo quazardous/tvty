@@ -20,6 +20,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tooltips on what means something: the badges, the state glyphs, the
+  comments' bubble, the priority, the holder, the critical ticket, the
+  sessions' marks and state line, the agent bar's glyphs.
+
 ## [0.1.0] - 2026-09-26
 
 The first version: everything tvty does as of this day.

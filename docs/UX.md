@@ -3,6 +3,10 @@
 What the window looks like and how you move in it. Decisions are marked as
 such; open points are listed at the end.
 
+**Everything that means something says what, under the pointer**: a glyph,
+a colour, a count, a badge carries a tooltip (`src/tip.rs`, `.tip("…")`).
+A new one gets its tooltip with it.
+
 ## Navigation: projects, then their terminals
 
 - **Tabs are grouped by project.** A project can have **several terminals**

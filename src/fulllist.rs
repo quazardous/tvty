@@ -15,6 +15,7 @@ use crate::icons::{self, Icon};
 use crate::panel::{ago, count, glyph_colour, stripe, stripe_colour};
 use crate::rowstate::{self, Band, RowState, Turn};
 use crate::shell::Alerts;
+use crate::tip::Tip as _;
 use crate::theme::p;
 
 /// Closed tickets read per project when the list shows them too.
@@ -262,7 +263,7 @@ impl FullList {
             "scope-all",
             "All projects".into(),
             self.scope.is_none(),
-            Some(all_alerts.badges().into_any_element()),
+            Some(all_alerts.badges("full-all").into_any_element()),
             cx.listener(|list, _, _, cx| list.set_scope(None, cx)),
         ));
         for project in &self.projects {
@@ -275,7 +276,7 @@ impl FullList {
                 SharedString::from(format!("scope-{project}")),
                 project.clone().into(),
                 self.scope.as_ref() == Some(project),
-                Some(alerts.badges().into_any_element()),
+                Some(alerts.badges(format!("full-{project}")).into_any_element()),
                 cx.listener(move |list, _, _, cx| list.set_scope(Some(pick.clone()), cx)),
             ));
         }
@@ -447,9 +448,11 @@ impl FullList {
             .when_some(ticket.priority.as_deref().and_then(icons::priority), |d, icon| {
                 let priority = ticket.priority.clone().unwrap_or_default();
                 d.child(
-                    icons::labelled(icon, icons::priority_colour(&priority), 14., priority)
+                    icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone())
                         .text_xs()
-                        .text_color(p().muted),
+                        .text_color(p().muted)
+                        .id("priority")
+                        .tip(format!("priority: {priority}")),
                 )
             })
             .children(crate::panel::comment_count(ticket, &self.aiball.user).map(|c| c.flex_none().text_xs()))
@@ -504,10 +507,10 @@ impl FullList {
             .gap_x_2()
             .text_xs()
             .text_color(p().muted)
-            .when_some(ticket.critical.as_ref(), |d, critical| {
-                d.child(icons::pill(Icon::Critical, critical.holds.to_string(), p().danger))
+            .children(crate::panel::critical_chip(ticket))
+            .when(ticket.hot, |d| {
+                d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).id("hot").tip("an agent was active on it lately"))
             })
-            .when(ticket.hot, |d| d.child(icons::icon(Icon::Hot, p().warning, 12.)))
             .children(ticket.tags.iter().map(|tag| {
                 div().px_1().rounded_sm().border_1().border_color(p().border).child(tag.name.clone())
             }))
@@ -534,7 +537,7 @@ impl FullList {
                     .pt_0p5()
                     .flex_none()
                     .when_some(state.glyph, |d, glyph| {
-                        d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 18.))
+                        d.child(crate::panel::glyph_chip(glyph, glyph_colour(glyph, yours), 18.))
                     }),
             )
             .child(
@@ -610,7 +613,7 @@ impl Render for FullList {
                     .border_b_1()
                     .border_color(p().border)
                     .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
-                    .child(div().pl_3().child(alerts.badges()))
+                    .child(div().pl_3().child(alerts.badges("full-title")))
                     .child(div().flex_1())
                     .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
                     .child(

@@ -9,6 +9,7 @@ use gpui_kit::*;
 
 use crate::sessions::Status;
 use crate::theme::p;
+use crate::tip::Tip as _;
 
 
 impl Status {
@@ -24,14 +25,28 @@ impl Status {
         })
     }
 
-    /// One small line: the driver's glyph, the state, for how long.
+    /// One small line: the driver's glyph, the state, for how long — and
+    /// under the pointer, what they mean.
     pub fn line(&self) -> impl IntoElement + use<> {
         if !self.online {
             return div()
+                .id("status")
                 .text_size(px(11.))
                 .text_color(p().muted)
-                .child("offline");
+                .child("offline")
+                .tip("its loop is not connected to aiball");
         }
+        let who = match self.driver.as_str() {
+            "stop" => "a human is typing in it: the loop waits",
+            "wait" => "held: the loop does not wake it",
+            "boot" => "starting",
+            _ => "the loop drives it on its own",
+        };
+        let doing = match self.state.as_str() {
+            "busy" => "Claude is working",
+            "boot" => "Claude is starting",
+            _ => "Claude is idle",
+        };
         let (glyph, glyph_colour) = match self.driver.as_str() {
             "stop" => ("✎", p().danger),
             "wait" => ("‖", p().warning),
@@ -45,10 +60,12 @@ impl Status {
         };
         let since = self.since.map(|since| ago(now().saturating_sub(since)));
         div()
+            .id("status")
             .flex()
             .items_center()
             .gap_1()
             .text_size(px(11.))
+            .tip(format!("{doing}; {who}"))
             .child(div().text_color(glyph_colour).child(glyph))
             .child(
                 div()

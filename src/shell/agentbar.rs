@@ -16,6 +16,7 @@ use super::Shell;
 use crate::aiball::{AgentBacklog, AgentBar};
 use crate::status::{ago, now, parse_time};
 use crate::theme::p;
+use crate::tip::Tip as _;
 
 /// The bar's height: the terminal gives it that much, once.
 pub const BAR_HEIGHT: f32 = 24.;
@@ -95,6 +96,7 @@ impl Shell {
             .when(self.afk_menu, |d| d.bg(p().active))
             .child(div().text_color(colour).child(glyph))
             .child(div().text_color(colour).child(word))
+            .tip("who drives the loop: on its own (auto), held, or you typing; a click holds or frees it")
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
                 cx.notify();
@@ -140,8 +142,10 @@ impl Shell {
         .unwrap_or_default();
         let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
         let state = item()
+            .id("agent-state")
             .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
-            .child(format!("{what}{since}{info}"));
+            .child(format!("{what}{since}{info}"))
+            .tip("what its Claude does, and since when");
         // Claude Code updated itself: a click restarts it, once idle.
         let restart = bar.as_ref().is_some_and(|b| b.alerts.restart_needed).then(|| {
             let restarting = self.restarting.as_deref() == Some(agent.as_str());
@@ -160,6 +164,7 @@ impl Shell {
                 })
                 .child("⟳")
                 .child(if restarting { "restarting…" } else { "restart" })
+                .tip("its Claude Code installed an update: a click restarts it once idle, resuming its conversation")
         });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
@@ -213,17 +218,40 @@ impl Shell {
                         .when(a.link_down, |d| d.child(loud("loop link down")))
                         .when(a.daemon_down, |d| d.child(loud("aiball unreachable")))
                         .when(b.prompt.visible, |d| {
-                            d.child(item().text_color(if b.prompt.has_input { p().accent } else { p().muted }).child("❯"))
+                            d.child(
+                                item()
+                                    .id("agent-prompt")
+                                    .text_color(if b.prompt.has_input { p().accent } else { p().muted })
+                                    .child("❯")
+                                    .tip(if b.prompt.has_input {
+                                        "Claude's prompt is on screen, with text not sent yet"
+                                    } else {
+                                        "Claude's prompt is on screen, empty"
+                                    }),
+                            )
                         })
-                        .when(b.human_typing, |d| d.child(item().text_color(p().danger).child("⌨")))
-                        .when(b.proxy_alive, |d| d.child(item().child("⇄")))
-                        .when(b.zen, |d| d.child(item().child("zen")))
+                        .when(b.human_typing, |d| {
+                            d.child(
+                                item()
+                                    .id("agent-typing")
+                                    .text_color(p().danger)
+                                    .child("⌨")
+                                    .tip("a human typed in its terminal a moment ago: the loop holds off"),
+                            )
+                        })
+                        .when(b.proxy_alive, |d| {
+                            d.child(item().id("agent-proxy").child("⇄").tip("the terminal proxy in front of Claude is alive"))
+                        })
+                        .when(b.zen, |d| d.child(item().id("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
                 })
                 .child(sep())
-                .child(item().when(unseen > 0, |d| d.text_color(p().text)).child(format!(
-                    "{unseen} event{}",
-                    if unseen == 1 { "" } else { "s" }
-                )))
+                .child(
+                    item()
+                        .id("agent-events")
+                        .when(unseen > 0, |d| d.text_color(p().text))
+                        .child(format!("{unseen} event{}", if unseen == 1 { "" } else { "s" }))
+                        .tip("its events not seen yet: pings, answers, decisions waiting for it"),
+                )
                 .child(
                     item()
                         .id("agent-backlog")
@@ -237,6 +265,7 @@ impl Shell {
                             Some(b) => format!("backlog {b} · holds {holds}"),
                             None => format!("holds {holds}"),
                         })
+                        .tip("its backlog (tickets for it to look at) and the tickets it holds; a click lists them")
                         .on_click(cx.listener(move |shell, _, _, cx| {
                             shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
                         })),
@@ -244,9 +273,14 @@ impl Shell {
                 .when(pending || wake.is_some(), |d| {
                     d.child(
                         item()
+                            .id("agent-wake")
                             .when(wake.is_some(), |d| d.text_color(p().text))
                             .child("✉")
-                            .children(wake.map(ago)),
+                            .children(wake.map(ago))
+                            .tip(match wake {
+                                Some(_) => "work waits for the loop: it wakes its Claude on it when the countdown ends",
+                                None => "work waits for the loop (events or backlog)",
+                            }),
                     )
                 })
                 .child(div().flex_1())
