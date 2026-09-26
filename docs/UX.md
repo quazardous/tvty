@@ -111,8 +111,11 @@ One gesture, three ways in: **+** in the panel's header or the full list's,
 ctrl+shift+n anywhere, and "+ a new one" under a ticket's links (full
 screen) for a sub-ticket. The form fills the window, laid out as a ticket's
 full detail: what the ticket is on the left third — project (the panel's,
-else the terminal's, else the last used; any project of the board), intent,
-priority, scope, tags, milestone, assignee, parent — and its words on the
+else the terminal's, else the last used; any project of the board, in a
+list that opens), then every other field with all its choices in sight,
+the chosen one lit: intent, priority, level, scope (and who it notifies),
+tags, milestone, assignee (the project's agents first), and a parent to
+type as `#ticket` — and its words on the
 rest: title, a one-line summary, the body with @-mentions and pasted images.
 
 Ctrl+enter files it. One call creates it (with the machine's platform tag,

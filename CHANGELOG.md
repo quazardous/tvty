@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The new-ticket form shows every choice at once, the chosen one lit:
+  intent, priority, a new level field, scope (with who it notifies), tags,
+  milestone and assignee (the project's agents first); a parent can be
+  typed as #ticket.
+
 - The agent's bar now says all that claude-loop's bar says, once the loop
   pushes it to aiball: a hold's time left, the passing state, dialogs and
   alerts, the prompt and a human typing, the proxy, the next wake — and a

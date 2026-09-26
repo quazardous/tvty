@@ -32,17 +32,12 @@ pub struct Created {
 const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
 const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
 const SCOPES: &[&str] = &["internal", "default", "broadcast"];
+const LEVELS: &[&str] = &["task", "milestone", "roadmap"];
 
 /// The field whose choices are open in the left column.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Field {
     Project,
-    Intent,
-    Priority,
-    Scope,
-    Tags,
-    Assignee,
-    Milestone,
 }
 
 /// What the left column offers: the board's projects and agents, and the
@@ -52,8 +47,19 @@ struct Catalog {
     project: String,
     projects: Vec<String>,
     agents: Vec<String>,
+    /// The agents working on this project.
+    own: Vec<String>,
     tags: Vec<String>,
     milestones: Vec<(u64, String)>,
+}
+
+impl Catalog {
+    /// Every agent, the project's own first: (name, whether it is).
+    fn agents_by_project(&self) -> Vec<(String, bool)> {
+        let mut all: Vec<(String, bool)> = self.own.iter().map(|a| (a.clone(), true)).collect();
+        all.extend(self.agents.iter().filter(|a| !self.own.contains(a)).map(|a| (a.clone(), false)));
+        all
+    }
 }
 
 pub struct NewTicketForm {
@@ -61,14 +67,19 @@ pub struct NewTicketForm {
     project: String,
     intent: &'static str,
     priority: &'static str,
+    level: &'static str,
     scope: &'static str,
     tags: Vec<String>,
     assignee: Option<String>,
     milestone: Option<(u64, String)>,
     parent: Option<u64>,
+    /// The parent typed by hand, when no sub-ticket gesture gave one.
+    typed_parent: Option<u64>,
     title: Entity<InputState>,
     summary: Entity<InputState>,
     body: Entity<TextareaState>,
+    /// A parent typed by hand: its number, with or without a hash.
+    parent_input: Entity<InputState>,
     catalog: Catalog,
     editing: Option<Field>,
     busy: bool,
@@ -95,6 +106,15 @@ impl NewTicketForm {
             }
         })
         .detach();
+        let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
+        // A parent typed by hand counts once it reads as a number.
+        cx.subscribe(&parent_input, |form: &mut Self, input, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                let text = input.read(cx).value().to_string();
+                form.typed_parent = text.trim().trim_start_matches('#').parse::<u64>().ok();
+            }
+        })
+        .detach();
         let reader = aiball.clone();
         cx.spawn(async move |this, cx| {
             let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
@@ -108,14 +128,17 @@ impl NewTicketForm {
             project: String::new(),
             intent: "request",
             priority: "normal",
+            level: "task",
             scope: "default",
             tags: Vec::new(),
             assignee: None,
             milestone: None,
             parent: None,
+            typed_parent: None,
             title,
             summary,
             body,
+            parent_input,
             catalog: Catalog::default(),
             editing: None,
             busy: false,
@@ -157,7 +180,15 @@ impl NewTicketForm {
                 .background_executor()
                 .spawn(async move {
                     let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
+                    let own = aiball
+                        .consumers()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|c| c.kind != "human" && c.project.as_deref() == Some(project.as_str()))
+                        .map(|c| c.consumer_id)
+                        .collect();
                     Catalog {
+                        own,
                         tags: aiball.tag_catalog(&project).unwrap_or_default(),
                         milestones: aiball.milestones(&project).unwrap_or_default(),
                         projects,
@@ -246,9 +277,11 @@ impl NewTicketForm {
             intent: self.intent.into(),
             priority: self.priority.into(),
             scope: self.scope.into(),
-            parent: self.parent,
+            parent: self.parent.or(self.typed_parent),
         };
         let (tags, assignee, milestone) = (self.tags.clone(), self.assignee.clone(), self.milestone.clone());
+        // aiball takes the level after the ticket exists (a human's gesture).
+        let level = (self.level != "task").then_some(self.level);
         let aiball = self.aiball.clone();
         let window_handle = window.window_handle();
         self.busy = true;
@@ -269,6 +302,11 @@ impl NewTicketForm {
                     if let Some(who) = &assignee {
                         if let Err(error) = aiball.assign(id, Some(who)) {
                             warnings.push(format!("assign to {who}: {error:#}"));
+                        }
+                    }
+                    if let Some(level) = level {
+                        if let Err(error) = aiball.edit(id, serde_json::json!({ "level": level })) {
+                            warnings.push(format!("level {level}: {error:#}"));
                         }
                     }
                     if let Some((milestone, name)) = &milestone {
@@ -302,7 +340,9 @@ impl NewTicketForm {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
         self.body.update(cx, |body, cx| body.set_value("", window, cx));
-        (self.intent, self.priority, self.scope) = ("request", "normal", "default");
+        (self.intent, self.priority, self.level, self.scope) = ("request", "normal", "task", "default");
+        self.typed_parent = None;
+        self.parent_input.update(cx, |input, cx| input.set_value("", window, cx));
         self.tags.clear();
         self.assignee = None;
         self.milestone = None;
@@ -319,26 +359,10 @@ impl NewTicketForm {
         }
     }
 
-    /// The left third: what the ticket is.
+    /// The left third: what the ticket is. Every field shows its choices at
+    /// once, the chosen one lit; only the project, a long list, opens.
     fn fields(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let editing = self.editing;
-        let label = |text: &'static str| div().w(px(96.)).flex_none().text_color(p().muted).child(text);
-        let row = |field: Field, text: &'static str, value: String, cx: &mut Context<Self>| {
-            let open = editing == Some(field);
-            div()
-                .id(SharedString::from(format!("new-{field:?}")))
-                .flex()
-                .gap_2()
-                .py_0p5()
-                .px_1()
-                .rounded_sm()
-                .cursor_pointer()
-                .when(open, |d| d.bg(p().active))
-                .hover(|d| d.bg(p().hover))
-                .on_click(cx.listener(move |form, _, _, cx| form.toggle(field, cx)))
-                .child(label(text))
-                .child(div().flex_1().min_w_0().child(value))
-        };
+        let label = |text: &'static str| div().w(px(80.)).flex_none().pt_0p5().text_color(p().muted).child(text);
         let choice = |id: String, text: String, on: bool, cx: &mut Context<Self>, set: Box<dyn Fn(&mut Self, &mut Context<Self>)>| {
             div()
                 .id(SharedString::from(id))
@@ -348,6 +372,7 @@ impl NewTicketForm {
                 .text_xs()
                 .border_1()
                 .border_color(if on { p().accent } else { p().border })
+                .bg(if on { p().accent.opacity(0.15) } else { p().bg.opacity(0.) })
                 .text_color(if on { p().text } else { p().muted })
                 .cursor_pointer()
                 .hover(|d| d.bg(p().hover))
@@ -357,7 +382,11 @@ impl NewTicketForm {
                     cx.notify();
                 }))
         };
-        let choices = || div().flex().flex_wrap().gap_1().pl(px(100.)).pb_1();
+        // A field: its name, and its choices beside it, wrapping.
+        let field = |text: &'static str, choices: Div| {
+            div().flex().gap_2().py_1().child(label(text)).child(choices.flex_1().min_w_0())
+        };
+        let chips = || div().flex().flex_wrap().gap_1();
         let group = |title: &'static str| {
             div()
                 .pt_3()
@@ -367,14 +396,30 @@ impl NewTicketForm {
                 .text_color(p().muted)
                 .child(title.to_uppercase())
         };
-        let or_dash = |v: Option<String>| v.filter(|v| !v.is_empty()).unwrap_or_else(|| "—".into());
         let catalog = &self.catalog;
 
         let mut col = div().id("new-ticket-fields").flex().flex_col().pr_3().text_sm();
 
-        col = col.child(group("Where")).child(row(Field::Project, "project", or_dash(Some(self.project.clone())), cx));
-        if editing == Some(Field::Project) {
-            let mut list = choices();
+        // ── Where ──
+        let open = self.editing == Some(Field::Project);
+        col = col.child(group("Where")).child(
+            div()
+                .id("new-Project")
+                .flex()
+                .gap_2()
+                .py_1()
+                .px_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .when(open, |d| d.bg(p().active))
+                .hover(|d| d.bg(p().hover))
+                .on_click(cx.listener(|form, _, _, cx| form.toggle(Field::Project, cx)))
+                .child(label("project"))
+                .child(div().flex_1().child(if self.project.is_empty() { "—".to_string() } else { self.project.clone() }))
+                .child(div().text_color(p().muted).child(if open { "▴" } else { "▾" })),
+        );
+        if open {
+            let mut list = chips().pl(px(88.)).pb_1();
             for project in &catalog.projects {
                 let name = project.clone();
                 list = list.child(choice(
@@ -391,144 +436,117 @@ impl NewTicketForm {
             col = col.child(list);
         }
 
+        // ── Fields: every choice in sight ──
         col = col.child(group("Fields"));
-        let fixed: [(Field, &'static str, &'static str, &'static [&'static str]); 3] = [
-            (Field::Intent, "intent", self.intent, INTENTS),
-            (Field::Priority, "priority", self.priority, PRIORITIES),
-            (Field::Scope, "scope", self.scope, SCOPES),
+        let fixed: [(&'static str, &'static str, &'static [&'static str], fn(&mut Self, &'static str)); 4] = [
+            ("intent", self.intent, INTENTS, |f, v| f.intent = v),
+            ("priority", self.priority, PRIORITIES, |f, v| f.priority = v),
+            ("level", self.level, LEVELS, |f, v| f.level = v),
+            ("scope", self.scope, SCOPES, |f, v| f.scope = v),
         ];
-        for (field, text, value, values) in fixed {
-            col = col.child(row(field, text, value.into(), cx));
-            if editing == Some(field) {
-                let mut list = choices();
-                for v in values {
-                    let v: &'static str = v;
-                    list = list.child(choice(
-                        format!("new-{field:?}-{v}"),
-                        v.into(),
-                        value == v,
-                        cx,
-                        Box::new(move |form, _| {
-                            match field {
-                                Field::Intent => form.intent = v,
-                                Field::Priority => form.priority = v,
-                                _ => form.scope = v,
-                            }
-                            form.editing = None;
-                        }),
-                    ));
-                }
-                col = col.child(list);
+        for (name, value, values, set) in fixed {
+            let mut list = chips();
+            for v in values {
+                let v: &'static str = v;
+                list = list.child(choice(format!("new-{name}-{v}"), v.into(), value == v, cx, Box::new(move |form, _| set(form, v))));
+            }
+            col = col.child(field(name, list));
+            if name == "scope" {
+                // Two lines kept whatever it says: the fields below do not move.
+                col = col.child(div().pl(px(88.)).pb_1().h(px(36.)).text_xs().text_color(p().muted).child(match value {
+                    "internal" => "notifies nobody but who is mentioned",
+                    "broadcast" => "notifies the project's followers too",
+                    _ => "notifies the ticket's subscribers and the project's owners",
+                }));
             }
         }
-        col = col.child(row(Field::Tags, "tags", or_dash(Some(self.tags.join(", "))), cx));
-        if editing == Some(Field::Tags) {
-            let mut list = choices();
-            for tag in &catalog.tags {
-                let (name, on) = (tag.clone(), self.tags.contains(tag));
-                list = list.child(choice(
-                    format!("new-tag-{tag}"),
-                    tag.clone(),
-                    on,
-                    cx,
-                    Box::new(move |form, _| {
-                        if on {
-                            form.tags.retain(|t| *t != name);
-                        } else {
-                            form.tags.push(name.clone());
-                        }
-                    }),
-                ));
-            }
-            if catalog.tags.is_empty() {
-                list = list.child(div().text_xs().text_color(p().muted).child("no tag yet"));
-            }
-            col = col.child(list);
-        }
-        col = col.child(row(Field::Milestone, "milestone", or_dash(self.milestone.as_ref().map(|m| m.1.clone())), cx));
-        if editing == Some(Field::Milestone) {
-            let mut list = choices().child(choice(
-                "new-milestone-none".into(),
-                "none".into(),
-                self.milestone.is_none(),
+        let mut tags = chips();
+        for tag in &catalog.tags {
+            let (name, on) = (tag.clone(), self.tags.contains(tag));
+            tags = tags.child(choice(
+                format!("new-tag-{tag}"),
+                tag.clone(),
+                on,
                 cx,
-                Box::new(|form, _| {
-                    form.milestone = None;
-                    form.editing = None;
+                Box::new(move |form, _| {
+                    if on {
+                        form.tags.retain(|t| *t != name);
+                    } else {
+                        form.tags.push(name.clone());
+                    }
                 }),
             ));
-            for (id, title) in &catalog.milestones {
-                let chosen = (*id, title.clone());
-                list = list.child(choice(
-                    format!("new-milestone-{id}"),
-                    title.clone(),
-                    self.milestone.as_ref().is_some_and(|m| m.0 == *id),
-                    cx,
-                    Box::new(move |form, _| {
-                        form.milestone = Some(chosen.clone());
-                        form.editing = None;
-                    }),
-                ));
-            }
-            if catalog.milestones.is_empty() {
-                list = list.child(div().text_xs().text_color(p().muted).child("no open milestone in this project"));
-            }
-            col = col.child(list);
         }
+        if catalog.tags.is_empty() {
+            tags = tags.child(div().text_xs().text_color(p().muted).child("no tag yet"));
+        }
+        col = col.child(field("tags", tags));
+        let mut milestones = chips().child(choice(
+            "new-milestone-none".into(),
+            "none".into(),
+            self.milestone.is_none(),
+            cx,
+            Box::new(|form, _| form.milestone = None),
+        ));
+        for (id, title) in &catalog.milestones {
+            let chosen = (*id, title.clone());
+            milestones = milestones.child(choice(
+                format!("new-milestone-{id}"),
+                title.clone(),
+                self.milestone.as_ref().is_some_and(|m| m.0 == *id),
+                cx,
+                Box::new(move |form, _| form.milestone = Some(chosen.clone())),
+            ));
+        }
+        col = col.child(field("milestone", milestones));
 
-        col = col.child(group("People")).child(row(Field::Assignee, "assign to", or_dash(self.assignee.clone()), cx));
-        if editing == Some(Field::Assignee) {
-            let mut list = choices().child(choice(
-                "new-assign-none".into(),
-                "nobody".into(),
-                self.assignee.is_none(),
-                cx,
-                Box::new(|form, _| {
-                    form.assignee = None;
-                    form.editing = None;
-                }),
-            ));
-            for agent in &catalog.agents {
-                let name = agent.clone();
-                list = list.child(choice(
+        // ── People: the project's agents first ──
+        let mut people = chips().child(choice(
+            "new-assign-none".into(),
+            "nobody".into(),
+            self.assignee.is_none(),
+            cx,
+            Box::new(|form, _| form.assignee = None),
+        ));
+        for (agent, own) in catalog.agents_by_project() {
+            let name = agent.clone();
+            people = people.child(
+                choice(
                     format!("new-assign-{agent}"),
                     agent.clone(),
                     self.assignee.as_deref() == Some(agent.as_str()),
                     cx,
-                    Box::new(move |form, _| {
-                        form.assignee = Some(name.clone());
-                        form.editing = None;
-                    }),
-                ));
-            }
-            col = col.child(list);
-        }
-
-        if let Some(parent) = self.parent {
-            col = col.child(group("Links")).child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .py_0p5()
-                    .px_1()
-                    .child(label("sub-ticket of"))
-                    .child(div().flex_1().child(format!("#{parent}")))
-                    .child(
-                        div()
-                            .id("new-parent-drop")
-                            .px_1()
-                            .text_xs()
-                            .text_color(p().muted)
-                            .cursor_pointer()
-                            .hover(|d| d.text_color(p().danger))
-                            .child("✕")
-                            .on_click(cx.listener(|form, _, _, cx| {
-                                form.parent = None;
-                                cx.notify();
-                            })),
-                    ),
+                    Box::new(move |form, _| form.assignee = Some(name.clone())),
+                )
+                .when(!own, |d| d.opacity(0.7)),
             );
         }
+        col = col.child(group("People")).child(field("assign to", people));
+
+        // ── Links ──
+        let parent = match self.parent {
+            Some(parent) => div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(format!("#{parent}"))
+                .child(
+                    div()
+                        .id("new-parent-drop")
+                        .px_1()
+                        .text_xs()
+                        .text_color(p().muted)
+                        .cursor_pointer()
+                        .hover(|d| d.text_color(p().danger))
+                        .child("✕")
+                        .on_click(cx.listener(|form, _, _, cx| {
+                            form.parent = None;
+                            cx.notify();
+                        })),
+                ),
+            None => div().w(px(120.)).child(Input::new(&self.parent_input)),
+        };
+        col = col.child(group("Links")).child(field("sub-ticket of", parent));
 
         div()
             .w_1_3()
