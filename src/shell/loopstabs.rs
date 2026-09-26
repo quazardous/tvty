@@ -28,6 +28,8 @@ pub(super) struct NewSession {
     cwd: Entity<InputState>,
     agent: Entity<InputState>,
     crew: bool,
+    /// Started on aiball's host (no tmux) rather than in claude-loop's tmux.
+    on_host: bool,
     busy: bool,
 }
 
@@ -181,7 +183,7 @@ impl Shell {
             }
         })
         .detach();
-        self.new_session = Some(NewSession { project, cwd, agent, crew: false, busy: false });
+        self.new_session = Some(NewSession { project, cwd, agent, crew: false, on_host: false, busy: false });
         cx.notify();
     }
 
@@ -189,6 +191,7 @@ impl Shell {
     pub(super) fn new_session_form(&self, project: &str, cx: &mut Context<Self>) -> Option<AnyElement> {
         let form = self.new_session.as_ref().filter(|f| f.project == project)?;
         let crew = form.crew;
+        let on_host = form.on_host;
         let cwd = form.cwd.read(cx).value().to_string();
         let exists = std::path::Path::new(cwd.trim()).is_dir();
         Some(
@@ -209,6 +212,8 @@ impl Shell {
                     div().text_color(if exists || cwd.is_empty() { p().muted } else { p().danger }).child(
                         if cwd.is_empty() {
                             "where its Claude works"
+                        } else if exists && on_host {
+                            "aiball's host starts it here"
                         } else if exists {
                             "claude-loop starts here"
                         } else {
@@ -230,6 +235,23 @@ impl Shell {
                         .on_click(cx.listener(|shell, _, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
                                 form.crew = !form.crew;
+                            }
+                            cx.notify();
+                        })),
+                )
+                .child(
+                    div()
+                        .id("new-session-host")
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .cursor_pointer()
+                        .text_color(if on_host { p().text } else { p().muted })
+                        .child(if on_host { "☑" } else { "☐" })
+                        .child("on aiball's host, without tmux")
+                        .on_click(cx.listener(|shell, _, _, cx| {
+                            if let Some(form) = shell.new_session.as_mut() {
+                                form.on_host = !form.on_host;
                             }
                             cx.notify();
                         })),
@@ -266,12 +288,52 @@ impl Shell {
                                         agent: (!agent.is_empty()).then_some(agent),
                                         crew: form.crew,
                                     };
-                                    shell.start_loop(start, cx);
+                                    if form.on_host {
+                                        shell.start_on_host(start, cx);
+                                    } else {
+                                        shell.start_loop(start, cx);
+                                    }
                                 })),
                         ),
                 )
                 .into_any_element(),
         )
+    }
+
+    /// Starts an agent's loop on aiball's host (`session.start`), off the UI
+    /// thread; once its session is listed, tvty opens it over its socket.
+    pub(super) fn start_on_host(&mut self, start: Start, cx: &mut Context<Self>) {
+        if self.starting.is_some() {
+            return;
+        }
+        self.starting = Some(start.cwd.clone());
+        cx.notify();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let done = cx.background_executor().spawn({
+                let start = start.clone();
+                async move { aiball.start_agent(&start.cwd, start.project.as_deref(), start.agent.as_deref(), start.crew) }
+            });
+            let done = done.await;
+            let _ = this.update(cx, |shell, cx| {
+                shell.starting = None;
+                match done {
+                    Ok(agent) => {
+                        shell.new_session = None;
+                        shell.open_when_running = Some(format!("{}{agent}", crate::sessions::HOSTED_PREFIX));
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {agent} on aiball's host in {}", home_short(&start.cwd))));
+                    }
+                    Err(error) => {
+                        if let Some(form) = shell.new_session.as_mut() {
+                            form.busy = false;
+                        }
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start on the host", format!("{error:#}")));
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Starts a loop through claude-loop, off the UI thread; once its
