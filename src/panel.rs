@@ -17,6 +17,8 @@ use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
+use crate::composer;
+use crate::newticket::AskNewTicket;
 use crate::icons::{self, Icon};
 use crate::theme::p;
 use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
@@ -67,6 +69,9 @@ struct Detail {
     quiet: bool,
     /// The short menus under the reply box: snooze, priority.
     menu: Option<Menu>,
+    /// Something to know that is not an error: what did not follow a new
+    /// ticket.
+    notice: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -138,6 +143,7 @@ impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
+impl EventEmitter<AskNewTicket> for TicketPanel {}
 
 impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -235,6 +241,11 @@ impl TicketPanel {
             cx.emit(FullChanged);
             cx.notify();
         }
+    }
+
+    /// The project the panel is about, if any.
+    pub fn scope_project(&self) -> Option<String> {
+        self.scope.as_ref().map(|s| s.project.clone())
     }
 
     /// The open ticket's project.
@@ -394,9 +405,18 @@ impl TicketPanel {
             answers: Vec::new(),
             quiet: false,
             menu: None,
+            notice: None,
         });
         self.load(ticket, true, cx);
         cx.notify();
+    }
+
+    /// Says something about the open ticket, until it is left.
+    pub fn notice(&mut self, text: String, cx: &mut Context<Self>) {
+        if let Some(detail) = self.detail.as_mut() {
+            detail.notice = Some(text);
+            cx.notify();
+        }
     }
 
     /// Reads the thread again; `mark_read` clears its unread for the user.
@@ -566,16 +586,12 @@ impl TicketPanel {
 
     /// The `@name` being typed at the end of the reply, if any.
     fn mention_typed(&self, cx: &App) -> Option<String> {
-        let text = self.reply.read(cx).value();
-        let word = text.rsplit(char::is_whitespace).next()?;
-        let name = word.strip_prefix('@')?;
-        name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_').then(|| name.to_lowercase())
+        composer::typed_mention(&self.reply.read(cx).value())
     }
 
     fn complete_mention(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
         let text = self.reply.read(cx).value().to_string();
-        let Some(at) = text.rfind('@') else { return };
-        let completed = format!("{}@{name} ", &text[..at]);
+        let Some(completed) = composer::complete_mention(&text, &name) else { return };
         self.reply.update(cx, |reply, cx| reply.set_value(completed, window, cx));
         cx.notify();
     }
@@ -583,23 +599,15 @@ impl TicketPanel {
     /// Ctrl+V with an image on the clipboard: uploads it to aiball and puts
     /// its link in the reply. Answers whether it took the paste.
     fn paste_image(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some(image) = cx.read_from_clipboard().and_then(|item| {
-            item.into_entries().find_map(|entry| match entry {
-                ClipboardEntry::Image(image) => Some(image),
-                _ => None,
-            })
-        }) else {
+        let Some((bytes, content_type, name)) = composer::clipboard_image(cx) else {
             return false;
         };
-        let content_type = image.format.mime_type().to_string();
-        let name = format!("pasted.{}", content_type.rsplit('/').next().unwrap_or("png"));
         let aiball = self.aiball.clone();
         let window_handle = window.window_handle();
         if let Some(detail) = self.detail.as_mut() {
             detail.busy = true;
         }
         cx.spawn(async move |this, cx| {
-            let bytes = image.bytes.clone();
             let uploaded = cx
                 .background_executor()
                 .spawn(async move { aiball.upload(&bytes, &content_type, &name) })
@@ -610,9 +618,7 @@ impl TicketPanel {
                         detail.busy = false;
                         match uploaded {
                             Ok(url) => {
-                                let text = panel.reply.read(cx).value().to_string();
-                                let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-                                let with_image = format!("{text}{sep}![pasted]({url})\n");
+                                let with_image = composer::with_image(&panel.reply.read(cx).value(), &url);
                                 panel.reply.update(cx, |reply, cx| reply.set_value(with_image, window, cx));
                             }
                             Err(error) => detail.error = Some(format!("{error:#}")),
@@ -1171,24 +1177,9 @@ impl TicketPanel {
         let snoozed = ticket.postponed_until.is_some();
         // `@` at the end of the reply: who it can be.
         let mentions = self.mention_typed(cx).map(|typed| {
-            let mut row = div().flex().flex_wrap().gap_1();
-            for name in self.mentions.iter().filter(|n| n.to_lowercase().starts_with(&typed)).take(8) {
-                let pick = name.clone();
-                row = row.child(
-                    div()
-                        .id(SharedString::from(format!("mention-{name}")))
-                        .px_1p5()
-                        .rounded_sm()
-                        .text_xs()
-                        .border_1()
-                        .border_color(p().border)
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .child(format!("@{name}"))
-                        .on_click(cx.listener(move |panel, _, window, cx| panel.complete_mention(pick.clone(), window, cx))),
-                );
-            }
-            row
+            composer::mention_chips(&self.mentions, &typed, "mention", cx, |panel: &mut Self, name, window, cx| {
+                panel.complete_mention(name, window, cx)
+            })
         });
         let chip = |id: &'static str, label: &'static str| {
             div()
@@ -1241,6 +1232,9 @@ impl TicketPanel {
             }))
             .when_some(detail.error.clone(), |d, error| {
                 d.child(div().text_color(p().danger).child(error))
+            })
+            .when_some(detail.notice.clone(), |d, notice| {
+                d.child(div().text_color(p().warning).child(notice))
             })
             .children(moderation)
             .children(decision)
@@ -1689,7 +1683,23 @@ impl TicketPanel {
         }
 
         // ── Links ──
-        col = col.child(group("Links"));
+        let (parent, parent_project) = (ticket.id, self.project());
+        col = col.child(group("Links")).child(
+            div()
+                .id("inv-sub-ticket")
+                .flex()
+                .gap_2()
+                .py_0p5()
+                .px_1()
+                .rounded_sm()
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(label("sub-ticket"))
+                .child(div().flex_1().text_color(p().accent).child("+ a new one"))
+                .on_click(cx.listener(move |_, _, _, cx| {
+                    cx.emit(AskNewTicket { project: parent_project.clone(), parent: Some(parent) })
+                })),
+        );
         if let Some(parent) = ticket.parent_ticket_id {
             col = col.child(row("inv-parent", "sub-ticket of", format!("#{parent}"), None, cx));
         }
@@ -2136,6 +2146,18 @@ impl Render for TicketPanel {
                     .text_xs()
                     .text_color(p().muted)
                     .child(format!("as {}", self.aiball.user)),
+            )
+            .child(
+                div()
+                    .id("new-ticket")
+                    .px_1()
+                    .cursor_pointer()
+                    .text_color(p().accent)
+                    .child("+")
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        let project = panel.scope.as_ref().map(|s| s.project.clone());
+                        cx.emit(AskNewTicket { project, parent: None })
+                    })),
             )
             .child(
                 div()

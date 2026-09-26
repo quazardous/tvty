@@ -98,6 +98,22 @@ to look over the board (`src/fulllist.rs`):
 - Opening a ticket shows it in the panel; the list, hidden, keeps its scope
   and filters for the next time. Esc closes it.
 
+## Filing a ticket
+
+One gesture, three ways in: **+** in the panel's header or the full list's,
+ctrl+shift+n anywhere, and "+ a new one" under a ticket's links (full
+screen) for a sub-ticket. The form fills the window, laid out as a ticket's
+full detail: what the ticket is on the left third — project (the panel's,
+else the terminal's, else the last used; any project of the board), intent,
+priority, scope, tags, milestone, assignee, parent — and its words on the
+rest: title, a one-line summary, the body with @-mentions and pasted images.
+
+Ctrl+enter files it. One call creates it (with the machine's platform tag,
+as every aiball client does); tags, assignee and milestone follow, as
+aiball's web UI does them. A ticket that exists is worth more than one
+perfectly labelled: what does not follow is said on the new ticket, which
+opens full screen. Esc puts the form away and keeps the draft.
+
 ## A ticket's thread
 
 The detail says where the ticket stands once, then the talk, then the
@@ -206,6 +222,7 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 | ctrl+tab (shift: backwards) | the slider, most recent first; arrows move too; release ctrl to switch |
 | ctrl+shift+space | the gallery; type to filter, arrows move, enter opens, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
+| ctrl+shift+n | a new ticket; ctrl+enter files it, esc keeps the draft |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |

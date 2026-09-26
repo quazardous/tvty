@@ -88,6 +88,7 @@ pub struct FullList {
 
 impl EventEmitter<CloseFullList> for FullList {}
 impl EventEmitter<OpenTicket> for FullList {}
+impl EventEmitter<crate::newticket::AskNewTicket> for FullList {}
 
 impl FullList {
     pub fn new(aiball: Aiball, scope: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -573,6 +574,22 @@ impl Render for FullList {
                     .border_color(p().border)
                     .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child(title))
                     .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
+                    .child(
+                        div()
+                            .id("full-list-new")
+                            .mr_2()
+                            .px_2()
+                            .rounded_sm()
+                            .text_sm()
+                            .text_color(p().accent)
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover))
+                            .child("+ New ticket")
+                            .on_click(cx.listener(|list, _, _, cx| {
+                                let project = list.scope.clone();
+                                cx.emit(crate::newticket::AskNewTicket { project, parent: None })
+                            })),
+                    )
                     .child(
                         div()
                             .id("full-list-close")

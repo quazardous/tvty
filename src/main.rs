@@ -2,9 +2,11 @@
 //! agents, their terminals grouped by project and their tickets beside.
 
 mod aiball;
+mod composer;
 mod events;
 mod fulllist;
 mod icons;
+mod newticket;
 mod options;
 mod panel;
 mod rowstate;

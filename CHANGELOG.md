@@ -25,6 +25,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- File a ticket from tvty: + in the ticket panel or the full list,
+  ctrl+shift+n, or a sub-ticket from a ticket's full view. A full-screen
+  form, laid out as a ticket's detail (project, intent, priority, scope,
+  tags, milestone, assignee on the left; title, summary and body with
+  mentions and pasted images on the right). The draft survives Esc; what
+  aiball refuses after filing (a closed milestone…) is said on the ticket.
+
 - A ticket list that says at a glance what is yours: bands from "to
   moderate" to "open", bold for unread, one state glyph, a stripe for whose
   turn it is; its legend is in the options.

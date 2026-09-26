@@ -25,6 +25,8 @@ pub struct Settings {
     /// The mouse wheel's speed, times tvty's own (1: a notch is about three
     /// ticket rows, five lines of a terminal's history).
     pub scroll_speed: f32,
+    /// The project the last new ticket went to.
+    pub last_ticket_project: Option<String>,
 }
 
 impl Default for Settings {
@@ -38,6 +40,7 @@ impl Default for Settings {
             terminal_theme: None,
             thread_newest_first: false,
             scroll_speed: 1.,
+            last_ticket_project: None,
         }
     }
 }

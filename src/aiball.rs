@@ -399,6 +399,22 @@ impl Aiball {
         answer.get("id").and_then(Value::as_u64).context("the new comment has no id")
     }
 
+    /// Files a new ticket; answers its id. What aiball takes on its own
+    /// route (tags, assignee, milestone) is the caller's to add after.
+    pub fn create(&self, ticket: &NewTicket) -> anyhow::Result<u64> {
+        let body = new_ticket_message(ticket, &self.user).to_string();
+        // Like every client that files tickets: aiball tags the platform.
+        let answer = self.request_bytes(
+            "POST",
+            "/api/messages",
+            "application/json",
+            &[("x-aiball-platform", std::env::consts::OS)],
+            body.as_bytes(),
+        )?;
+        let answer: Value = serde_json::from_str(&answer).unwrap_or(Value::Null);
+        answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
+    }
+
     /// Marks a question (`- [ ]` in a comment) answered by a comment.
     pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
         self.post(
@@ -664,4 +680,77 @@ fn encode(s: &str) -> String {
             _ => format!("%{b:02X}"),
         })
         .collect()
+}
+
+/// A ticket to file: what goes in the one call that creates it.
+#[derive(Clone, Debug, PartialEq)]
+pub struct NewTicket {
+    pub project: String,
+    pub title: String,
+    pub summary: String,
+    pub body: String,
+    pub intent: String,
+    pub priority: String,
+    pub scope: String,
+    pub parent: Option<u64>,
+}
+
+/// The message that files `ticket`, as aiball's web UI sends it: the
+/// defaults (normal priority, default scope) and empty fields left out.
+pub fn new_ticket_message(ticket: &NewTicket, user: &str) -> Value {
+    let mut message = json!({
+        "project": ticket.project,
+        "kind": "ticket_created",
+        "title": ticket.title.trim(),
+        "body": ticket.body,
+        "intent": ticket.intent,
+        "by_agent": user,
+    });
+    if !ticket.summary.trim().is_empty() {
+        message["summary"] = json!(ticket.summary.trim());
+    }
+    if ticket.priority != "normal" {
+        message["priority"] = json!(ticket.priority);
+    }
+    if ticket.scope != "default" {
+        message["scope"] = json!(ticket.scope);
+    }
+    if let Some(parent) = ticket.parent {
+        message["parent_id"] = json!(parent);
+    }
+    message
+}
+
+#[cfg(test)]
+mod new_ticket_tests {
+    use super::{NewTicket, new_ticket_message};
+    use serde_json::json;
+
+    fn ticket() -> NewTicket {
+        NewTicket {
+            project: "demo".into(),
+            title: "  A title ".into(),
+            summary: " ".into(),
+            body: "words".into(),
+            intent: "request".into(),
+            priority: "normal".into(),
+            scope: "default".into(),
+            parent: None,
+        }
+    }
+
+    #[test]
+    fn the_defaults_stay_out() {
+        assert_eq!(
+            new_ticket_message(&ticket(), "david"),
+            json!({ "project": "demo", "kind": "ticket_created", "title": "A title", "body": "words", "intent": "request", "by_agent": "david" })
+        );
+    }
+
+    #[test]
+    fn what_is_set_goes_in() {
+        let t = NewTicket { summary: "short".into(), priority: "high".into(), scope: "internal".into(), parent: Some(12), ..ticket() };
+        let m = new_ticket_message(&t, "david");
+        assert_eq!((m["summary"].clone(), m["priority"].clone(), m["scope"].clone(), m["parent_id"].clone()), (json!("short"), json!("high"), json!("internal"), json!(12)));
+    }
 }

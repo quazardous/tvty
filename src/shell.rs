@@ -20,6 +20,7 @@ use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
 use crate::fulllist::{CloseFullList, FullList, OpenTicket};
+use crate::newticket::{AskNewTicket, CloseNewTicket, Created, NewTicketForm};
 use crate::panel::{BoardChanged, CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
@@ -76,6 +77,10 @@ pub struct Shell {
     /// The full detail was opened from the full list: leaving it returns
     /// there.
     full_list_return: bool,
+    /// The new ticket's form, and whether it is shown: hidden, it keeps
+    /// its draft.
+    new_ticket: Option<Entity<NewTicketForm>>,
+    new_ticket_shown: bool,
     feed: events::Feed,
     /// The slider is up, on this session.
     slider: Option<String>,
@@ -309,6 +314,10 @@ impl Shell {
             shell.toggle_full_list(window, cx)
         })
         .detach();
+        cx.subscribe_in(&panel, window, |shell, _, ask: &AskNewTicket, window, cx| {
+            shell.open_new_ticket(ask.project.clone(), ask.parent, window, cx)
+        })
+        .detach();
 
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
@@ -328,6 +337,8 @@ impl Shell {
             full_list: None,
             full_list_shown: false,
             full_list_return: false,
+            new_ticket: None,
+            new_ticket_shown: false,
             feed: feed.clone(),
             slider: None,
             slider_shown: 0,
@@ -489,6 +500,10 @@ impl Shell {
             .filter(|project| self.board.tickets.contains_key(project));
         let aiball = self.aiball.clone();
         let list = cx.new(|cx| FullList::new(aiball, scope, window, cx));
+        cx.subscribe_in(&list, window, |shell, _, ask: &AskNewTicket, window, cx| {
+            shell.open_new_ticket(ask.project.clone(), ask.parent, window, cx)
+        })
+        .detach();
         cx.subscribe_in(&list, window, |shell, _, _: &CloseFullList, window, cx| {
             shell.toggle_full_list(window, cx)
         })
@@ -511,6 +526,72 @@ impl Shell {
         .detach();
         self.full_list = Some(list);
         self.sync_full_list(cx);
+        cx.notify();
+    }
+
+    // ── A new ticket ────────────────────────────────────────────────────
+
+    /// Shows the form, on `project` (else what is shown: the panel's, the
+    /// terminal's, the last used) and under `parent`.
+    fn open_new_ticket(&mut self, project: Option<String>, parent: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
+        let mut board: Vec<String> = self.board.tickets.keys().cloned().collect();
+        board.sort_by_key(|p| p.to_lowercase());
+        let terminal = self.selected.as_deref().and_then(|s| self.terminal_of(s)).map(|(p, _)| p.to_string());
+        let panel = self.panel.read(cx).scope_project();
+        let project = project.or_else(|| {
+            crate::newticket::default_project(
+                panel.as_deref(),
+                terminal.as_deref(),
+                self.settings.last_ticket_project.as_deref(),
+                &board,
+            )
+        });
+        self.new_ticket_shown = true;
+        let form = match self.new_ticket.clone() {
+            Some(form) => form,
+            None => {
+                let aiball = self.aiball.clone();
+                let start = project.clone().unwrap_or_default();
+                let form = cx.new(|cx| NewTicketForm::new(aiball, start, window, cx));
+                cx.subscribe_in(&form, window, |shell, _, _: &CloseNewTicket, window, cx| shell.close_new_ticket(window, cx))
+                    .detach();
+                cx.subscribe_in(&form, window, |shell, _, created: &Created, window, cx| {
+                    shell.settings.last_ticket_project = Some(created.project.clone());
+                    shell.settings.save();
+                    shell.new_ticket_shown = false;
+                    shell.full_list_shown = false;
+                    if !shell.settings.panel_open {
+                        shell.toggle_panel(cx);
+                    }
+                    let (project, ticket) = (created.project.clone(), created.ticket);
+                    let warnings = created.warnings.clone();
+                    shell.panel.update(cx, |panel, cx| {
+                        panel.open_in(Some(project), ticket, cx);
+                        panel.set_full(true, cx);
+                        if !warnings.is_empty() {
+                            panel.notice(format!("Filed, but not all of it: {}", warnings.join("; ")), cx);
+                        }
+                    });
+                    let _ = shell.refresh_now.unbounded_send(events::Change::All);
+                    cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+                    cx.notify();
+                })
+                .detach();
+                self.new_ticket = Some(form.clone());
+                form
+            }
+        };
+        form.update(cx, |form, cx| form.prefill(project, parent, window, cx));
+        cx.notify();
+    }
+
+    fn close_new_ticket(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.new_ticket_shown = false;
+        if !self.full_list_shown && !self.panel.read(cx).is_full() {
+            self.focus_terminal(window, cx);
+        } else {
+            window.focus(&self.focus.clone(), cx);
+        }
         cx.notify();
     }
 
@@ -749,6 +830,10 @@ impl Shell {
             self.toggle_options(window, cx);
         } else if key == "escape" && self.options.is_some() {
             self.toggle_options(window, cx);
+        } else if m.control && m.shift && key == "n" {
+            self.open_new_ticket(None, None, window, cx);
+        } else if key == "escape" && self.new_ticket_shown {
+            self.close_new_ticket(window, cx);
         } else if m.control && m.shift && key == "l" {
             self.toggle_full_list(window, cx);
         } else if key == "escape" && self.panel.read(cx).is_full() {
@@ -1914,6 +1999,7 @@ impl Render for Shell {
         let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
         let options = self.options.map(|section| self.options_view(section, window, cx));
         let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
+        let new_ticket = self.new_ticket.clone().filter(|_| self.new_ticket_shown);
         // A click on something that takes no focus (a list, the panel)
         // leaves none: the keys would reach nothing, the shell's shortcuts
         // included. Once the click is done, the shell takes them back.
@@ -1977,6 +2063,7 @@ impl Render for Shell {
             .when(panel_full, |d| {
                 d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone()))
             })
+            .children(new_ticket)
             .children(options);
 
         // The window draws its own title bar: GNOME leaves decorations to the
