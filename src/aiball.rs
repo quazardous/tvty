@@ -546,20 +546,26 @@ impl Aiball {
 
     /// The open tickets of a project, as the web UI's list rows.
     pub fn open_tickets(&self, project: &str) -> anyhow::Result<Vec<TicketRow>> {
-        self.get(&format!("/api/inbox?project={}&open=1&view=turn&sort=band", encode(project)))
+        self.inbox(json!({ "project": project, "open": true, "view": "turn", "sort": "band" }))
     }
 
     /// A project's tickets, closed ones too: the most pressing first, at
     /// most `limit`.
     pub fn all_tickets(&self, project: &str, limit: usize) -> anyhow::Result<Vec<TicketRow>> {
-        self.get(&format!(
-            "/api/inbox?project={}&view=turn&sort=band&limit={limit}",
-            encode(project)
-        ))
+        self.inbox(json!({ "project": project, "view": "turn", "sort": "band", "limit": limit }))
+    }
+
+    /// `inbox.list`: its rows (it also says the total, which tvty does not show).
+    fn inbox(&self, params: Value) -> anyhow::Result<Vec<TicketRow>> {
+        #[derive(Deserialize)]
+        struct Inbox {
+            rows: Vec<TicketRow>,
+        }
+        Ok(self.rpc::<Inbox>("inbox.list", params)?.rows)
     }
 
     pub fn thread(&self, ticket: u64) -> anyhow::Result<Thread> {
-        self.get(&format!("/api/tickets/{ticket}?full=1&limit=9999"))
+        self.rpc("ticket.get", json!({ "id": ticket, "full": true, "limit": 9999 }))
     }
 
     pub fn mark_read(&self, ticket: u64) -> anyhow::Result<()> {
