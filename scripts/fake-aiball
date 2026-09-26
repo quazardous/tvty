@@ -9,7 +9,8 @@
 # Everything lives in dev/fake-aiball/: its own AIBALL_HOME, config dir, port
 # (7797) and socket. The demo project `demo` has two agents, demo-claude and
 # demo-crew, whose "loops" are tmux sessions cl-demo-lead / cl-demo-crew
-# running fake-claude in dev/fake-aiball/demo/{lead,crew}.
+# running fake-claude in dev/fake-aiball/demo/{lead,crew}. An agent started
+# on the daemon's host (session.start) runs fake-claude too, never Claude.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # The demo loops run on the test tmux server (scripts/test-env); the
@@ -35,6 +36,7 @@ case "${1:-}" in
         AIBALL_HOME="$HOME_DIR" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
             AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
             CLAUDE_LOOP_STATE_ROOT="$ROOT/dev/claude-loop" \
+            CL_CLAUDE_CMD="$AIBALL/bin/fake-claude" \
             nohup "$AIBALL/bin/aiball-daemon" >"$DIR/daemon.log" 2>&1 &
         for _ in $(seq 50); do [[ -S $SOCK ]] && break; sleep 0.2; done
         [[ -S $SOCK ]] || { echo "the daemon did not start, see $DIR/daemon.log" >&2; exit 1; }

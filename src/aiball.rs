@@ -599,14 +599,15 @@ impl Aiball {
     }
 
     /// Starts an agent's loop on the daemon's host, in `cwd`: for `agent` (or
-    /// the folder's own), as a crew agent when `crew`. Answers the agent.
+    /// the folder's own), as a crew agent of that name when `crew`. Answers
+    /// the agent.
     pub fn start_agent(&self, cwd: &str, project: Option<&str>, agent: Option<&str>, crew: bool) -> anyhow::Result<String> {
-        let mut params = json!({ "cwd": cwd, "crew": crew });
+        let mut params = json!({ "cwd": cwd });
         if let Some(project) = project {
             params["project"] = json!(project);
         }
         if let Some(agent) = agent {
-            params["agent"] = json!(agent);
+            params[if crew { "crew" } else { "agent" }] = json!(agent);
         }
         let answer: Value = self.rpc("session.start", params)?;
         answer.get("agent").and_then(Value::as_str).map(str::to_string).context("session.start: no agent in the answer")

@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - "+ terminal" no longer fails with `HOST_BUSY` when a terminal of the
   same name ended on aiball's host: it takes a free name, and closing an
   ended terminal releases its name.
+- "+ session" on aiball's host starts the agent: it failed with "invalid
+  params", and a crew agent is now asked for by its name.
 
 ## [0.1.0] - 2026-09-26
 
