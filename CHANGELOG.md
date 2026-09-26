@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - A terminal closed from its tab leaves the list at once, not once aiball's
   host has stopped it.
+- A terminal whose stop fails (aiball's bus not answering) comes back in
+  the list with an error, instead of running on out of sight.
 - The cards of Ctrl+Tab and of the gallery show a shell's screen: its first
   rows (they showed only the screen's bottom, empty for a shell), tmux's
   status line aside, and a shell of aiball's host not open in tvty too.

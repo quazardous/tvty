@@ -56,13 +56,23 @@ impl Shell {
             self.board = board;
             if let Some(name) = session.strip_prefix(sessions::HOSTED_PREFIX).map(str::to_string) {
                 let aiball = self.aiball.clone();
-                cx.background_executor()
-                    .spawn(async move {
-                        if let Err(error) = aiball.stop_terminal(&name) {
-                            log::warn!("stopping terminal {name}: {error:#}");
-                        }
-                    })
-                    .detach();
+                let hidden = session.clone();
+                cx.spawn(async move |this, cx| {
+                    let stopped = cx.background_executor().spawn({
+                        let name = name.clone();
+                        async move { aiball.stop_terminal(&name) }
+                    });
+                    let Err(error) = stopped.await else { return };
+                    log::warn!("stopping terminal {name}: {error:#}");
+                    // Not stopped: listed again, to be closed again or used,
+                    // rather than left running out of sight.
+                    let _ = this.update(cx, |shell, cx| {
+                        shell.stopping.remove(&hidden);
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "stop the terminal", format!("{name}: {error:#}")));
+                        shell.rebuild(cx);
+                    });
+                })
+                .detach();
             }
         }
         if self.selected.as_deref() == Some(session.as_str()) {
