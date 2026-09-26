@@ -105,13 +105,22 @@ impl NewTicketForm {
                 .placeholder("What it is about… (@ to mention, ctrl+v pastes an image)")
                 .auto_grow(10, 40)
         });
-        // @-mentions are offered as the body is typed.
-        cx.subscribe(&body, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
+        // @-mentions are offered as the body is typed; Ctrl+Enter files.
+        cx.subscribe_in(&body, window, |form: &mut Self, _, event: &InputEvent, window, cx| match event {
+            InputEvent::Change => cx.notify(),
+            InputEvent::PressEnter { secondary: true, .. } => form.submit(window, cx),
+            _ => {}
         })
         .detach();
+        // Ctrl+Enter files from the title and the summary too.
+        for input in [&title, &summary] {
+            cx.subscribe_in(input, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
+                if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
+                    form.submit(window, cx);
+                }
+            })
+            .detach();
+        }
         let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let pickers = [
             (Pick::Project, "another project…"),

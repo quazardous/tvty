@@ -225,6 +225,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Ctrl+Enter sends a reply in a ticket's thread, and files a new ticket
+  from any of its text fields: it only put in a new line.
+
 - A ticket list that grew or moved on its own (rows pushed by aiball, a
   section above shrinking) no longer leaves blank rows until the mouse
   moves.

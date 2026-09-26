@@ -145,14 +145,15 @@ impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let reply = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Reply…")
+                .placeholder("Reply… (ctrl+enter sends)")
                 .auto_grow(2, 8)
         });
         // Reject waits for a reason: redraw as the reason is typed.
-        cx.subscribe(&reply, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
+        // Ctrl+Enter sends it (the box has put in the new line first).
+        cx.subscribe_in(&reply, window, |panel, _, event: &InputEvent, window, cx| match event {
+            InputEvent::Change => cx.notify(),
+            InputEvent::PressEnter { secondary: true, .. } => panel.send_reply(window, cx),
+            _ => {}
         })
         .detach();
         let edit_title = cx.new(|cx| InputState::new(window, cx));
