@@ -547,7 +547,6 @@ impl Aiball {
             "ticket_id": ticket,
             "parent_id": ticket,
             "body": body,
-            "by_agent": self.user,
         });
         if quiet {
             message["scope"] = json!("internal");
@@ -559,7 +558,7 @@ impl Aiball {
     /// Files a new ticket; answers its id. What aiball takes on its own
     /// route (tags, assignee, milestone) is the caller's to add after.
     pub fn create(&self, ticket: &NewTicket) -> anyhow::Result<u64> {
-        let body = new_ticket_message(ticket, &self.user).to_string();
+        let body = new_ticket_message(ticket).to_string();
         // Like every client that files tickets: aiball tags the platform.
         let answer = self.request_bytes(
             "POST",
@@ -602,7 +601,7 @@ impl Aiball {
     pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
         self.post(
             &format!("/api/messages/{message}/questions/{}/answer", encode(question)),
-            json!({ "answered_by": self.user, "answered_in": answered_in }),
+            json!({ "answered_in": answered_in }),
         )
         .map(drop)
     }
@@ -628,7 +627,7 @@ impl Aiball {
     }
 
     pub fn add_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {
-        self.post(&format!("/api/messages/{ticket}/tags"), json!({ "tag": tag, "set_by": self.user }))
+        self.post(&format!("/api/messages/{ticket}/tags"), json!({ "tag": tag }))
             .map(drop)
     }
 
@@ -769,7 +768,6 @@ impl Aiball {
                 "kind": if closed { "ticket_closed" } else { "ticket_reopened" },
                 "ticket_id": ticket,
                 "parent_id": ticket,
-                "by_agent": self.user,
             }),
         )
         .map(drop)
@@ -778,7 +776,7 @@ impl Aiball {
     /// Accept or reject the decision a comment carries.
     pub fn decide(&self, comment: u64, accept: bool) -> anyhow::Result<()> {
         let status = if accept { "accepted" } else { "rejected" };
-        self.post(&format!("/api/messages/{comment}/decide"), json!({ "status": status, "decided_by": self.user }))
+        self.post(&format!("/api/messages/{comment}/decide"), json!({ "status": status }))
             .map(drop)
     }
 
@@ -898,14 +896,14 @@ pub struct NewTicket {
 
 /// The message that files `ticket`, as aiball's web UI sends it: the
 /// defaults (normal priority, default scope) and empty fields left out.
-pub fn new_ticket_message(ticket: &NewTicket, user: &str) -> Value {
+/// Its author is the caller, whom aiball knows from the connection.
+pub fn new_ticket_message(ticket: &NewTicket) -> Value {
     let mut message = json!({
         "project": ticket.project,
         "kind": "ticket_created",
         "title": ticket.title.trim(),
         "body": ticket.body,
         "intent": ticket.intent,
-        "by_agent": user,
     });
     if !ticket.summary.trim().is_empty() {
         message["summary"] = json!(ticket.summary.trim());
@@ -943,15 +941,15 @@ mod new_ticket_tests {
     #[test]
     fn the_defaults_stay_out() {
         assert_eq!(
-            new_ticket_message(&ticket(), "david"),
-            json!({ "project": "demo", "kind": "ticket_created", "title": "A title", "body": "words", "intent": "request", "by_agent": "david" })
+            new_ticket_message(&ticket()),
+            json!({ "project": "demo", "kind": "ticket_created", "title": "A title", "body": "words", "intent": "request" })
         );
     }
 
     #[test]
     fn what_is_set_goes_in() {
         let t = NewTicket { summary: "short".into(), priority: "high".into(), scope: "internal".into(), parent: Some(12), ..ticket() };
-        let m = new_ticket_message(&t, "david");
+        let m = new_ticket_message(&t);
         assert_eq!((m["summary"].clone(), m["priority"].clone(), m["scope"].clone(), m["parent_id"].clone()), (json!("short"), json!("high"), json!("internal"), json!(12)));
     }
 }

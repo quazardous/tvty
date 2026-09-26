@@ -151,6 +151,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- tvty no longer names its user in what it writes to aiball: aiball takes
+  the author from the connection, and refuses a body naming someone else.
+
 - Debug builds (`make run`) draw at almost release speed: the gallery went
   from about one frame a second to eight or nine, as the dependencies are
   now optimised even there.
