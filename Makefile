@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: emoji-font help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
+.PHONY: emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -24,6 +24,7 @@ help:
 	@echo ""
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
+	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
 
 public-check:
@@ -105,3 +106,27 @@ emoji-font:
 	mkdir -p "$(EMOJI_FONT_DIR)"
 	curl -fsSL -o "$(EMOJI_FONT_DIR)/NotoColorEmoji.ttf" "$(EMOJI_FONT_URL)"
 	@echo "colour emoji font in $(EMOJI_FONT_DIR): restart tvty"
+
+# The launcher and the icon, for this user (no sudo). The launcher runs BIN:
+# the debug build by default.
+DATA_DIR = $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
+BIN ?= $(CURDIR)/target/debug/tvty
+ICON_SIZES = 16 24 32 48 64 128 256 512
+
+install-desktop:
+	install -Dm644 assets/tvty.svg "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg"
+	@if command -v magick >/dev/null; then \
+		for s in $(ICON_SIZES); do \
+			mkdir -p "$(DATA_DIR)/icons/hicolor/$${s}x$${s}/apps"; \
+			magick -background none -density 384 assets/tvty.svg -resize $${s}x$${s} "$(DATA_DIR)/icons/hicolor/$${s}x$${s}/apps/tvty.png"; \
+		done; \
+	else echo "no ImageMagick: the scalable icon only"; fi
+	mkdir -p "$(DATA_DIR)/applications"
+	sed 's|@EXEC@|$(BIN)|' packaging/linux/tvty.desktop >"$(DATA_DIR)/applications/tvty.desktop"
+	-gtk-update-icon-cache -q -t "$(DATA_DIR)/icons/hicolor" 2>/dev/null
+	-update-desktop-database -q "$(DATA_DIR)/applications" 2>/dev/null
+	@echo "Terminal Velocity installed: it runs $(BIN)"
+
+uninstall-desktop:
+	rm -f "$(DATA_DIR)/applications/tvty.desktop" "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg"
+	for s in $(ICON_SIZES); do rm -f "$(DATA_DIR)/icons/hicolor/$${s}x$${s}/apps/tvty.png"; done

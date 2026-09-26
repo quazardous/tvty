@@ -66,6 +66,14 @@ fontconfig, freetype and alsa. tvty reaches aiball over its local socket
 (`$AIBALL_SOCK`, else aiball's default) and acts as its human user
 (`$TVTY_USER`, else the human aiball saw last).
 
+To have **Terminal Velocity** in the desktop's launcher (GNOME, KDE…), with
+its icon, for your user only:
+
+```bash
+make install-desktop                          # runs target/debug/tvty
+make install-desktop BIN=target/release/tvty  # or another build
+```
+
 ## License
 
 [MIT](LICENSE).

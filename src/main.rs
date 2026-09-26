@@ -76,6 +76,9 @@ fn main() {
                     // Draw our own frame everywhere: GNOME would draw none, and
                     // the same frame on GNOME, KDE and the rest looks the same.
                     window_decorations: Some(WindowDecorations::Client),
+                    // What ties the window to its launcher (tvty.desktop), and
+                    // so to its icon in the dock.
+                    app_id: Some("tvty".into()),
                     ..gpui_kit::component::TitleBar::window_options()
                 },
                 |window, cx| {

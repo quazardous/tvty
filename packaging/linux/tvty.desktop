@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal Velocity
+GenericName=Terminal for AI agents
+Comment=Your AI agents' terminals, grouped by project, with their tickets
+Exec=@EXEC@
+Icon=tvty
+StartupWMClass=tvty
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=terminal;agents;claude;aiball;tmux;

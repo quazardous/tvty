@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sessions' marks and state line, the agent bar's glyphs.
 - `>_` on a project opens a plain terminal in the project's folder, listed
   with the project after its agents; the panel shows the project's tickets.
+- An icon, and a launcher for the desktop (`make install-desktop`): the
+  window is tied to it, so the dock shows Terminal Velocity's icon.
 
 ### Changed
 

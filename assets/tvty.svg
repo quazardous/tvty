@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <title>Terminal Velocity</title>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b6fe0"/><stop offset="1" stop-color="#153a8a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="26" fill="url(#bg)"/>
+  <g stroke-linecap="round" stroke-linejoin="round" fill="none" stroke="#ffffff">
+    <path d="M30 42 L52 64 L30 86" stroke-width="11"/>
+    <path d="M52 42 L74 64 L52 86" stroke-width="11" opacity=".55"/>
+    <path d="M80 86 H100" stroke-width="10"/>
+  </g>
+</svg>
