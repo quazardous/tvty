@@ -338,7 +338,7 @@ impl Shell {
                 .await;
             let _ = this.update(cx, |shell, cx| {
                 if let Some(view) = shell.backlog_view.as_mut().filter(|v| v.agent == agent) {
-                    view.read = Some(read.map_err(|e| short_error(&format!("{e:#}"))));
+                    view.read = Some(read.map_err(|e| format!("backlog: {}", short_error(&format!("{e:#}")))));
                     cx.notify();
                 }
             });
@@ -387,7 +387,7 @@ impl Shell {
                     }
                     Err(error) => crate::notify::push(
                         cx,
-                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, short_error(&format!("{error:#}"))),
+                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, format!("tmux line: {}", short_error(&format!("{error:#}")))),
                     ),
                 }
                 cx.notify();
@@ -411,7 +411,7 @@ impl Shell {
                     }
                     Err(error) => crate::notify::push(
                         cx,
-                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, short_error(&format!("{error:#}"))),
+                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, format!("hold: {}", short_error(&format!("{error:#}")))),
                     ),
                 }
                 cx.notify();
@@ -441,7 +441,7 @@ fn short_error(error: &str) -> String {
         .split_once("\"error\":\"")
         .and_then(|(_, rest)| rest.split('"').next())
         .unwrap_or(error);
-    format!("AFK: {message}")
+    message.to_string()
 }
 
 #[cfg(test)]
@@ -452,9 +452,9 @@ mod tests {
     fn an_error_says_what_aiball_said() {
         assert_eq!(
             short_error(r#"POST /api/agents/x/afk: 501 {"error":"node-relayed loop"}"#),
-            "AFK: node-relayed loop"
+            "node-relayed loop"
         );
-        assert_eq!(short_error("socket gone"), "AFK: socket gone");
+        assert_eq!(short_error("socket gone"), "socket gone");
     }
 
     #[test]
