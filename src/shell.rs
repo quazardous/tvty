@@ -99,6 +99,8 @@ pub struct Shell {
     open_when_running: Option<String>,
     /// A thread's image, over the whole window.
     viewer: Option<viewer::Viewer>,
+    /// The user's pings are followed (once tvty knows who the user is).
+    pings_followed: bool,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -381,6 +383,7 @@ impl Shell {
             starting: None,
             open_when_running: None,
             viewer: None,
+            pings_followed: false,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -506,6 +509,10 @@ impl Shell {
 
     fn set_board(&mut self, aiball: Aiball, board: Board, cx: &mut Context<Self>) {
         self.aiball = aiball;
+        if !self.pings_followed && !self.aiball.user.is_empty() {
+            self.pings_followed = true;
+            self.follow_pings(cx);
+        }
         if self.board != board {
             self.board = board;
             self.update_needs(cx);
@@ -513,6 +520,56 @@ impl Shell {
         }
         self.sync_panel(cx);
         self.sync_full_list(cx);
+    }
+
+    // ── The user's pings ────────────────────────────────────────────────
+
+    /// aiball's pings to the user, as notifications: one summing up what
+    /// waits unread at start, then one per ping as it comes.
+    fn follow_pings(&mut self, cx: &mut Context<Self>) {
+        let (pushes, mut incoming) = futures::channel::mpsc::unbounded::<crate::pings::Push>();
+        crate::pings::follow(self.aiball.clone(), pushes);
+        cx.spawn(async move |this, cx| {
+            use futures::StreamExt as _;
+            let mut greeted = false;
+            while let Some(push) = incoming.next().await {
+                let alive = this.update(cx, |shell, cx| match push {
+                    crate::pings::Push::Hello { unread } => {
+                        // Once: a reconnection does not say it again.
+                        if !greeted && unread > 0 {
+                            let mut notice = Notice::new(
+                                Kind::Info,
+                                "aiball",
+                                format!("{unread} ping{} unread — a click lists them", if unread == 1 { "" } else { "s" }),
+                            );
+                            notice.unread_list = true;
+                            notify::push(cx, notice);
+                        }
+                        greeted = true;
+                    }
+                    crate::pings::Push::Ping(ping) => {
+                        let kind = if ping.urgent { Kind::Error } else { Kind::News };
+                        let mut notice = Notice::new(kind, ping.from.clone(), format!("{} — {}", ping.title, ping.what))
+                            .about(ping.project.clone(), ping.ticket);
+                        // The agent's terminal, when it has one here.
+                        if let Some(t) = shell
+                            .board
+                            .projects
+                            .iter()
+                            .flat_map(|p| &p.terminals)
+                            .find(|t| t.agent.as_deref() == Some(ping.from.as_str()))
+                        {
+                            notice = notice.on(t.session.clone());
+                        }
+                        notify::push(cx, notice);
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     // ── The ticket list, full screen ────────────────────────────────────
@@ -751,6 +808,18 @@ impl Shell {
     /// Goes where a notification points: the agent's terminal, the panel
     /// open on the ticket.
     fn open_notice(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
+        if notice.unread_list {
+            if !self.full_list_shown {
+                self.toggle_full_list(window, cx);
+            }
+            if let Some(list) = self.full_list.clone() {
+                list.update(cx, |list, cx| {
+                    list.set_scope(None, cx);
+                    list.set_band(Some(crate::rowstate::Band::Unread), cx);
+                });
+            }
+            return;
+        }
         if let Some(session) = notice.session.clone() {
             self.select(session, window, cx);
         }

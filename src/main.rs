@@ -13,6 +13,7 @@ mod newticket;
 mod notify;
 mod options;
 mod panel;
+mod pings;
 mod rowstate;
 mod sessions;
 mod settings;

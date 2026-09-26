@@ -39,6 +39,8 @@ pub struct Notice {
     pub ticket: Option<(String, u64)>,
     /// The terminal it is about, if any.
     pub session: Option<String>,
+    /// A click opens the full list on what is unread.
+    pub unread_list: bool,
     born: Instant,
     hovered: bool,
 }
@@ -52,6 +54,7 @@ impl Notice {
             text: text.into(),
             ticket: None,
             session: None,
+            unread_list: false,
             born: Instant::now(),
             hovered: false,
         }
@@ -79,14 +82,14 @@ struct Notices {
 impl Global for Notices {}
 
 impl Notices {
-    /// Adds `notice` on top; one about the same ticket and kind is replaced.
+    /// Adds `notice` on top; one about the same ticket is replaced, the
+    /// newest saying more.
     /// Answers whether the list changed.
     fn push(&mut self, mut notice: Notice) {
         self.next += 1;
         notice.id = self.next;
         notice.born = Instant::now();
-        self.shown
-            .retain(|n| !(n.ticket.is_some() && n.ticket == notice.ticket && n.kind == notice.kind));
+        self.shown.retain(|n| !(n.ticket.is_some() && n.ticket == notice.ticket));
         self.shown.insert(0, notice);
         self.shown.truncate(self.max);
     }
@@ -307,7 +310,7 @@ mod tests {
     }
 
     #[test]
-    fn the_same_ticket_and_kind_is_replaced() {
+    fn the_same_ticket_is_replaced() {
         let mut n = notices(5);
         n.push(Notice::new(Kind::News, "a", "x").about("p", 1));
         n.push(Notice::new(Kind::News, "a", "x").about("p", 2));

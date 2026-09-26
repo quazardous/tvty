@@ -232,6 +232,15 @@ it go. No switch happens on its own: the user may be typing elsewhere.
 tvty's own messages (a gesture aiball refused, a ticket filed without all
 it asked for) come the same way.
 
+**aiball's pings to the user** come too: tvty follows the stream aiball's
+web badge and the loops follow (`/api/events`, over the socket). Each ping
+— an agent answered, mentioned you, proposes a plan or to close, a new
+ticket — is a notification (red for a panic); a click opens its ticket
+(and the agent's terminal, when it has one here), which marks it read in
+aiball, so its web UI agrees. At start, one notification sums up the pings
+waiting unread; a click opens the full list on the Unread band. A ticket
+has one notification at a time, the newest.
+
 Views talk through an internal bus (`src/bus.rs`): one publishes a signal
 (a notification, a ticket to open, a new ticket asked for, the board
 changed), whoever cares listens — a list does not know who opens its

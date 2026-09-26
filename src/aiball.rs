@@ -114,6 +114,27 @@ pub struct BarRead {
     pub stale: bool,
 }
 
+/// A message (a ticket or a comment), as `GET /api/messages/:id` gives it.
+#[derive(Clone, Debug, Deserialize)]
+pub struct Message {
+    pub kind: String,
+    pub by_agent: String,
+    #[serde(default)]
+    pub project: String,
+    #[serde(default)]
+    pub title: Option<String>,
+    #[serde(default)]
+    pub meta: Option<String>,
+}
+
+impl Message {
+    /// The decision it carries (`plan`, `resolution`…), if any.
+    pub fn decision_kind(&self) -> Option<String> {
+        let meta: Value = serde_json::from_str(self.meta.as_deref()?).ok()?;
+        meta.pointer("/decision/kind")?.as_str().map(str::to_string)
+    }
+}
+
 /// An agent's own backlog, as it sees it.
 #[derive(Clone, Debug, Deserialize)]
 pub struct AgentBacklog {
@@ -540,6 +561,11 @@ impl Aiball {
             Err(error) if format!("{error}").contains(": 404") => Ok(None),
             Err(error) => Err(error),
         }
+    }
+
+    /// A message: a ticket or a comment.
+    pub fn message(&self, id: u64) -> anyhow::Result<Message> {
+        self.get(&format!("/api/messages/{id}"))
     }
 
     /// An agent's own backlog, in `project`.

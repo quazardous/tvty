@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- aiball's pings reach tvty: an agent answering you, mentioning you or
+  proposing a decision comes as a notification; opening it marks it read
+  in aiball too. At start, one notification counts the pings unread.
+
 - Images in a thread open: a thumbnail in the compact panel, large full
   screen, and a click shows it over the whole window — fitted, zoom with
   the wheel or + / −, 1 for the real size, drag to move, ← → through the
