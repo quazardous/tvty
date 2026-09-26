@@ -19,13 +19,6 @@ use crate::aiball::{Aiball, NewTicket};
 use crate::composer;
 use crate::theme::p;
 
-/// Someone asks for a new ticket: on this project (else the one shown),
-/// under this parent.
-pub struct AskNewTicket {
-    pub project: Option<String>,
-    pub parent: Option<u64>,
-}
-
 /// The form puts itself away (Esc, ✕); the draft stays.
 pub struct CloseNewTicket;
 

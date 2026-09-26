@@ -18,13 +18,10 @@ use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
 use crate::composer;
-use crate::newticket::AskNewTicket;
 use crate::icons::{self, Icon};
 use crate::theme::p;
 use gpui_kit::component::scroll::{ScrollableElement as _, Scrollbar, ScrollbarAxis};
 
-/// Something changed on the board: the shell should read it again.
-pub struct BoardChanged;
 
 /// The user folds the panel away.
 pub struct CollapsePanel;
@@ -69,9 +66,6 @@ struct Detail {
     quiet: bool,
     /// The short menus under the reply box: snooze, priority.
     menu: Option<Menu>,
-    /// Something to know that is not an error: what did not follow a new
-    /// ticket.
-    notice: Option<String>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -140,12 +134,11 @@ pub struct TicketPanel {
     images: crate::images::Cache,
 }
 
-impl EventEmitter<BoardChanged> for TicketPanel {}
 impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
-impl EventEmitter<AskNewTicket> for TicketPanel {}
+
 
 impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
@@ -165,6 +158,13 @@ impl TicketPanel {
         let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
+        // The rows a notification is about shine while it is up.
+        cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
+            if matches!(signal, crate::bus::Signal::Notices) {
+                cx.notify();
+            }
+        })
+        .detach();
         let reader = aiball.clone();
         cx.spawn(async move |this, cx| {
             let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
@@ -428,18 +428,9 @@ impl TicketPanel {
             answers: Vec::new(),
             quiet: false,
             menu: None,
-            notice: None,
         });
         self.load(ticket, true, cx);
         cx.notify();
-    }
-
-    /// Says something about the open ticket, until it is left.
-    pub fn notice(&mut self, text: String, cx: &mut Context<Self>) {
-        if let Some(detail) = self.detail.as_mut() {
-            detail.notice = Some(text);
-            cx.notify();
-        }
     }
 
     /// Reads the thread again; `mark_read` clears its unread for the user.
@@ -483,7 +474,7 @@ impl TicketPanel {
                     detail.busy = false;
                 }
                 if mark_read {
-                    cx.emit(BoardChanged);
+                    crate::bus::emit(cx, crate::bus::Signal::BoardChanged);
                 }
                 cx.notify();
             });
@@ -515,7 +506,7 @@ impl TicketPanel {
                         Ok(()) => {
                             on_success(panel, window, cx);
                             panel.load(ticket, false, cx);
-                            cx.emit(BoardChanged);
+                            crate::bus::emit(cx, crate::bus::Signal::BoardChanged);
                         }
                         Err(error) => {
                             if let Some(detail) = panel.detail.as_mut() {
@@ -802,6 +793,7 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
+        let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
         let glyph_colour = |glyph: Glyph| glyph_colour(glyph, yours);
         let stripe_colour = stripe_colour(&state);
@@ -889,6 +881,8 @@ impl TicketPanel {
                     )
                     .child(meta),
             )
+            // A notification about it is up: it shines.
+            .map(|d| crate::notify::halo(d, lit))
             .on_click(cx.listener(move |panel, _, _, cx| panel.open(id, cx)))
     }
 
@@ -1261,9 +1255,7 @@ impl TicketPanel {
             .when_some(detail.error.clone(), |d, error| {
                 d.child(div().text_color(p().danger).child(error))
             })
-            .when_some(detail.notice.clone(), |d, notice| {
-                d.child(div().text_color(p().warning).child(notice))
-            })
+
             .children(moderation)
             .children(decision)
             .child(Textarea::new(&self.reply))
@@ -1725,7 +1717,7 @@ impl TicketPanel {
                 .child(label("sub-ticket"))
                 .child(div().flex_1().text_color(p().accent).child("+ a new one"))
                 .on_click(cx.listener(move |_, _, _, cx| {
-                    cx.emit(AskNewTicket { project: parent_project.clone(), parent: Some(parent) })
+                    crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project: parent_project.clone(), parent: Some(parent) })
                 })),
         );
         if let Some(parent) = ticket.parent_ticket_id {
@@ -2189,7 +2181,7 @@ impl Render for TicketPanel {
                     .child("+ New")
                     .on_click(cx.listener(|panel, _, _, cx| {
                         let project = panel.scope.as_ref().map(|s| s.project.clone());
-                        cx.emit(AskNewTicket { project, parent: None })
+                        crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
                     })),
             )
             .child(

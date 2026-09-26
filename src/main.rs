@@ -2,12 +2,14 @@
 //! agents, their terminals grouped by project and their tickets beside.
 
 mod aiball;
+mod bus;
 mod composer;
 mod events;
 mod fulllist;
 mod icons;
 mod images;
 mod newticket;
+mod notify;
 mod options;
 mod panel;
 mod rowstate;
@@ -41,6 +43,12 @@ fn main() {
     gpui_kit::application().with_assets(icons::Assets).run(move |cx| {
         gpui_kit::init(cx);
         let settings = settings::Settings::load();
+        bus::init(cx);
+        notify::init(
+            cx,
+            settings.notify_max.unwrap_or(notify::MAX_DEFAULT),
+            settings.notify_seconds.unwrap_or(notify::SECONDS_DEFAULT),
+        );
         wheel::set_speed(settings.scroll_speed);
         theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
         theme::set_window_font(settings.window_font_size, cx);

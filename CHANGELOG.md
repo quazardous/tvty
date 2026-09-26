@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Notifications in the window's top left corner, above everything: stacked,
+  at most five, gone after six seconds unless hovered (both set in Options),
+  the ticket each is about shining in the lists meanwhile. They replace the
+  banner over the terminal, and carry tvty's own messages too.
+
 - An agent's bar under its terminal: who drives its loop (with a click to
   hold it or let it run), its Claude's state, its events, the tickets it
   holds, its wait credit and where it works — from aiball, like the rest.

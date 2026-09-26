@@ -19,11 +19,13 @@ use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::events;
 use crate::options::{SHORTCUTS, Section};
-use crate::fulllist::{CloseFullList, FullList, OpenTicket};
-use crate::newticket::{AskNewTicket, CloseNewTicket, Created, NewTicketForm};
+use crate::bus::{self, Signal};
+use crate::fulllist::{CloseFullList, FullList};
+use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
+use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
-use crate::panel::{BoardChanged, CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
+use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
 use crate::terminal::TerminalView;
@@ -83,9 +85,8 @@ pub struct Shell {
     /// The panel as it was before going full screen, to find it so when
     /// coming back: `Some(None)` its list, `Some(Some(..))` a ticket.
     compact: Option<Option<(Option<String>, u64)>>,
-    /// The agent bar's AFK choices are open; the last AFK gesture failed.
+    /// The agent bar's AFK choices are open.
     afk_menu: bool,
-    afk_error: Option<String>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -106,10 +107,8 @@ pub struct Shell {
     /// Where each card of the slider or the gallery was last drawn, by
     /// session: what up and down go by.
     card_centres: Rc<RefCell<HashMap<String, Point<Pixels>>>>,
-    /// What agents wait on from the user, newest last: the banner.
-    needs: Vec<Need>,
     /// What was already waiting at the last read, so that only what is new
-    /// raises the banner. `None` before the first read.
+    /// raises a notification. `None` before the first read.
     waiting: Option<HashSet<(u64, Wait)>>,
     /// Counts terminal switches: each one replays the slide.
     switches: usize,
@@ -211,6 +210,7 @@ enum Wait {
 /// Something new an agent waits on from the user.
 #[derive(Clone)]
 struct Need {
+    project: String,
     session: String,
     agent: String,
     ticket: u64,
@@ -288,15 +288,22 @@ impl Shell {
     pub fn new(selected: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let aiball = Aiball::from_env();
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
-        cx.subscribe(&panel, |shell, _, _: &BoardChanged, _| {
-            // A gesture moved the selected terminal's project.
-            let change = shell
-                .selected
-                .as_deref()
-                .and_then(|s| shell.terminal_of(s))
-                .map(|(project, _)| events::Change::Project(project.to_string()))
-                .unwrap_or(events::Change::All);
-            let _ = shell.refresh_now.unbounded_send(change);
+        // What the views say to whom it may concern.
+        cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
+            Signal::BoardChanged => {
+                // A gesture moved the selected terminal's project.
+                let change = shell
+                    .selected
+                    .as_deref()
+                    .and_then(|s| shell.terminal_of(s))
+                    .map(|(project, _)| events::Change::Project(project.to_string()))
+                    .unwrap_or(events::Change::All);
+                let _ = shell.refresh_now.unbounded_send(change);
+            }
+            Signal::Notices => cx.notify(),
+            Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
+            Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
+            Signal::AskNewTicket { project, parent } => shell.open_new_ticket(project.clone(), *parent, window, cx),
         })
         .detach();
         cx.subscribe(&panel, |shell, _, _: &CollapsePanel, cx| shell.toggle_panel(cx))
@@ -329,10 +336,6 @@ impl Shell {
             shell.go_full(window, cx)
         })
         .detach();
-        cx.subscribe_in(&panel, window, |shell, _, ask: &AskNewTicket, window, cx| {
-            shell.open_new_ticket(ask.project.clone(), ask.parent, window, cx)
-        })
-        .detach();
 
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<events::Change>();
         let feed = events::Feed::start(refresh_now.clone());
@@ -354,7 +357,6 @@ impl Shell {
             full_list_return: false,
             compact: None,
             afk_menu: false,
-            afk_error: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -364,7 +366,6 @@ impl Shell {
             watchers: HashMap::new(),
             watching: false,
             card_centres: Rc::default(),
-            needs: Vec::new(),
             waiting: None,
             switches: 0,
             theme_menu: false,
@@ -483,7 +484,7 @@ impl Shell {
         self.aiball = aiball;
         if self.board != board {
             self.board = board;
-            self.update_needs();
+            self.update_needs(cx);
             cx.notify();
         }
         self.sync_panel(cx);
@@ -561,28 +562,8 @@ impl Shell {
             .filter(|project| self.board.tickets.contains_key(project));
         let aiball = self.aiball.clone();
         let list = cx.new(|cx| FullList::new(aiball, scope, window, cx));
-        cx.subscribe_in(&list, window, |shell, _, ask: &AskNewTicket, window, cx| {
-            shell.open_new_ticket(ask.project.clone(), ask.parent, window, cx)
-        })
-        .detach();
         cx.subscribe_in(&list, window, |shell, _, _: &CloseFullList, window, cx| {
             shell.toggle_full_list(window, cx)
-        })
-        .detach();
-        cx.subscribe_in(&list, window, |shell, _, open: &OpenTicket, window, cx| {
-            let (project, ticket) = (open.project.clone(), open.ticket);
-            shell.full_list_shown = false;
-            if !shell.settings.panel_open {
-                shell.toggle_panel(cx);
-            }
-            // Opened from the full list, the ticket shows full screen too.
-            shell.full_list_return = true;
-            shell.panel.update(cx, |panel, cx| {
-                panel.open_in(Some(project), ticket, cx);
-                panel.set_full(true, cx);
-            });
-            cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
-            cx.notify();
         })
         .detach();
         self.full_list = Some(list);
@@ -628,12 +609,16 @@ impl Shell {
                     let (project, ticket) = (created.project.clone(), created.ticket);
                     let warnings = created.warnings.clone();
                     shell.panel.update(cx, |panel, cx| {
-                        panel.open_in(Some(project), ticket, cx);
+                        panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);
-                        if !warnings.is_empty() {
-                            panel.notice(format!("Filed, but not all of it: {}", warnings.join("; ")), cx);
-                        }
                     });
+                    if !warnings.is_empty() {
+                        notify::push(
+                            cx,
+                            Notice::new(Kind::Info, "tvty", format!("filed, but not all of it: {}", warnings.join("; ")))
+                                .about(project, ticket),
+                        );
+                    }
                     let _ = shell.refresh_now.unbounded_send(events::Change::All);
                     cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
                     cx.notify();
@@ -657,6 +642,22 @@ impl Shell {
         cx.notify();
     }
 
+    /// A ticket the full list opened: full screen too, back to the list on
+    /// leaving it.
+    fn open_full_ticket(&mut self, project: String, ticket: u64, window: &mut Window, cx: &mut Context<Self>) {
+        self.full_list_shown = false;
+        if !self.settings.panel_open {
+            self.toggle_panel(cx);
+        }
+        self.full_list_return = true;
+        self.panel.update(cx, |panel, cx| {
+            panel.open_in(Some(project), ticket, cx);
+            panel.set_full(true, cx);
+        });
+        cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+        cx.notify();
+    }
+
     fn sync_full_list(&mut self, cx: &mut Context<Self>) {
         let Some(list) = self.full_list.clone() else { return };
         let mut projects: Vec<String> = self.board.tickets.keys().cloned().collect();
@@ -672,9 +673,9 @@ impl Shell {
         }
     }
 
-    /// Raises the banner for what newly waits on the user: a decision or
+    /// Notifies what newly waits on the user: a decision or
     /// something unread on a ticket an agent with a terminal holds.
-    fn update_needs(&mut self) {
+    fn update_needs(&mut self, cx: &mut Context<Self>) {
         let mut now = HashSet::new();
         let mut found = Vec::new();
         for project in &self.board.projects {
@@ -692,6 +693,7 @@ impl Shell {
                     };
                     now.insert((ticket.id, wait));
                     found.push(Need {
+                        project: project.name.clone(),
                         session: terminal.session.clone(),
                         agent: agent.clone(),
                         ticket: ticket.id,
@@ -706,25 +708,34 @@ impl Shell {
                 let key = (need.ticket, need.wait);
                 let shown = self.selected.as_deref() == Some(need.session.as_str());
                 if !before.contains(&key) && !shown {
-                    self.needs.retain(|n| n.ticket != need.ticket);
-                    self.needs.push(need);
+                    let (kind, what) = match need.wait {
+                        Wait::Decision => (Kind::Decision, "a decision waits on you"),
+                        Wait::Unread => (Kind::News, "something new"),
+                    };
+                    notify::push(
+                        cx,
+                        Notice::new(kind, need.agent.clone(), format!("{} — {what}", need.title))
+                            .about(need.project.clone(), need.ticket)
+                            .on(need.session.clone()),
+                    );
                 }
             }
         }
-        // What no longer waits (decided, read) leaves the banner.
-        self.needs.retain(|n| now.contains(&(n.ticket, n.wait)));
         self.waiting = Some(now);
     }
 
-    /// Goes to what the banner shows: the agent's terminal, the panel open
-    /// on the ticket.
-    fn answer_need(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(need) = self.needs.pop() else { return };
-        self.select(need.session.clone(), window, cx);
-        if !self.settings.panel_open {
-            self.toggle_panel(cx);
+    /// Goes where a notification points: the agent's terminal, the panel
+    /// open on the ticket.
+    fn open_notice(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(session) = notice.session.clone() {
+            self.select(session, window, cx);
         }
-        self.panel.update(cx, |panel, cx| panel.open(need.ticket, cx));
+        if let Some((project, ticket)) = notice.ticket {
+            if !self.settings.panel_open {
+                self.toggle_panel(cx);
+            }
+            self.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
+        }
         cx.notify();
     }
 
@@ -776,7 +787,7 @@ impl Shell {
         if self.selected.as_deref() != Some(session.as_str()) {
             self.switches += 1;
         }
-        self.needs.retain(|n| n.session != session);
+        notify::dismiss_session(cx, &session);
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
@@ -878,8 +889,11 @@ impl Shell {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
-        if m.control && key == "enter" && !self.needs.is_empty() {
-            self.answer_need(window, cx);
+        if m.control && key == "enter" && notify::newest(cx).is_some() {
+            if let Some(notice) = notify::newest(cx) {
+                notify::dismiss(cx, notice.id);
+                self.open_notice(notice, window, cx);
+            }
         } else if m.control && key == "tab" {
             self.step_slider(if m.shift { -1 } else { 1 }, cx);
         } else if m.control && m.shift && key == "space" {
@@ -1294,6 +1308,34 @@ impl Shell {
             .gap_1()
             .max_w(px(720.))
             .child(sizes)
+            .child(option_group("Notifications"))
+            .child({
+                let (max, seconds) = notify::limits(cx);
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_2()
+                    .child(option_stepper(
+                        "Shown at most",
+                        "In the top left corner, the newest first; older ones make room.",
+                        max.to_string(),
+                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max.saturating_sub(1).max(1), seconds, cx)),
+                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits((max + 1).min(10), seconds, cx)),
+                        cx.listener(|shell, _, _, cx| {
+                            shell.set_notify_limits(notify::MAX_DEFAULT, notify::limits(cx).1, cx)
+                        }),
+                    ))
+                    .child(option_stepper(
+                        "Seconds shown",
+                        "Then it goes, unless the pointer is on it.",
+                        format!("{seconds} s"),
+                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max, seconds.saturating_sub(1).max(2), cx)),
+                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max, (seconds + 1).min(30), cx)),
+                        cx.listener(|shell, _, _, cx| {
+                            shell.set_notify_limits(notify::limits(cx).0, notify::SECONDS_DEFAULT, cx)
+                        }),
+                    ))
+            })
             .child(option_group("Colours"))
             .child(option_note(
                 "The window's colour theme, and the terminals': the window's, or one of their own — a dark terminal in a light window. Ctrl+Shift+K steps through the window's.",
@@ -1478,6 +1520,14 @@ impl Shell {
         self.settings.window_font_size = (kept != theme::WINDOW_FONT_DEFAULT).then_some(kept);
         self.settings.save();
         window.refresh();
+        cx.notify();
+    }
+
+    fn set_notify_limits(&mut self, max: usize, seconds: u64, cx: &mut Context<Self>) {
+        notify::set_limits(cx, max, seconds);
+        self.settings.notify_max = (max != notify::MAX_DEFAULT).then_some(max);
+        self.settings.notify_seconds = (seconds != notify::SECONDS_DEFAULT).then_some(seconds);
+        self.settings.save();
         cx.notify();
     }
 
@@ -1834,68 +1884,6 @@ impl Shell {
     }
 
     /// The newest thing an agent waits on, over the top of the terminal.
-    fn banner(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
-        let need = self.needs.last()?;
-        let more = self.needs.len() - 1;
-        let what = match need.wait {
-            Wait::Decision => "a decision waits on",
-            Wait::Unread => "something new on",
-        };
-        let color = match need.wait {
-            Wait::Decision => decision(),
-            Wait::Unread => unread(),
-        };
-        Some(
-            div()
-                .id(SharedString::from(format!("banner-{}-{:?}", need.ticket, need.wait as u8)))
-                .absolute()
-                .top_2()
-                .left_4()
-                .right_4()
-                .flex()
-                .items_center()
-                .gap_3()
-                .px_3()
-                .py_2()
-                .rounded_md()
-                .bg(p().surface)
-                .border_1()
-                .border_color(color)
-                .shadow_lg()
-                .text_sm()
-                .cursor_pointer()
-                .child(dot(color))
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .truncate()
-                        .child(format!("{} — {what} #{} {}", need.agent, need.ticket, need.title)),
-                )
-                .when(more > 0, |d| d.child(div().text_color(p().muted).child(format!("+{more}"))))
-                .child(div().text_xs().text_color(p().muted).child("ctrl+enter"))
-                .child(
-                    div()
-                        .id("banner-close")
-                        .px_1()
-                        .text_color(p().muted)
-                        .hover(|d| d.text_color(p().text))
-                        .child("×")
-                        .on_click(cx.listener(|shell, _, _, cx| {
-                            cx.stop_propagation();
-                            shell.needs.pop();
-                            cx.notify();
-                        })),
-                )
-                .on_click(cx.listener(|shell, _, window, cx| shell.answer_need(window, cx)))
-                .with_animation(
-                    SharedString::from(format!("banner-in-{}-{}", need.ticket, need.wait as u8)),
-                    Animation::new(Duration::from_millis(220)).with_easing(|t| 1. - (1. - t).powi(3)),
-                    |banner, t| banner.opacity(t).top(px(8. - 16. * (1. - t))),
-                ),
-        )
-    }
-
     /// A terminal as a card: its name and alerts over a thumbnail.
     fn card(
         &self,
@@ -2074,7 +2062,6 @@ impl Render for Shell {
                 .child("Pick a terminal on the left · ctrl+shift+space shows them all")
                 .into_any_element(),
         };
-        let banner = self.banner(cx);
         // The strip stays in the layout, open or folded, so the terminal
         // keeps its width; open, the projects' list lies over the terminal.
         let overlay = self.settings.sidebar_open.then(|| {
@@ -2182,7 +2169,6 @@ impl Render for Shell {
                     .h_full()
                     .min_w_0()
                     .child(center)
-                    .children(banner)
                     .children(overlay),
             )
             .child(right)
@@ -2251,6 +2237,8 @@ impl Render for Shell {
             )
             .child(body)
             .children(menu)
+            // Above everything, the full screens and the gallery included.
+            .children(notify::stack(cx))
     }
 }
 

@@ -118,7 +118,6 @@ impl Shell {
                 )))
                 .child(item().when(holds > 0, |d| d.text_color(p().text)).child(format!("holds {holds}")))
                 .children(credit.map(|c| item().child(format!("credit {c} min"))))
-                .children(self.afk_error.clone().map(|e| item().text_color(p().danger).child(e)))
                 .child(div().flex_1())
                 .child(item().text_color(p().text).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
@@ -130,8 +129,8 @@ impl Shell {
     /// the next read of the board.
     fn set_afk(&mut self, agent: String, action: &'static str, cx: &mut Context<Self>) {
         self.afk_menu = false;
-        self.afk_error = None;
         let aiball = self.aiball.clone();
+        let agent_name = agent.clone();
         cx.spawn(async move |this, cx| {
             let done = cx.background_executor().spawn(async move { aiball.afk(&agent, action) }).await;
             let _ = this.update(cx, |shell, cx| {
@@ -139,7 +138,10 @@ impl Shell {
                     Ok(()) => {
                         let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
                     }
-                    Err(error) => shell.afk_error = Some(short_error(&format!("{error:#}"))),
+                    Err(error) => crate::notify::push(
+                        cx,
+                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, short_error(&format!("{error:#}"))),
+                    ),
                 }
                 cx.notify();
             });

@@ -182,10 +182,21 @@ wake, prompt, typing) come with aiball's API for them.
 ## The terminal comes to you
 
 When something newly waits on the user from an agent — a decision, or
-something new on a ticket it holds — a banner rises over the terminal
-("demo-crew — a decision waits on #3 …"). ctrl+enter, or a click, brings
-that agent's terminal (it slides in) and opens the ticket in the panel. No
-switch happens on its own: the user may be typing elsewhere.
+something new on a ticket it holds — a **notification** comes: in the
+window's top left corner, above everything (full screens and gallery
+included), a little translucent. They stack top down, the newest first, at
+most five; each goes after six seconds, unless the pointer is on it (both
+set in Options > Appearance). While one is up, its ticket **shines** in
+every list shown. A click, or ctrl+enter for the newest, brings that
+agent's terminal (it slides in) and opens the ticket in the panel; × lets
+it go. No switch happens on its own: the user may be typing elsewhere.
+tvty's own messages (a gesture aiball refused, a ticket filed without all
+it asked for) come the same way.
+
+Views talk through an internal bus (`src/bus.rs`): one publishes a signal
+(a notification, a ticket to open, a new ticket asked for, the board
+changed), whoever cares listens — a list does not know who opens its
+tickets, a notification does not know which lists light its ticket up.
 
 ## Folding the sides
 
@@ -252,7 +263,7 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
-| ctrl+enter | go to what the banner shows: the agent's terminal, its ticket open |
+| ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v | copy the selection / paste (bracketed when the program asks) |
 
 Everything else goes to the terminal.

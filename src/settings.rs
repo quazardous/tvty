@@ -29,6 +29,10 @@ pub struct Settings {
     /// `None`: the defaults.
     pub terminal_font_size: Option<f32>,
     pub window_font_size: Option<f32>,
+    /// Notifications shown at most, and for how many seconds; `None`: the
+    /// defaults.
+    pub notify_max: Option<usize>,
+    pub notify_seconds: Option<u64>,
     /// The project the last new ticket went to.
     pub last_ticket_project: Option<String>,
 }
@@ -45,6 +49,8 @@ impl Default for Settings {
             thread_newest_first: false,
             scroll_speed: 1.,
             last_ticket_project: None,
+            notify_max: None,
+            notify_seconds: None,
             terminal_font_size: None,
             window_font_size: None,
         }

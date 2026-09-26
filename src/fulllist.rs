@@ -58,11 +58,6 @@ fn priority_rank(priority: Option<&str>) -> u8 {
 /// The user leaves the list.
 pub struct CloseFullList;
 
-/// The user opens a ticket from the list.
-pub struct OpenTicket {
-    pub project: String,
-    pub ticket: u64,
-}
 
 pub struct FullList {
     aiball: Aiball,
@@ -87,12 +82,18 @@ pub struct FullList {
 }
 
 impl EventEmitter<CloseFullList> for FullList {}
-impl EventEmitter<OpenTicket> for FullList {}
-impl EventEmitter<crate::newticket::AskNewTicket> for FullList {}
+
 
 impl FullList {
     pub fn new(aiball: Aiball, scope: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search titles…"));
+        // The rows a notification is about shine while it is up.
+        cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
+            if matches!(signal, crate::bus::Signal::Notices) {
+                cx.notify();
+            }
+        })
+        .detach();
         cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -493,8 +494,11 @@ impl FullList {
             .child(facts.join(" · "));
 
         let (project, id) = (ticket.project.clone(), ticket.id);
+        let lit = crate::notify::lit(cx, id);
         div()
             .id(SharedString::from(format!("full-{}-{}", ticket.project, ticket.id)))
+            // A notification about it is up: it shines.
+            .map(|d| crate::notify::halo(d, lit))
             .flex()
             .gap_2()
             .px_3()
@@ -527,7 +531,7 @@ impl FullList {
                     .child(meta),
             )
             .on_click(cx.listener(move |_, _, _, cx| {
-                cx.emit(OpenTicket { project: project.clone(), ticket: id })
+                crate::bus::emit(cx, crate::bus::Signal::OpenTicket { project: project.clone(), ticket: id })
             }))
     }
 }
@@ -590,7 +594,7 @@ impl Render for FullList {
                             .child("+ New ticket")
                             .on_click(cx.listener(|list, _, _, cx| {
                                 let project = list.scope.clone();
-                                cx.emit(crate::newticket::AskNewTicket { project, parent: None })
+                                crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
                             })),
                     )
                     .child(
