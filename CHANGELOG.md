@@ -157,6 +157,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The window resizes from its left edge again, and from every edge more
+  easily: a 6-pixel band along each free edge, above everything, where a
+  press only resizes. The folded list's strip, which took the press to
+  open the list, is wider and starts after that band.
+
 - A ticket whose claim has expired no longer shows its former claimant as
   the agent on it: tvty reads who holds a ticket from aiball, which now
   says it on every row. The lists follow aiball's renamed turn view.

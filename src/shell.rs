@@ -25,6 +25,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod frame;
 mod loopstabs;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
@@ -57,8 +58,9 @@ const SIDEBAR_WIDTH: f32 = 290.;
 const SIDEBAR_MIN: f32 = 230.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
-/// A folded side: just enough for a few dots saying what waits.
-const FOLDED_WIDTH: f32 = 10.;
+/// A folded side: just enough for a few dots saying what waits, beside
+/// the window's resize band (6 px) when the side is at the window's edge.
+const FOLDED_WIDTH: f32 = 14.;
 /// The strip between a side and the terminal, holding the toggle grip.
 const EDGE_WIDTH: f32 = 8.;
 
@@ -1761,7 +1763,7 @@ impl Shell {
             )
     }
 
-    /// A folded side: 10 pixels, a dot per thing waiting, a click unfolds.
+    /// A folded side: 14 pixels, a dot per thing waiting, a click unfolds.
     fn folded(&self, side: Side, dots: Vec<Hsla>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
             .id(match side {
@@ -2384,6 +2386,8 @@ impl Render for Shell {
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(cx))
+            // Above even the notices: the window's edges resize it.
+            .children(frame::resize_band(window))
     }
 }
 
