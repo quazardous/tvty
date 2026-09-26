@@ -169,11 +169,23 @@ impl Shell {
     }
 
     /// Where a project works: its main loop's directory, or one of its
-    /// agents'.
+    /// agents' — one that exists on this machine.
     pub(super) fn project_folder(&self, project: &str) -> Option<String> {
-        let known = self.board.known.iter().find(|l| l.project.as_deref() == Some(project) && l.role.is_none());
-        let home = self.board.homes.iter().find(|h| h.1.as_deref() == Some(project));
-        known.map(|l| l.cwd.clone()).or_else(|| home.map(|h| h.2.clone()))
+        let here = |dir: &str| std::path::Path::new(dir).is_dir();
+        let known = self
+            .board
+            .known
+            .iter()
+            .filter(|l| l.project.as_deref() == Some(project) && here(&l.cwd))
+            .min_by_key(|l| l.role.is_some())
+            .map(|l| l.cwd.clone());
+        known.or_else(|| {
+            self.board
+                .homes
+                .iter()
+                .find(|h| h.1.as_deref() == Some(project) && here(&h.2))
+                .map(|h| h.2.clone())
+        })
     }
 
     /// "+ session" on a project: opens its form, prefilled — the directory

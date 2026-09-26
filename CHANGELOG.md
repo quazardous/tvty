@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `>_` and "+ session" take a project's folder on this machine only: an
+  agent working on another machine (a Windows path) gave its folder, and
+  aiball's host could not start a shell there.
 - "+ terminal" no longer fails with `HOST_BUSY` when a terminal of the
   same name ended on aiball's host: it takes a free name, and closing an
   ended terminal releases its name.

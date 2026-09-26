@@ -35,6 +35,9 @@ pub struct Consumer {
     pub state_human_word: Option<String>,
     /// The loop is connected to aiball right now.
     pub present: Option<bool>,
+    /// It works on another machine: its `cwd` is that machine's.
+    #[serde(default)]
+    pub remote: Option<bool>,
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,

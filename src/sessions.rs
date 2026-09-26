@@ -146,11 +146,12 @@ fn project_at<'a>(cwd: &str, folders: &[(&str, &'a str)]) -> Option<&'a str> {
         .map(|(_, project)| *project)
 }
 
-/// The agents aiball knows with a working directory.
+/// The agents aiball knows with a working directory on this machine: an
+/// agent working elsewhere has that machine's (a Windows path, say).
 fn homes(consumers: &[Consumer]) -> Vec<(String, Option<String>, String)> {
     consumers
         .iter()
-        .filter(|c| c.kind != "human")
+        .filter(|c| c.kind != "human" && c.remote != Some(true))
         .filter_map(|c| Some((c.consumer_id.clone(), c.project.clone(), c.cwd.clone()?)))
         .collect()
 }
@@ -284,7 +285,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, group, project_at};
+    use super::{HOSTED_PREFIX, group, homes, project_at};
     use crate::aiball::Consumer;
     use serde_json::json;
 
@@ -313,6 +314,15 @@ mod tests {
         assert_eq!(hosted[0].attach.as_deref(), Some("/h/hosted/attach.sock"));
         let looped = by("looped");
         assert_eq!((looped[0].session.as_str(), looped[0].attach.is_none()), ("cl-looped", true));
+    }
+
+    #[test]
+    fn an_agent_on_another_machine_gives_no_folder_here() {
+        let mut far: Consumer = agent("win", "C:\\Users\\x\\app", json!(null));
+        far.remote = Some(true);
+        let near = agent("here", "/w/app", json!(null));
+        let homes = homes(&[far, near]);
+        assert_eq!(homes, vec![("here".to_string(), Some("demo".to_string()), "/w/app".to_string())]);
     }
 
     #[test]
