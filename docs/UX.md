@@ -222,9 +222,9 @@ a sentence stays in the text.
 
 When something newly waits on the user from an agent — a decision, or
 something new on a ticket it holds — a **notification** comes: in the
-window's top left corner, above everything (full screens and gallery
-included), a little translucent. They stack top down, the newest first, at
-most five; each goes after six seconds, unless the pointer is on it (both
+window's bottom left corner, above everything (full screens and gallery
+included), a little translucent. They stack bottom up, the newest in the
+corner, at most five; each goes after six seconds, unless the pointer is on it (both
 set in Options > Appearance). While one is up, its ticket **shines** in
 every list shown. A click, or ctrl+enter for the newest, brings that
 agent's terminal (it slides in) and opens the ticket in the panel; × lets

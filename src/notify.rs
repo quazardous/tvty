@@ -1,5 +1,5 @@
-//! Notifications: in the window's top left corner, above everything, a
-//! little translucent; stacked top down, the newest first, at most N; each
+//! Notifications: in the window's bottom left corner, above everything, a
+//! little translucent; stacked bottom up, the newest lowest, at most N; each
 //! gone after a few seconds, unless the pointer is on it. While one is up,
 //! its ticket shines in every list shown ([`lit`]).
 //!
@@ -198,7 +198,8 @@ fn colour(kind: Kind) -> Hsla {
     }
 }
 
-/// The stack, for the window's top left corner, above everything.
+/// The stack, for the window's bottom left corner, above everything: the
+/// newest in the corner, the older ones above it.
 pub fn stack(cx: &App) -> Option<AnyElement> {
     let shown = &cx.global::<Notices>().shown;
     if shown.is_empty() {
@@ -207,11 +208,11 @@ pub fn stack(cx: &App) -> Option<AnyElement> {
     let mut column = div()
         .id("notices")
         .absolute()
-        .top(px(48.))
+        .bottom(px(12.))
         .left(px(12.))
         .w(px(380.))
         .flex()
-        .flex_col()
+        .flex_col_reverse()
         .gap_2();
     for notice in shown {
         let (id, colour) = (notice.id, colour(notice.kind));
@@ -300,7 +301,7 @@ mod tests {
     }
 
     #[test]
-    fn the_newest_on_top_and_at_most_max() {
+    fn the_newest_first_and_at_most_max() {
         let mut n = notices(3);
         for i in 1..=5 {
             n.push(Notice::new(Kind::News, "a", "x").about("p", i));

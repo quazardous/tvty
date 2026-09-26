@@ -53,8 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   word is the last; and the count, with who spoke last, heading a thread
   full screen.
 
-- Notifications in the window's top left corner, above everything: stacked,
-  at most five, gone after six seconds unless hovered (both set in Options),
+- Notifications in the window's bottom left corner, above everything:
+  stacked bottom up, the newest in the corner, at most five, gone after six seconds unless hovered (both set in Options),
   the ticket each is about shining in the lists meanwhile. They replace the
   banner over the terminal, and carry tvty's own messages too.
 
