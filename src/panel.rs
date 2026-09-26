@@ -243,6 +243,26 @@ impl TicketPanel {
         }
     }
 
+    /// What the panel shows, to come back to: the open ticket (its project,
+    /// its id), or `None` for the list.
+    pub fn snapshot(&self) -> Option<(Option<String>, u64)> {
+        self.detail.as_ref().map(|d| (d.project.clone(), d.ticket))
+    }
+
+    /// Shows again what [`TicketPanel::snapshot`] took.
+    pub fn restore(&mut self, snapshot: Option<(Option<String>, u64)>, cx: &mut Context<Self>) {
+        match snapshot {
+            Some((project, ticket)) => {
+                let same = self.detail.as_ref().is_some_and(|d| d.ticket == ticket && d.project == project);
+                if !same {
+                    self.open_in(project, ticket, cx);
+                }
+            }
+            None => self.detail = None,
+        }
+        cx.notify();
+    }
+
     /// The project the panel is about, if any.
     pub fn scope_project(&self) -> Option<String> {
         self.scope.as_ref().map(|s| s.project.clone())

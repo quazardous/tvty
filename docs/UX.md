@@ -80,8 +80,11 @@ The legend is in the options page, under "Ticket list".
 ## The ticket list, full screen
 
 The panel is the compact list, beside the terminal: enough to steer. ⤢ in
-its header, or ctrl+shift+l, opens the list full screen, over the window,
-to look over the board (`src/fulllist.rs`):
+its header, or ctrl+shift+l, goes full screen on what the panel shows: its
+list opens the list full screen, on the same project; its open ticket opens
+that ticket full screen. Coming back (Esc, ✕, ctrl+shift+l again) finds the
+panel as it was, whatever was browsed full screen. The list full screen,
+over the window, is to look over the board (`src/fulllist.rs`):
 
 - **The left third, the scope and the counters**: all projects or one, each
   with its badges; the bands with their counts — a click narrows to one, a

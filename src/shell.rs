@@ -77,6 +77,9 @@ pub struct Shell {
     /// The full detail was opened from the full list: leaving it returns
     /// there.
     full_list_return: bool,
+    /// The panel as it was before going full screen, to find it so when
+    /// coming back: `Some(None)` its list, `Some(Some(..))` a ticket.
+    compact: Option<Option<(Option<String>, u64)>>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -295,10 +298,16 @@ impl Shell {
         cx.subscribe_in(&panel, window, |shell, panel, _: &FullChanged, window, cx| {
             // Leaving the full detail opened from the full list goes back
             // to the list.
-            if !panel.read(cx).is_full() {
+            if panel.read(cx).is_full() {
+                // Full screen from the panel itself (its ⤢ more): what
+                // to come back to is what it shows.
+                shell.remember_compact(cx);
+            } else {
                 if shell.full_list_return {
                     shell.full_list_return = false;
                     shell.full_list_shown = true;
+                } else {
+                    shell.restore_compact(cx);
                 }
                 cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
             }
@@ -311,7 +320,7 @@ impl Shell {
         })
         .detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
-            shell.toggle_full_list(window, cx)
+            shell.go_full(window, cx)
         })
         .detach();
         cx.subscribe_in(&panel, window, |shell, _, ask: &AskNewTicket, window, cx| {
@@ -337,6 +346,7 @@ impl Shell {
             full_list: None,
             full_list_shown: false,
             full_list_return: false,
+            compact: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -474,15 +484,58 @@ impl Shell {
 
     // ── The ticket list, full screen ────────────────────────────────────
 
+    /// The panel's ⤢ and ctrl+shift+l: full screen on what the panel
+    /// shows — its ticket, else its project's list —; from full screen, back.
+    fn go_full(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.full_list_shown {
+            return self.toggle_full_list(window, cx);
+        }
+        if self.panel.read(cx).is_full() {
+            self.full_list_return = false;
+            self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
+            return;
+        }
+        self.remember_compact(cx);
+        if self.panel.read(cx).snapshot().is_some() {
+            if !self.settings.panel_open {
+                self.toggle_panel(cx);
+            }
+            self.panel.update(cx, |panel, cx| panel.set_full(true, cx));
+            cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+            return;
+        }
+        let scope = self.panel.read(cx).scope_project();
+        self.toggle_full_list(window, cx);
+        if let (Some(list), Some(scope)) = (self.full_list.clone(), scope) {
+            list.update(cx, |list, cx| list.set_scope(Some(scope), cx));
+        }
+    }
+
+    /// Keeps what the panel shows before full screen, once.
+    fn remember_compact(&mut self, cx: &App) {
+        if self.compact.is_none() {
+            self.compact = Some(self.panel.read(cx).snapshot());
+        }
+    }
+
+    /// Back from full screen: the panel shows again what it showed.
+    fn restore_compact(&mut self, cx: &mut Context<Self>) {
+        if let Some(snapshot) = self.compact.take() {
+            self.panel.update(cx, |panel, cx| panel.restore(snapshot, cx));
+        }
+    }
+
     /// Shows it — as it was left, else on the selected terminal's project —
-    /// or hides it.
+    /// or hides it, back to the panel as it was.
     fn toggle_full_list(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         if self.full_list_shown {
             self.full_list_shown = false;
+            self.restore_compact(cx);
             self.focus_terminal(window, cx);
             cx.notify();
             return;
         }
+        self.remember_compact(cx);
         self.full_list_shown = true;
         // Keys go to the list, not to the terminal: after the click that
         // opened it, if a click did, has settled focus.
@@ -557,6 +610,7 @@ impl Shell {
                     .detach();
                 cx.subscribe_in(&form, window, |shell, _, created: &Created, window, cx| {
                     shell.settings.last_ticket_project = Some(created.project.clone());
+                    shell.remember_compact(cx);
                     shell.settings.save();
                     shell.new_ticket_shown = false;
                     shell.full_list_shown = false;
@@ -843,7 +897,7 @@ impl Shell {
         } else if key == "escape" && self.new_ticket_shown {
             self.close_new_ticket(window, cx);
         } else if m.control && m.shift && key == "l" {
-            self.toggle_full_list(window, cx);
+            self.go_full(window, cx);
         } else if key == "escape" && self.panel.read(cx).is_full() {
             self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
         } else if key == "escape" && self.full_list_shown {

@@ -145,7 +145,7 @@ impl FullList {
         }
     }
 
-    fn set_scope(&mut self, scope: Option<String>, cx: &mut Context<Self>) {
+    pub fn set_scope(&mut self, scope: Option<String>, cx: &mut Context<Self>) {
         self.scope = scope;
         self.band = None;
         if self.with_closed {

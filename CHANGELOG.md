@@ -114,6 +114,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Going full screen follows what the panel shows: its list opens the full
+  list on the same project, its ticket opens that ticket full screen; and
+  coming back finds the panel as it was left.
+
 - The mouse wheel is no longer slow: a notch moves about three ticket rows
   in the lists and threads (it was one), five lines of a terminal's
   history, and a fast wheel in a tmux terminal no longer lags behind.
