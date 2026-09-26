@@ -47,6 +47,7 @@ const CARD_COLUMNS: usize = 100;
 const SLIDER_CARD: (f32, f32) = (230., 138.);
 const SLIDER_CHOSEN: (f32, f32) = (340., 205.);
 
+const TITLE_BAR_HEIGHT: f32 = 41.;
 const SIDEBAR_WIDTH: f32 = 240.;
 const SIDEBAR_MIN: f32 = 180.;
 const PANEL_MIN: f32 = 260.;
@@ -2207,7 +2208,9 @@ impl Render for Shell {
             .size_full()
             .bg(p().bg)
             .child(
+                // A fifth taller than the kit's (34 px): easier to grab.
                 TitleBar::new()
+                    .h(px(TITLE_BAR_HEIGHT))
                     .child(
                         div()
                             .flex_1()

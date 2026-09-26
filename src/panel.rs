@@ -2170,10 +2170,15 @@ impl Render for TicketPanel {
             .child(
                 div()
                     .id("new-ticket")
-                    .px_1()
+                    .px_1p5()
+                    .rounded_sm()
+                    .border_1()
+                    .border_color(p().border)
+                    .text_xs()
                     .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
                     .text_color(p().accent)
-                    .child("+")
+                    .child("+ New")
                     .on_click(cx.listener(|panel, _, _, cx| {
                         let project = panel.scope.as_ref().map(|s| s.project.clone());
                         cx.emit(AskNewTicket { project, parent: None })

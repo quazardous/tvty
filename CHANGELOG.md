@@ -118,6 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The title bar is a fifth taller (41 px), easier to grab; the panel's
+  new-ticket button reads "+ New", in a frame, instead of a lone "+".
+
 - Going full screen follows what the panel shows: its list opens the full
   list on the same project, its ticket opens that ticket full screen; and
   coming back finds the panel as it was left.
