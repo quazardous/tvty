@@ -35,8 +35,9 @@ pub const SHORTCUTS: &[(&str, &[(&str, &str)])] = &[
     (
         "Switching",
         &[
-            ("Ctrl+Tab", "Slider: the terminals, most recent first; arrows move; release Ctrl to open"),
+            ("Ctrl+Tab", "Slider: the groups as stacks, most recent first; arrows move; release Ctrl to open"),
             ("Ctrl+Shift+Tab", "Slider, backwards"),
+            ("Ctrl+PgUp · Ctrl+PgDn", "The tab before · after, in the group shown"),
             ("Ctrl+Shift+Space", "Gallery of every terminal; type to filter, arrows move, Enter opens"),
             ("Ctrl+Enter", "Go to the newest notification: the agent's terminal, its ticket"),
             ("Ctrl+Shift+N", "A new ticket (also + in the panel and the full list); Ctrl+Enter files it"),

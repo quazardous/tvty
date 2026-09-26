@@ -29,6 +29,8 @@ mod agentbar;
 mod ended;
 mod frame;
 mod loopstabs;
+mod stacks;
+mod tabs;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
@@ -1106,6 +1108,8 @@ impl Shell {
                 notify::dismiss(cx, notice.id);
                 self.open_notice(notice, window, cx);
             }
+        } else if m.control && !m.shift && (key == "pageup" || key == "pagedown") {
+            self.step_tab(if key == "pagedown" { 1 } else { -1 }, window, cx);
         } else if m.control && key == "tab" {
             self.step_slider(if m.shift { -1 } else { 1 }, cx);
         } else if m.control && m.shift && key == "space" {
@@ -1149,7 +1153,7 @@ impl Shell {
             self.slider = None;
             self.close_gallery(window, cx);
         } else if let (Some(chosen), Some(step)) = (self.slider.clone(), Move::of(key)) {
-            let groups = self.card_sessions("");
+            let groups = self.slider_groups();
             let centres = self.card_centres.borrow().clone();
             self.slider = moved(&groups, Some(&chosen), step, &centres).or(Some(chosen));
             cx.notify();
@@ -1195,20 +1199,6 @@ impl Shell {
             }
             cx.notify();
         }
-    }
-
-    /// The slider's order: the terminals used lately, most recent first,
-    /// then the others as the list shows them.
-    fn slider_order(&self) -> Vec<String> {
-        let mut order = self.recent.clone();
-        for project in &self.board.projects {
-            for terminal in &project.terminals {
-                if !order.contains(&terminal.session) {
-                    order.push(terminal.session.clone());
-                }
-            }
-        }
-        order
     }
 
     fn step_slider(&mut self, step: isize, cx: &mut Context<Self>) {
@@ -2216,107 +2206,6 @@ impl Shell {
         list
     }
 
-    /// The slider as a portfolio: the window fades behind, and the groups of
-    /// terminals come forward one after another, the chosen card enlarged.
-    fn portfolio(&self, chosen: &str, cx: &App) -> impl IntoElement + use<> {
-        let chosen_project = self.terminal_of(chosen).map(|(p, _)| p.to_string());
-        // The cards keep their place, in the list's order: only the chosen
-        // one moves, enlarged above its slot.
-        let groups = self.card_groups("");
-
-        let mut body = div()
-            .flex()
-            .flex_wrap()
-            .content_start()
-            .justify_center()
-            .gap_x_8()
-            .gap_y_5()
-            .px_6()
-            .pt_6()
-            .flex_1()
-            .min_h_0()
-            .overflow_hidden();
-        let count = groups.len().max(1) as f32;
-        for (i, (project, terminals)) in groups.into_iter().enumerate() {
-            let is_chosen_group = chosen_project.as_deref() == Some(project);
-            let mut cards = div().flex().flex_wrap().gap_3();
-            for terminal in terminals {
-                let (width, height) = SLIDER_CARD;
-                if terminal.session != chosen {
-                    cards = cards.child(self.card(project, terminal, false, true, width, height, cx));
-                    continue;
-                }
-                // The slot keeps a card's size (a ghost, without its screen);
-                // the enlarged card is painted over it, over its neighbours too.
-                let (big_width, big_height) = SLIDER_CHOSEN;
-                cards = cards.child(
-                    div()
-                        .relative()
-                        .child(self.card(project, terminal, false, false, width, height, cx).opacity(0.))
-                        .child(
-                            deferred(
-                                div()
-                                    .absolute()
-                                    .left(px(-(big_width - width) / 2.))
-                                    .top(px(-(big_height - height) / 2.))
-                                    .child(self.card(project, terminal, true, true, big_width, big_height, cx)),
-                            )
-                            .with_priority(1),
-                        ),
-                );
-            }
-            // Staggered entrance: each group starts a little after the one before.
-            let delay = 0.35 * i as f32 / count;
-            let group = div()
-                .flex()
-                .flex_col()
-                .gap_2()
-                .child(
-                    div()
-                        .text_sm()
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(if is_chosen_group { p().text } else { p().muted })
-                        .child(project.to_uppercase()),
-                )
-                .child(cards)
-                .with_animation(
-                    SharedString::from(format!("portfolio-{}-{project}", self.slider_shown)),
-                    Animation::new(Duration::from_millis(420)).with_easing(move |t| {
-                        let t = ((t - delay) / (1. - delay)).clamp(0., 1.);
-                        1. - (1. - t).powi(3)
-                    }),
-                    |group, t| group.opacity(t).mt(px(40. * (1. - t))),
-                );
-            body = body.child(group);
-        }
-
-        div()
-            .absolute()
-            .inset_0()
-            .occlude()
-            .flex()
-            .flex_col()
-            // The frosted glass, for now without the frost: GPUI cannot blur
-            // what lies under an element.
-            .bg(p().veil)
-            .child(body)
-            .child(
-                div()
-                    .flex()
-                    .justify_center()
-                    .py_3()
-                    .text_sm()
-                    .text_color(p().muted)
-                    .child("tab: next · shift+tab: back · arrows: move · release ctrl to open · esc cancels"),
-            )
-            .with_animation(
-                SharedString::from(format!("portfolio-veil-{}", self.slider_shown)),
-                Animation::new(Duration::from_millis(180)),
-                |veil, t| veil.opacity(t),
-            )
-    }
-
-    /// The newest thing an agent waits on, over the top of the terminal.
     /// A terminal as a card: its name and alerts over a thumbnail.
     fn card(
         &self,
@@ -2470,7 +2359,9 @@ impl Render for Shell {
             self.end_resize(window, cx);
         }
         let bar = self.agent_bar(cx);
+        let tabs = self.tab_bar(cx);
         let ended = self.ended_shown().map(|e| self.ended_view(e, cx));
+        let tabbed = tabs.is_some() && ended.is_none();
         let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)).filter(|_| ended.is_none()) {
             // The terminal slides in on every switch. A relative offset, not a
             // margin: the terminal keeps its size, so tmux is not resized.
@@ -2479,6 +2370,7 @@ impl Render for Shell {
                 .size_full()
                 .flex()
                 .flex_col()
+                .children(tabs)
                 .child(
                     div()
                         .relative()
@@ -2561,7 +2453,11 @@ impl Render for Shell {
         // then the window's corner.
         let paddings = window_paddings(window);
         let covered = panel_full || self.options.is_some() || self.full_list_shown || self.new_ticket_shown;
-        let notices_top = f32::from(paddings.top) + TITLE_BAR_HEIGHT + NOTICE_MARGIN;
+        // Below the tabs, when there are.
+        let notices_top = f32::from(paddings.top)
+            + TITLE_BAR_HEIGHT
+            + NOTICE_MARGIN
+            + if tabbed && !covered { tabs::TAB_BAR } else { 0. };
         let notices_right = f32::from(paddings.right)
             + NOTICE_MARGIN
             + match () {

@@ -68,7 +68,7 @@ pub struct Board {
 const LOOP_PREFIX: &str = "cl-";
 const OTHER_GROUP: &str = "tmux";
 /// The group of the terminals the daemon's host holds (no agent).
-const HOSTED_GROUP: &str = "terminals";
+pub const HOSTED_GROUP: &str = "terminals";
 /// What names a hosted terminal's session, apart from tmux's.
 pub const HOSTED_PREFIX: &str = "host:";
 

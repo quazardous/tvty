@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sessions' marks and state line, the agent bar's glyphs.
 - `>_` on a project opens a plain terminal in the project's folder, listed
   with the project after its agents; the panel shows the project's tickets.
+- Tabs over the terminal: the terminals of its group, Ctrl+PgUp / Ctrl+PgDn
+  to move along them, "+" for a shell in the project's folder.
 - An icon, and a launcher for the desktop (`make install-desktop`): the
   window is tied to it, so the dock shows Terminal Velocity's icon.
 
@@ -34,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - "+ session" starts the agent on aiball's host by default, without
   tmux; untick the box for claude-loop's tmux.
+- Ctrl+Tab goes by group: each group is a stack of its terminals under one
+  header with its counters, the one used last on top.
 
 ### Fixed
 

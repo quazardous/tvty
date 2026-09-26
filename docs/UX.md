@@ -56,11 +56,20 @@ project's tickets meanwhile; the loop shows under idle.
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
   on each. Click one, or type to filter; the arrows move the blue border
   (it starts on the current terminal), enter opens it. The overview.
-- **Slider** (alt-tab, as a portfolio): holding ctrl+tab dims the window and
-  brings the terminals forward as live thumbnails, grouped by project, the
-  chosen card enlarged; keep ctrl held and tap to move, release to switch.
-  Tab goes most recent first: the quick hop between the few terminals you
-  juggle. The arrows move to the card seen left, right, above, below.
+- **Tabs**: over the terminal, one tab per terminal of its group (a
+  project, "terminals", "tmux"): its agents, then its shells, each with its
+  state and its alerts, the one shown underlined. A click or ctrl+pgup /
+  ctrl+pgdn moves along them; "+" opens a shell in the project's folder
+  (in the home directory for "terminals"). The list on the left stays as
+  it is: every terminal, with its state.
+- **Slider** (alt-tab, as a portfolio), by group: holding ctrl+tab dims the
+  window and brings each group forward as a **stack** of cards, offset down
+  and to the right (four at most, then "+n"), under a single header — the
+  group, its terminal on top, the group's counters. The card on top is the
+  group's terminal used last, live; the chosen stack is enlarged. Keep ctrl
+  held and tap to move from group to group, most recent first; release to
+  open the group on that terminal, the tabs then move within it. The
+  arrows move to the stack seen left, right, above, below.
 - **Cards never move**: both lay them out as the projects' list does. Only
   the choice moves — in the slider, the chosen card is enlarged over its
   own slot, above its neighbours, so nothing shifts under the eye.
@@ -330,7 +339,8 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 
 | Keys | |
 |---|---|
-| ctrl+tab (shift: backwards) | the slider, most recent first; arrows move too; release ctrl to switch |
+| ctrl+tab (shift: backwards) | the slider, a stack per group, most recent first; arrows move too; release ctrl to switch |
+| ctrl+pgup / ctrl+pgdn | the tab before / after, in the group shown |
 | ctrl+shift+space | the gallery; type to filter, arrows move, enter opens, esc closes |
 | ctrl+shift+t | fold / unfold the ticket panel |
 | ctrl+shift+n | a new ticket; ctrl+enter files it, esc keeps the draft |
