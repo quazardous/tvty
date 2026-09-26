@@ -58,6 +58,11 @@ impl EventListener for Listener {
 /// How long a new size must hold before the PTY hears of it.
 const RESIZE_SETTLE: std::time::Duration = std::time::Duration::from_millis(120);
 
+/// The terminal's program ended (the tmux session is gone).
+pub struct Ended;
+
+impl EventEmitter<Ended> for TerminalView {}
+
 pub struct TerminalView {
     term: Arc<FairMutex<Term<Listener>>>,
     notifier: Notifier,
@@ -195,7 +200,10 @@ impl TerminalView {
                 self.write(format(rgb).into_bytes());
             }
             Event::ChildExit(_) | Event::Exit => {
-                self.exited = true;
+                if !self.exited {
+                    self.exited = true;
+                    cx.emit(Ended);
+                }
                 cx.notify();
             }
             _ => {}

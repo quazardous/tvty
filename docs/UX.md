@@ -31,6 +31,12 @@ checked as it is typed —, the agent, and whether it is a crew agent.
 tvty never starts anything itself: it calls `claude-loop start
 --no-attach` **in that directory**, then opens the session once it runs.
 
+When the session shown ends (Claude quit, the loop stopped), its terminal
+gives way to an end screen: the agent, its project and directory, and
+**Restart** (Enter: its loop starts again there, and opens once it runs)
+or **Close** (Esc: back to the terminal used before). The panel keeps the
+project's tickets meanwhile; the loop shows under idle.
+
 
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
   on each. Click one, or type to filter; the arrows move the blue border

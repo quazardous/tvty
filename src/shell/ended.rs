@@ -1,0 +1,153 @@
+//! A session that ended while shown (Claude quit, the loop stopped): its
+//! terminal is let go, and the centre says so and offers what comes next —
+//! start its loop again where it worked (Enter), or go back to the terminal
+//! used before (Esc). The panel keeps the ended agent's project meanwhile.
+
+use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::*;
+
+use super::Shell;
+use super::loopstabs::home_short;
+use crate::loops::Start;
+use crate::terminal::{Ended, TerminalView};
+use crate::theme::p;
+
+/// What is known of a session that ended while selected.
+pub(super) struct EndedSession {
+    pub session: String,
+    pub agent: Option<String>,
+    pub project: Option<String>,
+    /// How to start its loop again; none for a bare tmux session.
+    pub start: Option<Start>,
+}
+
+impl Shell {
+    /// Hears when `terminal`'s session ends.
+    pub(super) fn watch_end(&mut self, session: String, terminal: &Entity<TerminalView>, window: &mut Window, cx: &mut Context<Self>) {
+        cx.subscribe_in(terminal, window, move |shell, _, _: &Ended, window, cx| {
+            shell.session_ended(&session, window, cx);
+        })
+        .detach();
+    }
+
+    /// Lets the ended terminal go: a later selection of the same name
+    /// attaches afresh. Shown, it leaves the end screen in its place.
+    fn session_ended(&mut self, session: &str, window: &mut Window, cx: &mut Context<Self>) {
+        self.terminals.remove(session);
+        if self.selected.as_deref() != Some(session) {
+            return;
+        }
+        let (project, agent) = match self.terminal_of(session) {
+            Some((project, terminal)) => (Some(project.to_string()), terminal.agent.clone()),
+            None => (None, None),
+        };
+        let known = self.board.known.iter().find(|l| l.name == session);
+        let start = known.map(|l| Start {
+            cwd: l.cwd.clone(),
+            project: l.project.clone(),
+            agent: l.consumer.clone(),
+            crew: l.role.as_deref() == Some("crew"),
+        });
+        self.ended = Some(EndedSession {
+            session: session.to_string(),
+            agent: agent.or_else(|| known.and_then(|l| l.consumer.clone())),
+            project: project.or_else(|| known.and_then(|l| l.project.clone())),
+            start,
+        });
+        window.focus(&self.focus.clone(), cx);
+        self.sync_panel(cx);
+        cx.notify();
+    }
+
+    /// The end screen is up: the selected session is the one that ended.
+    pub(super) fn ended_shown(&self) -> Option<&EndedSession> {
+        self.ended.as_ref().filter(|e| self.selected.as_deref() == Some(e.session.as_str()))
+    }
+
+    /// Enter on the end screen: its loop starts again; the new session opens
+    /// as soon as it runs.
+    pub(super) fn restart_ended(&mut self, cx: &mut Context<Self>) {
+        if let Some(start) = self.ended_shown().and_then(|e| e.start.clone()) {
+            self.start_loop(start, cx);
+        }
+    }
+
+    /// Esc on the end screen: back to the terminal used before, if any.
+    pub(super) fn close_ended(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(ended) = self.ended.take() else { return };
+        self.recent.retain(|s| *s != ended.session);
+        let previous = self.recent.iter().find(|s| self.terminal_of(s).is_some()).cloned();
+        match previous {
+            Some(session) => self.select(session, window, cx),
+            None => {
+                self.selected = None;
+                self.sync_panel(cx);
+                cx.notify();
+            }
+        }
+    }
+
+    pub(super) fn ended_view(&self, ended: &EndedSession, cx: &mut Context<Self>) -> AnyElement {
+        let who = ended.agent.clone().unwrap_or_else(|| ended.session.clone());
+        let starting = self.starting.is_some();
+        let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
+            div()
+                .id(id)
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1p5()
+                .rounded_md()
+                .border_1()
+                .border_color(if primary { p().accent } else { p().border })
+                .text_color(if primary { p().accent } else { p().text })
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(label)
+                .child(div().text_xs().text_color(p().muted).child(key))
+        };
+        div()
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_4()
+            .child(
+                div()
+                    .flex()
+                    .gap_1()
+                    .text_lg()
+                    .child(div().font_weight(FontWeight::BOLD).child(who))
+                    .child(div().text_color(p().muted).child("— the session ended")),
+            )
+            .child(
+                div()
+                    .text_sm()
+                    .text_color(p().muted)
+                    .child(match (&ended.project, &ended.start) {
+                        (Some(project), Some(start)) => format!("{project} · {}", home_short(&start.cwd)),
+                        (Some(project), None) => project.clone(),
+                        (None, Some(start)) => home_short(&start.cwd),
+                        (None, None) => ended.session.clone(),
+                    }),
+            )
+            .child(
+                div()
+                    .flex()
+                    .gap_3()
+                    .when(ended.start.is_some(), |d| {
+                        d.child(
+                            button("ended-restart", if starting { "Starting…" } else { "Restart" }, "Enter", true)
+                                .on_click(cx.listener(|shell, _, _, cx| shell.restart_ended(cx))),
+                        )
+                    })
+                    .child(
+                        button("ended-close", "Close", "Esc", false)
+                            .on_click(cx.listener(|shell, _, window, cx| shell.close_ended(window, cx))),
+                    ),
+            )
+            .into_any_element()
+    }
+}

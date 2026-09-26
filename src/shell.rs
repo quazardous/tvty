@@ -25,6 +25,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod ended;
 mod frame;
 mod loopstabs;
 mod viewer;
@@ -99,6 +100,8 @@ pub struct Shell {
     new_session: Option<loopstabs::NewSession>,
     starting: Option<String>,
     open_when_running: Option<String>,
+    /// The selected session ended: the end screen stands in its place.
+    ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
     viewer: Option<viewer::Viewer>,
     /// The user's pings are followed (once tvty knows who the user is).
@@ -384,6 +387,7 @@ impl Shell {
             new_session: None,
             starting: None,
             open_when_running: None,
+            ended: None,
             viewer: None,
             pings_followed: false,
             new_ticket: None,
@@ -846,6 +850,12 @@ impl Shell {
             .map(|(project, terminal)| Scope {
                 project: project.to_string(),
                 agent: terminal.agent.clone(),
+            })
+            // An ended session keeps its project's tickets in view.
+            .or_else(|| {
+                let ended = self.ended_shown()?;
+                let project = ended.project.clone().filter(|p| on_board(p))?;
+                Some(Scope { project, agent: ended.agent.clone() })
             });
         let tickets = scope
             .as_ref()
@@ -862,13 +872,18 @@ impl Shell {
     }
 
     fn select(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
-        let terminal = self
-            .terminals
-            .entry(session.clone())
-            .or_insert_with(|| {
-                cx.new(|cx| TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"))
-            })
-            .clone();
+        // Shown again (or started again under its name): attach afresh; a
+        // session still gone ends at once and brings the end screen back.
+        self.ended = None;
+        let terminal = match self.terminals.get(&session) {
+            Some(terminal) => terminal.clone(),
+            None => {
+                let terminal = cx.new(|cx| TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"));
+                self.watch_end(session.clone(), &terminal, window, cx);
+                self.terminals.insert(session.clone(), terminal.clone());
+                terminal
+            }
+        };
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
         if self.selected.as_deref() != Some(session.as_str()) {
@@ -980,6 +995,15 @@ impl Shell {
             if self.viewer_key(key, window, cx) {
                 cx.stop_propagation();
             }
+            return;
+        }
+        if self.ended_shown().is_some() && !m.control && !m.alt && (key == "enter" || key == "escape") {
+            if key == "enter" {
+                self.restart_ended(cx);
+            } else {
+                self.close_ended(window, cx);
+            }
+            cx.stop_propagation();
             return;
         }
         if m.control && key == "enter" && notify::newest(cx).is_some() {
@@ -2169,7 +2193,8 @@ impl Render for Shell {
             self.end_resize(window, cx);
         }
         let bar = self.agent_bar(cx);
-        let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
+        let ended = self.ended_shown().map(|e| self.ended_view(e, cx));
+        let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)).filter(|_| ended.is_none()) {
             // The terminal slides in on every switch. A relative offset, not a
             // margin: the terminal keeps its size, so tmux is not resized.
             // Under it, its agent's bar, which does not slide.
@@ -2191,6 +2216,7 @@ impl Render for Shell {
                 )
                 .children(bar)
                 .into_any_element(),
+            None if ended.is_some() => ended.unwrap_or_else(|| div().into_any_element()),
             None => div()
                 .size_full()
                 .flex()

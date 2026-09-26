@@ -164,6 +164,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- When Claude quits in the terminal shown, tvty no longer leaves a dead
+  "[exited]" screen: an end screen offers to start the loop again (Enter)
+  or go back to the previous terminal (Esc), and the panel keeps the
+  project's tickets. Starting the loop again attaches afresh.
+
 - The window resizes from its left edge again, and from every edge more
   easily: a 6-pixel band along each free edge, above everything, where a
   press only resizes. The folded list's strip, which took the press to

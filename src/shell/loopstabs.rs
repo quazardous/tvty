@@ -326,7 +326,7 @@ impl Shell {
 }
 
 /// A path with the home directory as `~`.
-fn home_short(path: &str) -> String {
+pub(super) fn home_short(path: &str) -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() && path.starts_with(&home) => format!("~{}", &path[home.len()..]),
         _ => path.to_string(),
