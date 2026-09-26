@@ -30,8 +30,11 @@ case "${1:-}" in
         if running; then echo "fake aiball already up"; exit 0; fi
         rm -rf "$HOME_DIR"
         mkdir -p "$HOME_DIR" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
+        # The test loops' state (scripts/test-env): the daemon relays loop
+        # controls (hold, tmux line) to the loops it finds there.
         AIBALL_HOME="$HOME_DIR" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
             AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
+            CLAUDE_LOOP_STATE_ROOT="$ROOT/dev/claude-loop" \
             nohup "$AIBALL/bin/aiball-daemon" >"$DIR/daemon.log" 2>&1 &
         for _ in $(seq 50); do [[ -S $SOCK ]] && break; sleep 0.2; done
         [[ -S $SOCK ]] || { echo "the daemon did not start, see $DIR/daemon.log" >&2; exit 1; }

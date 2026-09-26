@@ -195,6 +195,24 @@ impl Shell {
                         .when(b.human_typing, |d| d.child(item().text_color(p().danger).child("⌨")))
                         .when(b.proxy_alive, |d| d.child(item().child("⇄")))
                         .when(b.zen, |d| d.child(item().child("zen")))
+                        // The loop's tmux line, under this bar in the terminal:
+                        // a click turns it off (this bar is enough) or on again.
+                        .when_some(b.host.clone(), |d, host| {
+                            let external = host == "external";
+                            let agent = agent.clone();
+                            d.child(
+                                item()
+                                    .id("bar-host")
+                                    .px_1()
+                                    .rounded_sm()
+                                    .cursor_pointer()
+                                    .hover(|d| d.bg(p().hover))
+                                    .child(if external { "tmux line off" } else { "tmux line on" })
+                                    .on_click(cx.listener(move |shell, _, _, cx| {
+                                        shell.set_bar_host(agent.clone(), if external { "tmux" } else { "external" }, cx)
+                                    })),
+                            )
+                        })
                 })
                 .child(sep())
                 .child(item().when(unseen > 0, |d| d.text_color(p().text)).child(format!(
@@ -351,6 +369,29 @@ impl Shell {
                     break;
                 }
             }
+        })
+        .detach();
+    }
+
+    /// Turns the loop's tmux line off (`external`) or on (`tmux`); the bar
+    /// says which at the loop's next push.
+    fn set_bar_host(&mut self, agent: String, host: &'static str, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        let agent_name = agent.clone();
+        cx.spawn(async move |this, cx| {
+            let done = cx.background_executor().spawn(async move { aiball.set_bar_host(&agent, host) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                match done {
+                    Ok(()) => {
+                        let _ = shell.refresh_now.unbounded_send(crate::events::Change::All);
+                    }
+                    Err(error) => crate::notify::push(
+                        cx,
+                        crate::notify::Notice::new(crate::notify::Kind::Error, agent_name, short_error(&format!("{error:#}"))),
+                    ),
+                }
+                cx.notify();
+            });
         })
         .detach();
     }
