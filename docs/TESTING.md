@@ -46,6 +46,10 @@ never shows in — nor touches — the user's own tvty:
   read nor written;
 - **the throwaway aiball** below (`AIBALL_SOCK`, `AIBALL_URL`), never the
   user's board.
+- **its own loops**: `CLAUDE_LOOP_STATE_ROOT=dev/claude-loop` and
+  `CL_CLAUDE_CMD` set to fake-claude, so a loop a test starts (the idle
+  tab, "+ session") keeps its state apart and costs no token; start them
+  in a directory under `dev/loops/`.
 
 `scripts/test-tvty [SESSION]` runs tvty so (starting the throwaway aiball
 if it is not up); it is wbox's command. To look at the test tmux server

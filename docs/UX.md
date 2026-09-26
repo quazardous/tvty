@@ -18,7 +18,19 @@ such; open points are listed at the end.
   and a line under it: who drives (▶ the loop on its own, ‖ held, ✎ a human
   typing), the state, for how long. The same line is on its cards.
 
-## Two ways to switch
+## Opening a session
+
+The projects' list has three vertical tabs, on a rail at its left, each
+with its count: **live** (the sessions that run, by project — the list as
+it was), **idle** (the loops this machine knows, from claude-loop's state
+directory, that are stopped: ▶ start runs one again where it worked, for
+its agent), **shut** (the agents aiball knows with no loop here: ▶ start
+opens one where the agent works). "+ session" on a project opens a small
+form: the working directory — proposed from the project's loops or agents,
+checked as it is typed —, the agent, and whether it is a crew agent.
+tvty never starts anything itself: it calls `claude-loop start
+--no-attach` **in that directory**, then opens the session once it runs.
+
 
 - **Gallery**: every terminal as a live thumbnail, grouped by project, alerts
   on each. Click one, or type to filter; the arrows move the blue border

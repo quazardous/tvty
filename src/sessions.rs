@@ -55,6 +55,10 @@ pub struct Board {
     pub critical: HashMap<String, u64>,
     /// The loop bar of each agent with a terminal, when its loop pushes one.
     pub bars: HashMap<String, BarRead>,
+    /// The loops this machine knows, running or not.
+    pub known: Vec<crate::loops::KnownLoop>,
+    /// The agents aiball knows, with where they work: (agent, project, cwd).
+    pub homes: Vec<(String, Option<String>, String)>,
 }
 
 const LOOP_PREFIX: &str = "cl-";
@@ -74,6 +78,8 @@ pub fn discover(aiball: &mut Aiball) -> Board {
     let projects = group(tmux_sessions(), &consumers);
     let mut board = Board {
         projects,
+        known: crate::loops::known(),
+        homes: homes(&consumers),
         ..Default::default()
     };
     for name in on_board(&board) {
@@ -81,6 +87,15 @@ pub fn discover(aiball: &mut Aiball) -> Board {
     }
     read_bars(aiball, &mut board);
     board
+}
+
+/// The agents aiball knows with a working directory.
+fn homes(consumers: &[Consumer]) -> Vec<(String, Option<String>, String)> {
+    consumers
+        .iter()
+        .filter(|c| c.kind != "human")
+        .filter_map(|c| Some((c.consumer_id.clone(), c.project.clone(), c.cwd.clone()?)))
+        .collect()
 }
 
 /// The loop bars of the agents that have a terminal here.
@@ -131,6 +146,8 @@ pub fn update(aiball: &mut Aiball, previous: &Board, changes: &Changes) -> Board
             Ok(consumers) => {
                 aiball.find_user(&consumers);
                 board.projects = group(tmux_sessions(), &consumers);
+                board.known = crate::loops::known();
+                board.homes = homes(&consumers);
             }
             Err(error) => log::warn!("aiball: {error:#}"),
         }

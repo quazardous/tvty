@@ -25,6 +25,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod loopstabs;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::Settings;
@@ -50,8 +51,9 @@ const SLIDER_CARD: (f32, f32) = (230., 138.);
 const SLIDER_CHOSEN: (f32, f32) = (340., 205.);
 
 const TITLE_BAR_HEIGHT: f32 = 41.;
-const SIDEBAR_WIDTH: f32 = 240.;
-const SIDEBAR_MIN: f32 = 180.;
+/// The projects' list, its tabs' rail (44 px) included.
+const SIDEBAR_WIDTH: f32 = 290.;
+const SIDEBAR_MIN: f32 = 230.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
 /// A folded side: just enough for a few dots saying what waits.
@@ -88,6 +90,12 @@ pub struct Shell {
     /// The agent bar's AFK choices are open; its agent's backlog is open.
     afk_menu: bool,
     backlog_view: Option<agentbar::BacklogView>,
+    /// The projects' list's tab, the "+ session" form open, the directory
+    /// a loop is starting in, and the loop to open once it runs.
+    sidebar_tab: loopstabs::Tab,
+    new_session: Option<loopstabs::NewSession>,
+    starting: Option<String>,
+    open_when_running: Option<String>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -360,6 +368,10 @@ impl Shell {
             compact: None,
             afk_menu: false,
             backlog_view: None,
+            sidebar_tab: Default::default(),
+            new_session: None,
+            starting: None,
+            open_when_running: None,
             new_ticket: None,
             new_ticket_shown: false,
             feed: feed.clone(),
@@ -1437,7 +1449,7 @@ impl Shell {
             ))
             .child(option_row(
                 "Widths",
-                "Back to the defaults: a list of 240 px, a panel a third of the window.",
+                "Back to the defaults: a list of 290 px, a panel a third of the window.",
                 String::new(),
                 "Reset",
                 cx.listener(|shell, _, _, cx| {
@@ -1698,7 +1710,25 @@ impl Shell {
             }))
     }
 
+    /// The projects' list: its tabs on the left, then the tab's list.
     fn sidebar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let rest = width - 44.;
+        let content = match self.sidebar_tab {
+            loopstabs::Tab::Active => self.active_list(rest, cx).into_any_element(),
+            _ => self.other_tab(rest, cx),
+        };
+        div()
+            .flex()
+            .flex_none()
+            .w(px(width))
+            .h_full()
+            .bg(p().surface)
+            .child(self.tab_rail(cx))
+            .child(content)
+    }
+
+    /// The sessions that run, by project; "+ session" opens one.
+    fn active_list(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let mut list = div()
             .id("projects")
             .flex()
@@ -1735,8 +1765,26 @@ impl Shell {
                             .text_color(p().muted)
                             .child(project.name.to_uppercase()),
                     )
-                    .child(alerts.badges()),
-            );
+                    .child(alerts.badges())
+                    .when(project.on_board, |d| {
+                        let name = project.name.clone();
+                        d.child(
+                            div()
+                                .id(SharedString::from(format!("new-session-{name}")))
+                                .px_1()
+                                .rounded_sm()
+                                .text_xs()
+                                .text_color(p().accent)
+                                .cursor_pointer()
+                                .hover(|d| d.bg(p().hover))
+                                .child("+ session")
+                                .on_click(cx.listener(move |shell, _, window, cx| {
+                                    shell.ask_new_session(name.clone(), window, cx)
+                                })),
+                        )
+                    }),
+            )
+            .children(self.new_session_form(&project.name, cx));
             for terminal in &project.terminals {
                 let session = terminal.session.clone();
                 let selected = self.selected.as_deref() == Some(session.as_str());
@@ -2032,6 +2080,11 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // A loop just started runs now: open it.
+        if let Some(name) = self.open_when_running.clone().filter(|n| self.terminal_of(n).is_some()) {
+            self.open_when_running = None;
+            cx.defer_in(window, move |shell, window, cx| shell.select(name, window, cx));
+        }
         // A drag released anywhere, even over the title bar: the edge's
         // drag is gone, the width is kept.
         if self.dragged && !cx.has_active_drag() {

@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Open a session from tvty: the projects' list gets three tabs — live,
+  idle (stopped loops, one click starts one again where it worked) and
+  shut (agents with no loop here) — and "+ session" on a project starts a
+  new one, in a working directory checked as it is typed, through
+  claude-loop.
+
 - The new-ticket form shows every choice at once, the chosen one lit:
   intent, priority, a new level field, scope (with who it notifies), tags,
   milestone and assignee (the project's agents first); a parent can be

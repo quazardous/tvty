@@ -12,7 +12,10 @@ export TMUX_TMPDIR="$TVTY_ROOT/dev/tmux"
 export XDG_CONFIG_HOME="$TVTY_ROOT/dev/tvty-wbox/config"
 export AIBALL_SOCK="$TVTY_ROOT/dev/fake-aiball/home/sock"
 export AIBALL_URL="http://127.0.0.1:7797"
+# Loops a test starts: their state apart, fake-claude instead of claude.
+export CLAUDE_LOOP_STATE_ROOT="$TVTY_ROOT/dev/claude-loop"
+export CL_CLAUDE_CMD="$(cd "$TVTY_ROOT/.." && pwd)/aiball/bin/fake-claude"
 unset TMUX
-mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty"
+mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty" "$CLAUDE_LOOP_STATE_ROOT"
 # The projects' list starts folded: nothing to click by accident.
 [ -f "$XDG_CONFIG_HOME/tvty/state.json" ] || echo '{"sidebar_open": false}' >"$XDG_CONFIG_HOME/tvty/state.json"

@@ -8,6 +8,7 @@ mod events;
 mod fulllist;
 mod icons;
 mod images;
+mod loops;
 mod newticket;
 mod notify;
 mod options;
