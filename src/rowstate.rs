@@ -32,12 +32,17 @@ impl Band {
         }
     }
 
-    /// aiball's band number, 0 to 4, in this order. Unread is not a band:
-    /// a row's mark, which the row shows.
-    fn from_server(band: u8) -> Option<Band> {
-        [Band::Moderate, Band::Decide, Band::AgentOnIt, Band::Open, Band::Closed]
-            .get(band as usize)
-            .copied()
+    /// aiball's band name. Unread is not a band: a row's mark, which the
+    /// row shows.
+    fn from_server(name: &str) -> Option<Band> {
+        Some(match name {
+            "moderate" => Band::Moderate,
+            "decision" => Band::Decide,
+            "working" => Band::AgentOnIt,
+            "open" => Band::Open,
+            "closed" => Band::Closed,
+            _ => return None,
+        })
     }
 
     pub fn title(self) -> &'static str {
@@ -135,7 +140,7 @@ pub struct RowState {
 /// the turn and the glyph are aiball's (`/api/inbox?view=turn`); one it leaves
 /// out, or does not name the way tvty knows, reads as nothing to show.
 pub fn of(row: &TicketRow, user: &str) -> RowState {
-    let band = row.band.and_then(Band::from_server).unwrap_or(Band::Open);
+    let band = row.band_name.as_deref().and_then(Band::from_server).unwrap_or(Band::Open);
     let turn = match row.turn.as_deref() {
         Some("you") => Turn::You,
         Some("them") => Turn::Them,
@@ -175,7 +180,7 @@ mod tests {
     #[test]
     fn a_fresh_decision_waits_on_you() {
         let mut r = row();
-        r.band = Some(1);
+        r.band_name = Some("decision".into());
         r.turn = Some("you".into());
         r.state_glyph = Some("plan".into());
         r.pending_plan = true;
@@ -190,7 +195,7 @@ mod tests {
     #[test]
     fn your_turn_without_a_decision() {
         let mut r = row();
-        r.band = Some(3);
+        r.band_name = Some("open".into());
         r.turn = Some("you".into());
         r.last_speaker = Some("demo-claude".into());
         assert_eq!(of(&r, "david").stripe, Stripe::Neutral);
@@ -199,7 +204,7 @@ mod tests {
     #[test]
     fn your_word_last_you_wait() {
         let mut r = row();
-        r.band = Some(3);
+        r.band_name = Some("open".into());
         r.turn = Some("them".into());
         assert_eq!(of(&r, "david").stripe, Stripe::Waiting);
         // Someone else's word last, not yours to move: no stripe.
@@ -210,7 +215,7 @@ mod tests {
     #[test]
     fn a_rejection_has_its_glyph() {
         let mut r = row();
-        r.band = Some(2);
+        r.band_name = Some("working".into());
         r.turn = Some("them".into());
         r.state_glyph = Some("rejected".into());
         let state = of(&r, "david");

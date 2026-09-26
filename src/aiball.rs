@@ -189,10 +189,10 @@ pub struct TicketRow {
     #[serde(default)]
     pub latest_resolution_rejected: bool,
     /// Computed by aiball for the reader when asked with `view=turn`: whose
-    /// turn (`you`, `them`, `none`), the sorting band (0 to 5) and the state
+    /// turn (`you`, `them`, `none`), the sorting band's name and the state
     /// glyph's name.
     pub turn: Option<String>,
-    pub band: Option<u8>,
+    pub band_name: Option<String>,
     pub state_glyph: Option<String>,
     // What the full-screen list shows besides.
     /// The start of the ticket's body or summary.
