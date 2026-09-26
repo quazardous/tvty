@@ -1428,17 +1428,28 @@ impl TicketPanel {
                                     .w_full()
                                     .max_w(px(820.))
                                     .h_full()
+                                    // The count and the fold on their line, the
+                                    // summary under them, the talk's width: a
+                                    // long one wraps instead of widening it.
                                     .child(
                                         div()
                                             .flex()
-                                            .items_center()
-                                            .gap_2()
+                                            .flex_col()
+                                            .flex_none()
+                                            .gap_1()
                                             .px_3()
                                             .pt_2()
-                                            .children(summary_full)
-                                            .child(div().flex_1())
-                                            .children(count)
-                                            .child(fold),
+                                            .min_w_0()
+                                            .child(
+                                                div()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap_2()
+                                                    .child(div().flex_1())
+                                                    .children(count)
+                                                    .child(fold),
+                                            )
+                                            .children(summary_full.map(|s| s.w_full().min_w_0())),
                                     )
                                     .child(first)
                                     .child(second),

@@ -207,7 +207,8 @@ comes as a notification. The countdowns move every second.
 
 ## Images in a thread
 
-An image alone on its line — a pasted capture — is drawn by tvty: a
+An image alone on its line, or ending it (`Here: ![shot](…)`) — a pasted
+capture — is drawn by tvty: a
 thumbnail in the compact panel (about 160 × 100, its proportions kept, ⤢ in
 a corner), large full screen. A click opens the **viewer**, over the whole
 window: the image fitted first; the wheel zooms about the pointer, + and −

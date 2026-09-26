@@ -150,6 +150,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A ticket full screen no longer leaves the talk half empty with a
+  scrollbar at the bottom: a long "where it stands" wraps under the count
+  instead of widening the column. Images at the end of a sentence are
+  drawn as tvty's thumbnails (large full screen) instead of line-high.
+
 - Images in a ticket's thread show: they were never loaded, and each one
   wrote an error on the standard output. One that cannot be read says
   "image unavailable" (or "too large", past 5 MB) instead.

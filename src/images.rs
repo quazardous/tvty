@@ -151,9 +151,30 @@ fn content_type_of(reference: &str) -> &'static str {
     }
 }
 
-/// The images a text cites, `(alt, reference)`, in order.
+/// The images a text cites at the end of its lines, `(alt, reference)`, in
+/// order: those tvty draws.
 fn cited(text: &str) -> Vec<(String, String)> {
-    text.lines().flat_map(images_of_line).flatten().collect()
+    text.lines().filter_map(trailing_images).flat_map(|(_, images)| images).collect()
+}
+
+/// A line that ends with images (`Look: ![a](…) ![b](…)`): the words before
+/// them, and the images. `None` when the line has none at its end.
+fn trailing_images(line: &str) -> Option<(String, Vec<(String, String)>)> {
+    let trimmed = line.trim_end();
+    // The images start at the first `![` from which the rest is only images.
+    let mut from = trimmed.len();
+    let mut found = None;
+    while let Some(at) = trimmed[..from].rfind("![") {
+        match images_of_line(&trimmed[at..]) {
+            Some(images) => {
+                found = Some((at, images));
+                from = at;
+            }
+            None => break,
+        }
+    }
+    let (at, images) = found?;
+    Some((trimmed[..at].trim_end().to_string(), images))
 }
 
 /// The images of a line, when the line holds nothing else: `None` otherwise.
@@ -190,8 +211,13 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
     let mut out = Vec::new();
     let mut prose = String::new();
     for line in text.lines() {
-        match images_of_line(line) {
-            Some(images) => {
+        match trailing_images(line) {
+            Some((words, images)) => {
+                // The words stay text; the images go under them.
+                if !words.is_empty() {
+                    prose.push_str(&words);
+                    prose.push('\n');
+                }
                 if !prose.trim().is_empty() {
                     out.push(Segment::Text(std::mem::take(&mut prose)));
                 }
@@ -243,7 +269,7 @@ pub enum Link {
 }
 
 /// `text` with each image inside a sentence (`… ![alt](/uploads/…) …`)
-/// turned into what `link` makes of it. Images alone on their line stay —
+/// turned into what `link` makes of it. Images that end their line stay —
 /// tvty draws them —, and so do plain links to uploads.
 pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
     let mut out = String::with_capacity(text.len());
@@ -251,7 +277,7 @@ pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
         if i > 0 {
             out.push('\n');
         }
-        if images_of_line(line).is_some() {
+        if trailing_images(line).is_some() {
             out.push_str(line);
         } else {
             out.push_str(&rewrite_line(line, link));
@@ -289,7 +315,7 @@ fn rewrite_line(text: &str, link: &dyn Fn(&str) -> Link) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, api_ref, cited, images_of_line, rewrite};
+    use super::{Link, api_ref, cited, images_of_line, rewrite, trailing_images};
 
     fn link(reference: &str) -> Link {
         match reference {
@@ -324,16 +350,25 @@ mod tests {
     }
 
     #[test]
+    fn images_ending_a_line_are_tvtys_too() {
+        let (words, images) = trailing_images("Le panneau : ![p](/uploads/a.png)").unwrap();
+        assert_eq!((words.as_str(), images.len()), ("Le panneau :", 1));
+        assert_eq!(trailing_images("![p](/uploads/a.png) then words"), None);
+        let line = "see ![a](/uploads/a.png) here";
+        assert_eq!(rewrite(line, &link), "see ![a](data:image/png;base64,AAA) here");
+    }
+
+    #[test]
     fn an_upload_is_read_under_the_api() {
         assert_eq!(api_ref("/uploads/ab12.png"), "/api/uploads/ab12");
     }
 
     #[test]
     fn plain_links_stay() {
-        let text = "the [log](/uploads/log.txt) and, in a sentence, ![a](/uploads/a.png)";
+        let text = "the [log](/uploads/log.txt) and ![a](/uploads/a.png) in a sentence";
         assert_eq!(
             rewrite(text, &link),
-            "the [log](/uploads/log.txt) and, in a sentence, ![a](data:image/png;base64,AAA)"
+            "the [log](/uploads/log.txt) and ![a](data:image/png;base64,AAA) in a sentence"
         );
     }
 }
