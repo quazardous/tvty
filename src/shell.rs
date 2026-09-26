@@ -129,6 +129,9 @@ pub struct Shell {
     local: (Vec<(String, String)>, Vec<crate::loops::KnownLoop>),
     /// The board is to be built again shortly.
     rebuild_pending: bool,
+    /// Shells closed from their tab, until the host says they are gone:
+    /// the list lets them go at once.
+    stopping: HashSet<String>,
     /// The slider is up, on this session.
     slider: Option<String>,
     /// Counts the slider's openings: each one replays its entrance.
@@ -427,6 +430,7 @@ impl Shell {
             live: Default::default(),
             local: Default::default(),
             rebuild_pending: false,
+            stopping: HashSet::new(),
             slider: None,
             slider_shown: 0,
             gallery: None,
@@ -516,7 +520,8 @@ impl Shell {
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         // Who the user is, from the humans aiball knows; the bus runs as them.
         self.aiball.find_user(&self.live.consumers());
-        let board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
+        let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
+        self.forget_stopping(&mut board);
         if self.board != board {
             self.board = board;
             self.update_needs(cx);

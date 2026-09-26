@@ -4,12 +4,14 @@
 //! stops. Ctrl+PgUp / Ctrl+PgDn move along them; "+" opens a shell in the
 //! group's folder. The slider moves between groups, the tabs within one.
 
+use std::collections::HashSet;
+
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
 use crate::panel::dot;
-use crate::sessions::{self, Project, Terminal};
+use crate::sessions::{self, Board, Project, Terminal};
 use crate::theme::p;
 use crate::tip::Tip as _;
 
@@ -50,6 +52,11 @@ impl Shell {
             .flatten();
         self.terminals.remove(&session);
         if shell {
+            // Gone from the list now, not once the host has stopped it.
+            self.stopping.insert(session.clone());
+            let mut board = std::mem::take(&mut self.board);
+            self.forget_stopping(&mut board);
+            self.board = board;
             if let Some(name) = session.strip_prefix(sessions::HOSTED_PREFIX).map(str::to_string) {
                 let aiball = self.aiball.clone();
                 cx.background_executor()
@@ -71,6 +78,20 @@ impl Shell {
             }
         }
         cx.notify();
+    }
+
+    /// Leaves out of `board` the shells being stopped; the host gone with
+    /// them, they are forgotten. A group left empty goes too.
+    pub(super) fn forget_stopping(&mut self, board: &mut Board) {
+        if self.stopping.is_empty() {
+            return;
+        }
+        let listed: HashSet<String> = board.projects.iter().flat_map(|p| p.terminals.iter().map(|t| t.session.clone())).collect();
+        self.stopping.retain(|s| listed.contains(s));
+        for project in &mut board.projects {
+            project.terminals.retain(|t| !self.stopping.contains(&t.session));
+        }
+        board.projects.retain(|p| !p.terminals.is_empty());
     }
 
     /// Ctrl+PgDn (1) / Ctrl+PgUp (-1): the next tab of the group, round.

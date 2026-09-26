@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A terminal closed from its tab leaves the list at once, not once aiball's
+  host has stopped it.
+
 ## [0.2.0] - 2026-09-26
 
 ### Added
