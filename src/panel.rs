@@ -2301,9 +2301,13 @@ pub(crate) fn stripe(stripe: Stripe, colour: Hsla) -> impl IntoElement {
         })
 }
 
+/// The tallest a thread's image is drawn full screen.
+const FULL_PICTURE_HEIGHT: f32 = 900.;
+
 impl TicketPanel {
     /// A text of the thread: its markdown, and its images alone on their
-    /// line drawn by tvty — a thumbnail in the panel, large full screen —,
+    /// line drawn by tvty — a thumbnail in the panel, the column's width full
+    /// screen —,
     /// a click opening the viewer.
     fn rich_text(&self, id: String, text: &str, cx: &mut Context<Self>) -> Div {
         let mut col = div().flex().flex_col().gap_1();
@@ -2312,25 +2316,36 @@ impl TicketPanel {
                 crate::images::Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("{id}-{i}")), md)),
                 crate::images::Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
                 crate::images::Segment::Pictures(pictures) => {
-                    let mut row = div().flex().flex_wrap().gap_2();
+                    let mut row = div().w_full().flex().flex_wrap().gap_2();
                     for (j, picture) in pictures.into_iter().enumerate() {
-                        // A thumbnail keeps the image's proportions.
-                        let (max_w, max_h) = if self.full { (720., 480.) } else { (160., 100.) };
-                        let scale = (max_w / picture.width.max(1) as f32).min(max_h / picture.height.max(1) as f32).min(1.);
-                        let (w, h) = (picture.width as f32 * scale, picture.height as f32 * scale);
+                        let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
                         let reference = picture.reference.clone();
+                        let frame = div()
+                            .id(SharedString::from(format!("{id}-pic-{i}-{j}")))
+                            .relative()
+                            .flex_none()
+                            .rounded_sm()
+                            .overflow_hidden()
+                            .border_1()
+                            .border_color(p().border)
+                            .cursor_pointer()
+                            .hover(|d| d.border_color(p().accent));
+                        let frame = if self.full {
+                            // Full screen: the column's width, never beyond
+                            // the real size nor taller than FULL_PICTURE_HEIGHT.
+                            let max_w = width.min(FULL_PICTURE_HEIGHT * width / height);
+                            frame
+                                .w_full()
+                                .max_w(px(max_w))
+                                .aspect_ratio(width / height)
+                                .child(img(ImageSource::Image(picture.image.clone())).size_full())
+                        } else {
+                            // A thumbnail keeps the image's proportions.
+                            let scale = (160. / width).min(100. / height).min(1.);
+                            frame.child(img(ImageSource::Image(picture.image.clone())).w(px(width * scale)).h(px(height * scale)))
+                        };
                         row = row.child(
-                            div()
-                                .id(SharedString::from(format!("{id}-pic-{i}-{j}")))
-                                .relative()
-                                .flex_none()
-                                .rounded_sm()
-                                .overflow_hidden()
-                                .border_1()
-                                .border_color(p().border)
-                                .cursor_pointer()
-                                .hover(|d| d.border_color(p().accent))
-                                .child(img(ImageSource::Image(picture.image.clone())).w(px(w)).h(px(h)))
+                            frame
                                 .when(!self.full, |d| {
                                     d.child(
                                         div()

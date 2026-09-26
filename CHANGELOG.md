@@ -1,7 +1,4 @@
 # Changelog
-- Debug builds (`make run`) draw at almost release speed: the gallery went
-  from about one frame a second to eight or nine, as the dependencies are
-  now optimised even there.
 
 All notable changes to this project will be documented in this file.
 
@@ -29,8 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   proposing a decision comes as a notification; opening it marks it read
   in aiball too. At start, one notification counts the pings unread.
 
-- Images in a thread open: a thumbnail in the compact panel, large full
-  screen, and a click shows it over the whole window — fitted, zoom with
+- Images in a thread open: a thumbnail in the compact panel, the thread's
+  full width full screen, and a click shows it over the whole window — fitted, zoom with
   the wheel or + / −, 1 for the real size, drag to move, ← → through the
   thread's images, Esc to close.
 
@@ -151,6 +148,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   on its edge (ctrl+shift+b, ctrl+shift+t) into a 10-pixel strip that still
   shows what waits as coloured dots; tvty remembers it.
 - Tickets and alerts update as soon as something happens on the board.
+
+### Changed
+
+- Debug builds (`make run`) draw at almost release speed: the gallery went
+  from about one frame a second to eight or nine, as the dependencies are
+  now optimised even there.
 
 ### Fixed
 
