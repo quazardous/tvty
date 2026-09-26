@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The ticket lists' headers (the panel's, the full screen's) recall what
+  the project's tickets ask of you: the critical one, decisions, unread.
+
 - A restart button in the agent's bar when its Claude Code installed an
   update (⟳ on its row in the sessions list too): aiball restarts it once
   idle, resuming the conversation.

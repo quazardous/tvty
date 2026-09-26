@@ -570,6 +570,15 @@ impl Render for FullList {
             Some(project) => format!("Tickets — {project}"),
             None => "Tickets — all projects".to_string(),
         };
+        // What the scope's tickets ask of you, as the side lists it.
+        let alerts = match &self.scope {
+            Some(project) => Alerts::of(self.open.get(project).into_iter().flatten(), self.critical.get(project).copied()),
+            None => {
+                let mut all = Alerts::of(self.projects.iter().filter_map(|p| self.open.get(p)).flatten(), None);
+                all.critical = !self.critical.is_empty();
+                all
+            }
+        };
         div()
             .id("full-list")
             .absolute()
@@ -587,7 +596,9 @@ impl Render for FullList {
                     .px_4()
                     .border_b_1()
                     .border_color(p().border)
-                    .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child(title))
+                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
+                    .child(div().pl_3().child(alerts.badges()))
+                    .child(div().flex_1())
                     .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
                     .child(
                         div()

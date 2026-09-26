@@ -2179,6 +2179,11 @@ impl Render for TicketPanel {
                         .unwrap_or_else(|| "Tickets".into()),
                 ))
             })
+            // What the project's tickets ask of you, as its row in the
+            // sessions list counts it: the critical one, decisions, unread.
+            .when(self.scope.is_some(), |d| {
+                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges())
+            })
             .child(div().flex_1())
             .child(
                 div()
