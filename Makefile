@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
+.PHONY: emoji-font help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -23,6 +23,7 @@ help:
 	@echo "make fake-down            kill them all"
 	@echo ""
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
+	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
 
 public-check:
@@ -95,3 +96,12 @@ aiball-up:
 
 aiball-down:
 	scripts/fake-aiball down
+
+# Colour emoji in the terminals: Noto Color Emoji in bitmaps (CBDT), the kind
+# GPUI colours, from Google's noto-emoji repository (OFL).
+EMOJI_FONT_URL = https://raw.githubusercontent.com/googlefonts/noto-emoji/v2.047/fonts/NotoColorEmoji.ttf
+EMOJI_FONT_DIR = $(or $(XDG_DATA_HOME),$(HOME)/.local/share)/tvty/fonts
+emoji-font:
+	mkdir -p "$(EMOJI_FONT_DIR)"
+	curl -fsSL -o "$(EMOJI_FONT_DIR)/NotoColorEmoji.ttf" "$(EMOJI_FONT_URL)"
+	@echo "colour emoji font in $(EMOJI_FONT_DIR): restart tvty"

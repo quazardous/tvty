@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Colour emoji in the terminals, drawn from a colour emoji font in
+  `~/.local/share/tvty/fonts/` (`make emoji-font` fetches Noto Color
+  Emoji); fonts put there are loaded at start.
+
 - The ticket lists' headers (the panel's, the full screen's) recall what
   the project's tickets ask of you: the critical one, decisions, unread.
 

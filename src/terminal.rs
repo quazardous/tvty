@@ -516,6 +516,8 @@ pub struct Segment {
 pub struct Frame {
     cell: Size<Pixels>,
     backgrounds: Vec<PaintQuad>,
+    /// Colour emoji, drawn as images over their cells.
+    emoji: Vec<(Bounds<Pixels>, Arc<RenderImage>)>,
     rows: Vec<(usize, Vec<Segment>)>,
     cursor: Option<PaintQuad>,
 }
@@ -638,6 +640,7 @@ impl Element for TerminalElement {
         };
 
         let mut backgrounds = Vec::new();
+        let mut emoji = Vec::new();
         let mut rules = Vec::new();
         let mut rows: Vec<(usize, Vec<Segment>)> = Vec::new();
         // The segment being built: first column, text, style.
@@ -711,6 +714,25 @@ impl Element for TerminalElement {
                     Bounds::new(at(line, column), size(cell.width * width as f32, cell.height)),
                     to_hsla(bg),
                 ));
+            }
+
+            // A colour emoji: an image over its cells, not text.
+            let wide = flags.contains(Flags::WIDE_CHAR);
+            if wide || cell_data.zerowidth().is_some() {
+                let mut text = String::from(cell_data.c);
+                if let Some(zerowidth) = cell_data.zerowidth() {
+                    text.extend(zerowidth);
+                }
+                if crate::emoji::is_emoji(&text, wide) {
+                    if let Some(image) = crate::emoji::image(&text) {
+                        flush(&mut pending, &mut segments);
+                        emoji.push((
+                            crate::emoji::bounds(at(line, column), cell.width * width as f32, cell.height),
+                            image,
+                        ));
+                        continue;
+                    }
+                }
             }
 
             let run = TextRun {
@@ -788,6 +810,7 @@ impl Element for TerminalElement {
         Frame {
             cell,
             backgrounds,
+            emoji,
             rows,
             cursor,
         }
@@ -817,6 +840,9 @@ impl Element for TerminalElement {
                         .line
                         .paint(origin, frame.cell.height, TextAlign::Left, None, window, cx);
                 }
+            }
+            for (at, image) in frame.emoji.drain(..) {
+                let _ = window.paint_image(at, at, Corners::default(), image, 0, false);
             }
             if let Some(cursor) = frame.cursor.take() {
                 window.paint_quad(cursor);

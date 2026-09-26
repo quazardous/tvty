@@ -7330,6 +7330,7 @@ dependencies = [
  "log",
  "serde",
  "serde_json",
+ "swash",
  "tungstenite",
 ]
 

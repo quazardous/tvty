@@ -46,6 +46,8 @@ never shows in — nor touches — the user's own tvty:
   read nor written;
 - **the throwaway aiball** below (`AIBALL_SOCK`), never the
   user's board.
+- **its own fonts** (`XDG_DATA_HOME=dev/tvty-wbox/data`): for colour emoji,
+  `XDG_DATA_HOME=dev/tvty-wbox/data make emoji-font` once;
 - **its own loops**: `CLAUDE_LOOP_STATE_ROOT=dev/claude-loop` and
   `CL_CLAUDE_CMD` set to fake-claude, so a loop a test starts (the idle
   tab, "+ session") keeps its state apart and costs no token; start them

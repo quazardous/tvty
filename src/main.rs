@@ -6,6 +6,8 @@ mod activity;
 mod aiball;
 mod bus;
 mod daemon;
+mod emoji;
+mod fonts;
 mod composer;
 mod fulllist;
 mod icons;
@@ -48,6 +50,8 @@ fn main() {
     // The kit's icons (the title bar's buttons among them) come from its assets.
     gpui_kit::application().with_assets(icons::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        // The user's own fonts (a colour emoji font), before any text is laid out.
+        fonts::load(cx);
         let settings = settings::Settings::load();
         bus::init(cx);
         notify::init(

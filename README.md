@@ -46,6 +46,9 @@ Early. What works today:
 - switching: a slider (ctrl+tab) and a gallery of live thumbnails
   (ctrl+shift+space); the panel resizes and folds away;
 - colour themes, light and dark, for the window and the terminals;
+- colour emoji in the terminals, from a colour emoji font of yours
+  (`make emoji-font` fetches Noto Color Emoji into
+  `~/.local/share/tvty/fonts/`);
 - live updates pushed by aiball over one permanent connection (its bus:
   JSON-RPC over a WebSocket on the same socket).
 
