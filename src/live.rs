@@ -93,10 +93,13 @@ impl Live {
         self.subscriptions.clear();
         self.early.clear();
         if self.user != user {
-            // The rows come again, as this user reads them: nothing in them
-            // is news, and the board is not theirs until they are in.
+            // Another user: another board and other pings, subscribed
+            // afresh rather than resumed. The rows come again, as this user
+            // reads them: nothing in them is news, and the board is not
+            // theirs until they are in.
             self.user = user.to_string();
             self.tickets_seen = false;
+            self.since = None;
         }
         let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar];
         if !user.is_empty() {
@@ -456,6 +459,7 @@ mod tests {
         // and none of them is filed.
         let plan = live.plan("david");
         assert!(!live.ready());
+        assert!(plan.calls.iter().all(|(_, params)| params.get("since").is_none()));
         let mut theirs = answers(11);
         theirs[0] = Ok(json!({ "id": "t", "epoch": "e1", "seq": 11, "replayed": false,
                                "value": { "demo": [row(1, "approved"), row(2, "approved")] } }));
