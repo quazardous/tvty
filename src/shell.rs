@@ -4293,15 +4293,15 @@ fn options_ticket_list() -> impl IntoElement {
             "comments, blue: something new on it for you, unread (its title in bold too)".into(),
         ))
         .child(line(
-            crate::icons::labelled(crate::icons::Icon::Comments, p().muted, 12., "3").text_xs().text_color(p().muted).into_any_element(),
-            "grey: you spoke last".into(),
+            crate::icons::labelled(crate::icons::Icon::Comments, p().text, 12., "3").text_xs().text_color(p().text).into_any_element(),
+            "bright, its point on the left: someone else spoke last".into(),
         ))
         .child(line(
-            crate::icons::labelled(crate::icons::Icon::Comments, p().muted.opacity(0.55), 12., "3")
+            crate::icons::labelled(crate::icons::Icon::CommentsMine, p().muted.opacity(0.55), 12., "3")
                 .text_xs()
                 .text_color(p().muted.opacity(0.55))
                 .into_any_element(),
-            "lighter grey: someone else spoke last, and you read it".into(),
+            "discreet, its point on the right: you spoke last".into(),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::PendingComments, p().warning, 12., "1").text_xs().text_color(p().warning).into_any_element(),

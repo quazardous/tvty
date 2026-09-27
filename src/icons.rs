@@ -49,6 +49,8 @@ icons! {
     PriorityUrgent => "arrow_shape_up_stack.svg",
     PriorityLow => "low_priority.svg",
     Comments => "chat_bubble.svg",
+    // The same bubble mirrored: its point on the right, the user's word.
+    CommentsMine => "chat_bubble_mine.svg",
     PendingComments => "schedule.svg",
 }
 

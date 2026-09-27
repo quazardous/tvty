@@ -1383,10 +1383,10 @@ impl TicketPanel {
         let said: Vec<&Comment> = thread.comments.iter().filter(|c| c.kind == "comment_added").collect();
         let count = said.last().map(|last| {
             let mine = last.by_agent == user;
-            let colour = if mine { p().success } else { p().muted };
+            let colour = if mine { p().muted.opacity(0.55) } else { p().text };
             let who = if mine { "you".to_string() } else { last.by_agent.clone() };
             icons::labelled(
-                Icon::Comments,
+                if mine { Icon::CommentsMine } else { Icon::Comments },
                 colour,
                 13.,
                 format!("{} comment{} · {who} spoke last", said.len(), if said.len() == 1 { "" } else { "s" }),
@@ -2452,10 +2452,10 @@ impl TicketPanel {
     }
 }
 
-/// aiball's comment count: a bubble and the number — blue when something
-/// is unread, grey when the user spoke last, lighter grey when someone else
-/// did and all is read; a clock and the number while comments wait for
-/// moderation.
+/// aiball's comment count: a bubble and the number, as a chat shows who
+/// spoke — its point on the left and bright when someone else spoke last
+/// (blue while unread), on the right and discreet when the user did; a
+/// clock and the number while comments wait for moderation.
 pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<Div>> {
     if ticket.pending_comment_count > 0 {
         let n = ticket.pending_comment_count;
@@ -2473,13 +2473,13 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<D
     let (colour, tip) = if ticket.unread {
         (p().accent, "unread: something new on it for you")
     } else if mine {
-        (p().muted, "you spoke last")
+        (p().muted.opacity(0.55), "you spoke last")
     } else {
-        (p().muted.opacity(0.55), "someone else spoke last, and you read it")
+        (p().text, "someone else spoke last")
     };
     let n = ticket.comment_count;
     Some(
-        icons::labelled(Icon::Comments, colour, 12., n.to_string())
+        icons::labelled(if mine && !ticket.unread { Icon::CommentsMine } else { Icon::Comments }, colour, 12., n.to_string())
             .text_color(colour)
             .id("comments")
             .tip(format!("{n} comment{} — {tip}", if n == 1 { "" } else { "s" })),

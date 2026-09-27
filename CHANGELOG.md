@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The agent bar says where its loop runs: "host" (aiball's session host)
   or "tmux".
+- The tickets' comment bubble points to who spoke last: left and bright
+  when it was someone else, right and discreet when it was you.
 
 ## [0.3.0] - 2026-09-27
 

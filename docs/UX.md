@@ -128,9 +128,9 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
   title folds it, and each scrolls on its own — a long band never pushes
   the others out of sight.
 - **Unread is a mark, not a band**: the comments' bubble in blue, and the
-  title in bold; read titles step back. The ticket keeps its band. The
-  bubble is grey when you spoke last, lighter grey when someone else did
-  and you read it.
+  title in bold; read titles step back. The ticket keeps its band. Read,
+  the bubble points to who spoke last: its point on the left and bright
+  when someone else did, on the right and discreet when you did.
 - **One state icon**, always in the same place — Google's Material Symbols,
   as aiball's web UI draws them (`src/icons.rs`): `edit_note` plan,
   `check_circle` resolution, `block` wontfix, `priority_high` escalation,
@@ -146,7 +146,7 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
   wears a construction tape instead — yellow and black bands: nothing goes
   on until it is let through.
 - Then who spoke last and aiball's **comment count** (a bubble and the
-  number, green when you spoke last; a clock while comments wait for
+  number; a clock while comments wait for
   moderation), the agent holding it (🔥 when active), ⚠N on the critical
   ticket, a high priority, the time. A thread full screen is headed by the
   same count and who spoke last; its fields column (a third of the window,
