@@ -30,6 +30,54 @@ pub(super) struct BacklogView {
     read: Option<Result<AgentBacklog, String>>,
 }
 
+/// A mark's colour, as claude-loop's tmux bar paints it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Tone {
+    Green,
+    Orange,
+    Red,
+    Grey,
+    Boot,
+}
+
+/// What the agent bar shows of who drives the loop, as claude-loop's bar:
+/// the mode in force (▶ the loop runs on its own, ‖ held — typing holds
+/// too), ⌨ while a human types, and the little man with the mode armed by
+/// F9 (grey: away, so auto; the seconds of a ten-minute hold; ∞). F9 moves
+/// the little man at once and the mode in force 3 s after the last press:
+/// while they differ, it is arming.
+#[derive(Debug, PartialEq)]
+struct AfkMarks {
+    in_force: Option<(&'static str, Tone)>,
+    typing: bool,
+    armed: Option<(String, Tone)>,
+    arming: bool,
+}
+
+fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typing: bool) -> AfkMarks {
+    if presence == Some("boot") {
+        return AfkMarks { in_force: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
+    }
+    let in_force = match presence {
+        Some("loop") => Some(("▶", Tone::Green)),
+        Some("wait") | Some("stop") => Some(("‖", Tone::Orange)),
+        _ => None,
+    };
+    let man = match armed {
+        Some("wait_inf") => Some(("웃∞".to_string(), Tone::Red)),
+        Some("wait_10m") => Some((left.map_or("웃".to_string(), |s| format!("웃{s}s")), Tone::Orange)),
+        Some("off") => Some(("웃".to_string(), Tone::Grey)),
+        _ => None,
+    };
+    // Typing holds the loop without a choice of F9's: not arming.
+    let arming = match armed {
+        Some("off") => presence == Some("wait"),
+        Some("wait_10m") | Some("wait_inf") => presence == Some("loop"),
+        _ => false,
+    };
+    AfkMarks { in_force, typing: typing || presence == Some("stop"), armed: man, arming }
+}
+
 /// Seconds from now to an ISO time: `None` when past or unreadable.
 fn until(at: Option<&str>) -> Option<u64> {
     parse_time(at?)?.checked_sub(now()).filter(|s| *s > 0)
@@ -73,22 +121,21 @@ impl Shell {
                 .child(text)
         };
 
-        // ── Who drives the loop ──
+        // ── Who drives the loop, as claude-loop's bar says it ──
         let presence = bar.as_ref().map(|b| b.presence.clone()).or_else(|| status.as_ref().map(|s| s.driver.clone()));
-        let (glyph, word, colour) = match (presence.as_deref(), bar.as_ref().map(|b| b.afk.mode.as_str())) {
-            (Some("stop"), _) => ("✎", "you type".to_string(), p().danger),
-            // Held: claude-loop's little man, as its tmux bar draws it —
-            // ∞ held for good, the seconds left of a ten-minute hold.
-            (_, Some("wait_inf")) => ("웃", "∞".to_string(), p().danger),
-            (_, Some("wait_10m")) => {
-                let left = bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref()));
-                ("웃", left.map_or("held".into(), |s| format!("{s}s")), p().warning)
-            }
-            (Some("wait"), _) => ("웃", "held".to_string(), p().warning),
-            // On the bar's yellow, as claude-loop's.
-            (Some("boot"), _) => ("…", "boot".to_string(), crate::theme::on(p().warning)),
-            (Some("loop"), _) => ("▶", "auto".to_string(), p().success),
-            _ => ("·", "—".to_string(), p().muted),
+        let marks = afk_marks(
+            presence.as_deref(),
+            bar.as_ref().map(|b| b.afk.mode.as_str()),
+            bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref())),
+            bar.as_ref().is_some_and(|b| b.human_typing),
+        );
+        let tone = |t: Tone| match t {
+            Tone::Green => p().success,
+            Tone::Orange => p().warning,
+            Tone::Red => p().danger,
+            Tone::Grey => p().muted,
+            // On the bar's yellow while it boots.
+            Tone::Boot => crate::theme::on(p().warning),
         };
         let afk = item()
             .id("agent-afk")
@@ -97,9 +144,21 @@ impl Shell {
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
             .when(self.afk_menu, |d| d.bg(p().active))
-            .child(div().text_color(colour).child(glyph))
-            .child(div().text_color(colour).child(word))
-            .tip("who drives the loop: on its own (▶ auto), held by you (웃: ∞ for good, or the seconds left), or you typing (✎); a click holds or frees it")
+            .children(marks.in_force.map(|(glyph, t)| div().text_color(tone(t)).child(glyph)))
+            .when(marks.typing, |d| d.child(div().text_color(p().danger).child("⌨")))
+            .children(marks.armed.map(|(man, t)| {
+                div()
+                    .flex()
+                    .text_color(tone(t))
+                    .when(marks.arming, |d| d.border_b_1().border_dashed().border_color(tone(t)))
+                    .child(man)
+                    .when(marks.arming, |d| d.child("…"))
+            }))
+            .tip(if marks.arming {
+                "armed: the little man shows the mode chosen with F9, in force 3 s after the last press — ▶ or ‖ says the one in force until then"
+            } else {
+                "who drives the loop: ▶ on its own, ‖ held for you, ⌨ you are typing; the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
+            })
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
                 cx.notify();
@@ -508,7 +567,7 @@ impl Shell {
 
     /// Holds or frees the agent's loop through aiball; the bar follows at
     /// the next read of the board.
-    fn set_afk(&mut self, agent: String, action: &'static str, cx: &mut Context<Self>) {
+    pub(super) fn set_afk(&mut self, agent: String, action: &'static str, cx: &mut Context<Self>) {
         self.afk_menu = false;
         let aiball = self.aiball.clone();
         let agent_name = agent.clone();
@@ -529,6 +588,23 @@ impl Shell {
         })
         .detach();
         cx.notify();
+    }
+}
+
+impl Shell {
+    /// F9, wherever the focus is: the shown agent's AFK mode moves one
+    /// step (aiball's toggle, claude-loop's own cycle and 3 s arming); a
+    /// terminal without an agent gets the key, as it would have.
+    pub(super) fn afk_cycle(&mut self, cx: &mut Context<Self>) {
+        let Some(session) = self.selected.clone() else { return };
+        match self.terminal_of(&session).and_then(|(_, t)| t.agent.clone()) {
+            Some(agent) => self.set_afk(agent, "toggle", cx),
+            None => {
+                if let Some(terminal) = self.terminals.get(&session) {
+                    terminal.read(cx).send_bytes(b"\x1b[20~");
+                }
+            }
+        }
     }
 }
 
@@ -564,6 +640,29 @@ fn short_error(error: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::{AfkMarks, Tone, afk_marks};
+
+    #[test]
+    fn f9_arms_a_mode_before_it_is_in_force() {
+        // Auto, and nothing armed: ▶ and a grey little man.
+        let auto = afk_marks(Some("loop"), Some("off"), None, false);
+        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), typing: false, armed: Some(("웃".into(), Tone::Grey)), arming: false });
+        // F9 once: 10 min armed, still ▶ in force — arming.
+        let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599), false);
+        assert_eq!((armed.armed, armed.arming), (Some(("웃599s".into(), Tone::Orange)), true));
+        // In force 3 s later: ⏸ and the countdown, no longer arming.
+        let held = afk_marks(Some("wait"), Some("wait_10m"), Some(596), false);
+        assert_eq!((held.in_force, held.arming), (Some(("‖", Tone::Orange)), false));
+        // F9 twice more from there: ∞ then off armed while ⏸ holds — arming;
+        // david's "held" was this: ⏸ in force, the grey man armed.
+        assert!(afk_marks(Some("wait"), Some("off"), None, false).arming);
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).armed, Some(("웃∞".into(), Tone::Red)));
+        // Typing holds, marks ⌨, arms nothing.
+        let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600), true);
+        assert_eq!((typing.in_force, typing.typing, typing.arming), (Some(("‖", Tone::Orange)), true, false));
+        // Booting: the boot alone.
+        assert_eq!(afk_marks(Some("boot"), Some("off"), None, false).in_force, Some(("… boot", Tone::Boot)));
+    }
     use super::{short_error, tier};
 
     #[test]

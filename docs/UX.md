@@ -258,14 +258,17 @@ says, drawn by tvty from aiball (never read from tmux), about **the agent**
 to aiball (`/api/consumers/:id/bar`, and `agent_bar` on the live feed), all
 of it; before (a loop started earlier), what the agent's state says.
 
-Left to right: who drives the loop (▶ auto, 웃 held — `웃∞` for good, `웃 348s`
-with the seconds left of a ten-minute hold —, ✎ you type) — a click offers
-auto, hold 10 min, hold, through aiball (`consumer.afk`) —; its Claude's
+Left to right: who drives the loop, as claude-loop's bar says it — ▶ it runs
+on its own or ‖ held (the mode in force), ⌨ while you type, then the little
+man for the AFK mode armed: grey (you are away: auto), `웃348s` the seconds
+of a ten-minute hold, `웃∞` held. **F9**, anywhere in the window, moves it
+one step (auto → 10 min → ∞ → auto); the mode takes effect 3 s after the
+last press, and until then the little man is dotted, with "…". A click
+offers auto, hold 10 min, hold. Then its Claude's
 phase, for how long, and the passing word (`retry 2`, `compacting`); when
-its Claude Code installed an update, **⟳ restart** — aiball restarts it only
-while idle, so while it works the button reads "when idle" and a click
-**arms** it: tvty restarts it as soon as it is idle ("armed", a click
-disarms); "waits for an answer" when a
+its Claude Code installed an update, **⟳ restart** — its loop restarts it
+as soon as it is idle ("when idle" meanwhile), and the terminal comes back
+on its own; "waits for an answer" when a
 dialog is up; the alerts in red (trust this folder?, not logged in, API
 unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
 it holds text), ⌨ while a human types, ⇄ the proxy; its counters in
@@ -431,6 +434,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+= / − / 0 | terminal font bigger / smaller / default |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+f | filter the sessions |
+| F9 | the shown agent's AFK mode, one step |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |

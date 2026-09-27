@@ -314,6 +314,11 @@ impl TerminalView {
         }
     }
 
+    /// Bytes to the program, as typed.
+    pub fn send_bytes(&self, bytes: &'static [u8]) {
+        self.write(bytes);
+    }
+
     fn write(&self, bytes: impl Into<Cow<'static, [u8]>>) {
         match &self.backend {
             Backend::Pty(notifier) => notifier.notify(bytes),

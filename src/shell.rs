@@ -3855,6 +3855,7 @@ impl Render for Shell {
             .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
             .on_action(cx.listener(|shell, _: &keymap::FilterSessions, window, cx| shell.focus_filter(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
