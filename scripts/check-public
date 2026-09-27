@@ -5,8 +5,29 @@
 #
 #   scripts/check-public            every tracked file
 #   scripts/check-public --staged   what is about to be committed (pre-commit)
+#   scripts/check-public --history  every commit: its message and the lines it
+#                                   added — what a clone shows with git log -p
 set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
+# Dev-machine paths; a board's ticket (#1234) or comment (#C.abcd12) id.
+pattern='((^|[[:space:]"'"'"'=:(`])(/home|/Users)/[A-Za-z]|[A-Z]:\\Users\\|(^|[^&A-Za-z0-9])#[0-9]{3,}\b|#C\.[a-z0-9]{4,8}\b)'
+if [[ ${1:-} == --history ]]; then
+    # Each commit's message, then each line it added, prefixed by the commit
+    # (bundled themes and this script's own examples aside).
+    hits=$(
+        {
+            git log --all --format='%h %s%n%h %b'
+            git log --all -p --format='commit %h' -- . ':!themes/*.json' ':!scripts/check-public' |
+                awk '/^commit [0-9a-f]+$/ { c = $2; next } /^\+[^+]/ { print c " " substr($0, 2) }'
+        } | grep -E "^[0-9a-f]+ .*$pattern" || true
+    )
+    if [[ -n $hits ]]; then
+        echo "Not for a public repo, in the history (a path of your machine, or an internal ticket id):" >&2
+        echo "$hits" >&2
+        exit 1
+    fi
+    exit 0
+fi
 if [[ ${1:-} == --staged ]]; then
     mapfile -t files < <(git diff --cached --name-only --diff-filter=ACMR)
 else
@@ -16,8 +37,6 @@ fi
 # which read like ticket ids.
 mapfile -t files < <(printf '%s\n' "${files[@]}" | grep -v '^themes/.*\.json$')
 ((${#files[@]})) || exit 0
-# Dev-machine paths; a board's ticket (#1234) or comment (#C.abcd12) id.
-pattern='((^|[[:space:]"'"'"'=:(`])(/home|/Users)/[A-Za-z]|[A-Z]:\\Users\\|(^|[^&A-Za-z0-9])#[0-9]{3,}\b|#C\.[a-z0-9]{4,8}\b)'
 if hits=$(grep -nIE "$pattern" -- "${files[@]}" 2>/dev/null | grep -v '^scripts/check-public:'); then
     echo "Not for a public repo (a path of your machine, or an internal ticket id):" >&2
     echo "$hits" >&2

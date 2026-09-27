@@ -5,7 +5,7 @@ help:
 	@echo "make build            cargo build (debug)"
 	@echo "make run              run tvty on your own desktop"
 	@echo "make check            build + launch in wbox + screenshot (what an agent reruns)"
-	@echo "make public-check     nothing private in the tracked files (paths, ticket ids)"
+	@echo "make public-check     nothing private in the tracked files nor the history (paths, ticket ids)"
 	@echo ""
 	@echo "wbox (tvty in a nested compositor, offscreen by default; WBOX_VISIBLE=1 for a window):"
 	@echo "make wbox-up / wbox-down / wbox-restart"
@@ -32,6 +32,7 @@ help:
 
 public-check:
 	scripts/check-public
+	scripts/check-public --history
 
 build:
 	cargo build
