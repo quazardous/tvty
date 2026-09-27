@@ -108,7 +108,12 @@ pub struct Shell {
     /// The options' search box, their scroll, and a group to bring up.
     options_search: Entity<InputState>,
     options_scroll: ScrollHandle,
-    options_jump: std::cell::Cell<Option<&'static str>>,
+    options_jump: std::cell::Cell<Option<SharedString>>,
+    /// aiball's config as last read, in the layer shown (none: the board's
+    /// own, global), or why it could not be read.
+    remote: Option<crate::aiball::ManagedConfig>,
+    remote_layer: Option<String>,
+    remote_error: Option<String>,
     /// A side's edge is being dragged.
     resizing: Option<Side>,
     /// The edge has moved since it was pressed.
@@ -524,6 +529,9 @@ impl Shell {
             options_search,
             options_scroll: ScrollHandle::new(),
             options_jump: std::cell::Cell::new(None),
+            remote: None,
+            remote_layer: None,
+            remote_error: None,
             resizing: None,
             dragged: false,
             options: None,
@@ -702,6 +710,11 @@ impl Shell {
                 Update::Board => self.board_moved(cx),
                 Update::Filed(filed) => self.announce_filed(filed, cx),
                 Update::Ping(ping) => self.announce_ping(ping, cx),
+                Update::Config => {
+                    if self.options.is_some() {
+                        self.load_remote(cx);
+                    }
+                }
             }
         }
     }
@@ -1541,6 +1554,7 @@ impl Shell {
         if self.options.take().is_none() {
             self.options = Some(Section::Appearance);
             theme::load(cx);
+            self.load_remote(cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.
             let focus = self.options_search.read(cx).focus_handle(cx);
             window.focus(&focus, cx);
@@ -1552,24 +1566,34 @@ impl Shell {
     }
 
     /// The groups the tree lists under a page, in its order.
-    fn page_groups(section: Section) -> Vec<&'static str> {
+    fn page_groups(&self, section: Section) -> Vec<SharedString> {
         let schema = |page: &str| SCHEMA.groups(page).into_iter().map(|(group, _)| group).collect::<Vec<_>>();
+        let named = |groups: Vec<&'static str>| groups.into_iter().map(SharedString::from).collect();
         match section {
-            Section::Appearance => schema("Appearance"),
-            Section::Layout => schema("Layout").into_iter().chain(["Sides"]).collect(),
-            Section::TicketList => schema("Ticket list").into_iter().chain(["Legend"]).collect(),
-            Section::Shortcuts => vec!["Window", "Terminal", "Fixed keys"],
+            Section::Appearance => named(schema("Appearance")),
+            Section::Layout => named(schema("Layout").into_iter().chain(["Sides"]).collect()),
+            Section::TicketList => named(schema("Ticket list").into_iter().chain(["Legend"]).collect()),
+            Section::Shortcuts => named(vec!["Window", "Terminal", "Fixed keys"]),
+            Section::Aiball => {
+                let mut groups: Vec<SharedString> = Vec::new();
+                for item in self.remote.as_ref().map(crate::options::remote_items).unwrap_or_default() {
+                    if !groups.iter().any(|g| *g == item.group) {
+                        groups.push(item.group.into());
+                    }
+                }
+                groups
+            }
             Section::About => Vec::new(),
         }
     }
 
     /// A page as sections, each a group the tree lists (or none: a note).
-    fn page_sections(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
+    fn page_sections(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
         let schema = |shell: &Self, page: &str, cx: &mut Context<Self>| {
             SCHEMA
                 .groups(page)
                 .into_iter()
-                .map(|(group, settings)| (Some(group), shell.settings_group(group, &settings, &[], cx).into_any_element()))
+                .map(|(group, settings)| (Some(group.into()), shell.settings_group(group, &settings, &[], cx).into_any_element()))
                 .collect::<Vec<_>>()
         };
         match section {
@@ -1587,28 +1611,31 @@ impl Shell {
             Section::Layout => {
                 let mut sections = schema(self, "Layout", cx);
                 let sides = div().flex().flex_col().gap_2().child(option_group("Sides")).child(self.options_layout(window, cx));
-                sections.push((Some("Sides"), sides.into_any_element()));
+                sections.push((Some("Sides".into()), sides.into_any_element()));
                 sections
             }
             Section::TicketList => {
                 let mut sections = schema(self, "Ticket list", cx);
                 let legend = div().flex().flex_col().child(option_group("Legend")).child(options_ticket_list());
-                sections.push((Some("Legend"), legend.into_any_element()));
+                sections.push((Some("Legend".into()), legend.into_any_element()));
                 sections
             }
             Section::Shortcuts => self.shortcut_sections(None, cx),
+            Section::Aiball => {
+                let mut sections = vec![(None, self.remote_header(cx).into_any_element())];
+                sections.extend(self.remote_sections(None, &[], cx));
+                sections
+            }
             Section::About => vec![(None, self.options_about(cx).into_any_element())],
         }
     }
 
     /// What the search finds, as sections headed page › group: the
     /// preferences' rows and the shortcuts' rows, the words marked.
-    fn search_sections(&self, query: &Query, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
-        let map = keymap::current(cx);
-        let mut items = crate::options::program_items(&self.applied);
-        items.extend(crate::options::shortcut_items(&map));
+    fn search_sections(&self, query: &Query, cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
+        let items = self.options_items(cx);
         let found = search(&items, query);
-        let mut sections: Vec<(Option<&'static str>, AnyElement)> = Vec::new();
+        let mut sections: Vec<(Option<SharedString>, AnyElement)> = Vec::new();
         // The preferences, by page and group.
         let mut headings: Vec<(String, String)> = Vec::new();
         for item in found.iter().filter(|i| i.provider == Provider::Program) {
@@ -1645,7 +1672,21 @@ impl Shell {
         if !commands.is_empty() {
             sections.extend(self.shortcut_sections(Some(&commands), cx));
         }
+        // aiball's, by group.
+        let keys: HashSet<String> = found.iter().filter(|i| i.provider == Provider::Remote).map(|i| i.key.clone()).collect();
+        if !keys.is_empty() {
+            sections.extend(self.remote_sections(Some(&keys), &query.words, cx));
+        }
         sections
+    }
+
+    /// Every setting the options list, whoever provides it.
+    fn options_items(&self, cx: &App) -> Vec<tvty_config::Item> {
+        let map = keymap::current(cx);
+        let mut items = crate::options::program_items(&self.applied);
+        items.extend(crate::options::shortcut_items(&map));
+        items.extend(self.remote.as_ref().map(crate::options::remote_items).unwrap_or_default());
+        items
     }
 
     fn options_view(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -1655,19 +1696,17 @@ impl Shell {
         let sections = if searching { self.search_sections(&query, cx) } else { self.page_sections(section, window, cx) };
         // A group clicked in the tree: its section brought to the top.
         if let Some(group) = self.options_jump.take() {
-            if let Some(at) = sections.iter().position(|(g, _)| *g == Some(group)) {
+            if let Some(at) = sections.iter().position(|(g, _)| g.as_ref() == Some(&group)) {
                 self.options_scroll.scroll_to_top_of_item(at + 1);
             }
         }
         // The group in view, for the tree: the last one begun above the top.
         let top = self.options_scroll.top_item();
-        let in_view = sections.iter().take(top.max(1)).filter_map(|(g, _)| *g).last();
+        let in_view = sections.iter().take(top.max(1)).filter_map(|(g, _)| g.clone()).last();
         let empty = searching && sections.is_empty();
         // Searching, the tree keeps the branches that found something.
         let hits: Option<HashSet<(String, String)>> = searching.then(|| {
-            let map = keymap::current(cx);
-            let mut items = crate::options::program_items(&self.applied);
-            items.extend(crate::options::shortcut_items(&map));
+            let items = self.options_items(cx);
             search(&items, &query).into_iter().map(|i| (i.page.clone(), i.group.clone())).collect()
         });
         let page_hit = |page: Section| hits.as_ref().is_none_or(|h| h.iter().any(|(p, _)| p == page.title()));
@@ -1696,8 +1735,8 @@ impl Shell {
                     .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, None, window, cx))),
             );
             // The page's groups, under it.
-            for group in Self::page_groups(page).into_iter().filter(|g| group_hit(page, g)) {
-                let lit = chosen && in_view == Some(group);
+            for group in self.page_groups(page).into_iter().filter(|g| group_hit(page, g)) {
+                let lit = chosen && in_view.as_ref() == Some(&group);
                 tree = tree.child(
                     div()
                         .id(SharedString::from(format!("options-{}-{group}", page.title())))
@@ -1709,8 +1748,8 @@ impl Shell {
                         .cursor_pointer()
                         .when(lit, |d| d.text_color(p().accent))
                         .when(!lit, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
-                        .child(group)
-                        .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, Some(group), window, cx))),
+                        .child(group.clone())
+                        .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, Some(group.clone()), window, cx))),
                 );
             }
         }
@@ -1783,7 +1822,7 @@ impl Shell {
 
     /// A page of the options (the search emptied), at its top — or at
     /// `group`, brought up.
-    fn open_options_page(&mut self, page: Section, group: Option<&'static str>, window: &mut Window, cx: &mut Context<Self>) {
+    fn open_options_page(&mut self, page: Section, group: Option<SharedString>, window: &mut Window, cx: &mut Context<Self>) {
         self.end_capture(cx);
         if !self.options_search.read(cx).value().is_empty() {
             self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
@@ -1794,6 +1833,260 @@ impl Shell {
         self.options = Some(page);
         self.options_jump.set(group);
         cx.notify();
+    }
+
+    // ── aiball's config ─────────────────────────────────────────────────
+
+    /// Reads aiball's config in the layer shown; what comes back for
+    /// another layer (the user moved on) is dropped.
+    fn load_remote(&mut self, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        let layer = self.remote_layer.clone();
+        cx.spawn(async move |this, cx| {
+            let read = {
+                let layer = layer.clone();
+                cx.background_executor().spawn(async move { aiball.config_managed(layer.as_deref()) }).await
+            };
+            let _ = this.update(cx, |shell, cx| {
+                if shell.remote_layer != layer {
+                    return;
+                }
+                match read {
+                    Ok(config) => {
+                        shell.remote = Some(config);
+                        shell.remote_error = None;
+                    }
+                    Err(error) => shell.remote_error = Some(format!("{error:#}")),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Sets a key of aiball's config in the layer shown (`None`: clears it
+    /// there, back to what the layer below says), then reads it again.
+    fn remote_write(&mut self, key: String, value: Option<serde_json::Value>, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        let layer = self.remote_layer.clone();
+        cx.spawn(async move |this, cx| {
+            let done = {
+                let key = key.clone();
+                cx.background_executor()
+                    .spawn(async move {
+                        match value {
+                            Some(value) => aiball.config_set(&key, value, layer.as_deref()),
+                            None => aiball.config_clear(&key, layer.as_deref()),
+                        }
+                    })
+                    .await
+            };
+            let _ = this.update(cx, |shell, cx| {
+                if let Err(error) = done {
+                    activity::publish(cx, Activity::failed(None, "aiball config", format!("{key}: {error:#}")));
+                }
+                shell.load_remote(cx);
+            });
+        })
+        .detach();
+    }
+
+    /// The layer shown, chosen: the board's own (global) or a project's —
+    /// or chosen again after a failed read, to try again.
+    fn show_layer(&mut self, layer: Option<String>, cx: &mut Context<Self>) {
+        if self.remote_layer != layer || self.remote_error.is_some() {
+            self.remote_layer = layer;
+            self.remote = None;
+            self.remote_error = None;
+            self.load_remote(cx);
+            cx.notify();
+        }
+    }
+
+    /// The head of aiball's page: which layer is shown, and how it reads.
+    fn remote_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut layers = div().flex().flex_wrap().items_center().gap_1();
+        let names = std::iter::once(None).chain(self.board.projects.iter().filter(|p| p.on_board).map(|p| Some(p.name.clone())));
+        for layer in names {
+            let on = self.remote_layer == layer;
+            let label: SharedString = layer.clone().unwrap_or_else(|| "Global".into()).into();
+            layers = layers.child(
+                div()
+                    .id(SharedString::from(format!("options-layer-{label}")))
+                    .px_3()
+                    .py_1()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(if on { p().accent } else { p().border })
+                    .cursor_pointer()
+                    .when(on, |d| d.bg(p().active))
+                    .hover(|d| d.bg(p().hover))
+                    .child(label)
+                    .on_click(cx.listener(move |shell, _, _, cx| shell.show_layer(layer.clone(), cx))),
+            );
+        }
+        let note: SharedString = match (&self.remote_error, &self.remote, &self.remote_layer) {
+            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the layer again to try again.").into(),
+            (None, None, _) => "Reading aiball's config…".into(),
+            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise.".into(),
+            (None, Some(_), Some(project)) => {
+                format!("What {project} says over the board's config; ↺ gives a key back to the board's value.").into()
+            }
+        };
+        div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .max_w(px(720.))
+            .child(layers)
+            .child(div().text_sm().text_color(p().muted).child(note))
+    }
+
+    /// aiball's config as sections by group (only `only`'s keys, when
+    /// searching, headed page › group).
+    fn remote_sections(&self, only: Option<&HashSet<String>>, words: &[String], cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
+        let Some(config) = self.remote.as_ref() else { return Vec::new() };
+        let in_project = config.project.is_some();
+        let items = crate::options::remote_items(config);
+        let mut groups: Vec<String> = Vec::new();
+        for item in items.iter().filter(|i| only.is_none_or(|o| o.contains(&i.key))) {
+            if !groups.contains(&item.group) {
+                groups.push(item.group.clone());
+            }
+        }
+        groups
+            .into_iter()
+            .map(|group| {
+                let mut out = div().flex().flex_col().gap_2().max_w(px(720.));
+                out = match only {
+                    Some(_) => out.child(result_heading(Section::Aiball.title(), &group)),
+                    None => out.child(option_group(&group)),
+                };
+                for (entry, item) in config.config.iter().zip(&items) {
+                    if item.group == group && only.is_none_or(|o| o.contains(&item.key)) {
+                        out = out.child(self.remote_row(entry, item, in_project, words, cx));
+                    }
+                }
+                (only.is_none().then(|| group.into()), out.into_any_element())
+            })
+            .collect()
+    }
+
+    /// One key of aiball's config: a switch, choices or a stepper as its
+    /// type says, set in the layer shown; a key that layer does not have is
+    /// only shown.
+    fn remote_row(
+        &self,
+        entry: &crate::aiball::ConfigEntry,
+        item: &tvty_config::Item,
+        in_project: bool,
+        words: &[String],
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
+        use serde_json::Value as Json;
+        let key: SharedString = entry.key.clone().into();
+        let settable = if in_project { entry.has_project() } else { entry.has_global() };
+        let label = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(marked(&entry.label, words))
+            .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child("🔒 protected")));
+        let mut about = entry.description.clone();
+        if !settable {
+            about.push_str(if in_project { " Set on the board only (Global)." } else { " Set per project only." });
+        } else if item.inherited {
+            about.push_str(" From the board's config.");
+        }
+        let about: SharedString = about.into();
+        let modified = settable && item.modified;
+        let reset = {
+            let key = entry.key.clone();
+            cx.listener(move |shell, _, _, cx| shell.remote_write(key.clone(), None, cx))
+        };
+        if !settable {
+            return setting_frame(key, label, about, false)
+                .child(div().flex_none().text_sm().text_color(p().muted).child(item.value.clone()))
+                .child(reset_button(&entry.key, false, |_, _, _| {}))
+                .into_any_element();
+        }
+        match entry.kind.as_str() {
+            "boolean" => {
+                let checked = entry.value.as_bool() == Some(true);
+                let name = entry.key.clone();
+                option_switch(
+                    key,
+                    label,
+                    about,
+                    modified,
+                    if checked { "on" } else { "off" },
+                    Switch::new(SharedString::from(format!("options-switch-{name}")))
+                        .checked(checked)
+                        .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.remote_write(name.clone(), Some(Json::Bool(*wanted)), cx))),
+                    reset,
+                )
+                .into_any_element()
+            }
+            "enum" => {
+                let mut choices = div().flex().flex_wrap().gap_1().flex_none();
+                for option in entry.options.clone().unwrap_or_default() {
+                    let on = entry.value.as_str() == Some(option.as_str());
+                    let name = entry.key.clone();
+                    choices = choices.child(
+                        div()
+                            .id(SharedString::from(format!("options-{name}-{option}")))
+                            .px_2()
+                            .py_0p5()
+                            .rounded_md()
+                            .text_sm()
+                            .border_1()
+                            .border_color(if on { p().accent } else { p().border })
+                            .cursor_pointer()
+                            .when(on, |d| d.bg(p().active))
+                            .hover(|d| d.bg(p().hover))
+                            .child(option.clone())
+                            .on_click(cx.listener(move |shell, _, _, cx| shell.remote_write(name.clone(), Some(Json::String(option.clone())), cx))),
+                    );
+                }
+                setting_frame(key, label, about, modified)
+                    .child(choices)
+                    .child(reset_button(&entry.key, modified, reset))
+                    .into_any_element()
+            }
+            _ => {
+                // A number or a duration (in seconds): steps within its bounds.
+                let duration = entry.kind == "duration";
+                let current = entry.value.as_f64().unwrap_or_default();
+                let step = entry.step.unwrap_or(if duration { 60. } else { 1. });
+                let stepped = |by: f64| {
+                    let mut next = current + by * step;
+                    if let Some(min) = entry.min {
+                        next = next.max(min);
+                    }
+                    if let Some(max) = entry.max {
+                        next = next.min(max);
+                    }
+                    if duration || (next.fract() == 0. && entry.value.is_u64()) {
+                        Json::from(next.max(0.) as u64)
+                    } else {
+                        Json::from(next)
+                    }
+                };
+                let (down, up) = (stepped(-1.), stepped(1.));
+                let (minus_key, plus_key) = (entry.key.clone(), entry.key.clone());
+                option_stepper(
+                    key,
+                    label,
+                    about,
+                    modified,
+                    item.value.clone(),
+                    cx.listener(move |shell, _, _, cx| shell.remote_write(minus_key.clone(), Some(down.clone()), cx)),
+                    cx.listener(move |shell, _, _, cx| shell.remote_write(plus_key.clone(), Some(up.clone()), cx)),
+                    reset,
+                )
+                .into_any_element()
+            }
+        }
     }
 
     /// A group of settings, built from the schema: its heading, and a row
@@ -1823,9 +2116,9 @@ impl Shell {
         let modified = SCHEMA.is_modified(&self.applied, key);
         Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
-                key,
+                key.into(),
                 marked(setting.label, words),
-                setting.about,
+                setting.about.into(),
                 modified,
                 shown(n, unit),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
@@ -1834,9 +2127,9 @@ impl Shell {
             )
             .into_any_element(),
             (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
-                key,
+                key.into(),
                 marked(setting.label, words),
-                setting.about,
+                setting.about.into(),
                 modified,
                 if checked { on } else { off },
                 Switch::new(SharedString::from(format!("options-switch-{key}")))
@@ -2082,7 +2375,7 @@ impl Shell {
     /// keymap.toml, which the user may edit too.
     /// The shortcuts' page as sections: its header, one per context, the
     /// fixed keys. With `only`, just the rows of those commands (a search).
-    fn shortcut_sections(&self, only: Option<&HashSet<String>>, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
+    fn shortcut_sections(&self, only: Option<&HashSet<String>>, cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
         let (map, error) = keymap::in_force(cx);
         let bindings = map.bindings();
         let listening = |command: &str, key: Option<&keymap::Key>| {
@@ -2113,7 +2406,7 @@ impl Shell {
         };
         let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
         let changed = map.commands().iter().any(|c| map.is_changed(c.name)) || bindings.iter().any(|b| b.command.is_none());
-        let mut sections: Vec<(Option<&'static str>, AnyElement)> = Vec::new();
+        let mut sections: Vec<(Option<SharedString>, AnyElement)> = Vec::new();
         let header = div()
             .flex()
             .flex_col()
@@ -2261,7 +2554,7 @@ impl Shell {
                 );
             }
             if rows > 0 {
-                sections.push((Some(crate::options::context_group(context)), group.into_any_element()));
+                sections.push((Some(crate::options::context_group(context).into()), group.into_any_element()));
             }
         }
         if only.is_some() {
@@ -2281,7 +2574,7 @@ impl Shell {
                     .child(div().flex_1().min_w_0().text_sm().child(*what)),
             );
         }
-        sections.push((Some("Fixed keys"), fixed.into_any_element()));
+        sections.push((Some("Fixed keys".into()), fixed.into_any_element()));
         sections
     }
 
@@ -3273,7 +3566,7 @@ impl Render for NoPreview {
     }
 }
 
-fn option_group(title: &'static str) -> impl IntoElement {
+fn option_group(title: &str) -> impl IntoElement + use<> {
     div()
         .pt_4()
         .pb_1()
@@ -3339,9 +3632,9 @@ fn option_row(
 
 /// A size: its name and what it does, − the value +, and back to default.
 fn option_stepper(
-    key: &'static str,
+    key: SharedString,
     label: impl IntoElement,
-    about: &'static str,
+    about: SharedString,
     modified: bool,
     value: String,
     minus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -3361,18 +3654,20 @@ fn option_stepper(
             .hover(|d| d.bg(p().hover))
             .child(label)
     };
+    let (minus, plus) = (button("minus", "−").on_click(minus), button("plus", "+").on_click(plus));
+    let id = key.clone();
     setting_frame(key, label, about, modified)
         .gap_2()
-        .child(button("minus", "−").on_click(minus))
-        .child(div().w(px(64.)).flex_none().text_center().child(value))
-        .child(button("plus", "+").on_click(plus))
-        .child(reset_button(key, modified, reset))
+        .child(minus)
+        .child(div().min_w(px(64.)).flex_none().whitespace_nowrap().text_center().child(value))
+        .child(plus)
+        .child(reset_button(&id, modified, reset))
 }
 
 /// A setting's frame: a bar on its left when it is not at its default
 /// (as VS Code marks one), its name, its key (as settings.toml spells it)
 /// and what it does; its controls follow.
-fn setting_frame(key: &'static str, label: impl IntoElement, about: &'static str, modified: bool) -> Div {
+fn setting_frame(key: SharedString, label: impl IntoElement, about: SharedString, modified: bool) -> Div {
     div()
         .relative()
         .flex()
@@ -3445,18 +3740,19 @@ fn marked(text: &str, words: &[String]) -> StyledText {
 
 /// A toggle: its name and what it does, its state, a switch.
 fn option_switch(
-    key: &'static str,
+    key: SharedString,
     label: impl IntoElement,
-    about: &'static str,
+    about: SharedString,
     modified: bool,
     state: &'static str,
     switch: Switch,
     reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
+    let id = key.clone();
     setting_frame(key, label, about, modified)
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         .child(switch)
-        .child(reset_button(key, modified, reset))
+        .child(reset_button(&id, modified, reset))
 }
 
 /// A key as a chip.

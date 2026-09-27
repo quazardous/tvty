@@ -30,6 +30,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A setting or a shortcut away from its default has a bar on its left and
   a ↺ that puts it back; `@modified` in the search lists all of them; a
   setting shows its key as settings.toml spells it.
+- aiball's own config in the options, on an "aiball" page: its keys by
+  group, a switch, choices or a stepper each (durations as `1h30m`), for
+  the board (Global) or one project — a project's change overrides the
+  board's value and ↺ gives it back; 🔒 marks the keys only a human may
+  change. The search and `@modified` find them too, and a change made
+  elsewhere shows at once.
 - One order for the projects: the list, the slider (ctrl+tab) and the
   gallery put the project used last first, as ctrl+tab goes — the slider's
   stacks now move with it too. ⇅ in the list's header (or Options > Layout)

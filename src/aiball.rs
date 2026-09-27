@@ -51,6 +51,64 @@ pub struct Consumer {
     pub counters: Option<AgentCounters>,
 }
 
+/// aiball's managed config, as one layer sees it (the board's, or a
+/// project's): every setting, described.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ManagedConfig {
+    #[serde(default)]
+    pub project: Option<String>,
+    pub config: Vec<ConfigEntry>,
+}
+
+/// One setting of aiball's config.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct ConfigEntry {
+    pub key: String,
+    /// `global`, `project` or `global+project`: the layers it has.
+    pub scope: String,
+    /// `boolean`, `enum`, `number`, `duration` (seconds), `string`.
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub options: Option<Vec<String>>,
+    #[serde(default)]
+    pub protected: bool,
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+    /// Its section, a dotted path (`tickets.steps`).
+    #[serde(default)]
+    pub group: Option<String>,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    #[serde(default)]
+    pub step: Option<f64>,
+    #[serde(default)]
+    pub unit: Option<String>,
+    #[serde(default)]
+    pub default: Value,
+    /// The board's own value, and the project's (null: not set there).
+    #[serde(default)]
+    pub global: Value,
+    #[serde(default)]
+    pub project: Value,
+    /// The value in force in this layer.
+    #[serde(default)]
+    pub value: Value,
+}
+
+impl ConfigEntry {
+    pub fn has_global(&self) -> bool {
+        self.scope.split('+').any(|s| s == "global")
+    }
+
+    pub fn has_project(&self) -> bool {
+        self.scope.split('+').any(|s| s == "project")
+    }
+}
+
 /// An agent's counters, as claude-loop's line has them (o: b: e:).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct AgentCounters {
@@ -640,6 +698,33 @@ impl Aiball {
     /// Removes a terminal the daemon's host holds (its program ended, or not).
     pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
         self.rpc_do("session.stop", json!({ "name": name }))
+    }
+
+    /// aiball's managed config, as the board (`None`) or a project sees it.
+    pub fn config_managed(&self, project: Option<&str>) -> anyhow::Result<ManagedConfig> {
+        let params = match project {
+            Some(project) => json!({ "project": project }),
+            None => json!({}),
+        };
+        self.rpc("config.managed", params)
+    }
+
+    /// A setting of aiball's config set, on the board or in a project.
+    pub fn config_set(&self, key: &str, value: Value, project: Option<&str>) -> anyhow::Result<()> {
+        let mut params = json!({ "key": key, "value": value });
+        if let Some(project) = project {
+            params["project"] = json!(project);
+        }
+        self.rpc_do("config.set", params)
+    }
+
+    /// A setting of aiball's config back to the layer below.
+    pub fn config_clear(&self, key: &str, project: Option<&str>) -> anyhow::Result<()> {
+        let mut params = json!({ "key": key });
+        if let Some(project) = project {
+            params["project"] = json!(project);
+        }
+        self.rpc_do("config.clear", params)
     }
 
     /// The daemon computes an agent's counters now; they come back through

@@ -8,15 +8,18 @@ pub enum Section {
     Layout,
     TicketList,
     Shortcuts,
+    /// aiball's own config, as the daemon serves it.
+    Aiball,
     About,
 }
 
 impl Section {
-    pub const ALL: [Section; 5] = [
+    pub const ALL: [Section; 6] = [
         Section::Appearance,
         Section::Layout,
         Section::TicketList,
         Section::Shortcuts,
+        Section::Aiball,
         Section::About,
     ];
 
@@ -26,6 +29,7 @@ impl Section {
             Section::Layout => "Layout",
             Section::TicketList => "Ticket list",
             Section::Shortcuts => "Keyboard shortcuts",
+            Section::Aiball => "aiball",
             Section::About => "About",
         }
     }
@@ -80,6 +84,62 @@ pub fn program_items(prefs: &Preferences) -> Vec<Item> {
         .collect()
 }
 
+/// A dotted section as a heading: `tickets.wait_credit.earn` →
+/// `Tickets › Wait credit › Earn`.
+pub fn group_title(group: &str) -> String {
+    group
+        .split('.')
+        .map(|part| {
+            let words = part.replace('_', " ");
+            let mut chars = words.chars();
+            chars.next().map(|c| c.to_uppercase().collect::<String>() + chars.as_str()).unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" › ")
+}
+
+/// A value of aiball's config as shown: `1h30m`, `500 characters`, `on`.
+pub fn remote_value(entry: &crate::aiball::ConfigEntry, value: &serde_json::Value) -> String {
+    match (entry.kind.as_str(), value) {
+        (_, serde_json::Value::Null) => "—".into(),
+        ("duration", v) => v.as_u64().map(tvty_config::format_duration).unwrap_or_else(|| v.to_string()),
+        ("boolean", v) => if v.as_bool() == Some(true) { "on".into() } else { "off".into() },
+        ("number", v) => {
+            let n = v.as_f64().unwrap_or_default();
+            shown(n, entry.unit.as_deref().unwrap_or(""))
+        }
+        (_, serde_json::Value::String(text)) => text.clone(),
+        (_, v) => v.to_string(),
+    }
+}
+
+/// aiball's config as items, in the layer it was read in (the board's, or a
+/// project's): set in that layer is "modified"; a project's value that
+/// comes from the board is "inherited".
+pub fn remote_items(config: &crate::aiball::ManagedConfig) -> Vec<Item> {
+    let in_project = config.project.is_some();
+    config
+        .config
+        .iter()
+        .map(|entry| {
+            let own = if in_project { &entry.project } else { &entry.global };
+            Item {
+                provider: Provider::Remote,
+                key: entry.key.clone(),
+                page: Section::Aiball.title().to_string(),
+                group: group_title(entry.group.as_deref().unwrap_or("")),
+                label: entry.label.clone(),
+                about: entry.description.clone(),
+                value: remote_value(entry, &entry.value),
+                modified: !own.is_null(),
+                protected: entry.protected,
+                inherited: in_project && own.is_null(),
+                words: entry.options.clone().unwrap_or_default(),
+            }
+        })
+        .collect()
+}
+
 /// The page and groups the shortcuts sit in.
 pub const SHORTCUTS_PAGE: &str = "Keyboard shortcuts";
 
@@ -129,6 +189,31 @@ mod tests {
         let font = items.iter().find(|i| i.key == "appearance.terminal_font_size").unwrap();
         assert!(font.modified);
         assert_eq!(font.value, "20 px");
+    }
+
+    #[test]
+    fn aiballs_config_reads_as_items() {
+        let config: crate::aiball::ManagedConfig = serde_json::from_value(serde_json::json!({
+            "project": "demo",
+            "config": [
+                { "key": "tickets.steps.stale", "scope": "global+project", "type": "duration", "options": null, "protected": false,
+                  "label": "Stale step", "description": "When a step goes quiet.", "group": "tickets.steps",
+                  "min": 3600, "max": 2592000, "step": 3600, "unit": null,
+                  "default": 86400, "global": 172800, "project": null, "value": 172800 },
+                { "key": "tickets.rules.summary_max", "scope": "global+project", "type": "number", "options": null, "protected": true,
+                  "label": "Summary budget", "description": "", "group": "tickets.rules",
+                  "min": 0, "max": 5000, "step": 50, "unit": "characters",
+                  "default": 500, "global": null, "project": 300, "value": 300 }
+            ]
+        }))
+        .unwrap();
+        let items = super::remote_items(&config);
+        assert_eq!(items[0].group, "Tickets › Steps");
+        assert_eq!(items[0].value, "2d");
+        assert!(items[0].inherited && !items[0].modified);
+        assert_eq!(items[1].value, "300 characters");
+        assert!(items[1].modified && items[1].protected && !items[1].inherited);
+        assert_eq!(super::group_title("tickets.wait_credit.earn"), "Tickets › Wait credit › Earn");
     }
 
     #[test]

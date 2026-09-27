@@ -23,6 +23,9 @@ enum Kind {
     Pings,
     /// The sessions the daemon's host holds (terminals without an agent too).
     Sessions,
+    /// aiball's managed config changed (a setting set or cleared, a file
+    /// reloaded): read it again.
+    Config,
 }
 
 impl Kind {
@@ -33,6 +36,7 @@ impl Kind {
             Kind::Bar => "agent.*.bar".into(),
             Kind::Pings => format!("user.{user}.pings"),
             Kind::Sessions => "session.*.state".into(),
+            Kind::Config => "config.changed".into(),
         }
     }
 }
@@ -46,6 +50,8 @@ pub enum Update {
     Filed(Filed),
     /// A ping for the user.
     Ping(PingInfo),
+    /// aiball's config changed.
+    Config,
 }
 
 /// A ticket filed, from the row that brought it.
@@ -114,7 +120,7 @@ impl Live {
             self.tickets_seen = false;
             self.since = None;
         }
-        let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar, Kind::Sessions];
+        let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar, Kind::Sessions, Kind::Config];
         if !user.is_empty() {
             kinds.push(Kind::Pings);
         }
@@ -236,6 +242,8 @@ impl Live {
                 self.sessions = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
                 Vec::new()
             }
+            // No value: config.managed is the whole read.
+            Kind::Config => Vec::new(),
         }
     }
 
@@ -325,6 +333,7 @@ impl Live {
                 }
                 vec![Update::Board]
             }
+            Kind::Config => vec![Update::Config],
         }
     }
 
@@ -461,6 +470,7 @@ mod tests {
             Ok(json!({ "id": "s", "epoch": "e1", "seq": 10, "replayed": false, "value": { "demo-crew": { "consumer_id": "demo-crew", "kind": "agent" } } })),
             Ok(json!({ "id": "b", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
             Ok(json!({ "id": "h", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
+            Ok(json!({ "id": "c", "epoch": "e1", "seq": 10, "replayed": false, "value": null })),
             Ok(json!({ "id": "p", "epoch": "e1", "seq": 10, "replayed": false, "value": { "unread": 3 } })),
         ];
         live.subscribed(plan, answers);
@@ -493,9 +503,14 @@ mod tests {
             other => panic!("{other:?}"),
         }
 
+        // A change of aiball's config says so, whatever it is.
+        let changed = live.event(&json!({ "subscription": "c", "subject": "config.changed", "seq": 16,
+            "data": { "op": "set", "key": "tickets.stale_after", "project": null, "value": 3600, "by": "david" } }));
+        assert!(matches!(&changed[..], [Update::Config]));
+
         // Resuming names the epoch and the last seq.
         let plan = live.plan("david");
-        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 15 }));
+        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 16 }));
     }
 
     #[test]

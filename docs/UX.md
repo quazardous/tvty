@@ -358,7 +358,11 @@ spells it. The pages:
 Appearance (sizes, notifications, the wheel's speed, the window's and the
 terminals' colour themes), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
-shortcuts (all of them, edited in place — see Keys), About (version,
+shortcuts (all of them, edited in place — see Keys), aiball (the board's
+config, read and written through aiball: a layer chosen at its head,
+Global or a project; a project's value overrides the board's, ↺ clears it
+there; 🔒 on the keys only a human may change; a change made elsewhere
+shows at once), About (version,
 aiball's socket, who tvty acts as, the live feed, where settings and
 themes live).
 
