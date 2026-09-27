@@ -13,6 +13,7 @@ mod composer;
 mod fulllist;
 mod icons;
 mod images;
+mod keymap;
 mod loops;
 mod newticket;
 mod notify;
@@ -65,7 +66,7 @@ fn main() {
         wheel::set_speed(settings.scroll_speed);
         theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
         theme::set_window_font(settings.window_font_size, cx);
-        terminal::init(cx);
+        keymap::init(cx);
         terminal::set_font_size(settings.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
         cx.spawn(async move |cx| {
             cx.open_window(

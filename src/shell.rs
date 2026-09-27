@@ -15,6 +15,7 @@ use gpui_kit::*;
 use gpui_kit::component::{TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
+use crate::keymap;
 use crate::tip::Tip as _;
 use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -1117,49 +1118,21 @@ impl Shell {
             cx.stop_propagation();
             return;
         }
-        if m.control && key == "enter" && notify::newest(cx).is_some() {
-            if let Some(notice) = notify::newest(cx) {
-                notify::dismiss(cx, notice.id);
-                self.open_notice(notice, window, cx);
-            }
-        } else if m.control && !m.shift && (key == "pageup" || key == "pagedown") {
-            self.step_tab(if key == "pagedown" { 1 } else { -1 }, window, cx);
-        } else if m.control && key == "tab" {
-            self.step_slider(if m.shift { -1 } else { 1 }, cx);
-        } else if m.control && m.shift && key == "space" {
-            self.toggle_gallery(window, cx);
-        } else if m.control && m.shift && key == "t" {
-            self.toggle_panel(cx);
-        } else if m.control && m.shift && key == "b" {
-            self.toggle_sidebar(cx);
-        } else if m.control && !m.shift && key == "," {
+        // The shortcuts are commands bound in `crate::keymap` (they come
+        // before this); here, the keys of what is up: Esc, the slider's and
+        // the gallery's.
+        if key == "escape" && self.options.is_some() {
             self.toggle_options(window, cx);
-        } else if key == "escape" && self.options.is_some() {
-            self.toggle_options(window, cx);
-        // Ctrl+Shift+= / − / 0: with shift held, the key may come as the
-        // shifted character, shift then consumed ("+", "_", ")").
-        } else if m.control && (key == "+" || m.shift && key == "=") {
-            self.step_terminal_font(1., cx);
-        } else if m.control && (key == "_" || m.shift && key == "-") {
-            self.step_terminal_font(-1., cx);
-        } else if m.control && (key == ")" || m.shift && key == "0") {
-            self.set_terminal_font(None, cx);
-        } else if m.control && m.shift && key == "n" {
-            self.open_new_ticket(None, None, window, cx);
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
             self.afk_menu = false;
             cx.notify();
         } else if key == "escape" && self.new_ticket_shown {
             self.close_new_ticket(window, cx);
-        } else if m.control && m.shift && key == "l" {
-            self.go_full(window, cx);
         } else if key == "escape" && self.panel.read(cx).is_full() {
             self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
         } else if key == "escape" && self.full_list_shown {
             self.toggle_full_list(window, cx);
-        } else if m.control && m.shift && key == "k" {
-            self.next_theme(window, cx);
         } else if key == "escape" && self.theme_menu {
             self.theme_menu = false;
             cx.notify();
@@ -2533,7 +2506,30 @@ impl Render for Shell {
         let body = div()
             .id("shell")
             .track_focus(&self.focus)
+            .key_context(crate::keymap::WINDOW)
             .capture_key_down(cx.listener(Self::on_key))
+            .on_action(cx.listener(|shell, _: &keymap::OpenNotice, window, cx| match notify::newest(cx) {
+                Some(notice) => {
+                    notify::dismiss(cx, notice.id);
+                    shell.open_notice(notice, window, cx);
+                }
+                // No notification: the key goes on (a terminal's program, a field).
+                None => cx.propagate(),
+            }))
+            .on_action(cx.listener(|shell, _: &keymap::SliderNext, _, cx| shell.step_slider(1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::SliderBack, _, cx| shell.step_slider(-1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TabNext, window, cx| shell.step_tab(1, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TabBack, window, cx| shell.step_tab(-1, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::Gallery, window, cx| shell.toggle_gallery(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_terminal_font(1., cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_terminal_font(-1., cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.set_terminal_font(None, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::NewTicket, window, cx| shell.open_new_ticket(None, None, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FullList, window, cx| shell.go_full(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::NextTheme, window, cx| shell.next_theme(window, cx)))
             .on_modifiers_changed(cx.listener(Self::on_modifiers))
             .on_drag_move(cx.listener(Self::on_drag_move))
             // A section's title dragged, in the sessions list or the panel.
