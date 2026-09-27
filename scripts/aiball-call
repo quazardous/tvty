@@ -11,58 +11,13 @@ Aimed at the fake aiball (scripts/fake-aiball): its gestures act as the
 user. On the user's own board, keep to reads (session.list, consumer.list…).
 """
 import argparse
-import base64
 import json
 import os
-import socket
-import struct
 import sys
+from pathlib import Path
 
-
-def frame(text: str) -> bytes:
-    """A client's text frame: final, masked."""
-    payload = text.encode()
-    mask = os.urandom(4)
-    head = bytes([0x81])
-    n = len(payload)
-    if n < 126:
-        head += bytes([0x80 | n])
-    elif n < 65536:
-        head += bytes([0x80 | 126]) + struct.pack(">H", n)
-    else:
-        head += bytes([0x80 | 127]) + struct.pack(">Q", n)
-    return head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
-
-
-def read_exact(sock: socket.socket, n: int) -> bytes:
-    data = b""
-    while len(data) < n:
-        chunk = sock.recv(n - len(data))
-        if not chunk:
-            raise ConnectionError("the bus closed")
-        data += chunk
-    return data
-
-
-def messages(sock: socket.socket):
-    """The server's text messages, one by one (fragments joined)."""
-    parts = b""
-    while True:
-        b0, b1 = read_exact(sock, 2)
-        n = b1 & 0x7F
-        if n == 126:
-            n = struct.unpack(">H", read_exact(sock, 2))[0]
-        elif n == 127:
-            n = struct.unpack(">Q", read_exact(sock, 8))[0]
-        payload = read_exact(sock, n)
-        opcode = b0 & 0x0F
-        if opcode == 0x8:
-            raise ConnectionError("the bus closed")
-        if opcode in (0x1, 0x0):
-            parts += payload
-            if b0 & 0x80:
-                yield parts.decode()
-                parts = b""
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from aiballbus import Bus, BusError  # noqa: E402
 
 
 def main() -> int:
@@ -72,37 +27,16 @@ def main() -> int:
     ap.add_argument("method")
     ap.add_argument("params", nargs="?", default="{}")
     args = ap.parse_args()
-
-    sock = socket.socket(socket.AF_UNIX)
-    sock.settimeout(30)
-    sock.connect(args.sock)
-    key = base64.b64encode(os.urandom(16)).decode()
-    sock.sendall(
-        (
-            "GET /bus HTTP/1.1\r\nHost: aiball\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
-            f"x-aiball-consumer: {args.consumer}\r\n\r\n"
-        ).encode()
-    )
-    head = b""
-    while b"\r\n\r\n" not in head:
-        head += read_exact(sock, 1)
-    if b" 101 " not in head.split(b"\r\n")[0]:
-        print(head.decode(errors="replace"), file=sys.stderr)
+    try:
+        result = Bus(args.sock, args.consumer).call(args.method, json.loads(args.params))
+    except BusError as e:
+        print(json.dumps(e.error, indent=1), file=sys.stderr)
         return 1
-
-    call = {"jsonrpc": "2.0", "id": 1, "method": args.method, "params": json.loads(args.params)}
-    sock.sendall(frame(json.dumps(call)))
-    for text in messages(sock):
-        message = json.loads(text)
-        if message.get("id") != 1:
-            continue  # a notice (bus.hello…)
-        if "error" in message:
-            print(json.dumps(message["error"], indent=1), file=sys.stderr)
-            return 1
-        print(json.dumps(message.get("result"), indent=1))
-        return 0
-    return 1
+    except ConnectionError as e:
+        print(e, file=sys.stderr)
+        return 1
+    print(json.dumps(result, indent=1))
+    return 0
 
 
 if __name__ == "__main__":

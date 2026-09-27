@@ -15,16 +15,8 @@ import socket
 import sys
 from pathlib import Path
 
-
-class UnixHTTPConnection(http.client.HTTPConnection):
-    def __init__(self, path):
-        super().__init__("aiball")
-        self.path = path
-
-    def connect(self):
-        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        self.sock.connect(self.path)
-
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from aiballbus import Board  # noqa: E402
 
 SOCK, WORK, IMAGES = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
 HUMAN = "director"
@@ -37,30 +29,44 @@ PROJECTS = {
 }
 BUSY = {"superlaser", "panel-crew", "flux"}
 
-
-def request(method, path, body, who, content_type="application/json", extra=None):
-    conn = UnixHTTPConnection(SOCK)
-    headers = {"content-type": content_type, "x-aiball-consumer": who, **(extra or {})}
-    conn.request(method, "/api" + path, body, headers)
-    response = conn.getresponse()
-    data = response.read().decode()
-    if response.status >= 400:
-        sys.exit(f"{method} {path} as {who}: {response.status} {data}")
-    return json.loads(data) if data else None
+# On the bus, a connection acts as the consumer it was opened for: one each.
+BOARD = Board(SOCK)
 
 
-def call(method, path, body=None, who=HUMAN):
-    return request(method, path, json.dumps(body) if body is not None else None, who)
+def call(who, method, params):
+    return BOARD.call(who, method, params)
+
+
+class UnixHTTPConnection(http.client.HTTPConnection):
+    def __init__(self, path):
+        super().__init__("aiball")
+        self.path = path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.connect(self.path)
 
 
 def picture(name):
-    """An image uploaded, as markdown to cite."""
-    answer = request("POST", "/uploads", (IMAGES / name).read_bytes(), HUMAN, "image/png", {"x-aiball-upload-name": name})
-    return f"![{name}]({answer['url']})"
+    """An image uploaded (uploads stay HTTP: a browser fetches them by
+    URL), as markdown to cite."""
+    conn = UnixHTTPConnection(SOCK)
+    conn.request("POST", "/api/uploads", (IMAGES / name).read_bytes(),
+                 {"content-type": "image/png", "x-aiball-consumer": HUMAN, "x-aiball-upload-name": name})
+    response = conn.getresponse()
+    data = response.read().decode()
+    if response.status >= 400:
+        sys.exit(f"upload {name}: {response.status} {data}")
+    return f"![{name}]({json.loads(data)['url']})"
+
+
+def post(message, who):
+    """A message (a ticket, a comment, a close) posted by `who`; its id."""
+    return call(who, "message.post", message)["id"]
 
 
 def ticket(project, title, body, who=HUMAN, **extra):
-    return call("POST", "/messages", {"project": project, "kind": "ticket_created", "title": title, "body": body, **extra}, who)["id"]
+    return post({"project": project, "kind": "ticket_created", "title": title, "body": body, **extra}, who)
 
 
 def comment(project, ticket_id, body, who, decision=None, step=False, summary=None):
@@ -74,24 +80,24 @@ def comment(project, ticket_id, body, who, decision=None, step=False, summary=No
         payload.update(step=True, step_after_minutes=0)
     elif who != HUMAN:
         payload["handback"] = True
-    return call("POST", "/messages", payload, who)["id"]
+    return post(payload, who)
 
 
 def assign(ticket_id, agent):
-    call("POST", f"/tickets/{ticket_id}/assign", {}, agent)
+    call(agent, "ticket.assign", {"id": ticket_id, "assignee": agent})
 
 
 def depends(ticket_id, on):
-    call("POST", f"/tickets/{ticket_id}/relations", {"target_ticket_id": on, "kind": "depends_on"}, HUMAN)
+    call(HUMAN, "ticket.relate", {"id": ticket_id, "target_ticket_id": on, "kind": "depends_on"})
 
 
-call("POST", "/consumers", {"consumer_id": HUMAN, "kind": "human"})
+call(HUMAN, "consumer.upsert", {"consumer_id": HUMAN, "kind": "human"})
 for project, agents in PROJECTS.items():
-    call("POST", "/projects", {"name": project, "created_by": HUMAN})
+    call(HUMAN, "project.create", {"name": project, "created_by": HUMAN})
     for agent in agents:
-        call("POST", "/consumers", {"consumer_id": agent, "kind": "agent"})
-        call("PUT", f"/consumers/{agent}/state",
-             {"state": "busy" if agent in BUSY else "idle", "cwd": str(WORK / project / agent), "project": project}, agent)
+        call(HUMAN, "consumer.upsert", {"consumer_id": agent, "kind": "agent"})
+        call(agent, "consumer.push_state", {"consumer_id": agent, "state": "busy" if agent in BUSY else "idle",
+                                            "cwd": str(WORK / project / agent), "project": project})
 
 # ── battle-station ───────────────────────────────────────────────────
 P = "battle-station"
@@ -136,7 +142,7 @@ ticket(P, "Add a second exhaust port, for symmetry", "The station looks lopsided
 
 aim = ticket(P, "Turbolasers: hit something, anything", "Target practice results attached.", intent="request")
 comment(P, aim, "Calibrated: they now hit what they aim at. Mostly.", "superlaser")
-call("POST", "/messages", {"project": P, "kind": "ticket_closed", "ticket_id": aim, "parent_id": aim}, HUMAN)
+post({"project": P, "kind": "ticket_closed", "ticket_id": aim, "parent_id": aim}, HUMAN)
 
 # ── dyson-sphere ─────────────────────────────────────────────────────
 P = "dyson-sphere"
@@ -162,4 +168,5 @@ assign(yesterday, "paradox-police")
 comment(P, yesterday, "Done, yesterday. You may not remember it yet.", "paradox-police", decision="resolution")
 ticket(P, "Arrive before we leave", "Two minutes early would do.", intent="feature")
 
-print(json.dumps({"tickets": [port, laser, compactor, panels, paradox]}))
+BOARD.close()
+print({"tickets": [port, laser, compactor, panels, paradox]})
