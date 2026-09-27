@@ -39,6 +39,10 @@ pub struct Settings {
     pub last_ticket_project: Option<String>,
     /// The sessions list's folded sections (`live`, `idle`, `shut`).
     pub sessions_folded: Vec<String>,
+    /// The workspace as tvty was left: the terminals open in it, the one
+    /// used last first, and the one shown; opened again at start.
+    pub open_terminals: Vec<String>,
+    pub shown_terminal: Option<String>,
 }
 
 impl Default for Settings {
@@ -59,6 +63,8 @@ impl Default for Settings {
             terminal_font_size: None,
             window_font_size: None,
             sessions_folded: vec!["idle".into(), "shut".into()],
+            open_terminals: Vec::new(),
+            shown_terminal: None,
         }
     }
 }

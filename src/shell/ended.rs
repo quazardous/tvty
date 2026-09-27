@@ -34,6 +34,7 @@ impl Shell {
     /// attaches afresh. Shown, it leaves the end screen in its place.
     fn session_ended(&mut self, session: &str, window: &mut Window, cx: &mut Context<Self>) {
         self.terminals.remove(session);
+        self.save_workspace();
         if self.selected.as_deref() != Some(session) {
             return;
         }

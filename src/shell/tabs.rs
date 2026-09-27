@@ -15,6 +15,31 @@ use crate::sessions::{self, Board, Project, Terminal};
 use crate::theme::p;
 use crate::tip::Tip as _;
 
+/// How long a start waits for the terminals it opens again to be listed.
+const RESTORE_FOR: std::time::Duration = std::time::Duration::from_secs(15);
+
+/// The workspace being opened again at start: what is still to open.
+pub(super) struct Restoring {
+    open: Vec<String>,
+    shown: Option<String>,
+    until: std::time::Instant,
+}
+
+impl Restoring {
+    pub(super) fn new(open: Vec<String>, shown: Option<String>) -> Self {
+        Self { open, shown, until: std::time::Instant::now() + RESTORE_FOR }
+    }
+
+    /// Something to open is listed now (`listed`), or it is time to give up.
+    pub(super) fn due(&self, listed: impl Fn(&str) -> bool) -> bool {
+        std::time::Instant::now() > self.until || self.open.iter().chain(self.shown.iter()).any(|s| listed(s))
+    }
+
+    fn done(&self) -> bool {
+        (self.open.is_empty() && self.shown.is_none()) || std::time::Instant::now() > self.until
+    }
+}
+
 /// The tab bar's height.
 pub(super) const TAB_BAR: f32 = 30.;
 
@@ -84,6 +109,55 @@ impl Shell {
                 }
             }
         }
+        self.save_workspace();
+        cx.notify();
+    }
+
+    /// The workspace, kept for the next start: the terminals open, the one
+    /// used last first, and the one shown.
+    pub(super) fn save_workspace(&mut self) {
+        if self.restoring.is_some() {
+            return;
+        }
+        let mut open: Vec<String> = self.recent.iter().filter(|s| self.terminals.contains_key(*s)).cloned().collect();
+        for session in self.terminals.keys() {
+            if !open.contains(session) {
+                open.push(session.clone());
+            }
+        }
+        if open != self.settings.open_terminals || self.selected != self.settings.shown_terminal {
+            self.settings.open_terminals = open;
+            self.settings.shown_terminal = self.selected.clone();
+            self.settings.save();
+        }
+    }
+
+    /// At start: opens again the terminals open when tvty was left, each
+    /// once it is listed (aiball's sessions may come after tmux's), the one
+    /// used last opened last; the one shown is selected once it is there.
+    pub(super) fn restore(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(mut restoring) = self.restoring.take() else { return };
+        let there: Vec<String> = restoring.open.iter().rev().filter(|s| self.terminal_of(s).is_some()).cloned().collect();
+        log::debug!("restore: listed now {there:?}, still to come {:?}, shown {:?}", restoring.open, restoring.shown);
+        restoring.open.retain(|s| !there.contains(s));
+        for session in there {
+            self.open_terminal(&session, window, cx);
+            // In the memory of the tabs, the one used last first.
+            self.recent.retain(|s| *s != session);
+            self.recent.insert(0, session);
+        }
+        let shown = restoring.shown.clone().filter(|s| self.terminal_of(s).is_some());
+        if shown.is_some() {
+            restoring.shown = None;
+        }
+        // Still restoring: the workspace kept is not overwritten meanwhile.
+        if !restoring.done() {
+            self.restoring = Some(restoring);
+        }
+        if let Some(shown) = shown {
+            self.select(shown, window, cx);
+        }
+        self.save_workspace();
         cx.notify();
     }
 

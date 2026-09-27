@@ -31,6 +31,7 @@ mod frame;
 mod loopstabs;
 mod stacks;
 mod tabs;
+use tabs::Restoring;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
@@ -132,6 +133,10 @@ pub struct Shell {
     /// Shells closed from their tab, until the host says they are gone:
     /// the list lets them go at once.
     stopping: HashSet<String>,
+    /// The workspace to open again at start, once the board is there.
+    restoring: Option<Restoring>,
+    /// The tmux sessions and loops of this machine were listed once.
+    local_seen: bool,
     /// The slider is up, on this session.
     slider: Option<String>,
     /// Counts the slider's openings: each one replays its entrance.
@@ -431,6 +436,8 @@ impl Shell {
             local: Default::default(),
             rebuild_pending: false,
             stopping: HashSet::new(),
+            restoring: None,
+            local_seen: false,
             slider: None,
             slider_shown: 0,
             gallery: None,
@@ -461,7 +468,14 @@ impl Shell {
         shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
-            None => window.focus(&shell.focus.clone(), cx),
+            None => {
+                // The workspace as it was left, once the board is known.
+                let open = shell.settings.open_terminals.clone();
+                if !open.is_empty() {
+                    shell.restoring = Some(tabs::Restoring::new(open, shell.settings.shown_terminal.clone()));
+                }
+                window.focus(&shell.focus.clone(), cx)
+            }
         }
         shell
     }
@@ -478,6 +492,10 @@ impl Shell {
                     .spawn(async { (sessions::tmux_sessions(), crate::loops::known()) })
                     .await;
                 let alive = this.update(cx, |shell, cx| {
+                    if !shell.local_seen {
+                        shell.local_seen = true;
+                        cx.notify();
+                    }
                     if shell.local != local {
                         shell.local = local;
                         shell.rebuild(cx);
@@ -966,26 +984,7 @@ impl Shell {
         // Shown again (or started again under its name): attach afresh; a
         // session still gone ends at once and brings the end screen back.
         self.ended = None;
-        let terminal = match self.terminals.get(&session) {
-            Some(terminal) => terminal.clone(),
-            None => {
-                // A session a host holds is attached to over its socket; the
-                // others through tmux.
-                let socket = self.terminal_of(&session).and_then(|(_, t)| t.attach.clone());
-                // A hosted session never goes through tmux: not listed (yet,
-                // or any more), nothing to open.
-                if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
-                    return;
-                }
-                let terminal = cx.new(|cx| match &socket {
-                    Some(socket) => TerminalView::attach(std::path::Path::new(socket), cx),
-                    None => TerminalView::tmux(&session, cx).expect("failed to spawn the terminal"),
-                });
-                self.watch_end(session.clone(), &terminal, window, cx);
-                self.terminals.insert(session.clone(), terminal.clone());
-                terminal
-            }
-        };
+        let Some(terminal) = self.open_terminal(&session, window, cx) else { return };
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
         if self.selected.as_deref() != Some(session.as_str()) {
@@ -995,8 +994,30 @@ impl Shell {
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
+        self.save_workspace();
         self.sync_panel(cx);
         cx.notify();
+    }
+
+    /// The session's terminal in tvty, opened if it is not: over its socket
+    /// when a host holds it, through tmux otherwise.
+    fn open_terminal(&mut self, session: &str, window: &mut Window, cx: &mut Context<Self>) -> Option<Entity<TerminalView>> {
+        if let Some(terminal) = self.terminals.get(session) {
+            return Some(terminal.clone());
+        }
+        let socket = self.terminal_of(session).and_then(|(_, t)| t.attach.clone());
+        // A hosted session never goes through tmux: not listed (yet, or any
+        // more), nothing to open.
+        if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
+            return None;
+        }
+        let terminal = cx.new(|cx| match &socket {
+            Some(socket) => TerminalView::attach(std::path::Path::new(socket), cx),
+            None => TerminalView::tmux(session, cx).expect("failed to spawn the terminal"),
+        });
+        self.watch_end(session.to_string(), &terminal, window, cx);
+        self.terminals.insert(session.to_string(), terminal.clone());
+        Some(terminal)
     }
 
     fn alerts_of(&self, project: &str, agent: Option<&str>) -> Alerts {
@@ -2367,6 +2388,10 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = crate::stats::Timing::new("shell");
+        // The workspace as it was left, once aiball and tmux have answered.
+        if self.restoring.as_ref().is_some_and(|r| r.due(|s| self.terminal_of(s).is_some())) && self.live.ready() && self.local_seen {
+            cx.defer_in(window, |shell, window, cx| shell.restore(window, cx));
+        }
         // A loop just started runs now: open it.
         if let Some(name) = self.open_when_running.clone().filter(|n| self.terminal_of(n).is_some()) {
             self.open_when_running = None;

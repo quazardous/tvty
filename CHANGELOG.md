@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- tvty closed and started again opens the terminals that were open, on
+  the one shown last.
+
 ### Changed
 
 - A held loop shows claude-loop's little man again in the agent bar: `웃`
