@@ -158,11 +158,6 @@ pub fn set_limits(cx: &mut App, max: usize, seconds: u64) {
     bus::emit(cx, Signal::Notices);
 }
 
-pub fn limits(cx: &App) -> (usize, u64) {
-    let n = cx.global::<Notices>();
-    (n.max, n.ttl.as_secs())
-}
-
 fn hover(cx: &mut App, id: u64, hovered: bool) {
     if let Some(n) = cx.global_mut::<Notices>().shown.iter_mut().find(|n| n.id == id) {
         n.hovered = hovered;

@@ -153,7 +153,9 @@ impl Schema {
         let setting = self.get(key).ok_or_else(|| format!("no setting {key}"))?;
         let written = match (setting.kind, value) {
             (Kind::Number { min, max, step, default, integer, .. }, Value::Number(n)) => {
+                // On a step, and free of float noise (1.2, not 1.2000000000000002).
                 let n = (((n - min) / step).round() * step + min).clamp(min, max);
+                let n = (n * 1e6).round() / 1e6;
                 if n == default {
                     None
                 } else if integer {
@@ -287,6 +289,10 @@ mod tests {
         assert_eq!(prefs.look.font, Some(29.));
         let prefs = SCHEMA.with(&prefs, "alerts.max", Value::Number(3.4)).unwrap();
         assert_eq!(prefs.alerts.max, 3);
+        // A fractional step writes the number people expect.
+        const SPEED: Schema = Schema(&[Setting { key: "look.font", page: "", group: "", label: "", about: "", kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false } }]);
+        let prefs = SPEED.stepped(&Prefs::default(), "look.font", 6).unwrap();
+        assert_eq!(prefs.look.font, Some(2.2));
     }
 
     #[test]

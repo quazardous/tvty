@@ -37,7 +37,9 @@ mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::{Preferences, SCHEMA, Settings};
-use tvty_config::Value;
+use gpui_kit::component::switch::Switch;
+use tvty_config::schema::shown;
+use tvty_config::{Kind as SettingKind, Setting, Value};
 
 /// The terminals' font size, which shortcuts step too.
 const TERMINAL_FONT: &str = "appearance.terminal_font_size";
@@ -1428,9 +1430,14 @@ impl Shell {
             );
         }
         let content = match section {
-            Section::Appearance => self.options_appearance(cx).into_any_element(),
+            Section::Appearance => self
+                .options_settings("Appearance", cx)
+                .child(option_note(
+                    "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
+                ))
+                .into_any_element(),
             Section::Layout => self.options_layout(window, cx).into_any_element(),
-            Section::TicketList => options_ticket_list().into_any_element(),
+            Section::TicketList => self.options_settings("Ticket list", cx).child(options_ticket_list()).into_any_element(),
             Section::Shortcuts => options_shortcuts(cx).into_any_element(),
             Section::About => self.options_about(cx).into_any_element(),
         };
@@ -1446,7 +1453,8 @@ impl Shell {
             .child(nav)
             .child(
                 div()
-                    .id("options-content")
+                    // One per page: each opens at its top.
+                    .id(SharedString::from(format!("options-content-{}", section.title())))
                     .flex_1()
                     .min_w_0()
                     .h_full()
@@ -1475,117 +1483,71 @@ impl Shell {
             )
     }
 
-    fn options_appearance(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let window_theme = theme::current(cx);
-        let terminal_theme = theme::current_terminal();
-        let column = || div().flex().flex_col().gap_1().flex_1().min_w_0();
-        let window_list = self.theme_choices(
-            column().child(option_group("Window")),
-            "window",
-            Some(window_theme),
-            None,
-            cx,
-            |shell, name, _, cx| {
-                if let Some(name) = name {
-                    shell.set_theme(name, cx);
+    /// A page of settings, built from the schema: its groups, and a row per
+    /// setting as its kind says — a number steps, a toggle switches, choices
+    /// are lists side by side. Every change goes through [`Self::set_pref`].
+    fn options_settings(&self, page: &str, cx: &mut Context<Self>) -> Div {
+        let mut out = div().flex().flex_col().gap_2().max_w(px(720.));
+        for (group, settings) in SCHEMA.groups(page) {
+            out = out.child(option_group(group));
+            if settings.iter().all(|s| s.kind == SettingKind::Choice) {
+                let mut lists = div().flex().gap_6();
+                for setting in settings {
+                    lists = lists.child(self.choice_list(setting, cx));
                 }
-            },
-        );
-        let terminal_list = self.theme_choices(
-            column().child(option_group("Terminal")),
-            "terminal",
-            terminal_theme,
-            Some("Same as the window"),
-            cx,
-            |shell, name, _, cx| shell.set_pref("appearance.terminal_theme", Value::Choice(name.map(|n| n.to_string())), cx),
-        );
-        let terminal_font = crate::terminal::font_size();
-        let window_font = theme::window_font();
-        let sizes = div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .child(option_group("Sizes"))
-            .child(option_stepper(
-                "Terminal font",
-                "The terminals' text, 8 to 32 px. Ctrl+Shift+= / Ctrl+Shift+− / Ctrl+Shift+0 too.",
-                format!("{terminal_font} px"),
-                cx.listener(|shell, _, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)),
-                cx.listener(|shell, _, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)),
-                cx.listener(|shell, _, _, cx| shell.reset_pref(TERMINAL_FONT, cx)),
-            ))
-            .child(option_stepper(
-                "Window text",
-                "Everything around the terminals — lists, tickets, menus —, 12 to 22 px.",
-                format!("{window_font} px"),
-                cx.listener(|shell, _, _, cx| shell.step_pref("appearance.window_font_size", -1, cx)),
-                cx.listener(|shell, _, _, cx| shell.step_pref("appearance.window_font_size", 1, cx)),
-                cx.listener(|shell, _, _, cx| shell.reset_pref("appearance.window_font_size", cx)),
-            ));
-        div()
+                out = out.child(lists);
+                continue;
+            }
+            for setting in settings {
+                let key = setting.key;
+                let row = match (setting.kind, SCHEMA.value(&self.applied, key)) {
+                    (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
+                        setting.label,
+                        setting.about,
+                        shown(n, unit),
+                        cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
+                        cx.listener(move |shell, _, _, cx| shell.step_pref(key, 1, cx)),
+                        cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
+                    )
+                    .into_any_element(),
+                    (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
+                        setting.label,
+                        setting.about,
+                        if checked { on } else { off },
+                        Switch::new(SharedString::from(format!("options-switch-{key}")))
+                            .checked(checked)
+                            .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.set_pref(key, Value::Toggle(*wanted), cx))),
+                    )
+                    .into_any_element(),
+                    _ => continue,
+                };
+                out = out.child(row);
+            }
+        }
+        out
+    }
+
+    /// A choice's list: its label, what it says, the choices (the themes,
+    /// dark ones first), the one in force ticked.
+    fn choice_list(&self, setting: &'static Setting, cx: &mut Context<Self>) -> Div {
+        let key = setting.key;
+        // The window's theme is always one; the terminals' may be the
+        // window's own (none).
+        let (chosen, default) = match key {
+            "appearance.theme" => (Some(theme::current(cx)), None),
+            _ => (theme::current_terminal(), Some("Same as the window")),
+        };
+        let column = div()
             .flex()
             .flex_col()
             .gap_1()
-            .max_w(px(720.))
-            .child(sizes)
-            .child(option_group("Notifications"))
-            .child({
-                let (max, seconds) = notify::limits(cx);
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_2()
-                    .child(option_stepper(
-                        "Shown at most",
-                        "In the terminal's top right corner, the newest highest; older ones make room.",
-                        max.to_string(),
-                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.max", -1, cx)),
-                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.max", 1, cx)),
-                        cx.listener(|shell, _, _, cx| shell.reset_pref("notifications.max", cx)),
-                    ))
-                    .child(option_stepper(
-                        "Seconds shown",
-                        "Then it goes, unless the pointer is on it.",
-                        format!("{seconds} s"),
-                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.seconds", -1, cx)),
-                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.seconds", 1, cx)),
-                        cx.listener(|shell, _, _, cx| shell.reset_pref("notifications.seconds", cx)),
-                    ))
-                    .child(option_row(
-                        "Your own gestures",
-                        "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
-                        if self.applied.notifications.own { "shown".into() } else { "hidden".into() },
-                        if self.applied.notifications.own { "Hide" } else { "Show" },
-                        cx.listener(|shell, _, _, cx| {
-                            let own = shell.applied.notifications.own;
-                            shell.set_pref("notifications.own", Value::Toggle(!own), cx);
-                        }),
-                    ))
-            })
-            .child(option_group("Colours"))
-            .child(option_note(
-                "The window's colour theme, and the terminals': the window's, or one of their own — a dark terminal in a light window. Ctrl+Shift+K steps through the window's.",
-            ))
-            .child(div().flex().gap_6().child(window_list).child(terminal_list))
-            .child(option_note(
-            "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
-        ))
-    }
-
-    /// The themes to pick from, dark ones first, appended to `page`; with a
-    /// `default` entry first when there may be no theme (`None`).
-    fn theme_choices(
-        &self,
-        mut page: Div,
-        id: &'static str,
-        chosen: Option<SharedString>,
-        default: Option<&'static str>,
-        cx: &mut Context<Self>,
-        pick: fn(&mut Self, Option<SharedString>, &mut Window, &mut Context<Self>),
-    ) -> Div {
-        let choice = |key: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
+            .flex_1()
+            .min_w_0()
+            .child(div().font_weight(FontWeight::BOLD).child(setting.label))
+            .child(div().pb_1().text_sm().text_color(p().muted).child(setting.about));
+        let choice = |name: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
             div()
-                .id(SharedString::from(format!("options-{id}-theme-{key}")))
+                .id(SharedString::from(format!("options-{key}-{name}")))
                 .flex()
                 .items_center()
                 .gap_2()
@@ -1597,31 +1559,24 @@ impl Shell {
                 .hover(|d| d.bg(p().hover))
                 .child(div().w(px(12.)).child(if on { "✓" } else { "" }))
                 .child(label)
-                .on_click(cx.listener(move |shell, _, window, cx| {
-                    pick(shell, value.clone(), window, cx);
-                    shell.options = Some(Section::Appearance);
+                .on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.set_pref(key, Value::Choice(value.as_ref().map(|v| v.to_string())), cx);
                 }))
         };
+        let mut column = column;
         if let Some(label) = default {
-            page = page.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
+            column = column.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
         }
         let mut last_dark = None;
         for (name, dark) in theme::names(cx) {
             if last_dark != Some(dark) {
                 last_dark = Some(dark);
-                page = page.child(
-                    div()
-                        .px_3()
-                        .pt_2()
-                        .text_xs()
-                        .text_color(p().muted)
-                        .child(if dark { "Dark" } else { "Light" }),
-                );
+                column = column.child(div().px_3().pt_2().text_xs().text_color(p().muted).child(if dark { "Dark" } else { "Light" }));
             }
             let on = chosen.as_ref() == Some(&name);
-            page = page.child(choice(name.clone(), name.clone(), Some(name), on, cx));
+            column = column.child(choice(name.clone(), name.clone(), Some(name), on, cx));
         }
-        page
+        column
     }
 
     fn options_layout(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
@@ -2785,6 +2740,31 @@ fn option_stepper(
         .child(div().w(px(56.)).flex_none().text_center().child(value))
         .child(button("plus", "+").on_click(plus))
         .child(button("reset", "Default").on_click(reset))
+}
+
+/// A toggle: its name and what it does, its state, a switch.
+fn option_switch(name: &'static str, about: &'static str, state: &'static str, switch: Switch) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_4()
+        .p_3()
+        .rounded_md()
+        .bg(p().surface)
+        .border_1()
+        .border_color(p().border)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .flex_1()
+                .min_w_0()
+                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().text_sm().text_color(p().muted).child(about)),
+        )
+        .child(div().flex_none().text_sm().text_color(p().muted).child(state))
+        .child(switch)
 }
 
 /// The shortcuts in force, by context, as `keymap.toml` leaves them; the

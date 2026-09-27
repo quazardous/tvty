@@ -30,6 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   once, then renamed `state.json.migrated`.
 - A setting edited by hand out of its bounds (a font of 50 px) is refused,
   and the notification names it and its bounds.
+- Options built from the settings themselves: the mouse wheel's speed is
+  now there (Appearance > Mouse), the thread's order on the Ticket list
+  page, and each on/off setting is a switch. Each page keeps its scroll.
 
 - Copy and paste in the terminals: a drag selects whatever the program (tmux
   with its mouse on, where it did nothing), copied at once to the primary
