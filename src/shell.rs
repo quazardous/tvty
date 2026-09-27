@@ -36,7 +36,11 @@ use tabs::Restoring;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
-use crate::settings::Settings;
+use crate::settings::{Preferences, SCHEMA, Settings};
+use tvty_config::Value;
+
+/// The terminals' font size, which shortcuts step too.
+const TERMINAL_FONT: &str = "appearance.terminal_font_size";
 use crate::terminal::TerminalView;
 
 /// How often the tmux sessions are listed (cheap: one `tmux ls`).
@@ -83,6 +87,8 @@ pub struct Shell {
     recent: Vec<String>,
     panel: Entity<TicketPanel>,
     settings: Settings,
+    /// The preferences in force, to tell what a change changes.
+    applied: Preferences,
     /// A side's edge is being dragged.
     resizing: Option<Side>,
     /// The edge has moved since it was pressed.
@@ -394,8 +400,7 @@ impl Shell {
         })
         .detach();
         cx.subscribe(&panel, |shell, _, order: &OrderChanged, cx| {
-            shell.settings.prefs.tickets.newest_first = order.0;
-            shell.settings.save(cx);
+            shell.set_pref("tickets.newest_first", Value::Toggle(order.0), cx);
         })
         .detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
@@ -415,6 +420,7 @@ impl Shell {
             recent: Vec::new(),
             panel,
             settings: Settings::current(cx),
+            applied: crate::config::get::<Preferences>(cx).clone(),
             resizing: None,
             dragged: false,
             options: None,
@@ -482,7 +488,7 @@ impl Shell {
             shell.preferences_changed(window, cx)
         })
         .detach();
-        let newest_first = shell.settings.prefs.tickets.newest_first;
+        let newest_first = shell.applied.tickets.newest_first;
         shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
@@ -1479,9 +1485,9 @@ impl Shell {
             Some(window_theme),
             None,
             cx,
-            |shell, name, window, cx| {
+            |shell, name, _, cx| {
                 if let Some(name) = name {
-                    shell.set_theme(name, window, cx);
+                    shell.set_theme(name, cx);
                 }
             },
         );
@@ -1491,7 +1497,7 @@ impl Shell {
             terminal_theme,
             Some("Same as the window"),
             cx,
-            |shell, name, _, cx| shell.set_terminal_theme(name, cx),
+            |shell, name, _, cx| shell.set_pref("appearance.terminal_theme", Value::Choice(name.map(|n| n.to_string())), cx),
         );
         let terminal_font = crate::terminal::font_size();
         let window_font = theme::window_font();
@@ -1504,17 +1510,17 @@ impl Shell {
                 "Terminal font",
                 "The terminals' text, 8 to 32 px. Ctrl+Shift+= / Ctrl+Shift+− / Ctrl+Shift+0 too.",
                 format!("{terminal_font} px"),
-                cx.listener(|shell, _, _, cx| shell.step_terminal_font(-1., cx)),
-                cx.listener(|shell, _, _, cx| shell.step_terminal_font(1., cx)),
-                cx.listener(|shell, _, _, cx| shell.set_terminal_font(None, cx)),
+                cx.listener(|shell, _, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)),
+                cx.listener(|shell, _, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)),
+                cx.listener(|shell, _, _, cx| shell.reset_pref(TERMINAL_FONT, cx)),
             ))
             .child(option_stepper(
                 "Window text",
                 "Everything around the terminals — lists, tickets, menus —, 12 to 22 px.",
                 format!("{window_font} px"),
-                cx.listener(move |shell, _, window, cx| shell.set_window_font(Some(window_font - 1.), window, cx)),
-                cx.listener(move |shell, _, window, cx| shell.set_window_font(Some(window_font + 1.), window, cx)),
-                cx.listener(|shell, _, window, cx| shell.set_window_font(None, window, cx)),
+                cx.listener(|shell, _, _, cx| shell.step_pref("appearance.window_font_size", -1, cx)),
+                cx.listener(|shell, _, _, cx| shell.step_pref("appearance.window_font_size", 1, cx)),
+                cx.listener(|shell, _, _, cx| shell.reset_pref("appearance.window_font_size", cx)),
             ));
         div()
             .flex()
@@ -1533,32 +1539,26 @@ impl Shell {
                         "Shown at most",
                         "In the terminal's top right corner, the newest highest; older ones make room.",
                         max.to_string(),
-                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max.saturating_sub(1).max(1), seconds, cx)),
-                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits((max + 1).min(10), seconds, cx)),
-                        cx.listener(|shell, _, _, cx| {
-                            shell.set_notify_limits(notify::MAX_DEFAULT, notify::limits(cx).1, cx)
-                        }),
+                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.max", -1, cx)),
+                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.max", 1, cx)),
+                        cx.listener(|shell, _, _, cx| shell.reset_pref("notifications.max", cx)),
                     ))
                     .child(option_stepper(
                         "Seconds shown",
                         "Then it goes, unless the pointer is on it.",
                         format!("{seconds} s"),
-                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max, seconds.saturating_sub(1).max(2), cx)),
-                        cx.listener(move |shell, _, _, cx| shell.set_notify_limits(max, (seconds + 1).min(30), cx)),
-                        cx.listener(|shell, _, _, cx| {
-                            shell.set_notify_limits(notify::limits(cx).0, notify::SECONDS_DEFAULT, cx)
-                        }),
+                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.seconds", -1, cx)),
+                        cx.listener(|shell, _, _, cx| shell.step_pref("notifications.seconds", 1, cx)),
+                        cx.listener(|shell, _, _, cx| shell.reset_pref("notifications.seconds", cx)),
                     ))
                     .child(option_row(
                         "Your own gestures",
                         "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
-                        if self.settings.prefs.notifications.own { "shown".into() } else { "hidden".into() },
-                        if self.settings.prefs.notifications.own { "Hide" } else { "Show" },
+                        if self.applied.notifications.own { "shown".into() } else { "hidden".into() },
+                        if self.applied.notifications.own { "Hide" } else { "Show" },
                         cx.listener(|shell, _, _, cx| {
-                            shell.settings.prefs.notifications.own = !shell.settings.prefs.notifications.own;
-                            crate::activity::set_own(cx, shell.settings.prefs.notifications.own);
-                            shell.settings.save(cx);
-                            cx.notify();
+                            let own = shell.applied.notifications.own;
+                            shell.set_pref("notifications.own", Value::Toggle(!own), cx);
                         }),
                     ))
             })
@@ -1721,12 +1721,39 @@ impl Shell {
         ))
     }
 
-    /// The preferences changed under the shell (the user edited
-    /// settings.toml): the shell's copy follows, and what differs is put in
-    /// force as the options page would.
+    // ── Preferences ─────────────────────────────────────────────────────
+
+    /// The one way a preference changes, from the options, a shortcut or a
+    /// menu: the store takes it (and writes settings.toml), and
+    /// [`Self::preferences_changed`] puts it in force — as for a hand edit.
+    fn set_pref(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
+        crate::config::update::<Preferences>(cx, |prefs| match SCHEMA.with(prefs, key, value) {
+            Ok(changed) => *prefs = changed,
+            Err(error) => log::warn!("settings: {error}"),
+        });
+    }
+
+    /// A number preference moved by `steps` steps, within its bounds.
+    fn step_pref(&mut self, key: &str, steps: i32, cx: &mut Context<Self>) {
+        crate::config::update::<Preferences>(cx, |prefs| match SCHEMA.stepped(prefs, key, steps) {
+            Ok(changed) => *prefs = changed,
+            Err(error) => log::warn!("settings: {error}"),
+        });
+    }
+
+    /// A preference back to its default.
+    fn reset_pref(&mut self, key: &str, cx: &mut Context<Self>) {
+        crate::config::update::<Preferences>(cx, |prefs| match SCHEMA.reset(prefs, key) {
+            Ok(changed) => *prefs = changed,
+            Err(error) => log::warn!("settings: {error}"),
+        });
+    }
+
+    /// The preferences changed (from tvty or a hand edit of settings.toml):
+    /// what differs from what is in force is put in force.
     fn preferences_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let new = crate::config::get::<crate::settings::Preferences>(cx).clone();
-        let old = std::mem::replace(&mut self.settings.prefs, new.clone());
+        let new = crate::config::get::<Preferences>(cx).clone();
+        let old = std::mem::replace(&mut self.applied, new.clone());
         if old == new {
             return;
         }
@@ -1761,21 +1788,9 @@ impl Shell {
 
     // ── Themes ──────────────────────────────────────────────────────────
 
-    fn set_theme(&mut self, name: SharedString, window: &mut Window, cx: &mut Context<Self>) {
-        theme::apply(&name, Some(window), cx);
-        self.settings.prefs.appearance.theme = Some(name.to_string());
-        self.settings.save(cx);
+    fn set_theme(&mut self, name: SharedString, cx: &mut Context<Self>) {
+        self.set_pref("appearance.theme", Value::Choice(Some(name.to_string())), cx);
         self.theme_menu = false;
-        // The terminals follow the window's theme unless they have their own.
-        self.redraw_terminals(cx);
-        cx.notify();
-    }
-
-    fn set_terminal_theme(&mut self, name: Option<SharedString>, cx: &mut Context<Self>) {
-        theme::apply_terminal(name.as_deref(), cx);
-        self.settings.prefs.appearance.terminal_theme = name.map(|n| n.to_string());
-        self.settings.save(cx);
-        self.redraw_terminals(cx);
         cx.notify();
     }
 
@@ -1788,43 +1803,12 @@ impl Shell {
         }
     }
 
-    /// The terminals' font size (`None`: the default): every terminal
-    /// takes it at its next frame, its PTY resized once it settles.
-    fn set_terminal_font(&mut self, size: Option<f32>, cx: &mut Context<Self>) {
-        let kept = crate::terminal::set_font_size(size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
-        self.settings.prefs.appearance.terminal_font_size = (kept != crate::terminal::FONT_SIZE_DEFAULT).then_some(kept);
-        self.settings.save(cx);
-        self.redraw_terminals(cx);
-        cx.notify();
-    }
-
-    fn step_terminal_font(&mut self, step: f32, cx: &mut Context<Self>) {
-        self.set_terminal_font(Some(crate::terminal::font_size() + step), cx);
-    }
-
-    /// The window's text size (`None`: the default).
-    fn set_window_font(&mut self, size: Option<f32>, window: &mut Window, cx: &mut Context<Self>) {
-        let kept = theme::set_window_font(size, cx);
-        self.settings.prefs.appearance.window_font_size = (kept != theme::WINDOW_FONT_DEFAULT).then_some(kept);
-        self.settings.save(cx);
-        window.refresh();
-        cx.notify();
-    }
-
-    fn set_notify_limits(&mut self, max: usize, seconds: u64, cx: &mut Context<Self>) {
-        notify::set_limits(cx, max, seconds);
-        self.settings.prefs.notifications.max = (max != notify::MAX_DEFAULT).then_some(max);
-        self.settings.prefs.notifications.seconds = (seconds != notify::SECONDS_DEFAULT).then_some(seconds);
-        self.settings.save(cx);
-        cx.notify();
-    }
-
-    fn next_theme(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn next_theme(&mut self, cx: &mut Context<Self>) {
         let names = theme::names(cx);
         let current = theme::current(cx);
         let at = names.iter().position(|(n, _)| *n == current).map_or(0, |i| i + 1);
         if let Some((name, _)) = names.get(at % names.len().max(1)).cloned() {
-            self.set_theme(name, window, cx);
+            self.set_theme(name, cx);
         }
     }
 
@@ -1869,9 +1853,7 @@ impl Shell {
                     .hover(|d| d.bg(p().hover))
                     .child(div().w(px(10.)).child(if chosen { "✓" } else { "" }))
                     .child(name.clone())
-                    .on_click(cx.listener(move |shell, _, window, cx| {
-                        shell.set_theme(pick.clone(), window, cx)
-                    })),
+                    .on_click(cx.listener(move |shell, _, _, cx| shell.set_theme(pick.clone(), cx))),
             );
         }
         // The box holds the place under the title bar; the list scrolls in
@@ -2568,12 +2550,12 @@ impl Render for Shell {
             .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_terminal_font(1., cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_terminal_font(-1., cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.set_terminal_font(None, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.reset_pref(TERMINAL_FONT, cx)))
             .on_action(cx.listener(|shell, _: &keymap::NewTicket, window, cx| shell.open_new_ticket(None, None, window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FullList, window, cx| shell.go_full(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::NextTheme, window, cx| shell.next_theme(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::NextTheme, _, cx| shell.next_theme(cx)))
             .on_modifiers_changed(cx.listener(Self::on_modifiers))
             .on_drag_move(cx.listener(Self::on_drag_move))
             // A section's title dragged, in the sessions list or the panel.

@@ -9,6 +9,7 @@ license = "MIT"
 members = ["crates/*"]
 
 [dependencies]
+tvty-config = { path = "crates/tvty-config" }
 tvty-keys = { path = "crates/tvty-keys" }
 alacritty_terminal = "0.26"
 anyhow = "1.0.104"

@@ -1,11 +1,11 @@
 //! Where tvty keeps things, and how: one way for every set of settings.
 //!
-//! A set is a Rust type (`Stored`), with its defaults, that says once where
-//! it lives — `Config` (`$XDG_CONFIG_HOME/tvty`: what the user sets, and may
-//! edit by hand), `State` (`$XDG_STATE_HOME/tvty`: what tvty remembers on its
-//! own) or `Data` — and in which file (`.toml` or `.json`, by its name).
-//! Registered, it becomes a GPUI global, `Store<T>`, which every set keeps
-//! the same way:
+//! A set is a Rust type (`Stored`, from `tvty-config`, with no GPUI in it),
+//! with its defaults, that says once where it lives — `Config`
+//! (`$XDG_CONFIG_HOME/tvty`: what the user sets, and may edit by hand),
+//! `State` (`$XDG_STATE_HOME/tvty`: what tvty remembers on its own) or
+//! `Data` — and in which file (`.toml` or `.json`, by its name). Registered,
+//! it becomes a GPUI global, `Store<T>`, which every set keeps the same way:
 //!
 //! - read at start, the defaults filling what the file leaves out;
 //! - a file that does not read is said, and the last good value is kept
@@ -21,53 +21,16 @@ use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
 use gpui_kit::*;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-
-/// Where a set lives.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum Place {
-    /// What the user sets: `$XDG_CONFIG_HOME/tvty` (`~/.config/tvty`).
-    Config,
-    /// What tvty remembers on its own: `$XDG_STATE_HOME/tvty` (`~/.local/state/tvty`).
-    State,
-    /// What the user adds (fonts): `$XDG_DATA_HOME/tvty` (`~/.local/share/tvty`).
-    Data,
-}
+pub use tvty_config::{Place, Stored, render, write_atomic};
+use tvty_config::{modified as stamp, read};
 
 /// tvty's directory in `place`.
 pub fn dir(place: Place) -> Option<PathBuf> {
-    let (variable, default) = match place {
-        Place::Config => ("XDG_CONFIG_HOME", ".config"),
-        Place::State => ("XDG_STATE_HOME", ".local/state"),
-        Place::Data => ("XDG_DATA_HOME", ".local/share"),
-    };
-    let base = std::env::var_os(variable)
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))?;
-    Some(base.join("tvty"))
+    tvty_config::dir("tvty", place)
 }
 
-/// A set of settings, kept in a file.
-pub trait Stored: Serialize + DeserializeOwned + Default + Clone + PartialEq + 'static {
-    const PLACE: Place;
-    /// Its file; `.toml` or `.json` says the format.
-    const FILE: &'static str;
-    /// The user edits it too: it is read again when it changes.
-    const EDITED: bool = false;
-
-    /// What serde cannot check (a keymap's commands): an error keeps the
-    /// last good value.
-    fn check(&self) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// The value an older tvty kept elsewhere, the first time there is no
-    /// file.
-    fn migrate() -> Option<Self> {
-        None
-    }
+pub fn path<T: Stored>() -> Option<PathBuf> {
+    tvty_config::path::<T>("tvty")
 }
 
 /// A registered set: its value, and what the file said last.
@@ -81,59 +44,6 @@ pub struct Store<T: Stored> {
 }
 
 impl<T: Stored> Global for Store<T> {}
-
-pub fn path<T: Stored>() -> Option<PathBuf> {
-    Some(dir(T::PLACE)?.join(T::FILE))
-}
-
-fn toml(file: &str) -> bool {
-    file.ends_with(".toml")
-}
-
-/// A file's text as a value.
-pub fn parse<T: Stored>(text: &str) -> Result<T, String> {
-    let value: T = if toml(T::FILE) {
-        ::toml::from_str(text).map_err(|e| e.message().to_string())?
-    } else {
-        serde_json::from_str(text).map_err(|e| e.to_string())?
-    };
-    value.check()?;
-    Ok(value)
-}
-
-/// A value as its file's text.
-pub fn render<T: Stored>(value: &T) -> Result<String, String> {
-    if toml(T::FILE) {
-        ::toml::to_string_pretty(value).map_err(|e| e.to_string())
-    } else {
-        serde_json::to_string_pretty(value).map_err(|e| e.to_string())
-    }
-}
-
-/// The file's value: none when there is no file. An error does not say
-/// the file: whoever shows it does.
-fn read<T: Stored>(path: &Path) -> Result<Option<T>, String> {
-    match std::fs::read_to_string(path) {
-        Ok(text) => parse(&text).map(Some),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(e.to_string()),
-    }
-}
-
-/// Writes `text` so that the file is never half written: a temporary file
-/// beside it, then renamed over it.
-pub fn write_atomic(path: &Path, text: &str) -> std::io::Result<()> {
-    if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir)?;
-    }
-    let temporary = path.with_extension(format!("{}.tmp", path.extension().and_then(|e| e.to_str()).unwrap_or("")));
-    std::fs::write(&temporary, text)?;
-    std::fs::rename(&temporary, path)
-}
-
-fn stamp(path: &Path) -> Option<SystemTime> {
-    std::fs::metadata(path).and_then(|m| m.modified()).ok()
-}
 
 /// Reads the set (or migrates it, or takes its defaults), makes it a global,
 /// writes it at quit, and reads it again when the user edits it.
@@ -265,103 +175,8 @@ fn reload_if_changed<T: Stored>(cx: &mut App) {
 
 // ── The log ──────────────────────────────────────────────────────────
 
-/// Where the log goes: `tvty.log` in the state place, the previous run's
-/// kept as `tvty.log.1`.
-pub fn log_path() -> Option<PathBuf> {
-    Some(dir(Place::State)?.join("tvty.log"))
-}
-
-/// The log's lines, to stderr and to [`log_path`].
-pub struct LogTee(Option<std::fs::File>);
-
-impl LogTee {
-    /// A new log for this run: the previous one set aside first. Without a
-    /// file (no home, a disk full), stderr alone.
-    pub fn open() -> Self {
-        let file = log_path().and_then(|path| {
-            std::fs::create_dir_all(path.parent()?).ok()?;
-            let _ = std::fs::rename(&path, path.with_extension("log.1"));
-            std::fs::File::create(&path).ok()
-        });
-        Self(file)
-    }
-}
-
-impl std::io::Write for LogTee {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        let _ = std::io::stderr().write_all(bytes);
-        if let Some(file) = &mut self.0 {
-            let _ = file.write_all(bytes);
-        }
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        if let Some(file) = &mut self.0 {
-            file.flush()?;
-        }
-        std::io::stderr().flush()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{Place, Stored, parse, render, write_atomic};
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-    #[serde(default)]
-    struct Sample {
-        name: String,
-        size: u32,
-        #[serde(default)]
-        inner: Inner,
-    }
-
-    #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-    #[serde(default)]
-    struct Inner {
-        on: bool,
-    }
-
-    impl Stored for Sample {
-        const PLACE: Place = Place::Config;
-        const FILE: &'static str = "sample.toml";
-
-        fn check(&self) -> Result<(), String> {
-            if self.size > 100 { Err("size: 100 at most".into()) } else { Ok(()) }
-        }
-    }
-
-    #[test]
-    fn what_a_file_leaves_out_takes_the_defaults() {
-        let sample: Sample = parse("name = \"a\"\n").unwrap();
-        assert_eq!(sample, Sample { name: "a".into(), ..Default::default() });
-    }
-
-    #[test]
-    fn a_file_that_does_not_read_says_why() {
-        assert!(parse::<Sample>("name = ").is_err());
-        assert_eq!(parse::<Sample>("size = 500").unwrap_err(), "size: 100 at most");
-    }
-
-    #[test]
-    fn a_value_goes_to_its_file_and_back() {
-        let sample = Sample { name: "b".into(), size: 7, inner: Inner { on: true } };
-        let text = render(&sample).unwrap();
-        assert!(text.contains("[inner]"), "sections: {text}");
-        assert_eq!(parse::<Sample>(&text).unwrap(), sample);
-    }
-
-    #[test]
-    fn a_file_is_written_whole_or_not_at_all() {
-        let dir = std::env::temp_dir().join(format!("tvty-config-test-{}", std::process::id()));
-        let path = dir.join("sub").join("sample.toml");
-        write_atomic(&path, "name = \"c\"\n").unwrap();
-        write_atomic(&path, "name = \"d\"\n").unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "name = \"d\"\n");
-        // No temporary file left beside it.
-        assert_eq!(std::fs::read_dir(path.parent().unwrap()).unwrap().count(), 1);
-        std::fs::remove_dir_all(dir).unwrap();
-    }
+/// The log, to stderr and to `tvty.log` in the state place — the previous
+/// run's kept as `tvty.log.1`.
+pub fn log() -> tvty_config::LogTee {
+    tvty_config::LogTee::open(dir(Place::State).map(|d| d.join("tvty.log")))
 }

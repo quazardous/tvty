@@ -45,7 +45,7 @@ fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
         "warn,wgpu_hal=error,gpui_component::theme::mono_font=error",
     ))
-    .target(env_logger::Target::Pipe(Box::new(config::LogTee::open())))
+    .target(env_logger::Target::Pipe(Box::new(config::log())))
     .init();
     // tvty may be started from inside tmux; its terminals attach to tmux
     // sessions of their own, which tmux refuses while $TMUX is set.

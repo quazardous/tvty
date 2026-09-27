@@ -13,6 +13,8 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+use tvty_config::{Kind, Schema, Setting};
+
 use crate::config::{Place, Stored, dir};
 
 // ── The user's preferences ───────────────────────────────────────────
@@ -82,10 +84,92 @@ pub struct Tickets {
     pub newest_first: bool,
 }
 
+/// Every preference, declared once: its key in `settings.toml`, the options
+/// page and group that show it, what it says, its kind and bounds. The
+/// options pages are built from it, and a hand-edited file checked by it.
+pub const SCHEMA: Schema = Schema(&[
+    Setting {
+        key: "appearance.terminal_font_size",
+        page: "Appearance",
+        group: "Sizes",
+        label: "Terminal font",
+        about: "The terminals' text. Ctrl+Shift+= / Ctrl+Shift+− / Ctrl+Shift+0 too.",
+        kind: Kind::Number { min: 8., max: 32., step: 1., default: 14., unit: "px", integer: false },
+    },
+    Setting {
+        key: "appearance.window_font_size",
+        page: "Appearance",
+        group: "Sizes",
+        label: "Window text",
+        about: "Everything around the terminals — lists, tickets, menus.",
+        kind: Kind::Number { min: 12., max: 22., step: 1., default: 16., unit: "px", integer: false },
+    },
+    Setting {
+        key: "notifications.max",
+        page: "Appearance",
+        group: "Notifications",
+        label: "Shown at most",
+        about: "In the terminal's top right corner, the newest highest; older ones make room.",
+        kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true },
+    },
+    Setting {
+        key: "notifications.seconds",
+        page: "Appearance",
+        group: "Notifications",
+        label: "Seconds shown",
+        about: "Then it goes, unless the pointer is on it.",
+        kind: Kind::Number { min: 2., max: 30., step: 1., default: 6., unit: "s", integer: true },
+    },
+    Setting {
+        key: "notifications.own",
+        page: "Appearance",
+        group: "Notifications",
+        label: "Your own gestures",
+        about: "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
+        kind: Kind::Toggle { default: true, on: "shown", off: "hidden" },
+    },
+    Setting {
+        key: "scroll.speed",
+        page: "Appearance",
+        group: "Mouse",
+        label: "Wheel speed",
+        about: "Times tvty's own: at 1, a notch is about three ticket rows, five lines of a terminal's history.",
+        kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false },
+    },
+    Setting {
+        key: "appearance.theme",
+        page: "Appearance",
+        group: "Colours",
+        label: "Window",
+        about: "The window's colour theme. Ctrl+Shift+K steps through them.",
+        kind: Kind::Choice,
+    },
+    Setting {
+        key: "appearance.terminal_theme",
+        page: "Appearance",
+        group: "Colours",
+        label: "Terminal",
+        about: "The terminals' own, or the window's — a dark terminal in a light window.",
+        kind: Kind::Choice,
+    },
+    Setting {
+        key: "tickets.newest_first",
+        page: "Ticket list",
+        group: "Thread",
+        label: "Newest first",
+        about: "A ticket's thread shows its newest word first (also ⇅ in the ticket's header).",
+        kind: Kind::Toggle { default: false, on: "newest first", off: "newest last" },
+    },
+]);
+
 impl Stored for Preferences {
     const PLACE: Place = Place::Config;
     const FILE: &'static str = "settings.toml";
     const EDITED: bool = true;
+
+    fn check(&self) -> Result<(), String> {
+        SCHEMA.check(self)
+    }
 
     fn migrate() -> Option<Self> {
         let old = old_state()?;
@@ -207,10 +291,10 @@ pub fn retire_old_state() {
     }
 }
 
-/// The three sets, as the shell holds them.
+/// What tvty remembers, as the shell holds it (the preferences are not
+/// here: they change through the store only, see `Shell::set_pref`).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Settings {
-    pub prefs: Preferences,
     pub layout: Layout,
     pub workspace: Workspace,
 }
@@ -219,7 +303,6 @@ impl Settings {
     /// The sets as they are kept now.
     pub fn current(cx: &gpui_kit::App) -> Self {
         Self {
-            prefs: crate::config::get::<Preferences>(cx).clone(),
             layout: crate::config::get::<Layout>(cx).clone(),
             workspace: crate::config::get::<Workspace>(cx).clone(),
         }
@@ -228,7 +311,6 @@ impl Settings {
     /// Keeps the sets: each written once its changes rest; one unchanged
     /// is not written.
     pub fn save(&self, cx: &mut gpui_kit::App) {
-        crate::config::update::<Preferences>(cx, |p| *p = self.prefs.clone());
         crate::config::update::<Layout>(cx, |l| *l = self.layout.clone());
         crate::config::update::<Workspace>(cx, |w| *w = self.workspace.clone());
     }
@@ -239,7 +321,7 @@ pub fn report_errors(cx: &mut gpui_kit::App) {
     crate::config::report::<Preferences>(cx);
     crate::config::report::<Layout>(cx);
     crate::config::report::<Workspace>(cx);
-    crate::config::report::<crate::keymap::KeymapFile>(cx);
+    crate::config::report::<crate::keymap::Shortcuts>(cx);
 }
 
 /// Registers the sets, taking an older tvty's file apart the first time.
@@ -253,7 +335,30 @@ pub fn init(cx: &mut gpui_kit::App) {
 #[cfg(test)]
 mod tests {
     use super::Preferences;
-    use crate::config::{parse, render};
+    use tvty_config::{parse, render};
+
+    #[test]
+    fn every_setting_reaches_its_field() {
+        use super::SCHEMA;
+        use tvty_config::{Kind, Value};
+        let prefs = Preferences::default();
+        for setting in SCHEMA.0 {
+            let value = match setting.kind {
+                Kind::Number { max, .. } => Value::Number(max),
+                Kind::Toggle { default, .. } => Value::Toggle(!default),
+                Kind::Choice => Value::Choice(Some("x".into())),
+                Kind::Action { .. } => continue,
+            };
+            let changed = SCHEMA.with(&prefs, setting.key, value.clone()).unwrap_or_else(|e| panic!("{e}"));
+            assert_ne!(changed, prefs, "{} reaches no field", setting.key);
+            assert_eq!(SCHEMA.value(&changed, setting.key), Some(value), "{}", setting.key);
+        }
+    }
+
+    #[test]
+    fn a_hand_edit_out_of_bounds_is_refused() {
+        assert_eq!(parse::<Preferences>("[appearance]\nterminal_font_size = 50\n").unwrap_err(), "appearance.terminal_font_size = 50: from 8 px to 32 px");
+    }
 
     #[test]
     fn preferences_read_as_sections() {

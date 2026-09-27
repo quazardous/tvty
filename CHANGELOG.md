@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `~/.local/state/tvty/`; the log in `~/.local/state/tvty/tvty.log` (the
   previous run's in `tvty.log.1`). The older `state.json` is taken over
   once, then renamed `state.json.migrated`.
+- A setting edited by hand out of its bounds (a font of 50 px) is refused,
+  and the notification names it and its bounds.
 
 - Copy and paste in the terminals: a drag selects whatever the program (tmux
   with its mouse on, where it did nothing), copied at once to the primary

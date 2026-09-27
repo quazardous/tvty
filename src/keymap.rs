@@ -19,6 +19,7 @@
 //! `tvty-keys`' (no GPUI in it); here are tvty's commands and GPUI's side.
 
 use gpui_kit::*;
+use serde::{Deserialize, Serialize};
 pub use tvty_keys::{Binding, Command, Keymap, KeymapFile};
 
 use crate::config::{self, Place, Stored};
@@ -101,13 +102,18 @@ pub const CONTEXTS: &[&str] = &[WINDOW, TERMINAL];
 
 // ── keymap.toml ──────────────────────────────────────────────────────
 
-impl Stored for KeymapFile {
+/// `keymap.toml`: the user's changes, as `tvty-keys` reads them.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Shortcuts(pub KeymapFile);
+
+impl Stored for Shortcuts {
     const PLACE: Place = Place::Config;
     const FILE: &'static str = "keymap.toml";
     const EDITED: bool = true;
 
     fn check(&self) -> Result<(), String> {
-        Keymap::new(COMMANDS, CONTEXTS).load(self).map_err(|e| e.to_string())
+        Keymap::new(COMMANDS, CONTEXTS).load(&self.0).map_err(|e| e.to_string())
     }
 }
 
@@ -117,7 +123,7 @@ struct KitBindings(Vec<KeyBinding>);
 impl Global for KitBindings {}
 
 pub fn path() -> Option<std::path::PathBuf> {
-    config::path::<KeymapFile>()
+    config::path::<Shortcuts>()
 }
 
 /// The keymap in force: the defaults, and the file's changes as last read
@@ -125,7 +131,7 @@ pub fn path() -> Option<std::path::PathBuf> {
 pub fn current(cx: &App) -> Keymap {
     let mut keymap = Keymap::new(COMMANDS, CONTEXTS);
     // A file that does not read is never stored: this cannot fail.
-    let _ = keymap.load(config::get::<KeymapFile>(cx));
+    let _ = keymap.load(&config::get::<Shortcuts>(cx).0);
     keymap
 }
 
@@ -143,9 +149,9 @@ fn apply(cx: &mut App) {
 pub fn init(cx: &mut App) {
     let kit: Vec<KeyBinding> = cx.key_bindings().borrow().bindings().cloned().collect();
     cx.set_global(KitBindings(kit));
-    config::register::<KeymapFile>(cx);
+    config::register::<Shortcuts>(cx);
     apply(cx);
-    cx.observe_global::<config::Store<KeymapFile>>(|cx| {
+    cx.observe_global::<config::Store<Shortcuts>>(|cx| {
         apply(cx);
         cx.refresh_windows();
     })
@@ -154,7 +160,7 @@ pub fn init(cx: &mut App) {
 
 /// The keymap in force, and the file's error if any.
 pub fn in_force(cx: &App) -> (Keymap, Option<String>) {
-    (current(cx), config::error::<KeymapFile>(cx))
+    (current(cx), config::error::<Shortcuts>(cx))
 }
 
 /// The bindings as GPUI takes them.
