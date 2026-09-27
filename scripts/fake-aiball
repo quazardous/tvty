@@ -3,7 +3,8 @@
 # tvty's ticket panel without touching the real board.
 #
 #   scripts/fake-aiball up     start the daemon, seed it, start the demo loops
-#   scripts/fake-aiball down   stop the loops and the daemon, drop its data
+#   scripts/fake-aiball down   stop the loops and the daemon, drop its data: the
+#                              sessions it hosts and the test loops go too
 #   scripts/fake-aiball env    print what points tvty at it (its socket)
 #
 # Everything lives in dev/fake-aiball/: its own AIBALL_HOME, config dir, port
@@ -26,9 +27,65 @@ DEMO="$DIR/demo"
 
 running() { [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
 
+LOOPS="$ROOT/dev/claude-loop"
+
+# This script and the shells that run it: their command lines may name the
+# paths below, and they must not be taken for leftovers.
+ancestors() {
+    local pid=$$
+    while [[ $pid -gt 1 ]]; do
+        echo "$pid"
+        pid=$(awk '/^PPid:/ {print $2}' "/proc/$pid/status" 2>/dev/null) || break
+    done
+}
+
+# What tests left running: the session hosts of this daemon (their --dir is
+# under its home), the test loops (their state is under dev/claude-loop) and
+# what runs in them. Found by command line or environment, by pid — never a
+# kill by pattern, which could reach the user's own processes.
+leftovers() {
+    local keep pid
+    keep=" $(ancestors | tr '\n' ' ') "
+    for proc in /proc/[0-9]*; do
+        pid=${proc#/proc/}
+        [[ $keep == *" $pid "* ]] && continue
+        if tr '\0' '\n' 2>/dev/null <"$proc/cmdline" | grep -qF -e "$HOME_DIR/hosts/" -e "$LOOPS/" ||
+            tr '\0' '\n' 2>/dev/null <"$proc/environ" | grep -qx -e "CL_STATE_DIR=$LOOPS/.*"; then
+            echo "$pid"
+        fi
+    done
+}
+
+# Stops the sessions the daemon hosts (while it answers), then whatever is
+# left of the tests, then forgets the test loops.
+clean() {
+    if running; then
+        AIBALL_SOCK="$SOCK" "$ROOT/scripts/aiball-call" session.list 2>/dev/null |
+            python3 -c 'import json,sys
+for s in json.load(sys.stdin):
+    print(json.dumps({"agent": s["agent"]} if s.get("agent") else {"name": s["name"]}))' |
+            while read -r which; do
+                AIBALL_SOCK="$SOCK" "$ROOT/scripts/aiball-call" session.stop "$which" >/dev/null 2>&1 || true
+            done
+    fi
+    local pids
+    pids=$(leftovers)
+    if [[ -n $pids ]]; then
+        # shellcheck disable=SC2086
+        kill $pids 2>/dev/null || true
+        sleep 1
+        pids=$(for pid in $pids; do kill -0 "$pid" 2>/dev/null && echo "$pid"; done)
+        # shellcheck disable=SC2086
+        [[ -z $pids ]] || kill -9 $pids 2>/dev/null || true
+    fi
+    rm -rf "${LOOPS:?}"/*
+}
+
 case "${1:-}" in
     up)
         if running; then echo "fake aiball already up"; exit 0; fi
+        # What a daemon that fell left behind.
+        clean
         rm -rf "$HOME_DIR"
         mkdir -p "$HOME_DIR" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
         # The test loops' state (scripts/test-env): the daemon relays loop
@@ -48,6 +105,7 @@ case "${1:-}" in
         echo "fake aiball up — AIBALL_SOCK=$SOCK"
         ;;
     down)
+        clean
         for sub in lead crew; do tmux kill-session -t "=cl-demo-$sub" 2>/dev/null || true; done
         if running; then kill "$(cat "$PIDFILE")"; fi
         rm -rf "$HOME_DIR"

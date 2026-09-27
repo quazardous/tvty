@@ -70,7 +70,11 @@ config dir, port (7797) and socket under `dev/fake-aiball/`, seeded with a
 `demo` project — two agents, `demo-claude` and `demo-crew`, whose loops are
 the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
 a pending plan, a pending resolution, a queue and a closed one.
-`make aiball-down` drops it all.
+`make aiball-down` drops it all: the sessions its host runs, the test loops
+(`dev/claude-loop`) and what runs in them go too, and `up` first stops what a
+daemon that fell left behind. `make fake-down` stops the test tmux server once
+it is empty. Leftovers are found by command line or environment and stopped
+by pid, never by a kill by pattern.
 
 To act on it as aiball's clients do, `scripts/aiball-call METHOD [PARAMS]`
 makes one call on its bus (standard library only), as the user or, with

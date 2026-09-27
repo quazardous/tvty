@@ -7,6 +7,7 @@
 #   scripts/fake-loop flood [SESSION]         tmux session that loops over dev/sim/dense.txt
 #                                             at full speed for 5 s on Enter (tvty-flood)
 #   scripts/fake-loop stop [SESSION]          kill the session
+#   scripts/fake-loop stop-server             stop the test tmux server, once empty
 #   scripts/fake-loop ls                      list the tvty-* sessions
 #
 # Sessions are plain tmux sessions (tvty-fake, tvty-sim by default), not
@@ -48,6 +49,11 @@ case "${1:-}" in
         ;;
     stop)
         tmux kill-session -t "=${2:-tvty-fake}"
+        ;;
+    stop-server)
+        # The test tmux server, by its own socket (scripts/test-env): never
+        # the user's. Once no session is left on it.
+        if [[ -z $(tmux ls 2>/dev/null) ]]; then tmux kill-server 2>/dev/null || true; fi
         ;;
     ls)
         tmux ls -F '#{session_name}' 2>/dev/null | grep '^tvty-' || echo "no tvty-* session"

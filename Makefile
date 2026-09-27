@@ -90,6 +90,7 @@ fake-down:
 	-scripts/fake-loop stop tvty-fake
 	-scripts/fake-loop stop tvty-sim
 	-scripts/fake-loop stop tvty-flood
+	-scripts/fake-loop stop-server
 
 # ── a throwaway aiball ───────────────────────────────────────────────────────
 aiball-up:
