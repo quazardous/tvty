@@ -72,6 +72,17 @@ the tmux sessions `cl-demo-lead` / `cl-demo-crew`, and tickets with a claim,
 a pending plan, a pending resolution, a queue and a closed one.
 `make aiball-down` drops it all.
 
+To act on it as aiball's clients do, `scripts/aiball-call METHOD [PARAMS]`
+makes one call on its bus (standard library only), as the user or, with
+`--as`, as an agent. A loop on the host, running fake-claude, then held ten
+minutes, as the AFK chip does:
+
+```bash
+export AIBALL_SOCK=$PWD/dev/fake-aiball/home/sock
+scripts/aiball-call session.start "{\"cwd\":\"$PWD/dev/fake-aiball/demo/crew\",\"agent\":\"demo-crew\"}"
+scripts/aiball-call consumer.afk '{"name":"demo-crew","action":"arm_10m"}'
+```
+
 The test tvty points at it already (`AIBALL_SOCK`: the API and its live
 feed). To open a session at
 start:

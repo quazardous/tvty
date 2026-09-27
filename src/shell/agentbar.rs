@@ -77,12 +77,14 @@ impl Shell {
         let presence = bar.as_ref().map(|b| b.presence.clone()).or_else(|| status.as_ref().map(|s| s.driver.clone()));
         let (glyph, word, colour) = match (presence.as_deref(), bar.as_ref().map(|b| b.afk.mode.as_str())) {
             (Some("stop"), _) => ("✎", "you type".to_string(), p().danger),
-            (_, Some("wait_inf")) => ("‖", "held".to_string(), p().danger),
+            // Held: claude-loop's little man, as its tmux bar draws it —
+            // ∞ held for good, the seconds left of a ten-minute hold.
+            (_, Some("wait_inf")) => ("웃", "∞".to_string(), p().danger),
             (_, Some("wait_10m")) => {
                 let left = bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref()));
-                ("‖", left.map_or("held".into(), |s| format!("held {}", ago(s))), p().warning)
+                ("웃", left.map_or("held".into(), |s| format!("{s}s")), p().warning)
             }
-            (Some("wait"), _) => ("‖", "held".to_string(), p().warning),
+            (Some("wait"), _) => ("웃", "held".to_string(), p().warning),
             (Some("boot"), _) => ("…", "boot".to_string(), p().info),
             (Some("loop"), _) => ("▶", "auto".to_string(), p().success),
             _ => ("·", "—".to_string(), p().muted),
@@ -96,7 +98,7 @@ impl Shell {
             .when(self.afk_menu, |d| d.bg(p().active))
             .child(div().text_color(colour).child(glyph))
             .child(div().text_color(colour).child(word))
-            .tip("who drives the loop: on its own (auto), held, or you typing; a click holds or frees it")
+            .tip("who drives the loop: on its own (▶ auto), held by you (웃: ∞ for good, or the seconds left), or you typing (✎); a click holds or frees it")
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
                 cx.notify();
@@ -500,16 +502,17 @@ impl Shell {
     }
 }
 
-/// The times a bar shows, as text.
+/// The times a bar shows, as text: a hold's seconds left, which tick.
 fn bar_times(bar: &AgentBar) -> impl Iterator<Item = String> {
-    [
-        until(bar.afk.expires_at.as_deref()),
+    let hold = until(bar.afk.expires_at.as_deref()).map(|s| format!("{s}s"));
+    let others = [
         until(bar.next_wake_at.as_deref()),
         bar.boot.as_ref().and_then(|b| parse_time(&b.started_at)).map(|s| now().saturating_sub(s)),
     ]
     .into_iter()
     .flatten()
-    .map(ago)
+    .map(ago);
+    hold.into_iter().chain(others)
 }
 
 /// A path with the home directory as `~`.

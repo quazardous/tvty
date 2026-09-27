@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A held loop shows claude-loop's little man again in the agent bar: `웃`
+  and the seconds left of a ten-minute hold, `웃∞` when held for good.
 - Closing the tab shown goes back to the terminal used before it, in its
   group or another, rather than to an empty window.
 
