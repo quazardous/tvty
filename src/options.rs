@@ -203,7 +203,10 @@ mod tests {
                 { "key": "tickets.rules.summary_max", "scope": "global+project", "type": "number", "options": null, "protected": true,
                   "label": "Summary budget", "description": "", "group": "tickets.rules",
                   "min": 0, "max": 5000, "step": 50, "unit": "characters",
-                  "default": 500, "global": null, "project": 300, "value": 300 }
+                  "default": 500, "global": null, "project": 300, "value": 300 },
+                { "key": "autopoll.tone", "scope": "project", "type": "enum", "options": ["hint", "directive"], "protected": false,
+                  "label": "Tone", "description": "", "group": "autopoll", "min": null, "max": null, "step": null, "unit": null,
+                  "default": "directive", "global": null, "project": null, "value": "directive", "sources": ["file"] }
             ]
         }))
         .unwrap();
@@ -213,6 +216,9 @@ mod tests {
         assert!(items[0].inherited && !items[0].modified);
         assert_eq!(items[1].value, "300 characters");
         assert!(items[1].modified && items[1].protected && !items[1].inherited);
+        // What config.set can write: the store's keys, not a file's.
+        assert!(config.config[0].writable() && config.config[0].settable_in(true));
+        assert!(!config.config[2].writable() && !config.config[2].settable_in(true));
         assert_eq!(super::group_title("tickets.wait_credit.earn"), "Tickets › Wait credit › Earn");
     }
 

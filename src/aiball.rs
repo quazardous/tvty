@@ -97,9 +97,27 @@ pub struct ConfigEntry {
     /// The value in force in this layer.
     #[serde(default)]
     pub value: Value,
+    /// Where aiball reads it: `db` (what `config.set` writes), `file` (a
+    /// project's `.aiball.yaml`); `["db"]` when unsaid, as aiball has it.
+    #[serde(default = "db_only")]
+    pub sources: Vec<String>,
+}
+
+fn db_only() -> Vec<String> {
+    vec!["db".into()]
 }
 
 impl ConfigEntry {
+    /// `config.set` can write it (it is not read from a file only).
+    pub fn writable(&self) -> bool {
+        self.sources.iter().any(|s| s == "db")
+    }
+
+    /// It can be set in a project's layer (`in_project`) or the board's.
+    pub fn settable_in(&self, in_project: bool) -> bool {
+        self.writable() && if in_project { self.has_project() } else { self.has_global() }
+    }
+
     pub fn has_global(&self) -> bool {
         self.scope.split('+').any(|s| s == "global")
     }

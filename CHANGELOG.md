@@ -45,6 +45,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   frame, a bar — says what the default is (`Default: 16 px`, in a project
   `Board: normal`), and has a plain "↺ Default" (or "↺ Board") button to
   go back to it; shortcuts too (`Default: Ctrl+Shift+K`).
+- aiball's page lists last, apart, the keys the layer shown cannot set —
+  "Board-wide only" in a project (with "Open Global"), "Per project only"
+  in Global, and those aiball reads from `.aiball.yaml` once it says so —
+  instead of mixing them, read-only, among the others. A per-project key
+  no longer claims to come from the board.
 - One order for the projects: the list, the slider (ctrl+tab) and the
   gallery put the project used last first, as ctrl+tab goes — the slider's
   stacks now move with it too. ⇅ in the list's header (or Options > Layout)

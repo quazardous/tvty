@@ -1680,15 +1680,7 @@ impl Shell {
             Section::Layout => named(schema("Layout").into_iter().chain(["Sides"]).collect()),
             Section::TicketList => named(schema("Ticket list").into_iter().chain(["Legend"]).collect()),
             Section::Shortcuts => named(vec!["Window", "Terminal", "Fixed keys"]),
-            Section::Aiball => {
-                let mut groups: Vec<SharedString> = Vec::new();
-                for item in self.remote.as_ref().map(crate::options::remote_items).unwrap_or_default() {
-                    if !groups.iter().any(|g| *g == item.group) {
-                        groups.push(item.group.into());
-                    }
-                }
-                groups
-            }
+            Section::Aiball => self.remote_layout().into_iter().map(|(group, _)| group.into()).collect(),
             Section::About => Vec::new(),
         }
     }
@@ -2050,10 +2042,65 @@ impl Shell {
 
     /// aiball's config as sections by group (only `only`'s keys, when
     /// searching, headed page › group).
+    /// aiball's page as its groups list it: each key under its group, but
+    /// those the layer shown cannot set gathered last, under a group that
+    /// says where they are set. Each group with its keys' places in the
+    /// config.
+    fn remote_layout(&self) -> Vec<(String, Vec<usize>)> {
+        let Some(config) = self.remote.as_ref() else { return Vec::new() };
+        let in_project = config.project.is_some();
+        let elsewhere = if in_project { REMOTE_GLOBAL_ONLY } else { REMOTE_PROJECT_ONLY };
+        let items = crate::options::remote_items(config);
+        let mut layout: Vec<(String, Vec<usize>)> = Vec::new();
+        let (mut apart, mut in_file) = (Vec::new(), Vec::new());
+        for (at, (entry, item)) in config.config.iter().zip(&items).enumerate() {
+            if !entry.writable() {
+                in_file.push(at);
+                continue;
+            }
+            if !entry.settable_in(in_project) {
+                apart.push(at);
+                continue;
+            }
+            match layout.iter_mut().find(|(g, _)| *g == item.group) {
+                Some((_, keys)) => keys.push(at),
+                None => layout.push((item.group.clone(), vec![at])),
+            }
+        }
+        if !apart.is_empty() {
+            layout.push((elsewhere.to_string(), apart));
+        }
+        if !in_file.is_empty() {
+            layout.push((REMOTE_IN_FILE.to_string(), in_file));
+        }
+        layout
+    }
+
     fn remote_sections(&self, only: Option<&HashSet<String>>, words: &[String], cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
         let Some(config) = self.remote.as_ref() else { return Vec::new() };
         let in_project = config.project.is_some();
         let items = crate::options::remote_items(config);
+        if only.is_none() {
+            // The page: by group, what this layer cannot set last.
+            return self
+                .remote_layout()
+                .into_iter()
+                .map(|(group, keys)| {
+                    let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(option_group(&group));
+                    if group == REMOTE_GLOBAL_ONLY || group == REMOTE_PROJECT_ONLY {
+                        out = out.child(self.remote_elsewhere_note(in_project, cx));
+                    } else if group == REMOTE_IN_FILE {
+                        out = out.child(option_note(
+                            "aiball reads these from each project's .aiball.yaml, not from its config store: change them in that file.",
+                        ));
+                    }
+                    for at in keys {
+                        out = out.child(self.remote_row(&config.config[at], &items[at], in_project, words, cx));
+                    }
+                    (Some(group.into()), out.into_any_element())
+                })
+                .collect();
+        }
         let mut groups: Vec<String> = Vec::new();
         for item in items.iter().filter(|i| only.is_none_or(|o| o.contains(&i.key))) {
             if !groups.contains(&item.group) {
@@ -2078,6 +2125,43 @@ impl Shell {
             .collect()
     }
 
+    /// Why the keys gathered last are only shown here, and where they are
+    /// set: the board's own in Global, a project's in that project.
+    fn remote_elsewhere_note(&self, in_project: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let text = if in_project {
+            "aiball declares these for the whole board: one value for every project, set in Global."
+        } else {
+            "aiball declares these per project only: no board-wide value; choose a project above to set them."
+        };
+        div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .text_sm()
+            .text_color(p().muted)
+            .child(div().flex_1().min_w_0().child(text))
+            .when(in_project, |d| {
+                d.child(
+                    div()
+                        .id("options-to-global")
+                        .flex_none()
+                        .px_2()
+                        .py_0p5()
+                        .rounded_md()
+                        .border_1()
+                        .border_color(p().accent.opacity(0.6))
+                        .text_color(p().accent)
+                        .cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .child("Open Global")
+                        .on_click(cx.listener(|shell, _, _, cx| {
+                            shell.options_scroll.set_offset(point(px(0.), px(0.)));
+                            shell.show_layer(None, cx)
+                        })),
+                )
+            })
+    }
+
     /// One key of aiball's config: a switch, choices or a stepper as its
     /// type says, set in the layer shown; a key that layer does not have is
     /// only shown.
@@ -2091,24 +2175,43 @@ impl Shell {
     ) -> AnyElement {
         use serde_json::Value as Json;
         let key: SharedString = entry.key.clone().into();
-        let settable = if in_project { entry.has_project() } else { entry.has_global() };
+        let settable = entry.settable_in(in_project);
         let label = div()
             .flex()
             .items_center()
             .gap_2()
             .child(marked(&entry.label, words))
-            .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child("🔒 protected")));
+            .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child("🔒 protected")))
+            // Where it is set, when not in this layer.
+            .when(!settable, |d| {
+                d.child(
+                    div()
+                        .px_1p5()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(p().border)
+                        .text_xs()
+                        .text_color(p().muted)
+                        .child(if !entry.writable() {
+                            "set in .aiball.yaml"
+                        } else if in_project {
+                            "board-wide: set in Global"
+                        } else {
+                            "per project"
+                        }),
+                )
+            });
         let mut about = entry.description.clone();
-        if !settable {
-            about.push_str(if in_project { " Set on the board only (Global)." } else { " Set per project only." });
-        } else if item.inherited {
+        // A project without a value of its own shows the board's — or, for
+        // a key the board does not have, the default.
+        if settable && item.inherited && entry.has_global() {
             about.push_str(" From the board's config.");
         }
         let about: SharedString = about.into();
         // Set in this layer: ↺ clears it, back to the default — in a
         // project, to the board's value.
         let away = (settable && item.modified).then(|| {
-            if in_project {
+            if in_project && entry.has_global() {
                 let board = if entry.global.is_null() { &entry.default } else { &entry.global };
                 Away { back: "Board", value: crate::options::remote_value(entry, board).into() }
             } else {
@@ -3724,6 +3827,12 @@ fn option_group(title: &str) -> impl IntoElement + use<> {
         .text_color(p().muted)
         .child(title.to_uppercase())
 }
+
+/// The groups aiball's page gathers, last, the keys the layer shown cannot
+/// set under.
+const REMOTE_GLOBAL_ONLY: &str = "Board-wide only";
+const REMOTE_PROJECT_ONLY: &str = "Per project only";
+const REMOTE_IN_FILE: &str = "In .aiball.yaml";
 
 /// A search result's heading: where it lives, page › group.
 fn result_heading(page: &str, group: &str) -> impl IntoElement {
