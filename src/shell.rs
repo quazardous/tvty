@@ -39,7 +39,9 @@ use crate::sessions::{self, Board, Terminal};
 use crate::settings::{Preferences, SCHEMA, Settings};
 use gpui_kit::component::switch::Switch;
 use tvty_config::schema::shown;
-use tvty_config::{Kind as SettingKind, Setting, Value};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
+use tvty_config::{Kind as SettingKind, Provider, Query, Setting, Value, search};
 
 /// The terminals' font size, which shortcuts step too.
 const TERMINAL_FONT: &str = "appearance.terminal_font_size";
@@ -103,6 +105,10 @@ pub struct Shell {
     applied: Preferences,
     /// The shortcuts' page listening for a key.
     capture: Option<Capture>,
+    /// The options' search box, their scroll, and a group to bring up.
+    options_search: Entity<InputState>,
+    options_scroll: ScrollHandle,
+    options_jump: std::cell::Cell<Option<&'static str>>,
     /// A side's edge is being dragged.
     resizing: Option<Side>,
     /// The edge has moved since it was pressed.
@@ -440,6 +446,14 @@ impl Shell {
         let (notices, wire_notices) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
         let wire = crate::aiball::start_wire(&aiball.user, notices);
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
+        // The options' search: each keystroke filters the page again.
+        let options_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search…"));
+        cx.subscribe_in(&options_search, window, |_, _, event: &InputEvent, _, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
         // What the views say to whom it may concern.
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
             // A gesture moved the board: aiball pushes what changed.
@@ -507,6 +521,9 @@ impl Shell {
             settings: Settings::current(cx),
             applied: crate::config::get::<Preferences>(cx).clone(),
             capture: None,
+            options_search,
+            options_scroll: ScrollHandle::new(),
+            options_jump: std::cell::Cell::new(None),
             resizing: None,
             dragged: false,
             options: None,
@@ -1272,7 +1289,13 @@ impl Shell {
         // before this); here, the keys of what is up: Esc, the slider's and
         // the gallery's.
         if key == "escape" && self.options.is_some() {
-            self.toggle_options(window, cx);
+            // A search first gives way, then the page closes.
+            if self.options_search.read(cx).value().is_empty() {
+                self.toggle_options(window, cx);
+            } else {
+                self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
+                cx.notify();
+            }
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
             self.afk_menu = false;
@@ -1518,8 +1541,9 @@ impl Shell {
         if self.options.take().is_none() {
             self.options = Some(Section::Appearance);
             theme::load(cx);
-            // Keys go to the page, not to the terminal.
-            window.focus(&self.focus.clone(), cx);
+            // Keys go to the search, not to the terminal: ctrl+, and type.
+            let focus = self.options_search.read(cx).focus_handle(cx);
+            window.focus(&focus, cx);
         } else if let Some(terminal) = self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
             let focus = terminal.read(cx).focus_handle().clone();
             window.focus(&focus, cx);
@@ -1527,59 +1551,215 @@ impl Shell {
         cx.notify();
     }
 
+    /// The groups the tree lists under a page, in its order.
+    fn page_groups(section: Section) -> Vec<&'static str> {
+        let schema = |page: &str| SCHEMA.groups(page).into_iter().map(|(group, _)| group).collect::<Vec<_>>();
+        match section {
+            Section::Appearance => schema("Appearance"),
+            Section::Layout => schema("Layout").into_iter().chain(["Sides"]).collect(),
+            Section::TicketList => schema("Ticket list").into_iter().chain(["Legend"]).collect(),
+            Section::Shortcuts => vec!["Window", "Terminal", "Fixed keys"],
+            Section::About => Vec::new(),
+        }
+    }
+
+    /// A page as sections, each a group the tree lists (or none: a note).
+    fn page_sections(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
+        let schema = |shell: &Self, page: &str, cx: &mut Context<Self>| {
+            SCHEMA
+                .groups(page)
+                .into_iter()
+                .map(|(group, settings)| (Some(group), shell.settings_group(group, &settings, &[], cx).into_any_element()))
+                .collect::<Vec<_>>()
+        };
+        match section {
+            Section::Appearance => {
+                let mut sections = schema(self, "Appearance", cx);
+                sections.push((
+                    None,
+                    option_note(
+                        "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
+                    )
+                    .into_any_element(),
+                ));
+                sections
+            }
+            Section::Layout => {
+                let mut sections = schema(self, "Layout", cx);
+                let sides = div().flex().flex_col().gap_2().child(option_group("Sides")).child(self.options_layout(window, cx));
+                sections.push((Some("Sides"), sides.into_any_element()));
+                sections
+            }
+            Section::TicketList => {
+                let mut sections = schema(self, "Ticket list", cx);
+                let legend = div().flex().flex_col().child(option_group("Legend")).child(options_ticket_list());
+                sections.push((Some("Legend"), legend.into_any_element()));
+                sections
+            }
+            Section::Shortcuts => self.shortcut_sections(None, cx),
+            Section::About => vec![(None, self.options_about(cx).into_any_element())],
+        }
+    }
+
+    /// What the search finds, as sections headed page › group: the
+    /// preferences' rows and the shortcuts' rows, the words marked.
+    fn search_sections(&self, query: &Query, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
+        let map = keymap::current(cx);
+        let mut items = crate::options::program_items(&self.applied);
+        items.extend(crate::options::shortcut_items(&map));
+        let found = search(&items, query);
+        let mut sections: Vec<(Option<&'static str>, AnyElement)> = Vec::new();
+        // The preferences, by page and group.
+        let mut headings: Vec<(String, String)> = Vec::new();
+        for item in found.iter().filter(|i| i.provider == Provider::Program) {
+            let heading = (item.page.clone(), item.group.clone());
+            if !headings.contains(&heading) {
+                headings.push(heading);
+            }
+        }
+        for (page, group) in headings {
+            let settings: Vec<&'static Setting> = found
+                .iter()
+                .filter(|i| i.provider == Provider::Program && i.page == page && i.group == group)
+                .filter_map(|i| SCHEMA.get(&i.key))
+                .collect();
+            let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(result_heading(&page, &group));
+            if settings.iter().all(|s| s.kind == SettingKind::Choice) {
+                let mut lists = div().flex().gap_6();
+                for setting in &settings {
+                    lists = lists.child(self.choice_list(setting, cx));
+                }
+                out = out.child(lists);
+            } else {
+                for setting in settings {
+                    match setting.kind {
+                        SettingKind::Choice => out = out.child(self.choice_list(setting, cx)),
+                        _ => out = out.children(self.setting_row(setting, &query.words, cx)),
+                    }
+                }
+            }
+            sections.push((None, out.into_any_element()));
+        }
+        // The shortcuts, by context.
+        let commands: HashSet<String> = found.iter().filter(|i| i.provider == Provider::Shortcuts).map(|i| i.key.clone()).collect();
+        if !commands.is_empty() {
+            sections.extend(self.shortcut_sections(Some(&commands), cx));
+        }
+        sections
+    }
+
     fn options_view(&self, section: Section, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut nav = div()
+        let text = self.options_search.read(cx).value().to_string();
+        let query = Query::parse(&text);
+        let searching = !query.is_empty();
+        let sections = if searching { self.search_sections(&query, cx) } else { self.page_sections(section, window, cx) };
+        // A group clicked in the tree: its section brought to the top.
+        if let Some(group) = self.options_jump.take() {
+            if let Some(at) = sections.iter().position(|(g, _)| *g == Some(group)) {
+                self.options_scroll.scroll_to_top_of_item(at + 1);
+            }
+        }
+        // The group in view, for the tree: the last one begun above the top.
+        let top = self.options_scroll.top_item();
+        let in_view = sections.iter().take(top.max(1)).filter_map(|(g, _)| *g).last();
+        let empty = searching && sections.is_empty();
+        // Searching, the tree keeps the branches that found something.
+        let hits: Option<HashSet<(String, String)>> = searching.then(|| {
+            let map = keymap::current(cx);
+            let mut items = crate::options::program_items(&self.applied);
+            items.extend(crate::options::shortcut_items(&map));
+            search(&items, &query).into_iter().map(|i| (i.page.clone(), i.group.clone())).collect()
+        });
+        let page_hit = |page: Section| hits.as_ref().is_none_or(|h| h.iter().any(|(p, _)| p == page.title()));
+        let group_hit = |page: Section, group: &str| hits.as_ref().is_none_or(|h| h.contains(&(page.title().to_string(), group.to_string())));
+
+        let mut tree = div()
+            .id("options-tree")
             .flex()
             .flex_col()
             .gap_0p5()
-            .w(px(220.))
+            .flex_1()
+            .min_h_0()
+            .overflow_y_scroll();
+        for page in Section::ALL.into_iter().filter(|p| page_hit(*p)) {
+            let chosen = !searching && page == section;
+            tree = tree.child(
+                div()
+                    .id(SharedString::from(format!("options-{}", page.title())))
+                    .px_2()
+                    .py_1()
+                    .rounded_md()
+                    .cursor_pointer()
+                    .when(chosen, |d| d.bg(p().active).text_color(p().text))
+                    .when(!chosen, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
+                    .child(page.title())
+                    .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, None, window, cx))),
+            );
+            // The page's groups, under it.
+            for group in Self::page_groups(page).into_iter().filter(|g| group_hit(page, g)) {
+                let lit = chosen && in_view == Some(group);
+                tree = tree.child(
+                    div()
+                        .id(SharedString::from(format!("options-{}-{group}", page.title())))
+                        .ml_3()
+                        .px_2()
+                        .py_0p5()
+                        .rounded_md()
+                        .text_sm()
+                        .cursor_pointer()
+                        .when(lit, |d| d.text_color(p().accent))
+                        .when(!lit, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
+                        .child(group)
+                        .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, Some(group), window, cx))),
+                );
+            }
+        }
+        let nav = div()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .w(px(240.))
             .flex_none()
             .h_full()
             .p_3()
             .bg(p().surface)
             .border_r_1()
             .border_color(p().border)
+            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
+            .child(Input::new(&self.options_search).cleanable(true))
+            .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
+            .child(tree);
+
+        let title: SharedString = if searching { format!("Search: {text}").into() } else { section.title().into() };
+        let title_row = div()
+            .flex()
+            .items_center()
+            .pb_4()
+            .child(div().flex_1().min_w_0().truncate().text_xl().font_weight(FontWeight::BOLD).child(title))
             .child(
                 div()
+                    .id("options-close")
                     .px_2()
-                    .pb_3()
-                    .text_lg()
-                    .font_weight(FontWeight::BOLD)
-                    .child("Options"),
-            );
-        for item in Section::ALL {
-            let chosen = item == section;
-            nav = nav.child(
-                div()
-                    .id(SharedString::from(format!("options-{}", item.title())))
-                    .px_2()
-                    .py_1p5()
-                    .rounded_md()
+                    .rounded_sm()
+                    .text_sm()
+                    .text_color(p().muted)
                     .cursor_pointer()
-                    .when(chosen, |d| d.bg(p().active).text_color(p().text))
-                    .when(!chosen, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
-                    .child(item.title())
-                    .on_click(cx.listener(move |shell, _, _, cx| {
-                        shell.end_capture(cx);
-                        shell.options = Some(item);
-                        cx.notify();
-                    })),
+                    .hover(|d| d.bg(p().hover).text_color(p().text))
+                    .child("✕  Esc")
+                    .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
             );
-        }
-        let content = match section {
-            Section::Appearance => self
-                .options_settings("Appearance", cx)
-                .child(option_note(
-                    "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
-                ))
-                .into_any_element(),
-            Section::Layout => {
-                div().flex().flex_col().gap_2().child(self.options_settings("Layout", cx)).child(self.options_layout(window, cx)).into_any_element()
-            }
-            Section::TicketList => self.options_settings("Ticket list", cx).child(options_ticket_list()).into_any_element(),
-            Section::Shortcuts => self.options_shortcuts(cx).into_any_element(),
-            Section::About => self.options_about(cx).into_any_element(),
-        };
+        let content = div()
+            .id("options-scroll")
+            .size_full()
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_6()
+            .track_scroll(&self.options_scroll)
+            .overflow_y_scroll()
+            .child(title_row)
+            .when(empty, |d| d.child(option_note("Nothing found. Search a name, a word it says, a key (ctrl+shift+b), a value — or @modified.")))
+            .children(sections.into_iter().map(|(_, section)| section));
         div()
             .id("options")
             .absolute()
@@ -1592,78 +1772,76 @@ impl Shell {
             .child(nav)
             .child(
                 div()
-                    // One per page: each opens at its top.
-                    .id(SharedString::from(format!("options-content-{}", section.title())))
+                    .relative()
                     .flex_1()
                     .min_w_0()
                     .h_full()
-                    .p_6()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .pb_4()
-                            .child(div().flex_1().text_xl().font_weight(FontWeight::BOLD).child(section.title()))
-                            .child(
-                                div()
-                                    .id("options-close")
-                                    .px_2()
-                                    .rounded_sm()
-                                    .text_sm()
-                                    .text_color(p().muted)
-                                    .cursor_pointer()
-                                    .hover(|d| d.bg(p().hover).text_color(p().text))
-                                    .child("✕  Esc")
-                                    .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
-                            ),
-                    )
                     .child(content)
-                    .overflow_y_scrollbar(),
+                    .child(div().absolute().inset_0().child(Scrollbar::new(&self.options_scroll).axis(ScrollbarAxis::Vertical))),
             )
     }
 
-    /// A page of settings, built from the schema: its groups, and a row per
-    /// setting as its kind says — a number steps, a toggle switches, choices
-    /// are lists side by side. Every change goes through [`Self::set_pref`].
-    fn options_settings(&self, page: &str, cx: &mut Context<Self>) -> Div {
-        let mut out = div().flex().flex_col().gap_2().max_w(px(720.));
-        for (group, settings) in SCHEMA.groups(page) {
-            out = out.child(option_group(group));
-            if settings.iter().all(|s| s.kind == SettingKind::Choice) {
-                let mut lists = div().flex().gap_6();
-                for setting in settings {
-                    lists = lists.child(self.choice_list(setting, cx));
-                }
-                out = out.child(lists);
-                continue;
-            }
+    /// A page of the options (the search emptied), at its top — or at
+    /// `group`, brought up.
+    fn open_options_page(&mut self, page: Section, group: Option<&'static str>, window: &mut Window, cx: &mut Context<Self>) {
+        self.end_capture(cx);
+        if !self.options_search.read(cx).value().is_empty() {
+            self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
+        }
+        if self.options != Some(page) || group.is_none() {
+            self.options_scroll.set_offset(point(px(0.), px(0.)));
+        }
+        self.options = Some(page);
+        self.options_jump.set(group);
+        cx.notify();
+    }
+
+    /// A group of settings, built from the schema: its heading, and a row
+    /// per setting as its kind says — a number steps, a toggle switches,
+    /// choices are lists side by side. Every change goes through
+    /// [`Self::set_pref`]; `words`, searched for, are marked.
+    fn settings_group(&self, group: &'static str, settings: &[&'static Setting], words: &[String], cx: &mut Context<Self>) -> Div {
+        let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(option_group(group));
+        if settings.iter().all(|s| s.kind == SettingKind::Choice) {
+            let mut lists = div().flex().gap_6();
             for setting in settings {
-                let key = setting.key;
-                let row = match (setting.kind, SCHEMA.value(&self.applied, key)) {
-                    (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
-                        setting.label,
-                        setting.about,
-                        shown(n, unit),
-                        cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
-                        cx.listener(move |shell, _, _, cx| shell.step_pref(key, 1, cx)),
-                        cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
-                    )
-                    .into_any_element(),
-                    (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
-                        setting.label,
-                        setting.about,
-                        if checked { on } else { off },
-                        Switch::new(SharedString::from(format!("options-switch-{key}")))
-                            .checked(checked)
-                            .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.set_pref(key, Value::Toggle(*wanted), cx))),
-                    )
-                    .into_any_element(),
-                    _ => continue,
-                };
+                lists = lists.child(self.choice_list(setting, cx));
+            }
+            return out.child(lists);
+        }
+        for setting in settings {
+            if let Some(row) = self.setting_row(setting, words, cx) {
                 out = out.child(row);
             }
         }
         out
+    }
+
+    /// One setting's row: a number's stepper, a toggle's switch.
+    fn setting_row(&self, setting: &'static Setting, words: &[String], cx: &mut Context<Self>) -> Option<AnyElement> {
+        let key = setting.key;
+        Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
+            (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
+                setting.label,
+                marked(setting.label, words),
+                setting.about,
+                shown(n, unit),
+                cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
+                cx.listener(move |shell, _, _, cx| shell.step_pref(key, 1, cx)),
+                cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
+            )
+            .into_any_element(),
+            (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
+                marked(setting.label, words),
+                setting.about,
+                if checked { on } else { off },
+                Switch::new(SharedString::from(format!("options-switch-{key}")))
+                    .checked(checked)
+                    .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.set_pref(key, Value::Toggle(*wanted), cx))),
+            )
+            .into_any_element(),
+            _ => return None,
+        })
     }
 
     /// A choice's list: its label, what it says, the choices (the themes,
@@ -1889,7 +2067,9 @@ impl Shell {
     /// back; the keys given back to the program; those a terminal masks;
     /// then the keys that are not commands. Every change goes to
     /// keymap.toml, which the user may edit too.
-    fn options_shortcuts(&self, cx: &mut Context<Self>) -> Div {
+    /// The shortcuts' page as sections: its header, one per context, the
+    /// fixed keys. With `only`, just the rows of those commands (a search).
+    fn shortcut_sections(&self, only: Option<&HashSet<String>>, cx: &mut Context<Self>) -> Vec<(Option<&'static str>, AnyElement)> {
         let (map, error) = keymap::in_force(cx);
         let bindings = map.bindings();
         let listening = |command: &str, key: Option<&keymap::Key>| {
@@ -1920,7 +2100,8 @@ impl Shell {
         };
         let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
         let changed = map.commands().iter().any(|c| map.is_changed(c.name)) || bindings.iter().any(|b| b.command.is_none());
-        let mut page = div()
+        let mut sections: Vec<(Option<&'static str>, AnyElement)> = Vec::new();
+        let header = div()
             .flex()
             .flex_col()
             .max_w(px(960.))
@@ -1941,10 +2122,14 @@ impl Shell {
             .when_some(error, |d, error| {
                 d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
             });
+        if only.is_none() {
+            sections.push((None, header.into_any_element()));
+        }
         let masked = map.masked();
         for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
-            page = page.child(option_group(title));
-            for command in keymap::COMMANDS.iter().filter(|c| c.context == context) {
+            let mut group = div().flex().flex_col().max_w(px(960.)).child(option_group(title));
+            let mut rows = 0;
+            for command in keymap::COMMANDS.iter().filter(|c| c.context == context && only.is_none_or(|o| o.contains(c.name))) {
                 let name = command.name;
                 let mut chips = div().flex().flex_wrap().items_center().gap_1();
                 for binding in bindings.iter().filter(|b| b.context == context && b.command == Some(name)) {
@@ -2030,13 +2215,14 @@ impl Shell {
                         row = row.child(div().pt_1().text_sm().text_color(p().danger).child(refused));
                     }
                 }
-                page = page.child(row);
+                group = group.child(row);
+                rows += 1;
             }
             // The keys given back to what has the focus: × binds them again.
-            for freed in bindings.iter().filter(|b| b.context == context && b.command.is_none()) {
+            for freed in bindings.iter().filter(|b| only.is_none() && b.context == context && b.command.is_none()) {
                 let key = freed.key.clone();
                 let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
-                page = page.child(
+                group = group.child(
                     div()
                         .flex()
                         .items_center()
@@ -2056,10 +2242,16 @@ impl Shell {
                         .child(div().flex_1().min_w_0().text_sm().child(to)),
                 );
             }
+            if rows > 0 {
+                sections.push((Some(crate::options::context_group(context)), group.into_any_element()));
+            }
         }
-        page = page.child(option_group("Fixed keys"));
+        if only.is_some() {
+            return sections;
+        }
+        let mut fixed = div().flex().flex_col().max_w(px(960.)).child(option_group("Fixed keys"));
         for (keys, what) in FIXED_KEYS {
-            page = page.child(
+            fixed = fixed.child(
                 div()
                     .flex()
                     .items_center()
@@ -2071,7 +2263,8 @@ impl Shell {
                     .child(div().flex_1().min_w_0().text_sm().child(*what)),
             );
         }
-        page
+        sections.push((Some("Fixed keys"), fixed.into_any_element()));
+        sections
     }
 
     // ── Preferences ─────────────────────────────────────────────────────
@@ -3072,6 +3265,12 @@ fn option_group(title: &'static str) -> impl IntoElement {
         .child(title.to_uppercase())
 }
 
+/// A search result's heading: where it lives, page › group.
+fn result_heading(page: &str, group: &str) -> impl IntoElement {
+    let path = if group.is_empty() { page.to_string() } else { format!("{page} › {group}") };
+    div().pt_4().pb_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(path.to_uppercase())
+}
+
 fn option_note(text: &'static str) -> impl IntoElement {
     div().py_2().text_sm().text_color(p().muted).child(text)
 }
@@ -3123,6 +3322,7 @@ fn option_row(
 /// A size: its name and what it does, − the value +, and back to default.
 fn option_stepper(
     name: &'static str,
+    label: impl IntoElement,
     about: &'static str,
     value: String,
     minus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -3158,7 +3358,7 @@ fn option_stepper(
                 .gap_1()
                 .flex_1()
                 .min_w_0()
-                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().font_weight(FontWeight::BOLD).child(label))
                 .child(div().text_sm().text_color(p().muted).child(about)),
         )
         .child(button("minus", "−").on_click(minus))
@@ -3167,8 +3367,35 @@ fn option_stepper(
         .child(button("reset", "Default").on_click(reset))
 }
 
+/// `text` with the words searched for marked.
+fn marked(text: &str, words: &[String]) -> StyledText {
+    let lower = text.to_lowercase();
+    let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();
+    // Byte for byte only: a lowercase that changes lengths is not marked.
+    if lower.len() == text.len() {
+        for word in words.iter().map(|w| w.to_lowercase()).filter(|w| !w.is_empty()) {
+            let mut from = 0;
+            while let Some(at) = lower[from..].find(&word) {
+                let start = from + at;
+                ranges.push(start..start + word.len());
+                from = start + word.len();
+            }
+        }
+    }
+    ranges.sort_by_key(|r| r.start);
+    let mut merged: Vec<std::ops::Range<usize>> = Vec::new();
+    for range in ranges {
+        match merged.last_mut() {
+            Some(last) if range.start <= last.end => last.end = last.end.max(range.end),
+            _ => merged.push(range),
+        }
+    }
+    let style = HighlightStyle { background_color: Some(p().accent.opacity(0.35)), ..Default::default() };
+    StyledText::new(text.to_string()).with_highlights(merged.into_iter().map(move |r| (r, style)))
+}
+
 /// A toggle: its name and what it does, its state, a switch.
-fn option_switch(name: &'static str, about: &'static str, state: &'static str, switch: Switch) -> impl IntoElement {
+fn option_switch(label: impl IntoElement, about: &'static str, state: &'static str, switch: Switch) -> impl IntoElement {
     div()
         .flex()
         .items_center()
@@ -3185,7 +3412,7 @@ fn option_switch(name: &'static str, about: &'static str, state: &'static str, s
                 .gap_1()
                 .flex_1()
                 .min_w_0()
-                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().font_weight(FontWeight::BOLD).child(label))
                 .child(div().text_sm().text_color(p().muted).child(about)),
         )
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))

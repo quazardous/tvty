@@ -346,13 +346,18 @@ cards keep their size: they fit the screen to themselves.
 
 ## Options
 
-A full page (⚙ in the title bar, or ctrl+,) with its sections on the left:
+A full page (⚙ in the title bar, or ctrl+,): on the left a search box
+(focused at once: ctrl+, then type) and a tree, each page unfolded into its
+groups — a click on a group brings it up, the one in view is lit. A search
+finds settings and shortcuts together, by name, text, key
+(`terminal_font_size`, `ctrl+shift+b`) or value, the words marked, the tree
+cut down to what matched; Esc clears it, then closes the page. The pages:
 Appearance (sizes, notifications, the wheel's speed, the window's and the
 terminals' colour themes), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
 shortcuts (all of them, edited in place — see Keys), About (version,
 aiball's socket, who tvty acts as, the live feed, where settings and
-themes live). Esc closes it.
+themes live).
 
 The settings' pages are built from the settings themselves: each is
 declared once in `src/settings.rs` (its key in `settings.toml`, its page and

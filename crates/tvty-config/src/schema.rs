@@ -147,6 +147,21 @@ impl Schema {
         })
     }
 
+    /// The default of `key`, as a [`Value`]; none for an action.
+    pub fn default_value(&self, key: &str) -> Option<Value> {
+        Some(match self.get(key)?.kind {
+            Kind::Number { default, .. } => Value::Number(default),
+            Kind::Toggle { default, .. } => Value::Toggle(default),
+            Kind::Choice => Value::Choice(None),
+            Kind::Action { .. } => return None,
+        })
+    }
+
+    /// Whether `key` in `set` is not at its default.
+    pub fn is_modified<T: Serialize>(&self, set: &T, key: &str) -> bool {
+        self.value(set, key) != self.default_value(key)
+    }
+
     /// `set` with `key` at `value` — out of the file when it is the default.
     /// A number is kept within its bounds, on its steps.
     pub fn with<T: Serialize + DeserializeOwned>(&self, set: &T, key: &str, value: Value) -> Result<T, String> {
@@ -293,6 +308,16 @@ mod tests {
         const SPEED: Schema = Schema(&[Setting { key: "look.font", page: "", group: "", label: "", about: "", kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false } }]);
         let prefs = SPEED.stepped(&Prefs::default(), "look.font", 6).unwrap();
         assert_eq!(prefs.look.font, Some(2.2));
+    }
+
+    #[test]
+    fn modified_is_away_from_the_default() {
+        let prefs = Prefs::default();
+        assert!(!SCHEMA.is_modified(&prefs, "look.font"));
+        let prefs = SCHEMA.with(&prefs, "look.font", Value::Number(20.)).unwrap();
+        assert!(SCHEMA.is_modified(&prefs, "look.font"));
+        let prefs = SCHEMA.with(&prefs, "alerts.own", Value::Toggle(false)).unwrap();
+        assert!(SCHEMA.is_modified(&prefs, "alerts.own") && !SCHEMA.is_modified(&prefs, "look.theme"));
     }
 
     #[test]

@@ -21,6 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Options as a tree and a search, as in VS Code: each page unfolds into
+  its groups (a click brings one up; the one in view is lit), and a search
+  box — focused as the options open — finds settings and shortcuts
+  together, by name, what they say, their key (`terminal_font_size`,
+  `ctrl+shift+b`) or their value, the words marked; the tree keeps only
+  the branches that found something. Esc clears the search, then closes.
 - One order for the projects: the list, the slider (ctrl+tab) and the
   gallery put the project used last first, as ctrl+tab goes — the slider's
   stacks now move with it too. ⇅ in the list's header (or Options > Layout)
