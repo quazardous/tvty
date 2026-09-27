@@ -5,7 +5,11 @@ edition = "2024"
 description = "A native terminal for working with many AI agents, their tickets beside"
 license = "MIT"
 
+[workspace]
+members = ["crates/*"]
+
 [dependencies]
+tvty-keys = { path = "crates/tvty-keys" }
 alacritty_terminal = "0.26"
 anyhow = "1.0.104"
 base64 = "0.22"

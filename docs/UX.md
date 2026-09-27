@@ -355,7 +355,8 @@ else (`src/keymap.rs`). The deepest binding wins, and a key bound nowhere
 goes on to the terminal's program. `keymap.toml`, beside `settings.toml`,
 overrides the defaults below — a `[Terminal]` or `[Window]` section, and in
 it `ctrl-alt-t = "theme.next"`: a key bound to a command by its name, or
-`ctrl-c = false` to give it back to what has the focus. It is read again once
+`ctrl-c = false` to give it back to what has the focus. A key may be
+written as Options shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is read again once
 saved; a wrong one is said in a notification and changes nothing. Options
 > Keyboard shortcuts shows what is in force, what the file changed, and a
 window key a terminal masks.

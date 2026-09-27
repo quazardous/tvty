@@ -37,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Customizable shortcuts: `keymap.toml` binds a command to other keys, or
   gives a key back to the terminal's program, by context (Terminal when a
   terminal has the focus, Window elsewhere); read again once saved. Options
-  > Keyboard shortcuts shows what is in force.
+  > Keyboard shortcuts shows what is in force. A key is written as you
+  like: `ctrl-alt-t`, `Ctrl+Alt+T`, `alt-ctrl-t` are one key.
 - "⟳ restart" while Claude works reads "when idle": a click arms it, and
   tvty restarts Claude as soon as it is idle, instead of "Claude is busy".
 - The sections of the sessions list and of the ticket panel resize: drag a

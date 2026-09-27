@@ -2809,7 +2809,8 @@ fn option_stepper(
 /// keys given back to the program; those a terminal masks; then the keys
 /// that are not commands.
 fn options_shortcuts(cx: &App) -> impl IntoElement {
-    let (bindings, error) = keymap::in_force(cx);
+    let (keymap, error) = keymap::in_force(cx);
+    let bindings = keymap.bindings();
     let chip = |key: String| {
         div().px_1p5().rounded_sm().border_1().border_color(p().border).bg(p().surface).text_sm().child(key)
     };
@@ -2838,14 +2839,14 @@ fn options_shortcuts(cx: &App) -> impl IntoElement {
         .when_some(error, |d, error| {
             d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
         });
-    let masked = keymap::masked(&bindings);
+    let masked = keymap.masked();
     for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
         page = page.child(option_group(title));
         for command in keymap::COMMANDS.iter().filter(|c| c.context == context) {
             let bound: Vec<&keymap::Binding> = bindings.iter().filter(|b| b.context == context && b.command == Some(command.name)).collect();
-            let keys = bound.iter().map(|b| keymap::pretty(&b.key)).collect::<Vec<_>>();
+            let keys = bound.iter().map(|b| b.key.pretty()).collect::<Vec<_>>();
             // Changed by the file: a key of its own, or a default key taken.
-            let custom = bound.iter().any(|b| b.custom) || command.keys.iter().any(|k| !bound.iter().any(|b| b.key == *k));
+            let custom = keymap.is_changed(command.name);
             let mut what = command.what.to_string();
             if keys.is_empty() {
                 what = format!("{what} (no key)");
@@ -2858,7 +2859,7 @@ fn options_shortcuts(cx: &App) -> impl IntoElement {
         // The keys given back to what has the focus.
         for freed in bindings.iter().filter(|b| b.context == context && b.command.is_none()) {
             let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
-            page = page.child(row(vec![keymap::pretty(&freed.key)], to.to_string(), None, true));
+            page = page.child(row(vec![freed.key.pretty()], to.to_string(), None, true));
         }
     }
     page = page.child(option_group("Fixed keys"));

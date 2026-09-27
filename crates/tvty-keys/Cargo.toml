@@ -1,0 +1,10 @@
+[package]
+name = "tvty-keys"
+version = "0.1.0"
+edition = "2024"
+description = "Keyboard shortcuts as data: keys, a keymap of commands in contexts, and the file of what the user changed"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
