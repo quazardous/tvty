@@ -210,6 +210,10 @@ pub struct Layout {
     pub sessions_folded: Vec<String>,
     /// The accordions' sections given a height by hand (`list/section`).
     pub section_heights: HashMap<String, f32>,
+    /// A full-screen ticket's fields column, in pixels; none until the user
+    /// drags its border.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fields_width: Option<f32>,
 }
 
 impl Default for Layout {
@@ -221,6 +225,7 @@ impl Default for Layout {
             sidebar_width: None,
             sessions_folded: vec!["idle".into(), "shut".into()],
             section_heights: HashMap::new(),
+            fields_width: None,
         }
     }
 }
@@ -239,6 +244,7 @@ impl Stored for Layout {
             sidebar_width: old.get("sidebar_width").and_then(Value::as_f64).map(|v| v as f32),
             sessions_folded: old.get("sessions_folded").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or(default.sessions_folded),
             section_heights: old.get("section_heights").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
+            fields_width: None,
         })
     }
 }

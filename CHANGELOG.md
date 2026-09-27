@@ -72,7 +72,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only when the text under it has changed.
 - A ticket shown full screen uses the whole width of a wide screen: its
   talk was held to 820 px, centred, and its fields took a third of the
-  screen (now 460 px at most).
+  screen (now 460 px at most). The border between the fields and the talk
+  is dragged to resize them (kept), a double click on it gives the default
+  back.
 - The desktop launcher survives a new session: it runs ~/.local/bin/tvty,
   always there, which runs the build — in a folder mounted after the
   session starts (an encrypted home folder), the build was missing when the
