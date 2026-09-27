@@ -101,6 +101,11 @@ pub struct TerminalView {
     /// Code draws its screen again and again), and the drag would lose it
     /// under the pointer. Put back after each output and each move.
     dragging: Option<Selection>,
+    /// The selection once the button is released, kept by tvty too: the
+    /// program (or tmux, redrawing its client) writes the same text again,
+    /// the emulator drops the selection, and tvty puts it back — as long as
+    /// the text under it is still what was selected.
+    kept: Option<Selection>,
     /// The right click's menu (Copy, Paste), where it was opened.
     menu: Option<Point<Pixels>>,
     /// The text selected last, read as the drag goes: a program that draws
@@ -252,6 +257,7 @@ impl TerminalView {
             selecting: false,
             menu: None,
             dragging: None,
+            kept: None,
             selected_text: None,
         }
     }
@@ -271,6 +277,8 @@ impl TerminalView {
                     if term.selection.is_none() {
                         term.selection = Some(selection);
                     }
+                } else if self.kept.is_some() {
+                    self.keep_selection();
                 }
                 cx.notify();
             }
@@ -426,8 +434,26 @@ impl TerminalView {
         self.write(bytes.into_bytes());
     }
 
+    /// After output: the selection the emulator still has is the one kept
+    /// (it follows the lines as they scroll); one it dropped is put back if
+    /// the same text is still under it, else let go.
+    fn keep_selection(&mut self) {
+        let mut term = self.term.lock();
+        if let Some(selection) = term.selection.clone() {
+            self.kept = Some(selection);
+            return;
+        }
+        term.selection = self.kept.clone();
+        let same = term.selection_to_string().filter(|t| !t.is_empty()) == self.selected_text;
+        if !same {
+            term.selection = None;
+            self.kept = None;
+        }
+    }
+
     fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.selected_text = None;
+        self.kept = None;
         let mut term = self.term.lock();
         if term.selection.take().is_some() {
             cx.notify();
@@ -462,6 +488,7 @@ impl TerminalView {
         let selection = Selection::new(kind, point, side);
         self.term.lock().selection = Some(selection.clone());
         self.dragging = Some(selection);
+        self.kept = None;
         self.selected_text = None;
         self.selecting = true;
         cx.notify();
@@ -503,6 +530,7 @@ impl TerminalView {
         if let Some(text) = term.selection_to_string().filter(|t| !t.is_empty()) {
             self.selected_text = Some(text);
         }
+        self.kept = term.selection.clone();
         drop(term);
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         if let Some(text) = self.selected_text.clone() {
