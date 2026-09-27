@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 > This is a curated, human-readable record — **not a commit log**. Each
 > entry says *what changed and why it matters to a user*, in plain
 > language, not *how* it was implemented. Skip internal refactors.
+> Do not add a line per commit: a fix to something new in the same version
+> is part of its entry, and a series of commits on one feature is one line.
+> No protocol names, signals, timings or file internals unless the user
+> sees or sets them.
 >
 > **House style** for editors:
 > - One short bullet per change. Multi-paragraph entries are only for
@@ -20,171 +24,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-- A ticket waiting for moderation wears a construction tape — yellow and
-  black bands — on its row's edge, in the panel and the full list (and in
-  the legend).
-- The pings that came while tvty was closed (a restart, the machine
-  asleep) come at start as one notification: the last one said, the
-  others counted; a click opens its ticket.
-- "Eclipse Dark" and "Eclipse Light" colour themes, from the colours of
-  Eclipse's classic themes as VS Code ports them ("Eclipse Classic Dark",
-  "Eclipse Color Theme").
-- The title bar's theme list chooses the terminals' theme too (a Window /
-  Terminal switch), and a click beside it closes it.
-- Over a full screen (the options, the full list, a ticket or a new ticket
-  full screen), the notifications come in the window's bottom left corner,
-  out of its way, the newest in the corner.
-- A filter atop the sessions' list: type, and the live, idle and shut
-  sessions keep those whose project, agent, name or folder hold every
-  word, marked; ctrl+shift+f goes there (unfolding the list), Enter opens
-  the session found, the arrows move along them, Esc empties the filter,
-  then gives the keys back to the terminal.
-- Options as a tree and a search, as in VS Code: each page unfolds into
-  its groups (a click brings one up; the one in view is lit), and a search
-  box — focused as the options open — finds settings and shortcuts
-  together, by name, what they say, their key (`terminal_font_size`,
-  `ctrl+shift+b`) or their value, the words marked; the tree keeps only
-  the branches that found something. Esc clears the search, then closes.
-  A setting or a shortcut away from its default has a bar on its left and
-  a ↺ that puts it back; `@modified` in the search lists all of them; a
-  setting shows its key as settings.toml spells it.
-- aiball's own config in the options, on an "aiball" page: its keys by
-  group, a switch, choices or a stepper each (durations as `1h30m`), for
-  the board (Global) or one project — a project's change overrides the
-  board's value and ↺ gives it back; 🔒 marks the keys only a human may
-  change. The search and `@modified` find them too, and a change made
-  elsewhere shows at once.
-- A setting away from its default stands out in the options — a lighter
-  frame, a bar — says what the default is (`Default: 16 px`, in a project
-  `Board: normal`), and has a plain "↺ Default" (or "↺ Board") button to
-  go back to it; shortcuts too (`Default: Ctrl+Shift+K`).
-- aiball's page lists last, apart, the keys the layer shown cannot set —
-  "Board-wide only" in a project (with "Open Global"), "Per project only"
-  in Global, and those aiball reads from `.aiball.yaml` once it says so —
-  instead of mixing them, read-only, among the others. A per-project key
-  no longer claims to come from the board.
-- One order for the projects: the list, the slider (ctrl+tab) and the
-  gallery put the project used last first, as ctrl+tab goes — the slider's
-  stacks now move with it too. ⇅ in the list's header (or Options > Layout)
-  switches to alphabetical.
-- A Claude session's row, tab and card show its agent's own counters, as
-  claude-loop does: `b` its backlog and `e` its events, in light badges
-  with their letter; the project's row keeps the project's counters. Its
-  bar reads `all: backlog: events:` (claude-loop's a: b: e:), then what it
-  holds. With an aiball that computes them, every agent has them, loop or
-  not, and showing its session asks for them afresh.
-- Settings where Linux expects them: your preferences in
-  `~/.config/tvty/settings.toml`, in sections, to edit by hand — tvty puts
-  a change in force once saved, and a file that does not read is said and
-  never written over; the window's layout and the open terminals in
-  `~/.local/state/tvty/`; the log in `~/.local/state/tvty/tvty.log` (the
-  previous run's in `tvty.log.1`). The older `state.json` is taken over
-  once, then renamed `state.json.migrated`.
-- A setting edited by hand out of its bounds (a font of 50 px) is refused,
-  and the notification names it and its bounds.
-- Options built from the settings themselves: the mouse wheel's speed is
-  now there (Appearance > Mouse), the thread's order on the Ticket list
-  page, and each on/off setting is a switch. Each page keeps its scroll.
+## [0.3.0] - 2026-09-27
 
-- Copy and paste in the terminals: a drag selects whatever the program (tmux
-  with its mouse on, where it did nothing), copied at once to the primary
-  selection; middle click pastes it; Shift+Insert pastes the clipboard; a
-  right click opens Copy / Paste. What was selected is kept even when the
-  program draws over it (Claude Code). Ctrl+C stays ^C.
-- Shortcuts edited in Options > Keyboard shortcuts: click a key and press
-  the new one, + to add a key, × to remove one, Default to put a command's
-  keys back. A key another command uses asks before taking it; a key a
-  terminal's program types is refused there.
-- Customizable shortcuts: `keymap.toml` binds a command to other keys, or
-  gives a key back to the terminal's program, by context (Terminal when a
-  terminal has the focus, Window elsewhere); read again once saved. Options
-  > Keyboard shortcuts shows what is in force. A key is written as you
-  like: `ctrl-alt-t`, `Ctrl+Alt+T`, `alt-ctrl-t` are one key.
-- "⟳ restart" while Claude works reads "when idle": a click arms it, and
-  tvty restarts Claude as soon as it is idle, instead of "Claude is busy".
-- The sections of the sessions list and of the ticket panel resize: drag a
-  title to move the border with the section above; kept from one start to
-  the next, a double click gives the shares back.
-- tvty closed and started again opens the terminals that were open, on
-  the one shown last.
+### Added
+
+- Options as a tree with a search, as in VS Code: pages unfold into their
+  groups, and the search finds settings and shortcuts by name, text, key or
+  value; `@modified` lists what you changed.
+- A changed setting stands out, shows its default, and has a "↺ Default"
+  button to go back to it.
+- aiball's own settings in the options, for the whole board or one project
+  (durations written `1h30m`); those that can only be set elsewhere are
+  listed apart and say where.
+- Keyboard shortcuts you can change, in Options › Keyboard shortcuts or in
+  `keymap.toml`.
+- Settings in `~/.config/tvty/settings.toml`, editable by hand (applied once
+  saved; a broken file is reported, never overwritten); the layout, the
+  open terminals and the log in `~/.local/state/tvty/`.
+- A filter atop the sessions list (Ctrl+Shift+F): type to narrow the
+  sessions, Enter opens one, the arrows move between them.
+- Copy and paste in the terminals: drag to select, middle click or
+  Shift+Insert to paste, a right click for a menu.
+- Each Claude session shows its agent's backlog and events (`b`, `e`).
+- Tickets waiting for moderation wear a yellow and black construction tape.
+- Pings that came while tvty was closed are summed up in one notification
+  at start.
+- "Eclipse Dark" and "Eclipse Light" colour themes; the title bar's theme
+  menu also picks the terminals' theme.
+- The sections of the sessions list and of the ticket panel resize by their
+  titles, and tvty opens again the terminals left open.
 
 ### Changed
 
-- A held loop shows claude-loop's little man again in the agent bar: `웃`
-  and the seconds left of a ten-minute hold, `웃∞` when held for good.
-- Closing the tab shown goes back to the terminal used before it, in its
-  group or another, rather than to an empty window.
+- One order for the projects everywhere: the last used first, or A–Z (⇅).
+  The projects' list keeps its order while you use it; the slider follows
+  your use as it goes.
+- Over a full-screen view, notifications come in the bottom left corner.
+- A loop's boot shows in yellow, with its time elapsed and left, as in
+  claude-loop.
+- "⟳ restart" also works while Claude is busy: it restarts as soon as Claude
+  is idle, and the terminal comes back on its own.
+- Closing the tab shown goes back to the terminal used before it.
+- A held loop shows claude-loop's little man (`웃`) in the agent bar.
 
 ### Fixed
 
-- A Claude that installed an update restarts from its bar whether it works
-  or not: its loop waits for its next idle (aiball's `when_idle`), the bar
-  says "when idle" meanwhile — whoever asked for it — and the terminal
-  opens again on its own once the loop is back, not on an end screen.
-- The projects' list no longer moves a project to the top when one of its
-  terminals is clicked: it takes the order of use once, when the work left
-  last time is back (⇅ takes it again); the slider still follows the order
-  of use as it goes.
-- A terminal closed then opened again at once opens at once: the stop of
-  the closed one (the host gives an interactive shell up to 10 s) no
-  longer holds up tvty's other calls to aiball, and a name being stopped
-  or just asked is not asked again ("a session named … runs already").
-- Opening or closing a side no longer waits 120 ms before the terminal
-  takes its new size (from ~140 ms to ~35 ms before the program redraws, on
-  aiball's host): a size alone goes at once, only a drag waits for the
-  size to hold still. On aiball's host, the terminal shown takes the
-  session's size back when selected or resized (another client typing
-  elsewhere kept it); cards attach read-only, as the protocol names it; a
-  loop of the host just started, not yet listed live, is opened rather
-  than started again.
-- A loop's boot shows as claude-loop shows it: yellow — the agent bar on
-  yellow, "starting · 6s · 24s left" — and the session's row says
-  "starting", not the agent's last state ("idle · 21m", left by its
-  previous run); once booted, it is idle since the boot ended.
-- Idle loops of no aiball project are listed last, under "No project", not
-  under a bare "—"; and each project heads its idle loops once.
-- An idle loop is listed under the project aiball knows its agent in, not
-  under "No project" when its plate names none (a loop moved onto
-  aiball's host keeps only its agent there).
-- "start" on an idle loop of aiball's host whose program ended (its host
-  still up) restarts it there, its conversation resumed, and opens it —
-  claude-loop refused a plain start. A loop started on the host opens as
-  its agent's terminal.
-- A loop moved onto aiball's session host is no longer listed as idle
-  too (its "start" was refused): it shows as its agent's terminal only.
-- Closing a shell on aiball's host no longer reports "no answer" when the
-  host takes its time to stop it (up to 15 s): tvty waits for it.
-- A drag in a terminal keeps its selection while the program draws its
-  screen again (Claude Code): it vanished under the pointer.
-- ...and keeps it once the button is released: a full redraw (tmux
-  redrawing the terminal, Claude Code its screen) made it vanish. It goes
-  only when the text under it has changed.
-- A ticket shown full screen uses the whole width of a wide screen: its
-  talk was held to 820 px, centred, and its fields took a third of the
-  screen (now 460 px at most). The border between the fields and the talk
-  is dragged to resize them (kept), a double click on it gives the default
-  back. The full ticket list and the new ticket's page do the same, with
-  the same width: dragged on one page, it holds on the others.
-- The desktop launcher survives a new session: it runs ~/.local/bin/tvty,
-  always there, which runs the build — in a folder mounted after the
-  session starts (an encrypted home folder), the build was missing when the
-  desktop read its launchers, and the launcher and its pin were dropped.
-- Tab and Shift+Tab reach the terminal (a shell's completion, a program's
-  fields): the window took them to move the focus.
-- The ticket lists no longer flicker when the wheel pushes past their end:
-  a wheel at the end is stopped, and the rows drawn follow the bounded
-  scroll.
-- No more "N pings unread" at start: aiball's count never goes down for a
-  human (14 963 here), so it said nothing; the pings are notified as they
-  come, and the full list's "Unread" filter lists what is new.
-- A terminal closed from its tab leaves the list at once, not once aiball's
-  host has stopped it.
-- A terminal whose stop fails (aiball's bus not answering) comes back in
-  the list with an error, instead of running on out of sight.
-- The cards of Ctrl+Tab and of the gallery show a shell's screen: its first
-  rows (they showed only the screen's bottom, empty for a shell), tmux's
-  status line aside, and a shell of aiball's host not open in tvty too.
+- Opening or closing a side redraws the terminal about four times faster.
+- A terminal closed and opened again right away opens at once, without a
+  "runs already" error.
+- Loops on aiball's host are listed right (not idle while they run, under
+  their project), and "start" brings a stopped one back instead of failing.
+- Idle loops of no project are listed last, under "No project".
+- A selection in a terminal survives the program redrawing its screen.
+- A full-screen ticket uses the whole width of a wide screen, and its side
+  column can be resized.
+- The desktop launcher survives a new session.
+- Tab and Shift+Tab reach the terminal.
+- The ticket lists no longer flicker at the end of a scroll.
+- No more meaningless "N pings unread" at start.
+- A closed terminal leaves the list at once; one that fails to stop comes
+  back with an error.
+- The slider's and the gallery's cards show a shell's screen.
 
 ## [0.2.0] - 2026-09-26
 
