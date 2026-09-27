@@ -96,11 +96,15 @@ pub fn init(name: Option<&str>, terminal: Option<&str>, cx: &mut App) {
     *TERMINAL_THEME.write().unwrap() = terminal
         .filter(|n| ThemeRegistry::global(cx).themes().contains_key(*n))
         .map(SharedString::from);
-    let name = name
-        .filter(|n| ThemeRegistry::global(cx).themes().contains_key(*n))
-        .map(SharedString::from)
-        .unwrap_or_else(|| ThemeRegistry::global(cx).default_dark_theme().name.clone());
+    let name = known_or_default(name, cx);
     apply(&name, None, cx);
+}
+
+/// `name` when it is a known theme; otherwise the kit's default dark one.
+pub fn known_or_default(name: Option<&str>, cx: &App) -> SharedString {
+    name.filter(|n| ThemeRegistry::global(cx).themes().contains_key(*n))
+        .map(SharedString::from)
+        .unwrap_or_else(|| ThemeRegistry::global(cx).default_dark_theme().name.clone())
 }
 
 /// (Re)reads the themes: the bundled ones, then the user's directory — so a
@@ -191,10 +195,7 @@ pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
 }
 
 fn user_dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(base.join("tvty").join("themes"))
+    Some(crate::config::dir(crate::config::Place::Config)?.join("themes"))
 }
 
 fn palette_of(theme: &Theme) -> Palette {

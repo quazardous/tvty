@@ -393,9 +393,9 @@ impl Shell {
             cx.notify();
         })
         .detach();
-        cx.subscribe(&panel, |shell, _, order: &OrderChanged, _| {
-            shell.settings.thread_newest_first = order.0;
-            shell.settings.save();
+        cx.subscribe(&panel, |shell, _, order: &OrderChanged, cx| {
+            shell.settings.prefs.tickets.newest_first = order.0;
+            shell.settings.save(cx);
         })
         .detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
@@ -414,7 +414,7 @@ impl Shell {
             selected: None,
             recent: Vec::new(),
             panel,
-            settings: Settings::load(),
+            settings: Settings::current(cx),
             resizing: None,
             dragged: false,
             options: None,
@@ -471,21 +471,26 @@ impl Shell {
         .detach();
         // The accordions' heights set by hand: kept once a drag ends or a
         // double click resets them.
-        crate::accordion::set_heights(shell.settings.section_heights.clone());
-        cx.observe_global::<crate::accordion::HeightsChanged>(|shell, _| {
-            shell.settings.section_heights = crate::accordion::heights();
-            shell.settings.save();
+        crate::accordion::set_heights(shell.settings.layout.section_heights.clone());
+        cx.observe_global::<crate::accordion::HeightsChanged>(|shell, cx| {
+            shell.settings.layout.section_heights = crate::accordion::heights();
+            shell.settings.save(cx);
         })
         .detach();
-        let newest_first = shell.settings.thread_newest_first;
+        // settings.toml edited by hand: what changed is put in force.
+        cx.observe_global_in::<crate::config::Store<crate::settings::Preferences>>(window, |shell, window, cx| {
+            shell.preferences_changed(window, cx)
+        })
+        .detach();
+        let newest_first = shell.settings.prefs.tickets.newest_first;
         shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
             None => {
                 // The workspace as it was left, once the board is known.
-                let open = shell.settings.open_terminals.clone();
+                let open = shell.settings.workspace.open_terminals.clone();
                 if !open.is_empty() {
-                    shell.restoring = Some(tabs::Restoring::new(open, shell.settings.shown_terminal.clone()));
+                    shell.restoring = Some(tabs::Restoring::new(open, shell.settings.workspace.shown_terminal.clone()));
                 }
                 window.focus(&shell.focus.clone(), cx)
             }
@@ -696,7 +701,7 @@ impl Shell {
         }
         self.remember_compact(cx);
         if self.panel.read(cx).snapshot().is_some() {
-            if !self.settings.panel_open {
+            if !self.settings.layout.panel_open {
                 self.toggle_panel(cx);
             }
             self.panel.update(cx, |panel, cx| panel.set_full(true, cx));
@@ -774,7 +779,7 @@ impl Shell {
             crate::newticket::default_project(
                 panel.as_deref(),
                 terminal.as_deref(),
-                self.settings.last_ticket_project.as_deref(),
+                self.settings.workspace.last_ticket_project.as_deref(),
                 &board,
             )
         });
@@ -788,12 +793,12 @@ impl Shell {
                 cx.subscribe_in(&form, window, |shell, _, _: &CloseNewTicket, window, cx| shell.close_new_ticket(window, cx))
                     .detach();
                 cx.subscribe_in(&form, window, |shell, _, created: &Created, window, cx| {
-                    shell.settings.last_ticket_project = Some(created.project.clone());
+                    shell.settings.workspace.last_ticket_project = Some(created.project.clone());
                     shell.remember_compact(cx);
-                    shell.settings.save();
+                    shell.settings.save(cx);
                     shell.new_ticket_shown = false;
                     shell.full_list_shown = false;
-                    if !shell.settings.panel_open {
+                    if !shell.settings.layout.panel_open {
                         shell.toggle_panel(cx);
                     }
                     let (project, ticket) = (created.project.clone(), created.ticket);
@@ -829,7 +834,7 @@ impl Shell {
     /// leaving it.
     fn open_full_ticket(&mut self, project: String, ticket: u64, window: &mut Window, cx: &mut Context<Self>) {
         self.full_list_shown = false;
-        if !self.settings.panel_open {
+        if !self.settings.layout.panel_open {
             self.toggle_panel(cx);
         }
         self.full_list_return = true;
@@ -920,7 +925,7 @@ impl Shell {
             self.select(session, window, cx);
         }
         if let Some((project, ticket)) = notice.ticket {
-            if !self.settings.panel_open {
+            if !self.settings.layout.panel_open {
                 self.toggle_panel(cx);
             }
             self.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
@@ -983,7 +988,7 @@ impl Shell {
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
-        self.save_workspace();
+        self.save_workspace(cx);
         self.sync_panel(cx);
         cx.notify();
     }
@@ -1021,14 +1026,14 @@ impl Shell {
     // ── The panel ───────────────────────────────────────────────────────
 
     fn toggle_sidebar(&mut self, cx: &mut Context<Self>) {
-        self.settings.sidebar_open = !self.settings.sidebar_open;
-        self.settings.save();
+        self.settings.layout.sidebar_open = !self.settings.layout.sidebar_open;
+        self.settings.save(cx);
         cx.notify();
     }
 
     fn toggle_panel(&mut self, cx: &mut Context<Self>) {
-        self.settings.panel_open = !self.settings.panel_open;
-        self.settings.save();
+        self.settings.layout.panel_open = !self.settings.layout.panel_open;
+        self.settings.save(cx);
         cx.notify();
     }
 
@@ -1042,6 +1047,7 @@ impl Shell {
     fn sidebar_width(&self, window: &Window) -> f32 {
         let max = (Self::inner_width(window) * 0.6).max(SIDEBAR_MIN);
         self.settings
+            .layout
             .sidebar_width
             .unwrap_or(SIDEBAR_WIDTH)
             .clamp(SIDEBAR_MIN, max)
@@ -1053,6 +1059,7 @@ impl Shell {
         // room from the layout.
         let max = (total - FOLDED_WIDTH - EDGE_WIDTH - CENTER_MIN).max(PANEL_MIN);
         self.settings
+            .layout
             .panel_width
             .unwrap_or(total / 3.)
             .clamp(PANEL_MIN, max)
@@ -1069,13 +1076,13 @@ impl Shell {
             None => return,
             // The list starts after its strip, where the frame's content does.
             Some(Side::Left) => {
-                self.settings.sidebar_width =
+                self.settings.layout.sidebar_width =
                     Some(x - f32::from(paddings.left) - FOLDED_WIDTH - EDGE_WIDTH / 2.)
             }
             // The panel ends where the frame's content does.
             Some(Side::Right) => {
                 let right = f32::from(window.viewport_size().width - paddings.right);
-                self.settings.panel_width = Some(right - x);
+                self.settings.layout.panel_width = Some(right - x);
             }
         }
         cx.notify();
@@ -1089,9 +1096,9 @@ impl Shell {
         self.dragged = false;
         if self.resizing.take().is_some() {
             // Store what is shown, not an out-of-range drag.
-            self.settings.panel_width = Some(self.panel_width(window));
-            self.settings.sidebar_width = Some(self.sidebar_width(window));
-            self.settings.save();
+            self.settings.layout.panel_width = Some(self.panel_width(window));
+            self.settings.layout.sidebar_width = Some(self.sidebar_width(window));
+            self.settings.save(cx);
             cx.notify();
         }
     }
@@ -1545,12 +1552,12 @@ impl Shell {
                     .child(option_row(
                         "Your own gestures",
                         "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
-                        if self.settings.notify_own { "shown".into() } else { "hidden".into() },
-                        if self.settings.notify_own { "Hide" } else { "Show" },
+                        if self.settings.prefs.notifications.own { "shown".into() } else { "hidden".into() },
+                        if self.settings.prefs.notifications.own { "Hide" } else { "Show" },
                         cx.listener(|shell, _, _, cx| {
-                            shell.settings.notify_own = !shell.settings.notify_own;
-                            crate::activity::set_own(cx, shell.settings.notify_own);
-                            shell.settings.save();
+                            shell.settings.prefs.notifications.own = !shell.settings.prefs.notifications.own;
+                            crate::activity::set_own(cx, shell.settings.prefs.notifications.own);
+                            shell.settings.save(cx);
                             cx.notify();
                         }),
                     ))
@@ -1620,12 +1627,12 @@ impl Shell {
     fn options_layout(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let sidebar = format!(
             "{} · {} px",
-            if self.settings.sidebar_open { "open" } else { "folded" },
+            if self.settings.layout.sidebar_open { "open" } else { "folded" },
             self.sidebar_width(window).round()
         );
         let panel = format!(
             "{} · {} px",
-            if self.settings.panel_open { "open" } else { "folded" },
+            if self.settings.layout.panel_open { "open" } else { "folded" },
             self.panel_width(window).round()
         );
         div()
@@ -1653,20 +1660,17 @@ impl Shell {
                 String::new(),
                 "Reset",
                 cx.listener(|shell, _, _, cx| {
-                    shell.settings.sidebar_width = None;
-                    shell.settings.panel_width = None;
-                    shell.settings.save();
+                    shell.settings.layout.sidebar_width = None;
+                    shell.settings.layout.panel_width = None;
+                    shell.settings.save(cx);
                     cx.notify();
                 }),
             ))
     }
 
     fn options_about(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let config = std::env::var_os("XDG_CONFIG_HOME")
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
-            .map(|d| d.join("tvty").display().to_string())
-            .unwrap_or_default();
+        use crate::config::{Place, dir};
+        let shown = |place| dir(place).map(|d| d.display().to_string()).unwrap_or_default();
         let rows = [
             // The version and the commit it was built from (`+`: with changes not committed).
             ("Version", match env!("TVTY_COMMIT") {
@@ -1695,7 +1699,9 @@ impl Shell {
                 "Terminal theme",
                 theme::current_terminal().map_or("the window's".to_string(), |name| name.to_string()),
             ),
-            ("Settings and themes", config),
+            ("Settings, shortcuts, themes", shown(Place::Config)),
+            ("Layout and workspace", shown(Place::State)),
+            ("Fonts", shown(Place::Data)),
         ];
         let mut table = div().flex().flex_col().gap_1().max_w(px(720.));
         for (label, value) in rows {
@@ -1715,12 +1721,50 @@ impl Shell {
         ))
     }
 
+    /// The preferences changed under the shell (the user edited
+    /// settings.toml): the shell's copy follows, and what differs is put in
+    /// force as the options page would.
+    fn preferences_changed(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let new = crate::config::get::<crate::settings::Preferences>(cx).clone();
+        let old = std::mem::replace(&mut self.settings.prefs, new.clone());
+        if old == new {
+            return;
+        }
+        let (was, now) = (&old.appearance, &new.appearance);
+        if was.theme != now.theme {
+            let name = theme::known_or_default(now.theme.as_deref(), cx);
+            theme::apply(&name, Some(window), cx);
+        }
+        if was.terminal_theme != now.terminal_theme {
+            theme::apply_terminal(now.terminal_theme.as_deref(), cx);
+        }
+        if was.terminal_font_size != now.terminal_font_size {
+            crate::terminal::set_font_size(now.terminal_font_size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
+        }
+        if was.window_font_size != now.window_font_size {
+            theme::set_window_font(now.window_font_size, cx);
+        }
+        let notifications = &new.notifications;
+        notify::set_limits(
+            cx,
+            notifications.max.unwrap_or(notify::MAX_DEFAULT),
+            notifications.seconds.unwrap_or(notify::SECONDS_DEFAULT),
+        );
+        crate::activity::set_own(cx, notifications.own);
+        crate::wheel::set_speed(new.scroll.speed);
+        let newest_first = new.tickets.newest_first;
+        self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
+        self.redraw_terminals(cx);
+        window.refresh();
+        cx.notify();
+    }
+
     // ── Themes ──────────────────────────────────────────────────────────
 
     fn set_theme(&mut self, name: SharedString, window: &mut Window, cx: &mut Context<Self>) {
         theme::apply(&name, Some(window), cx);
-        self.settings.theme = Some(name.to_string());
-        self.settings.save();
+        self.settings.prefs.appearance.theme = Some(name.to_string());
+        self.settings.save(cx);
         self.theme_menu = false;
         // The terminals follow the window's theme unless they have their own.
         self.redraw_terminals(cx);
@@ -1729,8 +1773,8 @@ impl Shell {
 
     fn set_terminal_theme(&mut self, name: Option<SharedString>, cx: &mut Context<Self>) {
         theme::apply_terminal(name.as_deref(), cx);
-        self.settings.terminal_theme = name.map(|n| n.to_string());
-        self.settings.save();
+        self.settings.prefs.appearance.terminal_theme = name.map(|n| n.to_string());
+        self.settings.save(cx);
         self.redraw_terminals(cx);
         cx.notify();
     }
@@ -1748,8 +1792,8 @@ impl Shell {
     /// takes it at its next frame, its PTY resized once it settles.
     fn set_terminal_font(&mut self, size: Option<f32>, cx: &mut Context<Self>) {
         let kept = crate::terminal::set_font_size(size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
-        self.settings.terminal_font_size = (kept != crate::terminal::FONT_SIZE_DEFAULT).then_some(kept);
-        self.settings.save();
+        self.settings.prefs.appearance.terminal_font_size = (kept != crate::terminal::FONT_SIZE_DEFAULT).then_some(kept);
+        self.settings.save(cx);
         self.redraw_terminals(cx);
         cx.notify();
     }
@@ -1761,17 +1805,17 @@ impl Shell {
     /// The window's text size (`None`: the default).
     fn set_window_font(&mut self, size: Option<f32>, window: &mut Window, cx: &mut Context<Self>) {
         let kept = theme::set_window_font(size, cx);
-        self.settings.window_font_size = (kept != theme::WINDOW_FONT_DEFAULT).then_some(kept);
-        self.settings.save();
+        self.settings.prefs.appearance.window_font_size = (kept != theme::WINDOW_FONT_DEFAULT).then_some(kept);
+        self.settings.save(cx);
         window.refresh();
         cx.notify();
     }
 
     fn set_notify_limits(&mut self, max: usize, seconds: u64, cx: &mut Context<Self>) {
         notify::set_limits(cx, max, seconds);
-        self.settings.notify_max = (max != notify::MAX_DEFAULT).then_some(max);
-        self.settings.notify_seconds = (seconds != notify::SECONDS_DEFAULT).then_some(seconds);
-        self.settings.save();
+        self.settings.prefs.notifications.max = (max != notify::MAX_DEFAULT).then_some(max);
+        self.settings.prefs.notifications.seconds = (seconds != notify::SECONDS_DEFAULT).then_some(seconds);
+        self.settings.save(cx);
         cx.notify();
     }
 
@@ -2404,7 +2448,7 @@ impl Render for Shell {
         };
         // The strip stays in the layout, open or folded, so the terminal
         // keeps its width; open, the projects' list lies over the terminal.
-        let overlay = self.settings.sidebar_open.then(|| {
+        let overlay = self.settings.layout.sidebar_open.then(|| {
             div()
                 .absolute()
                 .top_0()
@@ -2432,7 +2476,7 @@ impl Render for Shell {
         // Full screen, the panel lies over the window; its place shows the
         // folded strip meanwhile.
         let panel_full = self.panel.read(cx).is_full();
-        let right = if self.settings.panel_open && !panel_full {
+        let right = if self.settings.layout.panel_open && !panel_full {
             div()
                 .flex()
                 .flex_none()
@@ -2467,7 +2511,7 @@ impl Render for Shell {
             + NOTICE_MARGIN
             + match () {
                 _ if covered => 0.,
-                _ if self.settings.panel_open => self.panel_width(window) + EDGE_WIDTH,
+                _ if self.settings.layout.panel_open => self.panel_width(window) + EDGE_WIDTH,
                 _ => FOLDED_WIDTH,
             };
         let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
@@ -2761,7 +2805,7 @@ fn option_stepper(
         .child(button("reset", "Default").on_click(reset))
 }
 
-/// The shortcuts in force, by context, as `keymap.json` leaves them; the
+/// The shortcuts in force, by context, as `keymap.toml` leaves them; the
 /// keys given back to the program; those a terminal masks; then the keys
 /// that are not commands.
 fn options_shortcuts(cx: &App) -> impl IntoElement {
@@ -2782,14 +2826,14 @@ fn options_shortcuts(cx: &App) -> impl IntoElement {
             .when(custom, |d| d.child(div().text_xs().text_color(p().accent).child("custom")))
             .child(div().w(px(150.)).flex_none().text_xs().text_color(p().muted).children(name))
     };
-    let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.json".into());
+    let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
     let mut page = div()
         .flex()
         .flex_col()
         .max_w(px(900.))
         .child(option_note("Each shortcut is a command, bound in a context: Terminal when a terminal has the focus, Window anywhere else. The deepest binding wins; a key bound nowhere goes to the terminal's program."))
         .child(div().text_sm().text_color(p().muted).pb_2().child(format!(
-            "To change them: {file} — {{ \"Terminal\": {{ \"ctrl-c\": null }}, \"Window\": {{ \"ctrl-alt-t\": \"theme.next\" }} }}: a key bound to a command, or null to give it to what has the focus. Read again once saved."
+            "To change them: {file} — a [Terminal] or [Window] section, and in it ctrl-alt-t = \"theme.next\" to bind a key to a command, or ctrl-c = false to give it to what has the focus. Read again once saved."
         )))
         .when_some(error, |d, error| {
             d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
@@ -2807,7 +2851,7 @@ fn options_shortcuts(cx: &App) -> impl IntoElement {
                 what = format!("{what} (no key)");
             }
             if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(command.name)) {
-                what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("null (the program's)"));
+                what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("false (the program's)"));
             }
             page = page.child(row(keys, what, Some(command.name), custom));
         }

@@ -56,19 +56,21 @@ fn main() {
         gpui_kit::init(cx);
         // The user's own fonts (a colour emoji font), before any text is laid out.
         fonts::load(cx);
-        let settings = settings::Settings::load();
+        // The sets of settings (settings.toml, the layout, the workspace).
+        settings::init(cx);
+        let prefs = config::get::<settings::Preferences>(cx).clone();
         bus::init(cx);
         notify::init(
             cx,
-            settings.notify_max.unwrap_or(notify::MAX_DEFAULT),
-            settings.notify_seconds.unwrap_or(notify::SECONDS_DEFAULT),
+            prefs.notifications.max.unwrap_or(notify::MAX_DEFAULT),
+            prefs.notifications.seconds.unwrap_or(notify::SECONDS_DEFAULT),
         );
-        activity::init(cx, settings.notify_own);
-        wheel::set_speed(settings.scroll_speed);
-        theme::init(settings.theme.as_deref(), settings.terminal_theme.as_deref(), cx);
-        theme::set_window_font(settings.window_font_size, cx);
+        activity::init(cx, prefs.notifications.own);
+        wheel::set_speed(prefs.scroll.speed);
+        theme::init(prefs.appearance.theme.as_deref(), prefs.appearance.terminal_theme.as_deref(), cx);
+        theme::set_window_font(prefs.appearance.window_font_size, cx);
         keymap::init(cx);
-        terminal::set_font_size(settings.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
+        terminal::set_font_size(prefs.appearance.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {

@@ -41,9 +41,10 @@ never shows in — nor touches — the user's own tvty:
   the demo loops run there, so the user's tvty does not list them, and a
   test tvty cannot even see a real agent's loop — let alone attach it,
   which would resize it for every client, the user's own included;
-- **its own settings** (`XDG_CONFIG_HOME=dev/tvty-wbox/config`, the
-  projects' list folded to start with): the user's `state.json` is never
-  read nor written;
+- **its own settings** (`XDG_CONFIG_HOME=dev/tvty-wbox/config`) **and
+  memory** (`XDG_STATE_HOME=dev/tvty-wbox/state`, the projects' list
+  folded to start with): the user's `settings.toml`, `keymap.toml`, layout
+  and workspace are never read nor written;
 - **the throwaway aiball** below (`AIBALL_SOCK`), never the
   user's board.
 - **its own fonts** (`XDG_DATA_HOME=dev/tvty-wbox/data`): for colour emoji,

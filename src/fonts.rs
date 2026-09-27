@@ -12,11 +12,7 @@ use gpui_kit::*;
 
 /// Where the user's fonts are.
 pub fn dir() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_DATA_HOME")
-        .filter(|d| !d.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share")))?;
-    Some(base.join("tvty").join("fonts"))
+    Some(crate::config::dir(crate::config::Place::Data)?.join("fonts"))
 }
 
 /// Loads the user's fonts; answers how many.

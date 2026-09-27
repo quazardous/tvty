@@ -373,7 +373,7 @@ impl Shell {
                             .child(div().flex_1().min_w_0().truncate().child(row.title.clone()))
                             .on_click(cx.listener(move |shell, _, _, cx| {
                                 shell.backlog_view = None;
-                                if !shell.settings.panel_open {
+                                if !shell.settings.layout.panel_open {
                                     shell.toggle_panel(cx);
                                 }
                                 shell.panel.update(cx, |panel, cx| panel.open_in(Some(project.clone()), ticket, cx));

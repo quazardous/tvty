@@ -109,13 +109,13 @@ impl Shell {
                 }
             }
         }
-        self.save_workspace();
+        self.save_workspace(cx);
         cx.notify();
     }
 
     /// The workspace, kept for the next start: the terminals open, the one
     /// used last first, and the one shown.
-    pub(super) fn save_workspace(&mut self) {
+    pub(super) fn save_workspace(&mut self, cx: &mut App) {
         if self.restoring.is_some() {
             return;
         }
@@ -125,10 +125,10 @@ impl Shell {
                 open.push(session.clone());
             }
         }
-        if open != self.settings.open_terminals || self.selected != self.settings.shown_terminal {
-            self.settings.open_terminals = open;
-            self.settings.shown_terminal = self.selected.clone();
-            self.settings.save();
+        if open != self.settings.workspace.open_terminals || self.selected != self.settings.workspace.shown_terminal {
+            self.settings.workspace.open_terminals = open;
+            self.settings.workspace.shown_terminal = self.selected.clone();
+            self.settings.save(cx);
         }
     }
 
@@ -157,7 +157,7 @@ impl Shell {
         if let Some(shown) = shown {
             self.select(shown, window, cx);
         }
-        self.save_workspace();
+        self.save_workspace(cx);
         cx.notify();
     }
 

@@ -16,7 +16,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 LOG=dev/tvty-wbox/log/tvty-stats.log
-STATE=dev/tvty-wbox/config/tvty/state.json
+STATE=dev/tvty-wbox/state/tvty/layout.json
 CTL="${WBOX_PYTHON:-../wbox-mcp/.venv/bin/python3} scripts/wbox_ctl.py"
 CONF=dev/tvty-wbox/config.yaml
 LOOP_Y="${1:-152}"

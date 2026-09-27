@@ -62,7 +62,7 @@ impl Shell {
         let groups = [("live", running), ("idle", self.inactive().len()), ("shut", self.closed().len())];
         let mut list = crate::accordion::list("sessions").pb_1();
         for (i, (word, count)) in groups.into_iter().enumerate() {
-            let folded = self.settings.sessions_folded.iter().any(|f| f == word);
+            let folded = self.settings.layout.sessions_folded.iter().any(|f| f == word);
             let body = match (folded, i) {
                 (true, _) => Vec::new(),
                 (false, 0) => vec![self.live_list(cx).into_any_element()],
@@ -85,14 +85,14 @@ impl Shell {
                 windowed: None,
             };
             list = list.child(section.render(cx.listener(move |shell, _, _, cx| {
-                let folded = &mut shell.settings.sessions_folded;
+                let folded = &mut shell.settings.layout.sessions_folded;
                 match folded.iter().position(|f| f == word) {
                     Some(at) => {
                         folded.remove(at);
                     }
                     None => folded.push(word.to_string()),
                 }
-                shell.settings.save();
+                shell.settings.save(cx);
                 cx.notify();
             })));
         }

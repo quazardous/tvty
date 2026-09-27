@@ -3,15 +3,26 @@
 //! rest of tvty) — and the deepest binding wins: a key bound in `Terminal`
 //! is the terminal's, a key bound nowhere goes to the program.
 //!
-//! The defaults are below; `keymap.json`, in tvty's config directory,
-//! overrides them — `{ "Terminal": { "ctrl-c": null }, "Window": {
-//! "ctrl-alt-t": "theme.next" } }`: a key bound anew, or `null`, given back
-//! to what has the focus. The file is read again when it changes.
+//! The defaults are below; `keymap.toml`, in tvty's config directory,
+//! overrides them —
+//!
+//! ```toml
+//! [Terminal]
+//! ctrl-c = false            # given back to the terminal's program
+//!
+//! [Window]
+//! ctrl-alt-t = "theme.next" # bound anew
+//! ```
+//!
+//! kept by [`crate::config`]: read again when it changes, a wrong one said
+//! and the bindings before kept.
 
-use std::path::PathBuf;
-use std::time::{Duration, SystemTime};
+use std::collections::BTreeMap;
 
 use gpui_kit::*;
+use serde::{Deserialize, Serialize};
+
+use crate::config::{self, Place, Stored};
 
 actions!(
     tvty,
@@ -83,122 +94,97 @@ pub const COMMANDS: &[Command] = &[
     command!("terminal.back_tab", TERMINAL, ["shift-tab"], "Shift+Tab, to the program", SendBackTab),
 ];
 
-// ── keymap.json ──────────────────────────────────────────────────────
+// ── keymap.toml ──────────────────────────────────────────────────────
 
-/// The keymap in force: the kit's own bindings (kept to bind them again),
-/// the overrides read from the file, and what was wrong with it.
-pub struct Keymap {
-    kit: Vec<KeyBinding>,
-    pub overrides: Vec<Binding>,
-    pub error: Option<String>,
-    stamp: Option<SystemTime>,
+/// What a key is bound to in `keymap.toml`: a command's name, or `false` to
+/// give the key back to what has the focus.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Target {
+    Command(String),
+    Bound(bool),
 }
 
-impl Global for Keymap {}
+/// `keymap.toml`: by context, the keys bound anew.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct KeymapFile(pub BTreeMap<String, BTreeMap<String, Target>>);
 
-/// `keymap.json`, beside tvty's state (`$XDG_CONFIG_HOME/tvty`).
-pub fn path() -> Option<PathBuf> {
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".config")))?;
-    Some(base.join("tvty").join("keymap.json"))
+impl Stored for KeymapFile {
+    const PLACE: Place = Place::Config;
+    const FILE: &'static str = "keymap.toml";
+    const EDITED: bool = true;
+
+    fn check(&self) -> Result<(), String> {
+        self.overrides().map(|_| ())
+    }
 }
 
-fn stamp() -> Option<SystemTime> {
-    std::fs::metadata(path()?).and_then(|m| m.modified()).ok()
-}
-
-/// The overrides a `keymap.json` says, or what is wrong with it: an unknown
-/// context or command, a key that does not parse.
-pub fn parse(text: &str) -> Result<Vec<Binding>, String> {
-    let value: serde_json::Value = serde_json::from_str(text).map_err(|e| format!("not JSON: {e}"))?;
-    let contexts = value.as_object().ok_or("a map of contexts is expected: { \"Terminal\": { … } }")?;
-    let mut bindings = Vec::new();
-    for (context, keys) in contexts {
-        if context != WINDOW && context != TERMINAL {
-            return Err(format!("unknown context {context:?} (Window or Terminal)"));
-        }
-        let keys = keys.as_object().ok_or(format!("{context}: a map of keys is expected"))?;
-        for (key, command) in keys {
-            if key.split_whitespace().any(|k| Keystroke::parse(k).is_err()) || key.trim().is_empty() {
-                return Err(format!("{context}: {key:?} is not a key (ctrl-shift-b, alt-enter…)"));
+impl KeymapFile {
+    /// The overrides the file says, or what is wrong with it: an unknown
+    /// context or command, a key that does not parse.
+    pub fn overrides(&self) -> Result<Vec<Binding>, String> {
+        let mut bindings = Vec::new();
+        for (context, keys) in &self.0 {
+            if context != WINDOW && context != TERMINAL {
+                return Err(format!("unknown context [{context}] ([Window] or [Terminal])"));
             }
-            let command = match command {
-                serde_json::Value::Null => None,
-                serde_json::Value::String(name) => Some(self::command(name).ok_or(format!("{context}: {key}: no command {name:?}"))?.name),
-                _ => return Err(format!("{context}: {key}: a command name or null is expected")),
-            };
-            bindings.push(Binding { context: context.clone(), key: key.clone(), command, custom: true });
+            for (key, target) in keys {
+                if key.trim().is_empty() || key.split_whitespace().any(|k| Keystroke::parse(k).is_err()) {
+                    return Err(format!("{context}: {key:?} is not a key (ctrl-shift-b, alt-enter…)"));
+                }
+                let command = match target {
+                    Target::Bound(false) => None,
+                    Target::Command(name) => Some(command(name).ok_or(format!("{context}: {key}: no command {name:?}"))?.name),
+                    Target::Bound(true) => return Err(format!("{context}: {key}: a command name or false is expected")),
+                };
+                bindings.push(Binding { context: context.clone(), key: key.clone(), command, custom: true });
+            }
         }
+        Ok(bindings)
     }
-    Ok(bindings)
 }
 
-/// The file's overrides (none when there is no file), or its error.
-fn read() -> Result<Vec<Binding>, String> {
-    let Some(path) = path() else { return Ok(Vec::new()) };
-    match std::fs::read_to_string(&path) {
-        Ok(text) => parse(&text).map_err(|e| format!("{}: {e}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
-        Err(e) => Err(format!("{}: {e}", path.display())),
-    }
+/// The kit's own bindings, kept to bind them again under tvty's.
+struct KitBindings(Vec<KeyBinding>);
+
+impl Global for KitBindings {}
+
+pub fn path() -> Option<std::path::PathBuf> {
+    config::path::<KeymapFile>()
+}
+
+/// The overrides in force: the file's, as last read right.
+fn overrides(cx: &App) -> Vec<Binding> {
+    config::get::<KeymapFile>(cx).overrides().unwrap_or_default()
 }
 
 /// Binds again: the kit's bindings, then tvty's in force.
-fn apply(cx: &mut App, kit: &[KeyBinding], overrides: &[Binding]) {
+fn apply(cx: &mut App) {
+    let kit = cx.global::<KitBindings>().0.clone();
+    let overrides = overrides(cx);
     cx.clear_key_bindings();
-    cx.bind_keys(kit.iter().cloned());
-    cx.bind_keys(key_bindings(&effective(overrides)));
+    cx.bind_keys(kit);
+    cx.bind_keys(key_bindings(&effective(&overrides)));
 }
 
-/// Binds the defaults and `keymap.json` over them — once the kit has bound
-/// its own — and reads the file again whenever it changes.
+/// Binds the defaults and `keymap.toml` over them — once the kit has bound
+/// its own — and again whenever the file changes.
 pub fn init(cx: &mut App) {
     let kit: Vec<KeyBinding> = cx.key_bindings().borrow().bindings().cloned().collect();
-    let (overrides, error) = match read() {
-        Ok(overrides) => (overrides, None),
-        Err(error) => (Vec::new(), Some(error)),
-    };
-    apply(cx, &kit, &overrides);
-    cx.set_global(Keymap { kit, overrides, error, stamp: stamp() });
-    cx.spawn(async move |cx| loop {
-        cx.background_executor().timer(Duration::from_secs(2)).await;
-        cx.update(reload_if_changed);
+    cx.set_global(KitBindings(kit));
+    config::register::<KeymapFile>(cx);
+    apply(cx);
+    cx.observe_global::<config::Store<KeymapFile>>(|cx| {
+        apply(cx);
+        cx.refresh_windows();
     })
     .detach();
 }
 
-/// The file changed: its bindings in force now, or, when it is wrong, the
-/// ones before kept and the error said.
-fn reload_if_changed(cx: &mut App) {
-    let now = stamp();
-    if cx.global::<Keymap>().stamp == now {
-        return;
-    }
-    let kit = cx.global::<Keymap>().kit.clone();
-    match read() {
-        Ok(overrides) => {
-            apply(cx, &kit, &overrides);
-            let keymap = cx.global_mut::<Keymap>();
-            keymap.overrides = overrides;
-            keymap.error = None;
-            keymap.stamp = now;
-            crate::activity::publish(cx, crate::activity::Activity::done(None, "keymap.json: shortcuts updated"));
-        }
-        Err(error) => {
-            let keymap = cx.global_mut::<Keymap>();
-            keymap.error = Some(error.clone());
-            keymap.stamp = now;
-            crate::activity::publish(cx, crate::activity::Activity::failed(None, "keymap.json", error));
-        }
-    }
-    cx.refresh_windows();
-}
-
 /// The bindings in force, and the file's error if any.
 pub fn in_force(cx: &App) -> (Vec<Binding>, Option<String>) {
-    let keymap = cx.global::<Keymap>();
-    (effective(&keymap.overrides), keymap.error.clone())
+    (effective(&overrides(cx)), config::error::<KeymapFile>(cx))
 }
 
 /// A key as the options show it: `ctrl-shift-b` → `Ctrl+Shift+B`.
@@ -235,19 +221,19 @@ pub fn pretty(key: &str) -> String {
         .join(" ")
 }
 
-/// A command by the name `keymap.json` gives it.
+/// A command by the name `keymap.toml` gives it.
 pub fn command(name: &str) -> Option<&'static Command> {
     COMMANDS.iter().find(|c| c.name == name)
 }
 
 /// One binding in force: a key, in a context, to a command — or to none
-/// (`null` in `keymap.json`: the key goes to what has the focus).
+/// (`false` in `keymap.toml`: the key goes to what has the focus).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Binding {
     pub context: String,
     pub key: String,
     pub command: Option<&'static str>,
-    /// From `keymap.json` rather than the defaults.
+    /// From `keymap.toml` rather than the defaults.
     pub custom: bool,
 }
 
@@ -295,7 +281,12 @@ pub fn masked(bindings: &[Binding]) -> Vec<(&Binding, &Binding)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Binding, TERMINAL, WINDOW, effective, key_bindings, masked, parse, pretty};
+    use super::{Binding, KeymapFile, TERMINAL, WINDOW, effective, key_bindings, masked, pretty};
+    use crate::config::parse;
+
+    fn overrides(text: &str) -> Result<Vec<Binding>, String> {
+        parse::<KeymapFile>(text)?.overrides()
+    }
 
     #[test]
     fn every_default_key_parses() {
@@ -319,7 +310,7 @@ mod tests {
 
     #[test]
     fn the_file_says_keys_anew_or_frees_them() {
-        let bindings = parse(r#"{ "Terminal": { "ctrl-c": null }, "Window": { "ctrl-alt-t": "theme.next" } }"#).unwrap();
+        let bindings = overrides("[Terminal]\nctrl-c = false\n\n[Window]\nctrl-alt-t = \"theme.next\"\n").unwrap();
         assert_eq!(bindings.len(), 2);
         assert!(bindings.iter().any(|b| b.context == TERMINAL && b.key == "ctrl-c" && b.command.is_none()));
         assert!(bindings.iter().any(|b| b.context == WINDOW && b.command == Some("theme.next")));
@@ -327,9 +318,10 @@ mod tests {
 
     #[test]
     fn a_wrong_file_says_what_is_wrong() {
-        assert!(parse("{").unwrap_err().contains("not JSON"));
-        assert!(parse(r#"{ "Panel": {} }"#).unwrap_err().contains("unknown context"));
-        assert!(parse(r#"{ "Window": { "ctrl-shift-b": "no.such" } }"#).unwrap_err().contains("no command"));
+        assert!(overrides("[Window").is_err());
+        assert!(overrides("[Panel]\n").unwrap_err().contains("unknown context"));
+        assert!(overrides("[Window]\nctrl-shift-b = \"no.such\"\n").unwrap_err().contains("no command"));
+        assert!(overrides("[Window]\nctrl-shift-b = true\n").unwrap_err().contains("or false"));
     }
 
     #[test]

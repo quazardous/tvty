@@ -107,12 +107,13 @@ pub fn render<T: Stored>(value: &T) -> Result<String, String> {
     }
 }
 
-/// The file's value: none when there is no file.
+/// The file's value: none when there is no file. An error does not say
+/// the file: whoever shows it does.
 fn read<T: Stored>(path: &Path) -> Result<Option<T>, String> {
     match std::fs::read_to_string(path) {
-        Ok(text) => parse(&text).map(Some).map_err(|e| format!("{}: {e}", path.display())),
+        Ok(text) => parse(&text).map(Some),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-        Err(e) => Err(format!("{}: {e}", path.display())),
+        Err(e) => Err(e.to_string()),
     }
 }
 
@@ -143,7 +144,7 @@ pub fn register<T: Stored>(cx: &mut App) {
             None => (T::default(), None, false),
         },
         Err(error) => {
-            log::warn!("{error}");
+            log::warn!("{}: {error}", path.as_deref().unwrap_or(Path::new(T::FILE)).display());
             (T::default(), Some(error), false)
         }
     };
@@ -174,7 +175,7 @@ pub fn get<T: Stored>(cx: &App) -> &T {
     &cx.global::<Store<T>>().value
 }
 
-/// What was wrong with the file last read, if anything.
+/// What was wrong with the file last read, if anything (without its name).
 pub fn error<T: Stored>(cx: &App) -> Option<String> {
     cx.global::<Store<T>>().error.clone()
 }
@@ -238,6 +239,7 @@ fn reload_if_changed<T: Stored>(cx: &mut App) {
         Err(error) => {
             let store = cx.global_mut::<Store<T>>();
             store.stamp = now;
+            log::warn!("{}: {error}", path.display());
             store.error = Some(error.clone());
             crate::activity::publish(cx, crate::activity::Activity::failed(None, name, error));
         }
