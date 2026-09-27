@@ -1,0 +1,14 @@
+#!/bin/sh
+# Terminal Velocity's launcher, installed beside the user's commands
+# (~/.local/bin/tvty) by `make install-desktop`. The desktop's launcher runs
+# this, not the build itself: a build in a folder mounted after the session
+# starts (an encrypted home folder) is not there when the desktop reads its
+# launchers, and a launcher whose program is missing is dropped — pinned
+# icon included.
+BIN="@BIN@"
+if [ ! -x "$BIN" ]; then
+    notify-send -i tvty "Terminal Velocity" "Not found: $BIN (its folder not mounted yet?)" 2>/dev/null ||
+        echo "tvty: not found: $BIN" >&2
+    exit 1
+fi
+exec "$BIN" "$@"

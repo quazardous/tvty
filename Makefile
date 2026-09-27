@@ -108,9 +108,11 @@ emoji-font:
 	curl -fsSL -o "$(EMOJI_FONT_DIR)/NotoColorEmoji.ttf" "$(EMOJI_FONT_URL)"
 	@echo "colour emoji font in $(EMOJI_FONT_DIR): restart tvty"
 
-# The launcher and the icon, for this user (no sudo). The launcher runs BIN:
-# the debug build by default.
+# The launcher and the icon, for this user (no sudo). The launcher runs
+# ~/.local/bin/tvty, which runs BIN (the debug build by default): always
+# there, even when BIN's folder is mounted after the session starts.
 DATA_DIR = $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
+BIN_DIR = $(HOME)/.local/bin
 BIN ?= $(CURDIR)/target/debug/tvty
 ICON_SIZES = 16 24 32 48 64 128 256 512
 
@@ -122,12 +124,14 @@ install-desktop:
 			magick -background none -density 384 assets/tvty.svg -resize $${s}x$${s} "$(DATA_DIR)/icons/hicolor/$${s}x$${s}/apps/tvty.png"; \
 		done; \
 	else echo "no ImageMagick: the scalable icon only"; fi
-	mkdir -p "$(DATA_DIR)/applications"
-	sed 's|@EXEC@|$(BIN)|' packaging/linux/tvty.desktop >"$(DATA_DIR)/applications/tvty.desktop"
+	mkdir -p "$(DATA_DIR)/applications" "$(BIN_DIR)"
+	sed 's|@BIN@|$(BIN)|' packaging/linux/tvty-launch >"$(BIN_DIR)/tvty"
+	chmod 755 "$(BIN_DIR)/tvty"
+	sed 's|@EXEC@|$(BIN_DIR)/tvty|' packaging/linux/tvty.desktop >"$(DATA_DIR)/applications/tvty.desktop"
 	-gtk-update-icon-cache -q -t "$(DATA_DIR)/icons/hicolor" 2>/dev/null
 	-update-desktop-database -q "$(DATA_DIR)/applications" 2>/dev/null
-	@echo "Terminal Velocity installed: it runs $(BIN)"
+	@echo "Terminal Velocity installed: $(BIN_DIR)/tvty runs $(BIN)"
 
 uninstall-desktop:
-	rm -f "$(DATA_DIR)/applications/tvty.desktop" "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg"
+	rm -f "$(DATA_DIR)/applications/tvty.desktop" "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg" "$(BIN_DIR)/tvty"
 	for s in $(ICON_SIZES); do rm -f "$(DATA_DIR)/icons/hicolor/$${s}x$${s}/apps/tvty.png"; done

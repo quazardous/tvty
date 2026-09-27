@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The desktop launcher survives a new session: it runs ~/.local/bin/tvty,
+  always there, which runs the build — in a folder mounted after the
+  session starts (an encrypted home folder), the build was missing when the
+  desktop read its launchers, and the launcher and its pin were dropped.
 - Tab and Shift+Tab reach the terminal (a shell's completion, a program's
   fields): the window took them to move the focus.
 - The ticket lists no longer flicker when the wheel pushes past their end:

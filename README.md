@@ -70,7 +70,7 @@ To have **Terminal Velocity** in the desktop's launcher (GNOME, KDE…), with
 its icon, for your user only:
 
 ```bash
-make install-desktop                          # runs target/debug/tvty
+make install-desktop                          # ~/.local/bin/tvty, which runs target/debug/tvty
 make install-desktop BIN=target/release/tvty  # or another build
 ```
 
