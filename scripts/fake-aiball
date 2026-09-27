@@ -23,6 +23,9 @@ DIR="$ROOT/dev/fake-aiball"
 HOME_DIR="$DIR/home"
 SOCK="$HOME_DIR/sock"
 PIDFILE="$HOME_DIR/daemon.pid"
+# A session host's socket path is capped (about 100 bytes) and the checkout
+# may sit deep: the daemon sees its home through a short link.
+SHORT_HOME="${XDG_RUNTIME_DIR:-/tmp}/tvty-fake-aiball-$(id -u)"
 DEMO="$DIR/demo"
 
 running() { [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
@@ -49,7 +52,7 @@ leftovers() {
     for proc in /proc/[0-9]*; do
         pid=${proc#/proc/}
         [[ $keep == *" $pid "* ]] && continue
-        if tr '\0' '\n' 2>/dev/null <"$proc/cmdline" | grep -qF -e "$HOME_DIR/hosts/" -e "$LOOPS/" ||
+        if tr '\0' '\n' 2>/dev/null <"$proc/cmdline" | grep -qF -e "$HOME_DIR/hosts/" -e "$SHORT_HOME/hosts/" -e "$LOOPS/" ||
             tr '\0' '\n' 2>/dev/null <"$proc/environ" | grep -qx -e "CL_STATE_DIR=$LOOPS/.*"; then
             echo "$pid"
         fi
@@ -88,9 +91,10 @@ case "${1:-}" in
         clean
         rm -rf "$HOME_DIR"
         mkdir -p "$HOME_DIR" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
+        ln -sfn "$HOME_DIR" "$SHORT_HOME"
         # The test loops' state (scripts/test-env): the daemon relays loop
         # controls (hold, tmux line) to the loops it finds there.
-        AIBALL_HOME="$HOME_DIR" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
+        AIBALL_HOME="$SHORT_HOME" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
             AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
             CLAUDE_LOOP_STATE_ROOT="$ROOT/dev/claude-loop" \
             CL_CLAUDE_CMD="$AIBALL/bin/fake-claude" \
@@ -109,6 +113,7 @@ case "${1:-}" in
         for sub in lead crew; do tmux kill-session -t "=cl-demo-$sub" 2>/dev/null || true; done
         if running; then kill "$(cat "$PIDFILE")"; fi
         rm -rf "$HOME_DIR"
+        rm -f "$SHORT_HOME"
         echo "fake aiball down"
         ;;
     env)
