@@ -1,0 +1,18 @@
+# exhaust-port — battle-station
+claim the critical ticket: "Cover the thermal exhaust port"
+    think 2
+    On it. First, what the final review actually found.
+
+/run cat sheets/port.txt
+
+so how bad is it?
+    think 3
+    Bad. The port is two metres wide and leads straight to the main
+    reactor. The ray shield covers it, the particle shield is down for
+    maintenance, and there is no grate.
+
+    One proton torpedo down that shaft and the whole station goes.
+    Two tickets wait on this one: the final inspection, and the opening.
+
+    I cannot order a grate on my own — it needs a budget line. I have
+    escalated it to the director, with sheet 7 attached.

@@ -1,0 +1,12 @@
+# flux — time-machine
+look at "Tests fail before the bug exists"
+    think 2
+    CI went red on Monday for a bug committed on Thursday.
+
+/run cat ci.log
+
+why?
+    think 3
+    The test runner uses the machine's clock, and the machine has been
+    to Thursday and back. Pin each run to its commit's own date and the
+    failure moves to where it belongs. Proposed as a plan.

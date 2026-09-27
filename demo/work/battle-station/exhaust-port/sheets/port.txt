@@ -1,0 +1,6 @@
+sheet 7 · thermal exhaust port
+diameter        2 m
+leads to        main reactor, direct
+ray shield      covers it
+particle shield off (maintenance)
+grate           none

@@ -1,0 +1,5 @@
+run  tributaries  lens    charge
+v1   serial       warm    96h
+v2   serial       cold    72h
+v3   4-wide       cold    51h
+v4   8-wide       cold    38h

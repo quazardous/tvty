@@ -1,0 +1,17 @@
+# superlaser — battle-station
+look at "Superlaser: charge in under 24 h"
+    think 2
+    Four runs so far. Here is where the charge time went.
+
+/run column -t bench.log
+
+what would get us under 24 hours?
+    think 3
+    Three changes, each measured on its own:
+
+    1. tap the hypermatter reactor directly, not through the secondary bus
+    2. pre-charge the eight tributary beams in parallel
+    3. keep the focus lens cold between two shots
+
+    Together they should land at 23 h. I proposed it as a plan on the
+    ticket; I will start once the director accepts it.

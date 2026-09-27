@@ -1,0 +1,2 @@
+yesterday  closed "Close this ticket yesterday"
+today      asked to close it

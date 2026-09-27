@@ -110,6 +110,19 @@ scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/te
 Reading the real board is fine (a screenshot of the alerts); a click on a
 real ticket marks it read for the user, so don't.
 
+## The README's pictures
+
+`demo/run up` builds a small fictional world apart from everything else —
+its own aiball (port 7798, `dev/readme-demo`), tmux server and tvty
+settings: three projects (a battle station, a Dyson sphere, a time
+machine), their agents present on the bus (`demo/presence.py`), tickets in
+every state with pictures (`demo/seed.py`, `demo/images.py`), and each
+agent's terminal replaying `demo/scenes/<agent>.txt` with simai-cli in
+`/tmp/tvty-demo`. `demo/run shots` (`make readme-shots`) runs tvty on it in
+a wbox of its own (1600×1000), drives it and writes `docs/images/`;
+`demo/run down` removes it all. Its clicks are positions: after a change of
+layout, look at the pictures.
+
 ## Measuring
 
 With `TVTY_STATS=<file>` (set in the wbox config, to

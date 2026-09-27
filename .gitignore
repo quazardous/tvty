@@ -9,3 +9,5 @@ dev/claude-loop/
 dev/loops/
 dev/tvty-wbox/data/
 dev/tvty-wbox/state/
+dev/readme-demo/
+__pycache__/

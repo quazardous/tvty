@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down
+.PHONY: emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -26,6 +26,9 @@ help:
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
 	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
+	@echo ""
+	@echo "the README's pictures, from a fictional demo world (demo/run):"
+	@echo "make readme-up / readme-shots / readme-down"
 
 public-check:
 	scripts/check-public
@@ -98,6 +101,15 @@ aiball-up:
 
 aiball-down:
 	scripts/fake-aiball down
+
+readme-up:
+	demo/run up
+
+readme-shots: build
+	demo/run shots
+
+readme-down:
+	demo/run down
 
 # Colour emoji in the terminals: Noto Color Emoji in bitmaps (CBDT), the kind
 # GPUI colours, from Google's noto-emoji repository (OFL).

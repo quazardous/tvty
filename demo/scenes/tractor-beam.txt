@@ -1,0 +1,12 @@
+# tractor-beam — battle-station
+look at "Waste compactor: stop when something is alive inside"
+    think 2
+    The walls close on a timer and nothing else. That is the bug.
+
+/run cat compactor.toml
+
+is the fix in?
+    think 2
+    Yes: a life sensor on the floor stops the walls as soon as it reads
+    anything breathing. Tested with a very patient droid. Committed as
+    7a3f9c1, and proposed as the resolution.

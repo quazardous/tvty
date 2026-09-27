@@ -1,0 +1,4 @@
+mon 09:12  test_regression  FAIL  (bug introduced: thu 16:40)
+tue 09:12  test_regression  FAIL
+wed 09:12  test_regression  FAIL
+thu 16:40  commit 3e1d0aa  "introduce the bug"

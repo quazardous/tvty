@@ -1,0 +1,6 @@
+# paradox-police — time-machine
+look at "Close this ticket yesterday"
+    think 1
+    Already done.
+
+/run cat log.txt

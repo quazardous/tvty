@@ -1,0 +1,94 @@
+#!/usr/bin/env bash
+# demo/run — the fictional world of the README's pictures, and the pictures.
+#
+#   demo/run up      its own aiball (three projects, their agents, tickets
+#                    with pictures), the agents' terminals, their presence
+#   demo/run shots   tvty on it in wbox, the pictures into docs/images/
+#   demo/run down    all of it stopped and removed
+#   demo/run tvty    tvty on it (what wbox runs)
+#
+# Everything is apart from the user's and from the tests': its own aiball
+# (dev/readme-demo, port 7798), tmux server and tvty settings. The agents
+# work in /tmp/tvty-demo, a short path that reads well in a picture; their
+# terminals replay demo/scenes/<agent>.txt with simai-cli.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SIBLINGS="$(dirname "$ROOT")"
+DIR="$ROOT/dev/readme-demo"
+HOME_DIR="$DIR/home"
+SOCK="$HOME_DIR/sock"
+PIDFILE="$HOME_DIR/daemon.pid"
+PRESENCE="$DIR/presence.pid"
+WORK=/tmp/tvty-demo
+SIMCLI="$SIBLINGS/simai-cli/dist/main.js"
+export TMUX_TMPDIR="$DIR/tmux"
+unset TMUX
+
+# project agent… per line, as demo/seed.py has them.
+AGENTS="battle-station:exhaust-port battle-station:superlaser battle-station:tractor-beam
+dyson-sphere:panel-crew dyson-sphere:star-diplomat
+time-machine:flux time-machine:paradox-police"
+
+SIMCLI_NOISE="-e 'Claude Code, played' -e 'Type anything to talk' -e 'agent does —' -e 'left the session' -e '● You said' -e 'Cogitating…' -e 'Running…'"
+
+running() { [[ -f $PIDFILE ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; }
+
+up() {
+    if running; then echo "demo already up"; return; fi
+    [[ -f $SIMCLI ]] || { echo "simai-cli not built: $SIMCLI (npm install there)" >&2; exit 1; }
+    rm -rf "$HOME_DIR" "$WORK"
+    mkdir -p "$HOME_DIR" "$DIR/config" "$TMUX_TMPDIR" "$DIR/loops"
+    cp -r "$ROOT/demo/work" "$WORK"
+    AIBALL_HOME="$HOME_DIR" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7798 \
+        AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
+        CLAUDE_LOOP_STATE_ROOT="$DIR/loops" CL_CLAUDE_CMD="$SIBLINGS/aiball/bin/fake-claude" \
+        nohup "$SIBLINGS/aiball/bin/aiball-daemon" >"$DIR/daemon.log" 2>&1 &
+    for _ in $(seq 50); do [[ -S $SOCK ]] && break; sleep 0.2; done
+    [[ -S $SOCK ]] || { echo "the daemon did not start, see $DIR/daemon.log" >&2; exit 1; }
+    python3 "$ROOT/demo/images.py" "$DIR/images" >/dev/null
+    python3 "$ROOT/demo/seed.py" "$SOCK" "$WORK" "$DIR/images" >/dev/null
+    local agents=()
+    for entry in $AGENTS; do
+        local project=${entry%%:*} agent=${entry##*:}
+        agents+=("$agent")
+        # The scene played at once, then a prompt waiting, as an idle
+        # Claude's would be. simcli's own words (its intro, the echo of
+        # each prompt, the spinner's lines, its farewell) are left out.
+        tmux new-session -d -s "cl-$agent" -c "$WORK/$project/$agent" -x 110 -y 40 \
+            "node '$SIMCLI' --as claude --script '$ROOT/demo/scenes/$agent.txt' --pace 0 --think 0 --inline --no-banner 2>&1 | grep -v $SIMCLI_NOISE; printf '\\n❯ '; exec cat"
+    done
+    # No status line: it would name this machine in the pictures.
+    tmux set-option -g status off
+    nohup python3 "$ROOT/demo/presence.py" "$SOCK" "${agents[@]}" >"$DIR/presence.log" 2>&1 &
+    echo $! >"$PRESENCE"
+    echo "demo up — AIBALL_SOCK=$SOCK"
+}
+
+down() {
+    if [[ -f $PRESENCE ]]; then kill "$(cat "$PRESENCE")" 2>/dev/null || true; rm -f "$PRESENCE"; fi
+    # The demo's own tmux server, by its own socket: never the user's.
+    tmux kill-server 2>/dev/null || true
+    if running; then kill "$(cat "$PIDFILE")"; fi
+    rm -rf "$HOME_DIR" "$WORK"
+    echo "demo down"
+}
+
+tvty() {
+    export AIBALL_SOCK="$SOCK" TVTY_USER=director
+    export XDG_CONFIG_HOME="$DIR/tvty/config" XDG_STATE_HOME="$DIR/tvty/state"
+    # The colour emoji font the tests fetched, if any.
+    export XDG_DATA_HOME="$ROOT/dev/tvty-wbox/data"
+    export CLAUDE_LOOP_STATE_ROOT="$DIR/loops"
+    exec "$ROOT/target/debug/tvty" "$@"
+}
+
+case "${1:-}" in
+    up) up ;;
+    down) down ;;
+    tvty) shift; tvty "$@" ;;
+    shots) exec python3 "$ROOT/demo/shots.py" ;;
+    *)
+        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

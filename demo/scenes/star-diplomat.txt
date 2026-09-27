@@ -1,0 +1,11 @@
+# star-diplomat — dyson-sphere
+look at "Negotiate with the star"
+    think 2
+    The star has sent its terms.
+
+/run cat demands.txt
+
+can we agree to that?
+    think 2
+    Weekends, yes. The window is the hard part: every window is a panel
+    we do not bolt. I asked the director on the ticket.

@@ -1,0 +1,6 @@
+[walls]
+speed = "slow, dramatic"
+stop_when = "life_sensor"
+
+[life_sensor]
+threshold = "anything breathing"
