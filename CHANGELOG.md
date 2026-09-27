@@ -90,6 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Idle loops of no aiball project are listed last, under "No project", not
+  under a bare "—"; and each project heads its idle loops once.
 - A drag in a terminal keeps its selection while the program draws its
   screen again (Claude Code): it vanished under the pointer.
 - ...and keeps it once the button is released: a full redraw (tmux

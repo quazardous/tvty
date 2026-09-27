@@ -35,13 +35,13 @@ pub(super) struct NewSession {
 }
 
 impl Shell {
-    /// The loops known here that do not run.
+    /// The loops this machine knows that run no terminal, by project (one
+    /// heading each); those of no aiball project (a folder aiball does not
+    /// know) last.
     fn inactive(&self) -> Vec<&KnownLoop> {
-        self.board
-            .known
-            .iter()
-            .filter(|l| self.terminal_of(&l.name).is_none())
-            .collect()
+        let mut loops: Vec<&KnownLoop> = self.board.known.iter().filter(|l| self.terminal_of(&l.name).is_none()).collect();
+        loops.sort_by_key(|l| (l.project.is_none(), l.project.clone()));
+        loops
     }
 
     /// The agents aiball knows with no loop on this machine.
@@ -141,7 +141,7 @@ impl Shell {
                 }
                 let mut last: Option<String> = None;
                 for l in loops {
-                    let project = l.project.clone().unwrap_or_else(|| "—".into());
+                    let project = l.project.clone().unwrap_or_else(|| "No project".into());
                     if last.as_deref() != Some(project.as_str()) {
                         list = list.child(heading(project.clone()));
                         last = Some(project);
