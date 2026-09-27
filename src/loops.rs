@@ -25,6 +25,10 @@ pub struct KnownLoop {
     /// `crew`, or none for a project's main loop.
     #[serde(default)]
     pub role: Option<String>,
+    /// The agent it runs as on aiball's session host, when it was moved
+    /// there (none: it runs in tmux).
+    #[serde(default)]
+    pub host_agent: Option<String>,
 }
 
 /// Where claude-loop keeps its loops' state (`$CLAUDE_LOOP_STATE_ROOT`,

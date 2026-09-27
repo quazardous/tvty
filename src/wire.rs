@@ -92,6 +92,12 @@ impl Wire {
 
     /// Calls `method` and waits for its answer. Blocking: off the UI thread.
     pub fn call(&self, method: &str, params: Value) -> anyhow::Result<Value> {
+        self.call_waiting(method, params, CALL_TIMEOUT)
+    }
+
+    /// [`Self::call`], for a method the daemon may take longer to answer
+    /// (it waits for a process to end): `timeout` at most.
+    pub fn call_waiting(&self, method: &str, params: Value, timeout: Duration) -> anyhow::Result<Value> {
         let id = {
             let mut next = self.next_id.lock().map_err(|_| anyhow!("the bus is gone"))?;
             *next += 1;
@@ -100,7 +106,7 @@ impl Wire {
         let frame = json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }).to_string();
         let (answer, answered) = mpsc::channel();
         self.outgoing.send(Outgoing::Call { frame, id, answer }).map_err(|_| anyhow!("the bus is gone"))?;
-        match answered.recv_timeout(CALL_TIMEOUT) {
+        match answered.recv_timeout(timeout) {
             Ok(result) => result,
             Err(RecvTimeoutError::Timeout) => Err(anyhow!("{method}: no answer from aiball's bus")),
             Err(RecvTimeoutError::Disconnected) => Err(anyhow!("{method}: aiball's bus dropped")),

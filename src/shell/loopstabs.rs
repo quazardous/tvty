@@ -39,7 +39,16 @@ impl Shell {
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
     fn inactive(&self) -> Vec<&KnownLoop> {
-        let mut loops: Vec<&KnownLoop> = self.board.known.iter().filter(|l| self.terminal_of(&l.name).is_none()).collect();
+        let mut loops: Vec<&KnownLoop> = self
+            .board
+            .known
+            .iter()
+            .filter(|l| self.terminal_of(&l.name).is_none())
+            // A loop on aiball's host shows as its agent's hosted terminal.
+            .filter(|l| {
+                l.host_agent.as_ref().is_none_or(|agent| self.terminal_of(&format!("{}{agent}", crate::sessions::HOSTED_PREFIX)).is_none())
+            })
+            .collect();
         loops.sort_by_key(|l| (l.project.is_none(), l.project.clone()));
         loops
     }
@@ -146,11 +155,12 @@ impl Shell {
                         list = list.child(heading(project.clone()));
                         last = Some(project);
                     }
-                    let name = l.consumer.clone().unwrap_or_else(|| l.name.clone());
+                    let agent = l.consumer.clone().or_else(|| l.host_agent.clone());
+                    let name = agent.clone().unwrap_or_else(|| l.name.clone());
                     let start = Start {
                         cwd: l.cwd.clone(),
                         project: l.project.clone(),
-                        agent: l.consumer.clone(),
+                        agent,
                         crew: l.role.as_deref() == Some("crew"),
                     };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));

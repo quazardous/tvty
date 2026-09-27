@@ -697,7 +697,10 @@ impl Aiball {
 
     /// Removes a terminal the daemon's host holds (its program ended, or not).
     pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
-        self.rpc_do("session.stop", json!({ "name": name }))
+        // The daemon answers once the host is gone, which it gives up to
+        // 15 s (a program that ignores the hangup).
+        let wire = WIRE.get().context("aiball's bus is not open")?;
+        wire.call_waiting("session.stop", json!({ "name": name }), std::time::Duration::from_secs(20)).map(drop)
     }
 
     /// aiball's managed config, as the board (`None`) or a project sees it.
