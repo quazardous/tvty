@@ -101,6 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Idle loops of no aiball project are listed last, under "No project", not
   under a bare "—"; and each project heads its idle loops once.
+- An idle loop is listed under the project aiball knows its agent in, not
+  under "No project" when its plate names none (a loop moved onto
+  aiball's host keeps only its agent there).
 - A loop moved onto aiball's session host is no longer listed as idle
   too (its "start" was refused): it shows as its agent's terminal only.
 - Closing a shell on aiball's host no longer reports "no answer" when the

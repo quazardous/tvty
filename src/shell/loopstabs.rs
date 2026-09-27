@@ -35,6 +35,23 @@ pub(super) struct NewSession {
 }
 
 impl Shell {
+    /// A loop's agent: its own, or the one it runs as on aiball's host.
+    fn loop_agent(l: &KnownLoop) -> Option<&str> {
+        l.consumer.as_deref().or(l.host_agent.as_deref())
+    }
+
+    /// A loop's project as aiball knows its agent; its plate's otherwise (a
+    /// plate may name none: a loop moved onto the host keeps only its agent).
+    fn loop_project(&self, l: &KnownLoop) -> Option<String> {
+        let agent = Self::loop_agent(l);
+        self.board
+            .homes
+            .iter()
+            .find(|(a, _, _)| Some(a.as_str()) == agent)
+            .and_then(|(_, project, _)| project.clone())
+            .or_else(|| l.project.clone())
+    }
+
     /// The loops this machine knows that run no terminal, by project (one
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
@@ -49,11 +66,14 @@ impl Shell {
                 l.host_agent.as_ref().is_none_or(|agent| self.terminal_of(&format!("{}{agent}", crate::sessions::HOSTED_PREFIX)).is_none())
             })
             .filter(|l| {
-                let agent = l.consumer.as_deref().or(l.host_agent.as_deref()).unwrap_or("");
-                crate::sessions::found(words, &[l.project.as_deref().unwrap_or(""), agent, &l.name, &l.cwd])
+                let project = self.loop_project(l).unwrap_or_default();
+                crate::sessions::found(words, &[&project, Self::loop_agent(l).unwrap_or(""), &l.name, &l.cwd])
             })
             .collect();
-        loops.sort_by_key(|l| (l.project.is_none(), l.project.clone()));
+        loops.sort_by_cached_key(|l| {
+            let project = self.loop_project(l);
+            (project.is_none(), project)
+        });
         loops
     }
 
@@ -159,16 +179,17 @@ impl Shell {
                 }
                 let mut last: Option<String> = None;
                 for l in loops {
-                    let project = l.project.clone().unwrap_or_else(|| "No project".into());
+                    let known = self.loop_project(l);
+                    let project = known.clone().unwrap_or_else(|| "No project".into());
                     if last.as_deref() != Some(project.as_str()) {
                         list = list.child(heading(project.clone()));
                         last = Some(project);
                     }
-                    let agent = l.consumer.clone().or_else(|| l.host_agent.clone());
+                    let agent = Self::loop_agent(l).map(str::to_string);
                     let name = agent.clone().unwrap_or_else(|| l.name.clone());
                     let start = Start {
                         cwd: l.cwd.clone(),
-                        project: l.project.clone(),
+                        project: known,
                         agent,
                         crew: l.role.as_deref() == Some("crew"),
                     };
