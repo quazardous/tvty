@@ -40,9 +40,12 @@ use gpui_kit::*;
 fn main() {
     // Quiet by default: Vulkan's loader warns about every driver it probes
     // and skips (other vendors' GPUs), which is not tvty's business.
+    // Written to stderr and to ~/.local/state/tvty/tvty.log (the previous
+    // run's in tvty.log.1).
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
         "warn,wgpu_hal=error,gpui_component::theme::mono_font=error",
     ))
+    .target(env_logger::Target::Pipe(Box::new(config::LogTee::open())))
     .init();
     // tvty may be started from inside tmux; its terminals attach to tmux
     // sessions of their own, which tmux refuses while $TMUX is set.
@@ -98,6 +101,7 @@ fn main() {
                 },
             )
             .expect("failed to open the window");
+            cx.update(settings::report_errors);
         })
         .detach();
     });

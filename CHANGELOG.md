@@ -21,13 +21,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Settings where Linux expects them: your preferences in
+  `~/.config/tvty/settings.toml`, in sections, to edit by hand — tvty puts
+  a change in force once saved, and a file that does not read is said and
+  never written over; the window's layout and the open terminals in
+  `~/.local/state/tvty/`; the log in `~/.local/state/tvty/tvty.log` (the
+  previous run's in `tvty.log.1`). The older `state.json` is taken over
+  once, then renamed `state.json.migrated`.
 
 - Copy and paste in the terminals: a drag selects whatever the program (tmux
   with its mouse on, where it did nothing), copied at once to the primary
   selection; middle click pastes it; Shift+Insert pastes the clipboard; a
   right click opens Copy / Paste. What was selected is kept even when the
   program draws over it (Claude Code). Ctrl+C stays ^C.
-- Customizable shortcuts: `keymap.json` binds a command to other keys, or
+- Customizable shortcuts: `keymap.toml` binds a command to other keys, or
   gives a key back to the terminal's program, by context (Terminal when a
   terminal has the focus, Window elsewhere); read again once saved. Options
   > Keyboard shortcuts shows what is in force.

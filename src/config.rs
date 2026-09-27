@@ -8,11 +8,14 @@
 //! the same way:
 //!
 //! - read at start, the defaults filling what the file leaves out;
-//! - a file that does not read is said, and the last good value is kept;
+//! - a file that does not read is said, and the last good value is kept
+//!   (the defaults, at start); it is never written over;
 //! - written atomically (a temporary file, then renamed), once changes rest
 //!   (300 ms), and at quit;
 //! - read again when the user edits it (`EDITED`), and its observers told;
 //! - migrated, the first time, from where an older tvty kept it.
+//!
+//! The log lives here too: `$XDG_STATE_HOME/tvty/tvty.log`.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -180,6 +183,14 @@ pub fn error<T: Stored>(cx: &App) -> Option<String> {
     cx.global::<Store<T>>().error.clone()
 }
 
+/// Says, as a notification, what was wrong with the file read at start —
+/// once the window listens.
+pub fn report<T: Stored>(cx: &mut App) {
+    if let Some(error) = error::<T>(cx) {
+        crate::activity::publish(cx, crate::activity::Activity::failed(None, T::FILE, format!("{error} — the defaults are used, the file is left as it is")));
+    }
+}
+
 /// Changes the set: its observers are told at once, the file is written
 /// once the changes rest.
 pub fn update<T: Stored>(cx: &mut App, change: impl FnOnce(&mut T)) {
@@ -203,9 +214,15 @@ pub fn update<T: Stored>(cx: &mut App, change: impl FnOnce(&mut T)) {
     .detach();
 }
 
-/// Writes the set now.
+/// Writes the set now — unless its file does not read: that one is the
+/// user's to mend, never written over.
 fn save<T: Stored>(cx: &mut App) {
     let Some(path) = path::<T>() else { return };
+    if let Some(error) = error::<T>(cx) {
+        log::warn!("{}: not written, it does not read ({error})", path.display());
+        cx.global_mut::<Store<T>>().pending = 0;
+        return;
+    }
     let written = render(get::<T>(cx)).and_then(|text| write_atomic(&path, &text).map_err(|e| e.to_string()));
     if let Err(error) = &written {
         log::warn!("{}: {error}", path.display());
@@ -243,6 +260,47 @@ fn reload_if_changed<T: Stored>(cx: &mut App) {
             store.error = Some(error.clone());
             crate::activity::publish(cx, crate::activity::Activity::failed(None, name, error));
         }
+    }
+}
+
+// ── The log ──────────────────────────────────────────────────────────
+
+/// Where the log goes: `tvty.log` in the state place, the previous run's
+/// kept as `tvty.log.1`.
+pub fn log_path() -> Option<PathBuf> {
+    Some(dir(Place::State)?.join("tvty.log"))
+}
+
+/// The log's lines, to stderr and to [`log_path`].
+pub struct LogTee(Option<std::fs::File>);
+
+impl LogTee {
+    /// A new log for this run: the previous one set aside first. Without a
+    /// file (no home, a disk full), stderr alone.
+    pub fn open() -> Self {
+        let file = log_path().and_then(|path| {
+            std::fs::create_dir_all(path.parent()?).ok()?;
+            let _ = std::fs::rename(&path, path.with_extension("log.1"));
+            std::fs::File::create(&path).ok()
+        });
+        Self(file)
+    }
+}
+
+impl std::io::Write for LogTee {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        let _ = std::io::stderr().write_all(bytes);
+        if let Some(file) = &mut self.0 {
+            let _ = file.write_all(bytes);
+        }
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if let Some(file) = &mut self.0 {
+            file.flush()?;
+        }
+        std::io::stderr().flush()
     }
 }
 

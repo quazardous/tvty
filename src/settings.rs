@@ -234,6 +234,14 @@ impl Settings {
     }
 }
 
+/// Says what was wrong with a file read at start, once the window listens.
+pub fn report_errors(cx: &mut gpui_kit::App) {
+    crate::config::report::<Preferences>(cx);
+    crate::config::report::<Layout>(cx);
+    crate::config::report::<Workspace>(cx);
+    crate::config::report::<crate::keymap::KeymapFile>(cx);
+}
+
 /// Registers the sets, taking an older tvty's file apart the first time.
 pub fn init(cx: &mut gpui_kit::App) {
     crate::config::register::<Preferences>(cx);

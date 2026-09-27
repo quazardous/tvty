@@ -74,6 +74,23 @@ make install-desktop                          # ~/.local/bin/tvty, which runs ta
 make install-desktop BIN=target/release/tvty  # or another build
 ```
 
+## Files
+
+tvty follows the XDG directories (`$XDG_CONFIG_HOME` and the others, with
+their usual defaults):
+
+| File | What |
+|---|---|
+| `~/.config/tvty/settings.toml` | your preferences: theme, sizes, notifications, scroll speed… — Options writes it, you may edit it; read again once saved |
+| `~/.config/tvty/keymap.toml` | your shortcuts, over the defaults (Options > Keyboard shortcuts says how) |
+| `~/.config/tvty/themes/` | colour themes of your own |
+| `~/.local/state/tvty/layout.json` | the window's layout: panel and list widths, folded sections |
+| `~/.local/state/tvty/workspace.json` | the terminals left open, opened again at start |
+| `~/.local/state/tvty/tvty.log` | the log (the previous run's in `tvty.log.1`) |
+| `~/.local/share/tvty/fonts/` | fonts of your own (a colour emoji font) |
+
+A file that does not read is said in a notification, and left as it is.
+
 ## License
 
 [MIT](LICENSE).

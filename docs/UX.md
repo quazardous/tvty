@@ -34,7 +34,7 @@ The sessions list ("Sessions", ‹ folds it) has three foldable sections,
 each with its count, like the ticket list's bands (one component,
 `src/accordion.rs`: ▾/▸ and a click, each section scrolls on its own and
 they share the height — **dragging a title** moves the border with the
-section above, its least height kept; the heights are kept in `state.json`,
+section above, its least height kept; the heights are kept with the layout,
 and a double click on a title gives the list its shares back): **live** (the sessions that run, by project),
 **idle** (the loops this machine knows, from claude-loop's state
 directory, that are stopped: ▶ start runs one again where it worked, for
@@ -322,7 +322,7 @@ theme. By default they follow the window's.
 
 ## Sizes
 
-Two sizes, in Options > Appearance, kept in `state.json`: the terminals'
+Two sizes, in Options > Appearance, kept in `settings.toml`: the terminals'
 font (8 to 32 px, 14 by default; ctrl+shift+= / ctrl+shift+− / ctrl+shift+0
 too — shift so that no key is taken from the programs in the terminal) and
 the window's text (12 to 22 px, 16 by default: the kit's size, which sets
@@ -345,17 +345,17 @@ own step, three lines of text, was barely one row), and five lines of a
 terminal's history. In a terminal on tmux, the notches go to tmux in order,
 one call at a time, those that come meanwhile added up into the next: a
 fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
-`scroll_speed` in `state.json` multiplies both (1 by default).
+`speed` under `[scroll]` in `settings.toml` multiplies both (1 by default).
 
 ## Keys
 
 Every shortcut is a **command**, bound to keys in a **context** that
 follows the focus: `Terminal` when a terminal has it, `Window` anywhere
 else (`src/keymap.rs`). The deepest binding wins, and a key bound nowhere
-goes on to the terminal's program. `keymap.json`, beside `state.json`,
-overrides the defaults below — `{ "Terminal": { "ctrl-c": null }, "Window":
-{ "ctrl-alt-t": "theme.next" } }`: a key bound to a command by its name, or
-`null` to give it back to what has the focus. It is read again once
+goes on to the terminal's program. `keymap.toml`, beside `settings.toml`,
+overrides the defaults below — a `[Terminal]` or `[Window]` section, and in
+it `ctrl-alt-t = "theme.next"`: a key bound to a command by its name, or
+`ctrl-c = false` to give it back to what has the focus. It is read again once
 saved; a wrong one is said in a notification and changes nothing. Options
 > Keyboard shortcuts shows what is in force, what the file changed, and a
 window key a terminal masks.
