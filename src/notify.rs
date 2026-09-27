@@ -41,8 +41,6 @@ pub struct Notice {
     pub ticket: Option<(String, u64)>,
     /// The terminal it is about, if any.
     pub session: Option<String>,
-    /// A click opens the full list on what is unread.
-    pub unread_list: bool,
     born: Instant,
     hovered: bool,
 }
@@ -56,7 +54,6 @@ impl Notice {
             text: text.into(),
             ticket: None,
             session: None,
-            unread_list: false,
             born: Instant::now(),
             hovered: false,
         }

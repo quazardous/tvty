@@ -114,8 +114,6 @@ pub struct Shell {
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
     viewer: Option<viewer::Viewer>,
-    /// The unread pings were said (once: a reconnection does not say it again).
-    pings_greeted: bool,
     /// aiball's bus, once the user is known.
     wire: Option<crate::wire::Wire>,
     /// What aiball's bus says the connection is (`bus.whoami`).
@@ -427,7 +425,6 @@ impl Shell {
             open_when_running: None,
             ended: None,
             viewer: None,
-            pings_greeted: false,
             wire: None,
             wire_whoami: None,
             new_ticket: None,
@@ -573,18 +570,6 @@ impl Shell {
                 Update::Board => self.board_moved(cx),
                 Update::Filed(filed) => self.announce_filed(filed, cx),
                 Update::Ping(ping) => self.announce_ping(ping, cx),
-                Update::Unread(unread) => {
-                    if !self.pings_greeted && unread > 0 {
-                        let mut notice = Notice::new(
-                            Kind::Info,
-                            "aiball",
-                            format!("{unread} ping{} unread — a click lists them", if unread == 1 { "" } else { "s" }),
-                        );
-                        notice.unread_list = true;
-                        notify::push(cx, notice);
-                    }
-                    self.pings_greeted = true;
-                }
             }
         }
     }
@@ -914,19 +899,6 @@ impl Shell {
     /// Goes where a notification points: the agent's terminal, the panel
     /// open on the ticket.
     fn open_notice(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
-        if notice.unread_list {
-            if !self.full_list_shown {
-                self.toggle_full_list(window, cx);
-            }
-            if let Some(list) = self.full_list.clone() {
-                list.update(cx, |list, cx| {
-                    list.set_scope(None, cx);
-                    list.set_band(None, cx);
-                    list.set_unread_only(true, cx);
-                });
-            }
-            return;
-        }
         if let Some(session) = notice.session.clone() {
             self.select(session, window, cx);
         }

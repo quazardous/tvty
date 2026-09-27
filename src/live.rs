@@ -46,8 +46,6 @@ pub enum Update {
     Filed(Filed),
     /// A ping for the user.
     Ping(PingInfo),
-    /// The user's unread pings, when subscribing.
-    Unread(u32),
 }
 
 /// A ticket filed, from the row that brought it.
@@ -231,10 +229,9 @@ impl Live {
                     .collect();
                 Vec::new()
             }
-            Kind::Pings => {
-                let unread = value.get("unread").and_then(Value::as_u64).unwrap_or(0) as u32;
-                vec![Update::Unread(unread)]
-            }
+            // Its value is the count of pings never marked seen, which
+            // grows for good for a human: tvty says the pings as they come.
+            Kind::Pings => Vec::new(),
             Kind::Sessions => {
                 self.sessions = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
                 Vec::new()
@@ -466,8 +463,7 @@ mod tests {
             Ok(json!({ "id": "h", "epoch": "e1", "seq": 10, "replayed": false, "value": {} })),
             Ok(json!({ "id": "p", "epoch": "e1", "seq": 10, "replayed": false, "value": { "unread": 3 } })),
         ];
-        let updates = live.subscribed(plan, answers);
-        assert!(updates.contains(&Update::Unread(3)));
+        live.subscribed(plan, answers);
         assert_eq!(live.tickets()["demo"].len(), 1);
         assert_eq!(live.consumers().len(), 1);
 

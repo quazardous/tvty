@@ -156,12 +156,6 @@ impl FullList {
         cx.notify();
     }
 
-    /// Shows only this band (`None`: all).
-    pub fn set_band(&mut self, band: Option<Band>, cx: &mut Context<Self>) {
-        self.band = band;
-        cx.notify();
-    }
-
     pub fn set_scope(&mut self, scope: Option<String>, cx: &mut Context<Self>) {
         self.scope = scope;
         self.band = None;

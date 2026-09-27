@@ -34,6 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- No more "N pings unread" at start: aiball's count never goes down for a
+  human (14 963 here), so it said nothing; the pings are notified as they
+  come, and the full list's "Unread" filter lists what is new.
 - A terminal closed from its tab leaves the list at once, not once aiball's
   host has stopped it.
 - A terminal whose stop fails (aiball's bus not answering) comes back in
