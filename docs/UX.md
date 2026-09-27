@@ -138,7 +138,9 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
 - **The stripe says whose turn**: coloured and solid when a decision waits
   on you and is the last message, dashed when the talk went on after it,
   neutral when an agent answered you, a thin dotted line when your word is
-  the last (you wait), none otherwise.
+  the last (you wait), none otherwise. A ticket waiting for moderation
+  wears a construction tape instead — yellow and black bands: nothing goes
+  on until it is let through.
 - Then who spoke last and aiball's **comment count** (a bubble and the
   number, green when you spoke last; a clock while comments wait for
   moderation), the agent holding it (🔥 when active), ⚠N on the critical

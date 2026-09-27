@@ -12,7 +12,7 @@ use gpui_kit::*;
 
 use crate::aiball::{Aiball, TicketRow};
 use crate::icons::{self, Icon};
-use crate::panel::{ago, count, glyph_colour, stripe, stripe_colour};
+use crate::panel::{ago, count, glyph_colour};
 use crate::rowstate::{self, Band, RowState, Turn};
 use crate::shell::Alerts;
 use crate::tip::Tip as _;
@@ -526,7 +526,7 @@ impl FullList {
             .border_color(p().border.opacity(0.5))
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
-            .child(stripe(state.stripe, stripe_colour(&state)))
+            .child(crate::panel::row_edge(&state))
             .child(
                 div()
                     .w(px(18.))

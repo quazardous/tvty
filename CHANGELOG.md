@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A ticket waiting for moderation wears a construction tape — yellow and
+  black bands — on its row's edge, in the panel and the full list (and in
+  the legend).
 - The pings that came while tvty was closed (a restart, the machine
   asleep) come at start as one notification: the last one said, the
   others counted; a click opens its ticket.

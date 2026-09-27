@@ -818,7 +818,6 @@ impl TicketPanel {
         let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
         let glyph_colour = |glyph: Glyph| glyph_colour(glyph, yours);
-        let stripe_colour = stripe_colour(&state);
         let speaker = ticket.last_speaker.as_deref().map(|s| {
             if s == self.aiball.user {
                 "you".to_string()
@@ -854,7 +853,7 @@ impl TicketPanel {
             .py_1p5()
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
-            .child(stripe(state.stripe, stripe_colour))
+            .child(row_edge(&state))
             .child(
                 div()
                     .w(px(16.))
@@ -2304,6 +2303,50 @@ pub(crate) fn stripe_colour(state: &RowState) -> Hsla {
         .filter(|_| state.stripe != Stripe::Neutral)
         .map(|g| glyph_colour(g, state.turn == Turn::You))
         .unwrap_or(p().border)
+}
+
+/// A row's left edge: the construction tape of a ticket waiting for
+/// moderation — nothing goes on until it is let through —, else whose
+/// turn it is ([`stripe`]).
+pub(crate) fn row_edge(state: &RowState) -> AnyElement {
+    if state.band == Band::Moderate {
+        hazard().into_any_element()
+    } else {
+        stripe(state.stripe, stripe_colour(state)).into_any_element()
+    }
+}
+
+/// Yellow and black diagonal bands, as a construction site's tape.
+pub(crate) fn hazard() -> impl IntoElement {
+    const WIDTH: f32 = 5.;
+    const BAND: f32 = 4.;
+    canvas(
+        |_, _, _| {},
+        |bounds, _, window, _| {
+            window.with_content_mask(Some(ContentMask { bounds }), |window| {
+                window.paint_quad(fill(bounds, gpui_kit::rgb(0x1c1c1c)));
+                let (left, right) = (bounds.left(), bounds.right());
+                let mut y = bounds.top() - px(WIDTH);
+                while y < bounds.bottom() + px(WIDTH) {
+                    let mut path = PathBuilder::fill();
+                    path.move_to(point(left, y + px(WIDTH)));
+                    path.line_to(point(right, y));
+                    path.line_to(point(right, y + px(BAND)));
+                    path.line_to(point(left, y + px(WIDTH + BAND)));
+                    path.close();
+                    if let Ok(path) = path.build() {
+                        window.paint_path(path, gpui_kit::rgb(0xf2c230));
+                    }
+                    y += px(2. * BAND);
+                }
+            });
+        },
+    )
+    .w(px(WIDTH))
+    // Wider than a stripe, which it stands for: the row's text stays put.
+    .mr(px(3. - WIDTH))
+    .flex_none()
+    .rounded_sm()
 }
 
 /// Whose turn: coloured when a decision waits on you (solid when it is the

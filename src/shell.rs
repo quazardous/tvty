@@ -4162,6 +4162,10 @@ fn options_ticket_list() -> impl IntoElement {
             "thin and dotted: your word is the last, you wait".into(),
         ))
         .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
+        .child(line(
+            div().h(px(18.)).flex().child(crate::panel::hazard()).into_any_element(),
+            "construction tape: the ticket waits for moderation, nothing goes on until you let it through".into(),
+        ))
         .child(option_group("The rest"))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::Comments, p().accent, 12., "3").text_xs().text_color(p().accent).into_any_element(),
