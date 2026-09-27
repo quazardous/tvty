@@ -21,6 +21,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- One order for the projects: the list, the slider (ctrl+tab) and the
+  gallery put the project used last first, as ctrl+tab goes — the slider's
+  stacks now move with it too. ⇅ in the list's header (or Options > Layout)
+  switches to alphabetical.
 - A Claude session's row, tab and card show its agent's own counters, as
   claude-loop does: `b` its backlog and `e` its events, in light badges
   with their letter; the project's row keeps the project's counters. Its

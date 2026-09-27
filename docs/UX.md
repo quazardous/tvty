@@ -82,9 +82,12 @@ project's tickets meanwhile; the loop shows under idle.
   held and tap to move from group to group, most recent first; release to
   open the group on that terminal, the tabs then move within it. The
   arrows move to the stack seen left, right, above, below.
-- **Cards never move**: both lay them out as the projects' list does. Only
-  the choice moves — in the slider, the chosen card is enlarged over its
-  own slot, above its neighbours, so nothing shifts under the eye.
+- **One order everywhere**: the projects' list, the slider and the gallery
+  lay the groups out alike — by default the group used last first, as
+  ctrl+tab goes (the groups never used after, alphabetical), or
+  alphabetical: **⇅** in the list's header, or Options > Layout. A group's
+  terminals keep their place, so that its tabs never move. While the slider
+  is up, nothing moves: the chosen card is enlarged over its own slot.
 - **The cards are live**: a terminal open in tvty draws its own screen; any
   other session gets a read-only client (`tmux attach -r`: read-only and
   ignore-size, so it never resizes the session) while the slider or the

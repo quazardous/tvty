@@ -648,6 +648,7 @@ impl Shell {
         self.aiball.find_user(&self.live.consumers());
         let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
         self.forget_stopping(&mut board);
+        self.order_groups(&mut board);
         if self.board != board {
             self.board = board;
             self.fire_armed_restarts(cx);
@@ -1078,6 +1079,9 @@ impl Shell {
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
+        let mut board = std::mem::take(&mut self.board);
+        self.order_groups(&mut board);
+        self.board = board;
         self.save_workspace(cx);
         self.sync_panel(cx);
         cx.notify();
@@ -1102,6 +1106,25 @@ impl Shell {
         self.watch_end(session.to_string(), &terminal, window, cx);
         self.terminals.insert(session.to_string(), terminal.clone());
         Some(terminal)
+    }
+
+    /// The groups in the order the user chose: the one used last first (as
+    /// ctrl+tab goes; the groups never used after, alphabetical), or
+    /// alphabetical as the board comes. Within a group the terminals keep
+    /// their place, so that the tabs do not move under the pointer.
+    fn order_groups(&self, board: &mut sessions::Board) {
+        if !self.applied.sessions.recent_first {
+            return;
+        }
+        let rank = |group: &sessions::Project| {
+            group
+                .terminals
+                .iter()
+                .filter_map(|t| self.recent.iter().position(|s| *s == t.session))
+                .min()
+                .unwrap_or(usize::MAX)
+        };
+        board.projects.sort_by_key(|group| rank(group));
     }
 
     /// The counters of the agent in `terminal`, from the bar its loop
@@ -1532,7 +1555,9 @@ impl Shell {
                     "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
                 ))
                 .into_any_element(),
-            Section::Layout => self.options_layout(window, cx).into_any_element(),
+            Section::Layout => {
+                div().flex().flex_col().gap_2().child(self.options_settings("Layout", cx)).child(self.options_layout(window, cx)).into_any_element()
+            }
             Section::TicketList => self.options_settings("Ticket list", cx).child(options_ticket_list()).into_any_element(),
             Section::Shortcuts => self.options_shortcuts(cx).into_any_element(),
             Section::About => self.options_about(cx).into_any_element(),
@@ -2091,6 +2116,11 @@ impl Shell {
         crate::wheel::set_speed(new.scroll.speed);
         let newest_first = new.tickets.newest_first;
         self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
+        if old.sessions != new.sessions {
+            // Ordered afresh, from the board as it comes.
+            self.board = sessions::Board::default();
+            self.rebuild(cx);
+        }
         self.redraw_terminals(cx);
         window.refresh();
         cx.notify();
@@ -2333,6 +2363,28 @@ impl Shell {
             .border_color(p().border)
             .child(div().font_weight(FontWeight::BOLD).child("Sessions"))
             .child(div().flex_1())
+            // The order: as ctrl+tab goes, or alphabetical.
+            .child({
+                let recent = self.applied.sessions.recent_first;
+                div()
+                    .id("sessions-order")
+                    .mr_2()
+                    .px_1p5()
+                    .rounded_sm()
+                    .text_xs()
+                    .text_color(p().muted)
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover).text_color(p().text))
+                    .child(if recent { "⇅ recent" } else { "⇅ a–z" })
+                    .tip(if recent {
+                        "the project used last first, as ctrl+tab goes; a click: alphabetical"
+                    } else {
+                        "alphabetical; a click: the project used last first, as ctrl+tab goes"
+                    })
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx)
+                    }))
+            })
             // A shell the daemon holds: it outlives tvty.
             .child(
                 div()

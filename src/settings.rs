@@ -26,6 +26,21 @@ pub struct Preferences {
     pub notifications: Notifications,
     pub scroll: Scroll,
     pub tickets: Tickets,
+    pub sessions: Sessions,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sessions {
+    /// The groups in the order they were used, the latest first (the
+    /// slider's, ctrl+tab), rather than alphabetical.
+    pub recent_first: bool,
+}
+
+impl Default for Sessions {
+    fn default() -> Self {
+        Self { recent_first: true }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -153,6 +168,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Choice,
     },
     Setting {
+        key: "sessions.recent_first",
+        page: "Layout",
+        group: "Sessions",
+        label: "Order",
+        about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes — or alphabetical. Also the ⇅ in the list's header.",
+        kind: Kind::Toggle { default: true, on: "most recent first", off: "alphabetical" },
+    },
+    Setting {
         key: "tickets.newest_first",
         page: "Ticket list",
         group: "Thread",
@@ -188,6 +211,7 @@ impl Stored for Preferences {
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
+            sessions: Sessions::default(),
         })
     }
 }
