@@ -199,8 +199,10 @@ pub struct Shell {
     waiting: Option<HashSet<(u64, Wait)>>,
     /// Counts terminal switches: each one replays the slide.
     switches: usize,
-    /// The theme list is open, under the title bar.
+    /// The theme list is open, under the title bar; on the terminals'
+    /// themes rather than the window's.
     theme_menu: bool,
+    theme_menu_terminal: bool,
 
     focus: FocusHandle,
     /// Lists the local sessions again now, before the next tick.
@@ -589,6 +591,7 @@ impl Shell {
             waiting: None,
             switches: 0,
             theme_menu: false,
+            theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
             refresh_now,
@@ -2969,9 +2972,39 @@ impl Shell {
         cx.notify();
     }
 
+    /// The terminals' theme: one of their own, or (none) the window's.
+    fn set_terminal_theme(&mut self, name: Option<SharedString>, cx: &mut Context<Self>) {
+        self.set_pref("appearance.terminal_theme", Value::Choice(name.map(|n| n.to_string())), cx);
+        self.theme_menu = false;
+        cx.notify();
+    }
+
     fn theme_menu_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let current = theme::current(cx);
+        let terminal = self.theme_menu_terminal;
+        // What is chosen: the window's theme, or the terminals' (none: the
+        // window's own).
+        let current = if terminal { theme::current_terminal() } else { Some(theme::current(cx)) };
+        let item = |id: String, label: SharedString, chosen: bool| {
+            div()
+                .id(SharedString::from(id))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .cursor_pointer()
+                .when(chosen, |d| d.bg(p().active))
+                .hover(|d| d.bg(p().hover))
+                .child(div().w(px(10.)).child(if chosen { "✓" } else { "" }))
+                .child(label)
+        };
         let mut list = div().id("theme-menu-list").flex().flex_col().py_1().text_sm();
+        if terminal {
+            list = list.child(
+                item("theme-terminal-window".into(), "Same as the window".into(), current.is_none())
+                    .on_click(cx.listener(|shell, _, _, cx| shell.set_terminal_theme(None, cx))),
+            );
+        }
         let mut last_dark = None;
         for (name, dark) in theme::names(cx) {
             if last_dark != Some(dark) {
@@ -2986,24 +3019,39 @@ impl Shell {
                         .child(if dark { "DARK" } else { "LIGHT" }),
                 );
             }
-            let chosen = name == current;
+            let chosen = current.as_ref() == Some(&name);
             let pick = name.clone();
-            list = list.child(
-                div()
-                    .id(SharedString::from(format!("theme-{name}")))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_3()
-                    .py_1()
-                    .cursor_pointer()
-                    .when(chosen, |d| d.bg(p().active))
-                    .hover(|d| d.bg(p().hover))
-                    .child(div().w(px(10.)).child(if chosen { "✓" } else { "" }))
-                    .child(name.clone())
-                    .on_click(cx.listener(move |shell, _, _, cx| shell.set_theme(pick.clone(), cx))),
-            );
+            let row = item(format!("theme-{}-{name}", if terminal { "t" } else { "w" }), name.clone(), chosen);
+            list = list.child(if terminal {
+                row.on_click(cx.listener(move |shell, _, _, cx| shell.set_terminal_theme(Some(pick.clone()), cx)))
+            } else {
+                row.on_click(cx.listener(move |shell, _, _, cx| shell.set_theme(pick.clone(), cx)))
+            });
         }
+        // Window or terminal: what the list chooses for.
+        let tab = |id: &'static str, label: &'static str, on: bool, to_terminal: bool, cx: &mut Context<Self>| {
+            div()
+                .id(id)
+                .flex_1()
+                .py_1()
+                .text_center()
+                .text_sm()
+                .cursor_pointer()
+                .border_b_2()
+                .border_color(if on { p().accent } else { p().border })
+                .text_color(if on { p().text } else { p().muted })
+                .hover(|d| d.bg(p().hover))
+                .child(label)
+                .on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.theme_menu_terminal = to_terminal;
+                    cx.notify();
+                }))
+        };
+        let tabs = div()
+            .flex()
+            .flex_none()
+            .child(tab("theme-menu-window", "Window", !terminal, false, cx))
+            .child(tab("theme-menu-terminal", "Terminal", terminal, true, cx));
         // The box holds the place under the title bar; the list scrolls in
         // it (the scrollbar's wrapper keeps a size, not a position).
         div()
@@ -3022,7 +3070,25 @@ impl Shell {
             .border_color(p().border)
             .shadow_lg()
             .overflow_hidden()
+            .child(tabs)
             .child(list.overflow_y_scrollbar())
+    }
+
+    /// Under the theme list, the rest of the window: a click there closes
+    /// the list, as Esc does.
+    fn theme_menu_backdrop(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .id("theme-menu-backdrop")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|shell, _, _, cx| {
+                    shell.theme_menu = false;
+                    cx.notify();
+                }),
+            )
     }
 
     // ── Rendering ───────────────────────────────────────────────────────
@@ -3799,7 +3865,9 @@ impl Render for Shell {
         // application (as with VS Code or Zed). It moves the window and
         // carries its buttons; the frame and its resize edges come from Root.
         let theme_name = theme::current(cx);
-        let menu = self.theme_menu.then(|| self.theme_menu_view(cx));
+        let menu = self.theme_menu.then(|| {
+            div().absolute().inset_0().child(self.theme_menu_backdrop(cx)).child(self.theme_menu_view(cx))
+        });
         div()
             .relative()
             .flex()

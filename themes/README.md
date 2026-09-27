@@ -9,7 +9,7 @@ the palette it adapts:
 | File | Palette | By |
 |---|---|---|
 | `catppuccin.json` | [Catppuccin](https://github.com/catppuccin/catppuccin) | Catppuccin |
-| `eclipse.json` | [Eclipse Classic Dark](https://github.com/lorenzobilli/Eclipse-color-theme), Eclipse's dark theme as a VS Code one | Lorenzo Billi |
+| `eclipse.json` | Eclipse's themes as VS Code ports them: [Eclipse Classic Dark](https://github.com/lorenzobilli/Eclipse-color-theme), [Eclipse Color Theme](https://github.com/roehling/vcode-eclipse-color-theme) (light) | Lorenzo Billi, Timo Röhling |
 | `everforest.json` | [Everforest](https://github.com/sainnhe/everforest) | sainnhe |
 | `flexoki.json` | [Flexoki](https://github.com/kepano/flexoki) | kepano |
 | `gruvbox.json` | [Gruvbox](https://github.com/morhetz/gruvbox) | Pavel Pertsev |
