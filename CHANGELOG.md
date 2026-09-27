@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   in force, ⌨ while you type, and the little man for the mode F9 arms,
   dotted until it takes effect. F9 works anywhere in the window.
 
+### Added
+
+- The agent bar says where its loop runs: "host" (aiball's session host)
+  or "tmux".
+
 ## [0.3.0] - 2026-09-27
 
 ### Added

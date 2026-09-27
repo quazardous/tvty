@@ -379,6 +379,23 @@ impl Shell {
                     )
                 })
                 .child(div().flex_1())
+                // Where its loop runs: on aiball's host, or in tmux.
+                .child({
+                    let hosted = terminal.attach.is_some();
+                    item()
+                        .id("agent-mode")
+                        .px_1()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(ink(p().border))
+                        .text_color(ink(p().muted))
+                        .child(if hosted { "host" } else { "tmux" })
+                        .tip(if hosted {
+                            "its loop runs on aiball's session host: tvty attaches to it directly"
+                        } else {
+                            "its loop runs in tmux (claude-loop): tvty opens it through tmux"
+                        })
+                })
                 .child(item().text_color(ink(p().text)).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))

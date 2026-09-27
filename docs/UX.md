@@ -276,7 +276,8 @@ claude-loop's terms and full words — `all:` the project's open tickets,
 `backlog:`, `events:` (claude-loop's a: b: e:) — then the tickets it holds;
 a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
-its name and where it works. A gesture aiball refuses
+where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
+tmux), its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread
