@@ -212,6 +212,9 @@ pub struct BarAlerts {
     /// Its Claude Code installed an update and waits for a restart.
     #[serde(default)]
     pub restart_needed: bool,
+    /// A restart was asked and waits for its Claude's next idle.
+    #[serde(default)]
+    pub restart_pending: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -782,10 +785,11 @@ impl Aiball {
         self.rpc_do("consumer.counters", json!({ "consumer_id": agent }))
     }
 
-    /// Restarts an agent's Claude Code once it is idle, resuming its
-    /// conversation; refused with `NOT_IDLE` while it works.
+    /// Restarts an agent's Claude Code as soon as it is idle (at once when
+    /// it is), resuming its conversation: its loop waits, however long, and
+    /// its bar says a restart is pending meanwhile.
     pub fn restart_claude(&self, agent: &str) -> anyhow::Result<()> {
-        self.rpc_do("consumer.restart_claude", json!({ "name": agent }))
+        self.rpc_do("consumer.restart_claude", json!({ "name": agent, "when_idle": true }))
     }
 
     /// Marks a question (`- [ ]` in a comment) answered by a comment.

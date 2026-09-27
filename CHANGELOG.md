@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A Claude that installed an update restarts from its bar whether it works
+  or not: its loop waits for its next idle (aiball's `when_idle`), the bar
+  says "when idle" meanwhile — whoever asked for it — and the terminal
+  opens again on its own once the loop is back, not on an end screen.
 - The projects' list no longer moves a project to the top when one of its
   terminals is clicked: it takes the order of use once, when the work left
   last time is back (⇅ takes it again); the slider still follows the order

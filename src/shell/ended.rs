@@ -38,6 +38,16 @@ impl Shell {
         if self.selected.as_deref() != Some(session) {
             return;
         }
+        // A restart tvty asked for: the loop starts again under the same
+        // name (its host stopped, then a new one), and the terminal opens
+        // again once it is back — as many times as the restart takes.
+        let agent = self.terminal_of(session).and_then(|(_, t)| t.agent.clone());
+        self.restarts_asked.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
+        if agent.is_some_and(|a| self.restarts_asked.contains_key(&a)) {
+            self.open_when_running = Some(session.to_string());
+            cx.notify();
+            return;
+        }
         let (project, agent) = match self.terminal_of(session) {
             Some((project, terminal)) => (Some(project.to_string()), terminal.agent.clone()),
             None => (None, None),

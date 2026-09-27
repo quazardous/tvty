@@ -149,9 +149,6 @@ pub struct Shell {
     afk_menu: bool,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
-    /// Agents whose Claude restarts as soon as it is idle (asked while it
-    /// worked).
-    restart_armed: HashSet<String>,
     backlog_view: Option<agentbar::BacklogView>,
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
@@ -160,6 +157,10 @@ pub struct Shell {
     new_session: Option<loopstabs::NewSession>,
     starting: Option<String>,
     open_when_running: Option<String>,
+    /// Agents whose Claude tvty asked to restart, and when: its session
+    /// ends and comes back (the loop starts again), and is opened again
+    /// rather than left on its end screen.
+    pub(super) restarts_asked: HashMap<String, std::time::Instant>,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -576,12 +577,12 @@ impl Shell {
             compact: None,
             afk_menu: false,
             restarting: None,
-            restart_armed: HashSet::new(),
             backlog_view: None,
             session_scrolls: Default::default(),
             new_session: None,
             starting: None,
             open_when_running: None,
+            restarts_asked: HashMap::new(),
             ended: None,
             viewer: None,
             wire: None,
@@ -716,7 +717,6 @@ impl Shell {
         self.keep_sidebar_order(&board);
         if self.board != board {
             self.board = board;
-            self.fire_armed_restarts(cx);
             self.update_needs(cx);
             cx.notify();
         }
