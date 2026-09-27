@@ -95,6 +95,39 @@ impl Wire {
         self.call_waiting(method, params, CALL_TIMEOUT)
     }
 
+    /// A call on a connection of its own, as the same user, closed once
+    /// answered: the bus answers a connection's calls in turn, and a method
+    /// the daemon takes long to answer (it waits for a process to end) would
+    /// hold up every other call behind it. Blocking: off the UI thread.
+    pub fn call_alone(&self, method: &str, params: Value, timeout: Duration) -> anyhow::Result<Value> {
+        let user = self.user.lock().map(|u| u.clone()).map_err(|_| anyhow!("the bus is gone"))?;
+        let mut socket = connect(&user)?;
+        let frame = json!({ "jsonrpc": "2.0", "id": 1, "method": method, "params": params }).to_string();
+        socket.send(tungstenite::Message::text(frame)).map_err(|e| anyhow!("{method}: {e}"))?;
+        let until = std::time::Instant::now() + timeout;
+        while std::time::Instant::now() < until {
+            match socket.read() {
+                Ok(tungstenite::Message::Text(text)) => {
+                    for message in messages(&text) {
+                        if let Incoming::Answer { id: 1, result } = message {
+                            let _ = socket.close(None);
+                            return result.map_err(|e| anyhow!("{method}: {e:#}"));
+                        }
+                    }
+                }
+                Ok(tungstenite::Message::Close(_)) => return Err(anyhow!("{method}: aiball's bus closed")),
+                Ok(_) => {}
+                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                    // The daemon's pings get their pongs.
+                    let _ = socket.flush();
+                }
+                Err(error) => return Err(anyhow!("{method}: {error}")),
+            }
+        }
+        let _ = socket.close(None);
+        Err(anyhow!("{method}: no answer from aiball's bus"))
+    }
+
     /// [`Self::call`], for a method the daemon may take longer to answer
     /// (it waits for a process to end): `timeout` at most.
     pub fn call_waiting(&self, method: &str, params: Value, timeout: Duration) -> anyhow::Result<Value> {

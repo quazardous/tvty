@@ -173,6 +173,9 @@ pub struct Shell {
     /// Shells closed from their tab, until the host says they are gone:
     /// the list lets them go at once.
     stopping: HashSet<String>,
+    /// The names of the shells asked of the host and not listed yet: a
+    /// second click must not ask for the same name.
+    shells_asked: HashSet<String>,
     /// The workspace to open again at start, once the board is there.
     restoring: Option<Restoring>,
     /// The accordions' heights moved by a drag, counted: kept once it rests.
@@ -579,6 +582,7 @@ impl Shell {
             local: Default::default(),
             rebuild_pending: false,
             stopping: HashSet::new(),
+            shells_asked: HashSet::new(),
             restoring: None,
             heights_moved: 0,
             local_seen: false,
@@ -3203,9 +3207,12 @@ impl Shell {
     /// and opens it once it is listed.
     fn open_shell(&mut self, prefix: &str, cwd: String, cx: &mut Context<Self>) {
         // Every name the host knows, a stopped session's too (it keeps its name
-        // until it is removed).
-        let taken: std::collections::HashSet<String> = self.live.session_names().into_iter().collect();
+        // until it is removed), those being stopped, and those asked already.
+        let mut taken: std::collections::HashSet<String> = self.live.session_names().into_iter().collect();
+        taken.extend(self.stopping.iter().filter_map(|s| s.strip_prefix(sessions::HOSTED_PREFIX)).map(str::to_string));
+        taken.extend(self.shells_asked.iter().cloned());
         let name = (1..).map(|n| format!("{prefix}-{n}")).find(|n| !taken.contains(n)).expect("a free name");
+        self.shells_asked.insert(name.clone());
         let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
@@ -3213,12 +3220,12 @@ impl Shell {
                 let name = name.clone();
                 cx.background_executor().spawn(async move { aiball.start_terminal(&name, &[shell], &cwd) }).await
             };
-            let _ = this.update(cx, |shell, cx| match started {
-                Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
-                Err(error) => activity::publish(
-                    cx,
-                    Activity::failed(None, "new terminal", format!("{error:#}")),
-                ),
+            let _ = this.update(cx, |shell, cx| {
+                shell.shells_asked.remove(&name);
+                match started {
+                    Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
+                    Err(error) => activity::publish(cx, Activity::failed(None, "new terminal", format!("{error:#}"))),
+                }
             });
         })
         .detach();

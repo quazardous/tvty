@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A terminal closed then opened again at once opens at once: the stop of
+  the closed one (the host gives an interactive shell up to 10 s) no
+  longer holds up tvty's other calls to aiball, and a name being stopped
+  or just asked is not asked again ("a session named … runs already").
 - Opening or closing a side no longer waits 120 ms before the terminal
   takes its new size (from ~140 ms to ~35 ms before the program redraws, on
   aiball's host): a size alone goes at once, only a drag waits for the

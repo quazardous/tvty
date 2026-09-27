@@ -744,8 +744,9 @@ impl Aiball {
     pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
         // The daemon answers once the host is gone, which it gives up to
         // 15 s (a program that ignores the hangup).
+        // On a connection of its own: the other calls do not wait behind it.
         let wire = WIRE.get().context("aiball's bus is not open")?;
-        wire.call_waiting("session.stop", json!({ "name": name }), std::time::Duration::from_secs(20)).map(drop)
+        wire.call_alone("session.stop", json!({ "name": name }), std::time::Duration::from_secs(20)).map(drop)
     }
 
     /// aiball's managed config, as the board (`None`) or a project sees it.
