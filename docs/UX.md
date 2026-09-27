@@ -352,8 +352,9 @@ groups — a click on a group brings it up, the one in view is lit. A search
 finds settings and shortcuts together, by name, text, key
 (`terminal_font_size`, `ctrl+shift+b`) or value, the words marked, the tree
 cut down to what matched; Esc clears it, then closes the page. A setting or
-a shortcut away from its default has a bar on its left and a ↺ that puts it
-back; `@modified` lists every one; a setting shows its key as settings.toml
+a shortcut away from its default stands out (lighter, a bar on its left),
+says its default (`Default: 16 px`) and has a "↺ Default" button that puts
+it back — in an aiball project, "↺ Board", the board's value; `@modified` lists every one; a setting shows its key as settings.toml
 spells it. The pages:
 Appearance (sizes, notifications, the wheel's speed, the window's and the
 terminals' colour themes), Layout (the sides: folded or not, their widths,

@@ -1999,15 +1999,24 @@ impl Shell {
             about.push_str(" From the board's config.");
         }
         let about: SharedString = about.into();
-        let modified = settable && item.modified;
+        // Set in this layer: ↺ clears it, back to the default — in a
+        // project, to the board's value.
+        let away = (settable && item.modified).then(|| {
+            if in_project {
+                let board = if entry.global.is_null() { &entry.default } else { &entry.global };
+                Away { back: "Board", value: crate::options::remote_value(entry, board).into() }
+            } else {
+                Away::default(crate::options::remote_value(entry, &entry.default))
+            }
+        });
         let reset = {
             let key = entry.key.clone();
             cx.listener(move |shell, _, _, cx| shell.remote_write(key.clone(), None, cx))
         };
         if !settable {
-            return setting_frame(key, label, about, false)
+            return setting_frame(key, label, about, None)
                 .child(div().flex_none().text_sm().text_color(p().muted).child(item.value.clone()))
-                .child(reset_button(&entry.key, false, |_, _, _| {}))
+                .child(reset_button(&entry.key, None, |_, _, _| {}))
                 .into_any_element();
         }
         match entry.kind.as_str() {
@@ -2018,7 +2027,7 @@ impl Shell {
                     key,
                     label,
                     about,
-                    modified,
+                    away,
                     if checked { "on" } else { "off" },
                     Switch::new(SharedString::from(format!("options-switch-{name}")))
                         .checked(checked)
@@ -2048,9 +2057,9 @@ impl Shell {
                             .on_click(cx.listener(move |shell, _, _, cx| shell.remote_write(name.clone(), Some(Json::String(option.clone())), cx))),
                     );
                 }
-                setting_frame(key, label, about, modified)
+                setting_frame(key, label, about, away.as_ref())
                     .child(choices)
-                    .child(reset_button(&entry.key, modified, reset))
+                    .child(reset_button(&entry.key, away.as_ref(), reset))
                     .into_any_element()
             }
             _ => {
@@ -2078,7 +2087,7 @@ impl Shell {
                     key,
                     label,
                     about,
-                    modified,
+                    away,
                     item.value.clone(),
                     cx.listener(move |shell, _, _, cx| shell.remote_write(minus_key.clone(), Some(down.clone()), cx)),
                     cx.listener(move |shell, _, _, cx| shell.remote_write(plus_key.clone(), Some(up.clone()), cx)),
@@ -2113,13 +2122,18 @@ impl Shell {
     /// One setting's row: a number's stepper, a toggle's switch.
     fn setting_row(&self, setting: &'static Setting, words: &[String], cx: &mut Context<Self>) -> Option<AnyElement> {
         let key = setting.key;
-        let modified = SCHEMA.is_modified(&self.applied, key);
+        // Away from its default: the default, as the row shows a value.
+        let away = SCHEMA.is_modified(&self.applied, key).then(|| match (setting.kind, SCHEMA.default_value(key)) {
+            (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => Away::default(shown(n, unit)),
+            (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(b))) => Away::default(if b { on } else { off }),
+            _ => Away::default("—"),
+        });
         Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
                 key.into(),
                 marked(setting.label, words),
                 setting.about.into(),
-                modified,
+                away,
                 shown(n, unit),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, 1, cx)),
@@ -2130,7 +2144,7 @@ impl Shell {
                 key.into(),
                 marked(setting.label, words),
                 setting.about.into(),
-                modified,
+                away,
                 if checked { on } else { off },
                 Switch::new(SharedString::from(format!("options-switch-{key}")))
                     .checked(checked)
@@ -2152,6 +2166,12 @@ impl Shell {
             "appearance.theme" => (Some(theme::current(cx)), None),
             _ => (theme::current_terminal(), Some("Same as the window")),
         };
+        let away = SCHEMA.is_modified(&self.applied, key).then(|| {
+            Away::default(match default {
+                Some(label) => SharedString::from(label),
+                None => theme::known_or_default(None, cx),
+            })
+        });
         let column = div()
             .flex()
             .flex_col()
@@ -2164,10 +2184,12 @@ impl Shell {
                     .items_center()
                     .gap_2()
                     .child(div().font_weight(FontWeight::BOLD).child(setting.label))
-                    .child(reset_button(key, SCHEMA.is_modified(&self.applied, key), cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)))),
+                    .child(reset_button(key, away.as_ref(), cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)))),
             )
             .child(div().text_xs().text_color(p().muted).child(key))
-            .child(div().pb_1().text_sm().text_color(p().muted).child(setting.about));
+            .child(div().text_sm().text_color(p().muted).child(setting.about))
+            .children(away.as_ref().map(away_note))
+            .child(div().pb_1());
         let choice = |name: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
             div()
                 .id(SharedString::from(format!("options-{key}-{name}")))
@@ -2487,7 +2509,11 @@ impl Shell {
                 if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(name)) {
                     what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("the program"));
                 }
-                let custom = map.is_changed(name);
+                let away = map.is_changed(name).then(|| {
+                    let keys: Vec<String> = map.default_keys_of(name).iter().map(|k| k.pretty()).collect();
+                    Away::default(if keys.is_empty() { "no key".to_string() } else { keys.join(", ") })
+                });
+                let custom = away.is_some();
                 let mut row = div()
                     .relative()
                     .flex()
@@ -2496,15 +2522,15 @@ impl Shell {
                     .pl_2()
                     .border_b_1()
                     .border_color(p().border)
-                    .when(custom, |d| d.child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent)))
+                    .when(custom, |d| d.bg(p().active).child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent)))
                     .child(
                     div()
                         .flex()
                         .items_center()
                         .gap_4()
                         .child(div().w(px(300.)).flex_none().child(chips))
-                        .child(div().flex_1().min_w_0().text_sm().child(what))
-                        .child(reset_button(name, custom, cx.listener(move |shell, _, _, cx| shell.change_keys(cx, |map| map.reset(name)))))
+                        .child(div().flex_1().min_w_0().flex().flex_col().child(div().text_sm().child(what)).children(away.as_ref().map(away_note)))
+                        .child(reset_button(name, away.as_ref(), cx.listener(move |shell, _, _, cx| shell.change_keys(cx, |map| map.reset(name)))))
                         .child(div().w(px(130.)).flex_none().text_xs().text_color(p().muted).child(name)),
                 );
                 // What the key heard would do, or why it was refused.
@@ -3630,12 +3656,26 @@ fn option_row(
         )
 }
 
+/// A setting away from its default: what ↺ puts back (`Default`, or in a
+/// project `Board`, the board's value) and that value, as shown.
+#[derive(Clone)]
+struct Away {
+    back: &'static str,
+    value: SharedString,
+}
+
+impl Away {
+    fn default(value: impl Into<SharedString>) -> Self {
+        Away { back: "Default", value: value.into() }
+    }
+}
+
 /// A size: its name and what it does, − the value +, and back to default.
 fn option_stepper(
     key: SharedString,
     label: impl IntoElement,
     about: SharedString,
-    modified: bool,
+    away: Option<Away>,
     value: String,
     minus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     plus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -3656,18 +3696,19 @@ fn option_stepper(
     };
     let (minus, plus) = (button("minus", "−").on_click(minus), button("plus", "+").on_click(plus));
     let id = key.clone();
-    setting_frame(key, label, about, modified)
+    setting_frame(key, label, about, away.as_ref())
         .gap_2()
         .child(minus)
         .child(div().min_w(px(64.)).flex_none().whitespace_nowrap().text_center().child(value))
         .child(plus)
-        .child(reset_button(&id, modified, reset))
+        .child(reset_button(&id, away.as_ref(), reset))
 }
 
-/// A setting's frame: a bar on its left when it is not at its default
-/// (as VS Code marks one), its name, its key (as settings.toml spells it)
-/// and what it does; its controls follow.
-fn setting_frame(key: SharedString, label: impl IntoElement, about: SharedString, modified: bool) -> Div {
+/// A setting's frame: its name, its key (as settings.toml spells it) and
+/// what it does; its controls follow. Away from its default, it stands out
+/// — lighter, a bar on its left (as VS Code marks one) — and says the
+/// default.
+fn setting_frame(key: SharedString, label: impl IntoElement, about: SharedString, away: Option<&Away>) -> Div {
     div()
         .relative()
         .flex()
@@ -3675,10 +3716,13 @@ fn setting_frame(key: SharedString, label: impl IntoElement, about: SharedString
         .gap_4()
         .p_3()
         .rounded_md()
-        .bg(p().surface)
         .border_1()
-        .border_color(p().border)
-        .when(modified, |d| d.child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent)))
+        .when(away.is_none(), |d| d.bg(p().surface).border_color(p().border))
+        .when(away.is_some(), |d| {
+            d.bg(p().active)
+                .border_color(p().accent.opacity(0.5))
+                .child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent))
+        })
         .child(
             div()
                 .flex()
@@ -3688,27 +3732,38 @@ fn setting_frame(key: SharedString, label: impl IntoElement, about: SharedString
                 .min_w_0()
                 .child(div().font_weight(FontWeight::BOLD).child(label))
                 .child(div().text_xs().text_color(p().muted).child(key))
-                .child(div().text_sm().text_color(p().muted).child(about)),
+                .child(div().text_sm().text_color(p().muted).child(about))
+                .children(away.map(away_note)),
         )
 }
 
-/// ↺ back to the default, only where there is one to go back to; its room
-/// kept otherwise, so that the rows line up.
-fn reset_button(key: &str, modified: bool, reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
-    div()
-        .id(SharedString::from(format!("options-reset-{key}")))
-        .flex_none()
-        .w(px(28.))
-        .text_center()
-        .rounded_md()
-        .when(modified, |d| {
-            d.text_color(p().accent)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child("↺")
-                .tip("back to its default")
-                .on_click(reset)
-        })
+/// What a setting away from its default goes back to: `Default: 14 px`.
+fn away_note(away: &Away) -> impl IntoElement + use<> {
+    div().text_xs().text_color(p().accent).child(format!("{}: {}", away.back, away.value))
+}
+
+/// `↺ Default`: back to the default, only where there is one to go back
+/// to; its room kept otherwise, so that the rows line up.
+fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
+    let slot = div().flex_none().w(px(104.)).flex().justify_end();
+    let Some(away) = away else { return slot };
+    slot.child(
+        div()
+            .id(SharedString::from(format!("options-reset-{key}")))
+            .px_2()
+            .py_0p5()
+            .rounded_md()
+            .border_1()
+            .border_color(p().accent.opacity(0.6))
+            .text_sm()
+            .whitespace_nowrap()
+            .text_color(p().accent)
+            .cursor_pointer()
+            .hover(|d| d.bg(p().hover))
+            .child(format!("↺ {}", away.back))
+            .tip(format!("back to {}", away.value))
+            .on_click(reset),
+    )
 }
 
 /// `text` with the words searched for marked.
@@ -3743,16 +3798,16 @@ fn option_switch(
     key: SharedString,
     label: impl IntoElement,
     about: SharedString,
-    modified: bool,
+    away: Option<Away>,
     state: &'static str,
     switch: Switch,
     reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let id = key.clone();
-    setting_frame(key, label, about, modified)
+    setting_frame(key, label, about, away.as_ref())
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         .child(switch)
-        .child(reset_button(&id, modified, reset))
+        .child(reset_button(&id, away.as_ref(), reset))
 }
 
 /// A key as a chip.

@@ -36,6 +36,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   board's value and ↺ gives it back; 🔒 marks the keys only a human may
   change. The search and `@modified` find them too, and a change made
   elsewhere shows at once.
+- A setting away from its default stands out in the options — a lighter
+  frame, a bar — says what the default is (`Default: 16 px`, in a project
+  `Board: normal`), and has a plain "↺ Default" (or "↺ Board") button to
+  go back to it; shortcuts too (`Default: Ctrl+Shift+K`).
 - One order for the projects: the list, the slider (ctrl+tab) and the
   gallery put the project used last first, as ctrl+tab goes — the slider's
   stacks now move with it too. ⇅ in the list's header (or Options > Layout)

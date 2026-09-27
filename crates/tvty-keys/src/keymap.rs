@@ -158,6 +158,11 @@ impl Keymap {
         self.bindings().into_iter().filter(|b| b.command == Some(command)).map(|b| b.key).collect()
     }
 
+    /// The keys that run `command` by default.
+    pub fn default_keys_of(&self, command: &str) -> Vec<Key> {
+        self.defaults.iter().filter(|(_, _, name)| *name == command).map(|(_, key, _)| key.clone()).collect()
+    }
+
     /// Whether the keys of `command` differ from its defaults.
     pub fn is_changed(&self, command: &str) -> bool {
         // A key of its own, or a default key taken from it (given back, or
@@ -335,6 +340,16 @@ mod tests {
         assert_eq!(map.bound("Window", &key("ctrl-shift-b")), None);
         assert!(map.is_changed("sidebar.toggle") && map.is_changed("theme.next"));
         assert_eq!(map.file().to_toml(), "[Window]\nctrl-alt-t = \"theme.next\"\nctrl-shift-b = false\n");
+    }
+
+    #[test]
+    fn the_defaults_stay_known_once_changed() {
+        let mut map = keymap();
+        map.unbind("Window", &key("ctrl-shift-b"));
+        map.bind("sidebar.toggle", &key("ctrl-alt-b")).unwrap();
+        assert_eq!(map.default_keys_of("sidebar.toggle"), vec![key("ctrl-shift-b")]);
+        assert_eq!(map.default_keys_of("font.bigger").len(), 2);
+        assert!(map.default_keys_of("no.such").is_empty());
     }
 
     #[test]
