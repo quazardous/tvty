@@ -266,8 +266,9 @@ one step (auto → 10 min → ∞ → auto); the mode takes effect 3 s after the
 last press, and until then the little man is dotted, with "…". A click
 offers auto, hold 10 min, hold. Then its Claude's
 phase, for how long, and the passing word (`retry 2`, `compacting`); when
-its Claude Code installed an update, **⟳ restart** — its loop restarts it
-as soon as it is idle ("when idle" meanwhile), and the terminal comes back
+its Claude Code installed an update, **⟳ update** — a click has its loop
+restart it as soon as it is idle ("⟳ restart pending" meanwhile, an
+offer turned into a state), and the terminal comes back
 on its own; "waits for an answer" when a
 dialog is up; the alerts in red (trust this folder?, not logged in, API
 unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when

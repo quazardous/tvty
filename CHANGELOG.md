@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The restart offer in the agent bar reads "⟳ update" until clicked, then
+  "⟳ restart pending".
 - The agent bar shows the AFK mode as claude-loop does: ▶ or ‖ for the mode
   in force, ⌨ while you type, and the little man for the mode F9 arms,
   dotted until it takes effect. F9 works anywhere in the window.

@@ -228,13 +228,12 @@ impl Shell {
         let restart = bar.as_ref().filter(|b| b.alerts.restart_needed || b.alerts.restart_pending).map(|b| {
             let restarting = self.restarting.as_deref() == Some(agent.as_str());
             let armed = b.alerts.restart_pending;
-            let idle = b.phase == "idle";
             let target = agent.clone();
-            let (word, tip) = match (restarting, armed, idle) {
-                (true, _, _) => ("restarting…", "its Claude restarts, resuming its conversation"),
-                (_, true, _) => ("when idle", "a restart is asked: its Claude restarts as soon as it is idle, resuming its conversation"),
-                (_, _, true) => ("restart", "its Claude Code installed an update: a click restarts it, resuming its conversation"),
-                _ => ("restart when idle", "its Claude works: a click restarts it as soon as it is idle, resuming its conversation"),
+            // An offer until clicked: its word names the cause, not a state.
+            let (word, tip) = match (restarting, armed) {
+                (true, _) => ("restarting…", "its Claude restarts, resuming its conversation"),
+                (_, true) => ("restart pending", "a restart is asked: its Claude restarts as soon as it is idle, resuming its conversation"),
+                _ => ("update", "its Claude Code installed an update: a click restarts it (at once if idle, otherwise as soon as it is idle), resuming its conversation"),
             };
             item()
                 .id("agent-restart")
