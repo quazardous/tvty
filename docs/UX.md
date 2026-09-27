@@ -89,6 +89,12 @@ project's tickets meanwhile; the loop shows under idle.
   alphabetical: **⇅** in the list's header, or Options > Layout. A group's
   terminals keep their place, so that its tabs never move. While the slider
   is up, nothing moves: the chosen card is enlarged over its own slot.
+- **A filter atop the list** (ctrl+shift+f unfolds the list and goes to
+  it): every word typed must be found in a row's project, agent, name or
+  folder; the three sections keep what it finds, a folded one opens while
+  it holds something, the words are marked. Enter opens the live session
+  the arrows are on (the first found), Esc empties the filter, then gives
+  the keys back to the terminal.
 - **The cards are live**: a terminal open in tvty draws its own screen; any
   other session gets a read-only client (`tmux attach -r`: read-only and
   ignore-size, so it never resizes the session) while the slider or the
@@ -413,6 +419,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+n | a new ticket; ctrl+enter files it, esc keeps the draft |
 | ctrl+shift+= / − / 0 | terminal font bigger / smaller / default |
 | ctrl+shift+b | fold / unfold the projects' list |
+| ctrl+shift+f | filter the sessions |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |

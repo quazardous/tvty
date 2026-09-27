@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A filter atop the sessions' list: type, and the live, idle and shut
+  sessions keep those whose project, agent, name or folder hold every
+  word, marked; ctrl+shift+f goes there (unfolding the list), Enter opens
+  the session found, the arrows move along them, Esc empties the filter,
+  then gives the keys back to the terminal.
 - Options as a tree and a search, as in VS Code: each page unfolds into
   its groups (a click brings one up; the one in view is lit), and a search
   box — focused as the options open — finds settings and shortcuts

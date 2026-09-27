@@ -12,7 +12,7 @@ use std::time::Duration;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
-use gpui_kit::component::{TitleBar, window_paddings};
+use gpui_kit::component::{Sizable as _, TitleBar, window_paddings};
 
 use crate::aiball::{Aiball, TicketRow};
 use crate::keymap;
@@ -109,6 +109,10 @@ pub struct Shell {
     options_search: Entity<InputState>,
     options_scroll: ScrollHandle,
     options_jump: std::cell::Cell<Option<SharedString>>,
+    /// The sessions' filter, and which of the live sessions it found the
+    /// arrows are on.
+    sessions_filter: Entity<InputState>,
+    filter_cursor: usize,
     /// aiball's config as last read, in the layer shown (none: the board's
     /// own, global), or why it could not be read.
     remote: Option<crate::aiball::ManagedConfig>,
@@ -459,6 +463,16 @@ impl Shell {
             }
         })
         .detach();
+        // The sessions' filter: each keystroke filters the list again, from
+        // its first session found.
+        let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
+        cx.subscribe_in(&sessions_filter, window, |shell: &mut Self, _, event: &InputEvent, _, cx| {
+            if matches!(event, InputEvent::Change) {
+                shell.filter_cursor = 0;
+                cx.notify();
+            }
+        })
+        .detach();
         // What the views say to whom it may concern.
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
             // A gesture moved the board: aiball pushes what changed.
@@ -529,6 +543,8 @@ impl Shell {
             options_search,
             options_scroll: ScrollHandle::new(),
             options_jump: std::cell::Cell::new(None),
+            sessions_filter,
+            filter_cursor: 0,
             remote: None,
             remote_layer: None,
             remote_error: None,
@@ -1199,6 +1215,92 @@ impl Shell {
         cx.notify();
     }
 
+    // ── The sessions' filter ────────────────────────────────────────────
+
+    /// The words the sessions' filter asks for.
+    pub(super) fn filter_words(&self, cx: &App) -> Vec<String> {
+        sessions::filter_words(&self.sessions_filter.read(cx).value())
+    }
+
+    fn filter_focused(&self, window: &Window, cx: &App) -> bool {
+        self.sessions_filter.read(cx).focus_handle(cx).is_focused(window)
+    }
+
+    /// ctrl+shift+f: the list unfolded, the keys to its filter.
+    fn focus_filter(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.settings.layout.sidebar_open {
+            self.toggle_sidebar(cx);
+        }
+        let focus = self.sessions_filter.read(cx).focus_handle(cx);
+        window.focus(&focus, cx);
+        cx.notify();
+    }
+
+    /// The live sessions the filter finds, by project, as listed; all of
+    /// them without a filter.
+    pub(super) fn live_found(&self, words: &[String]) -> Vec<(&sessions::Project, Vec<&Terminal>)> {
+        self.board
+            .projects
+            .iter()
+            .map(|p| {
+                let shown = p
+                    .terminals
+                    .iter()
+                    .filter(|t| sessions::found(words, &[&p.name, &t.label, t.agent.as_deref().unwrap_or(""), &t.session]))
+                    .collect::<Vec<_>>();
+                (p, shown)
+            })
+            .filter(|(_, shown)| words.is_empty() || !shown.is_empty())
+            .collect()
+    }
+
+    /// The session the arrows are on, while filtering.
+    pub(super) fn filter_target(&self, words: &[String]) -> Option<String> {
+        if words.is_empty() {
+            return None;
+        }
+        let found: Vec<&Terminal> = self.live_found(words).into_iter().flat_map(|(_, t)| t).collect();
+        let at = self.filter_cursor.min(found.len().checked_sub(1)?);
+        Some(found[at].session.clone())
+    }
+
+    /// A key typed in the filter: Enter opens the session found, the
+    /// arrows move along them, Esc empties the filter, then leaves it.
+    fn filter_key(&mut self, key: &str, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        let words = self.filter_words(cx);
+        match key {
+            "down" | "up" => {
+                let count = self.live_found(&words).iter().map(|(_, t)| t.len()).sum::<usize>();
+                if count > 0 {
+                    self.filter_cursor = if key == "down" {
+                        (self.filter_cursor.min(count - 1) + 1) % count
+                    } else {
+                        (self.filter_cursor.min(count - 1) + count - 1) % count
+                    };
+                    cx.notify();
+                }
+            }
+            "enter" => {
+                let Some(session) = self.filter_target(&words) else { return true };
+                self.sessions_filter.update(cx, |f, cx| f.set_value("", window, cx));
+                self.select(session, window, cx);
+            }
+            "escape" if !words.is_empty() || !self.sessions_filter.read(cx).value().is_empty() => {
+                self.sessions_filter.update(cx, |f, cx| f.set_value("", window, cx));
+                cx.notify();
+            }
+            "escape" => {
+                if let Some(terminal) = self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
+                    let focus = terminal.read(cx).focus_handle().clone();
+                    window.focus(&focus, cx);
+                }
+                cx.notify();
+            }
+            _ => return false,
+        }
+        true
+    }
+
     fn toggle_panel(&mut self, cx: &mut Context<Self>) {
         self.settings.layout.panel_open = !self.settings.layout.panel_open;
         self.settings.save(cx);
@@ -1295,6 +1397,10 @@ impl Shell {
             } else {
                 self.close_ended(window, cx);
             }
+            cx.stop_propagation();
+            return;
+        }
+        if !m.control && !m.alt && self.filter_focused(window, cx) && self.filter_key(key, window, cx) {
             cx.stop_propagation();
             return;
         }
@@ -2969,6 +3075,15 @@ impl Shell {
                     .w(px(width))
                     .h_full()
                     .child(header)
+                    .child(
+                        div()
+                            .flex_none()
+                            .px_2()
+                            .py_1p5()
+                            .border_b_1()
+                            .border_color(p().border)
+                            .child(Input::new(&self.sessions_filter).small().cleanable(true)),
+                    )
                     .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
     }
@@ -2976,10 +3091,13 @@ impl Shell {
     /// The sessions that run, by project; "+ session" opens one.
     pub(super) fn live_list(&self, cx: &mut Context<Self>) -> Div {
         let mut list = div().flex().flex_col();
-        if self.board.projects.is_empty() {
-            list = list.child(div().px_3().text_color(p().muted).child("No session"));
+        let words = self.filter_words(cx);
+        let found = self.live_found(&words);
+        let target = self.filter_target(&words);
+        if found.is_empty() {
+            list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No session" } else { "No session found" }));
         }
-        for project in &self.board.projects {
+        for (project, shown) in found {
             let tickets = self.board.tickets.get(&project.name);
             let critical = self.board.critical.get(&project.name).copied();
             // A project shows the sum of what it asks, collapsed or not.
@@ -3005,7 +3123,7 @@ impl Shell {
                             .text_xs()
                             .font_weight(FontWeight::BOLD)
                             .text_color(p().muted)
-                            .child(project.name.to_uppercase()),
+                            .child(marked(&project.name.to_uppercase(), &words)),
                     )
                     .child(alerts.badges(format!("project-{}", project.name)))
                     .when(project.on_board, |d| {
@@ -3044,9 +3162,10 @@ impl Shell {
                     }),
             )
             .children(self.new_session_form(&project.name, cx));
-            for terminal in &project.terminals {
+            for terminal in shown {
                 let session = terminal.session.clone();
                 let selected = self.selected.as_deref() == Some(session.as_str());
+                let aimed = target.as_deref() == Some(session.as_str());
                 let open = self.terminals.contains_key(&session);
                 let counts = self.counts_of(&project.name, terminal);
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
@@ -3070,6 +3189,9 @@ impl Shell {
                         .cursor_pointer()
                         .when(selected, |d| d.bg(p().active).text_color(p().text))
                         .when(!selected, |d| d.hover(|d| d.bg(p().hover)))
+                        // Where Enter goes, while filtering.
+                        .when(aimed && !selected, |d| d.bg(p().hover))
+                        .when(aimed, |d| d.border_l_2().border_color(p().accent))
                         // The loop's state colour: working, idle, starting.
                         .child(
                             div()
@@ -3097,7 +3219,7 @@ impl Shell {
                                                 .w(px(7.))
                                                 .when(open, |d| d.child(dot(p().success)).tip("open in tvty: its terminal runs here")),
                                         )
-                                        .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
+                                        .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
                                         // Its Claude runs in claude-loop (through tmux), not on aiball's host.
                                         .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
                                             d.child(
@@ -3459,6 +3581,7 @@ impl Render for Shell {
             .on_action(cx.listener(|shell, _: &keymap::Gallery, window, cx| shell.toggle_gallery(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FilterSessions, window, cx| shell.focus_filter(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))

@@ -74,6 +74,18 @@ pub const HOSTED_GROUP: &str = "terminals";
 /// What names a hosted terminal's session, apart from tmux's.
 pub const HOSTED_PREFIX: &str = "host:";
 
+/// The words of a filter: what the user typed, lowercase, by word.
+pub fn filter_words(text: &str) -> Vec<String> {
+    text.split_whitespace().map(str::to_lowercase).collect()
+}
+
+/// Whether every word is found in one field or another of a row (its
+/// project, its agent, its name, its folder); no word: every row.
+pub fn found(words: &[String], fields: &[&str]) -> bool {
+    let haystack = fields.iter().map(|f| f.to_lowercase()).collect::<Vec<_>>().join("\n");
+    words.iter().all(|w| haystack.contains(w.as_str()))
+}
+
 /// The board, from what aiball pushed (`live`) and the tmux sessions of this
 /// machine. Cheap: nothing is read from aiball.
 pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
@@ -288,7 +300,18 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, group, homes, project_at};
+    use super::{HOSTED_PREFIX, filter_words, found, group, homes, project_at};
+
+    #[test]
+    fn a_filter_finds_rows_by_every_word() {
+        let words = filter_words("  Demo CREW ");
+        assert_eq!(words, ["demo", "crew"]);
+        assert!(found(&words, &["demo", "demo-crew", "/tmp/crew"]));
+        assert!(!found(&words, &["demo", "demo-claude"]));
+        // Words may sit in different fields.
+        assert!(found(&filter_words("tvty lead"), &["tvty", "lead-agent"]));
+        assert!(found(&[], &["anything"]));
+    }
     use crate::aiball::Consumer;
     use serde_json::json;
 

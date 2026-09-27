@@ -38,7 +38,7 @@ impl Shell {
     /// The loops this machine knows that run no terminal, by project (one
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
-    fn inactive(&self) -> Vec<&KnownLoop> {
+    fn inactive(&self, words: &[String]) -> Vec<&KnownLoop> {
         let mut loops: Vec<&KnownLoop> = self
             .board
             .known
@@ -48,13 +48,17 @@ impl Shell {
             .filter(|l| {
                 l.host_agent.as_ref().is_none_or(|agent| self.terminal_of(&format!("{}{agent}", crate::sessions::HOSTED_PREFIX)).is_none())
             })
+            .filter(|l| {
+                let agent = l.consumer.as_deref().or(l.host_agent.as_deref()).unwrap_or("");
+                crate::sessions::found(words, &[l.project.as_deref().unwrap_or(""), agent, &l.name, &l.cwd])
+            })
             .collect();
         loops.sort_by_key(|l| (l.project.is_none(), l.project.clone()));
         loops
     }
 
     /// The agents aiball knows with no loop on this machine.
-    fn closed(&self) -> Vec<&(String, Option<String>, String)> {
+    fn closed(&self, words: &[String]) -> Vec<&(String, Option<String>, String)> {
         self.board
             .homes
             .iter()
@@ -62,16 +66,20 @@ impl Shell {
                 !self.board.known.iter().any(|l| l.consumer.as_deref() == Some(agent.as_str()) || l.cwd == *cwd)
                     && !self.board.projects.iter().any(|p| p.terminals.iter().any(|t| t.agent.as_deref() == Some(agent.as_str())))
             })
+            .filter(|(agent, project, cwd)| crate::sessions::found(words, &[project.as_deref().unwrap_or(""), agent, cwd]))
             .collect()
     }
 
     /// The three sections, each folded or not as the user left it.
     pub(super) fn sessions_list(&self, cx: &mut Context<Self>) -> AnyElement {
-        let running: usize = self.board.projects.iter().map(|p| p.terminals.len()).sum();
-        let groups = [("live", running), ("idle", self.inactive().len()), ("shut", self.closed().len())];
+        let words = self.filter_words(cx);
+        let running: usize = self.live_found(&words).iter().map(|(_, t)| t.len()).sum();
+        let groups = [("live", running), ("idle", self.inactive(&words).len()), ("shut", self.closed(&words).len())];
         let mut list = crate::accordion::list("sessions").pb_1();
         for (i, (word, count)) in groups.into_iter().enumerate() {
-            let folded = self.settings.layout.sessions_folded.iter().any(|f| f == word);
+            // A folded section with something the filter found opens while
+            // it is typed.
+            let folded = self.settings.layout.sessions_folded.iter().any(|f| f == word) && (words.is_empty() || count == 0);
             let body = match (folded, i) {
                 (true, _) => Vec::new(),
                 (false, 0) => vec![self.live_list(cx).into_any_element()],
@@ -112,6 +120,7 @@ impl Shell {
     /// list itself.
     fn other_list(&self, which: Other, cx: &mut Context<Self>) -> AnyElement {
         let mut list = div().flex().flex_col();
+        let words = self.filter_words(cx);
         let heading = |text: String| {
             div()
                 .px_3()
@@ -136,7 +145,7 @@ impl Shell {
                     div()
                         .flex()
                         .gap_2()
-                        .child(div().flex_1().min_w_0().truncate().child(name))
+                        .child(div().flex_1().min_w_0().truncate().child(super::marked(&name, &words)))
                         .child(div().text_xs().text_color(p().accent).child(if busy { "starting…" } else { "▶ start" })),
                 )
                 .child(div().text_xs().text_color(p().muted).truncate().child(home_short(cwd)))
@@ -144,9 +153,9 @@ impl Shell {
         };
         match which {
             Other::Idle => {
-                let loops = self.inactive();
+                let loops = self.inactive(&words);
                 if loops.is_empty() {
-                    list = list.child(div().px_3().text_color(p().muted).child("No stopped loop"));
+                    list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No stopped loop" } else { "No stopped loop found" }));
                 }
                 let mut last: Option<String> = None;
                 for l in loops {
@@ -167,9 +176,9 @@ impl Shell {
                 }
             }
             Other::Shut => {
-                let homes = self.closed();
+                let homes = self.closed(&words);
                 if homes.is_empty() {
-                    list = list.child(div().px_3().text_color(p().muted).child("No agent without a loop"));
+                    list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No agent without a loop" } else { "No agent found" }));
                 }
                 for (agent, project, cwd) in homes {
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false };
