@@ -35,7 +35,8 @@ impl Section {
 pub const FIXED_KEYS: &[(&str, &str)] = &[
     ("Esc", "Close the gallery, the slider, the theme list, the options, the full list"),
     ("Arrows", "In the slider and the gallery: move to the card seen there"),
-    ("Drag · double click · triple click", "In a terminal: select text · a word · a line"),
-    ("Shift+drag", "Select even when the program takes the mouse"),
+    ("Drag · double click · triple click", "In a terminal: select text · a word · a line — copied to the primary selection"),
+    ("Middle click", "In a terminal: paste the primary selection"),
+    ("Right click", "In a terminal: Copy, Paste"),
     ("Mouse wheel", "Scroll the history"),
 ];

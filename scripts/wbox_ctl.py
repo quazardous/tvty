@@ -18,7 +18,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py down   CONFIG [-s key=value ...]
     wbox_ctl.py status CONFIG [-s key=value ...]
     wbox_ctl.py shot   CONFIG [-s key=value ...] [--name NAME]
-    wbox_ctl.py click  CONFIG [-s key=value ...] X Y
+    wbox_ctl.py click  CONFIG [-s key=value ...] X Y [BUTTON]   (1 left, 2 middle, 3 right)
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
@@ -137,11 +137,13 @@ def main():
             name = time.strftime("wbox_%Y%m%d_%H%M%S")
         result = comp.screenshot(name)
     elif command == "click":
-        if len(args) != 2:
-            sys.exit("click needs X Y")
+        # BUTTON: 1 left (default), 2 middle, 3 right.
+        if len(args) not in (2, 3):
+            sys.exit("click needs X Y [BUTTON]")
         x, y = int(args[0]), int(args[1])
+        button = int(args[2]) if len(args) == 3 else 1
         _warm_up(comp, x, y)
-        result = comp.click(x, y)
+        result = comp.click(x, y, button)
     elif command == "key":
         if not args:
             sys.exit("key needs at least one shortcut, e.g. alt+F12")

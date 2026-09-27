@@ -96,6 +96,12 @@ pub struct TerminalView {
     tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
     /// The left button is down on a selection being made.
     selecting: bool,
+    /// The right click's menu (Copy, Paste), where it was opened.
+    menu: Option<Point<Pixels>>,
+    /// The text selected last, read as the drag goes: a program that draws
+    /// its screen again (Claude Code) clears the selection it writes over,
+    /// and what was selected must still be copied.
+    selected_text: Option<String>,
 }
 
 impl Drop for TerminalView {
@@ -239,6 +245,8 @@ impl TerminalView {
             scroll_remainder: 0.,
             tmux_scroll: None,
             selecting: false,
+            menu: None,
+            selected_text: None,
         }
     }
 
@@ -358,7 +366,9 @@ impl TerminalView {
     /// The terminal's copy (`terminal.copy`, ctrl+shift+c): the selection
     /// to the clipboard — ctrl+c stays the program's ^C.
     fn copy(&mut self, _: &keymap::TerminalCopy, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = self.term.lock().selection_to_string() {
+        // The selection, or, when the program drew over it, what it held.
+        let text = self.term.lock().selection_to_string().filter(|t| !t.is_empty()).or_else(|| self.selected_text.clone());
+        if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
         }
     }
@@ -372,6 +382,13 @@ impl TerminalView {
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
+        // The menu open, Esc closes it — and is not sent to the program.
+        if self.menu.is_some() && keystroke.key == "escape" {
+            self.menu = None;
+            cx.stop_propagation();
+            cx.notify();
+            return;
+        }
         let app_cursor = self.term.lock().mode().contains(TermMode::APP_CURSOR);
         if let Some(bytes) = keystroke_bytes(keystroke, app_cursor) {
             self.clear_selection(cx);
@@ -395,7 +412,8 @@ impl TerminalView {
         self.write(bytes.into_bytes());
     }
 
-    fn clear_selection(&self, cx: &mut Context<Self>) {
+    fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        self.selected_text = None;
         let mut term = self.term.lock();
         if term.selection.take().is_some() {
             cx.notify();
@@ -417,10 +435,10 @@ impl TerminalView {
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
-        // A program that takes the mouse keeps it, unless shift is held.
-        if self.term.lock().mode().intersects(TermMode::MOUSE_MODE) && !event.modifiers.shift {
-            return;
-        }
+        self.menu = None;
+        // A drag selects, whatever the program: one that takes the mouse
+        // (tmux with its mouse on) got the clicks without the drag, and
+        // nothing could be selected at all.
         let (point, side) = self.grid_point(event.position);
         let kind = match event.click_count {
             2 => SelectionType::Semantic,
@@ -428,6 +446,7 @@ impl TerminalView {
             _ => SelectionType::Simple,
         };
         self.term.lock().selection = Some(Selection::new(kind, point, side));
+        self.selected_text = None;
         self.selecting = true;
         cx.notify();
     }
@@ -437,9 +456,14 @@ impl TerminalView {
             return;
         }
         let (point, side) = self.grid_point(event.position);
-        if let Some(selection) = self.term.lock().selection.as_mut() {
+        let mut term = self.term.lock();
+        if let Some(selection) = term.selection.as_mut() {
             selection.update(point, side);
         }
+        if let Some(text) = term.selection_to_string().filter(|t| !t.is_empty()) {
+            self.selected_text = Some(text);
+        }
+        drop(term);
         cx.notify();
     }
 
@@ -453,7 +477,91 @@ impl TerminalView {
         if term.selection.as_ref().is_some_and(|s| s.is_empty()) {
             term.selection = None;
         }
+        // What is selected is copied at once to the primary selection, as
+        // on Linux: a middle click pastes it.
+        if let Some(text) = term.selection_to_string().filter(|t| !t.is_empty()) {
+            self.selected_text = Some(text);
+        }
+        drop(term);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        if let Some(text) = self.selected_text.clone() {
+            cx.write_to_primary(ClipboardItem::new_string(text));
+        }
         cx.notify();
+    }
+
+    /// The middle click pastes the primary selection (Linux), else the
+    /// clipboard.
+    fn on_middle_click(&mut self, _: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus, cx);
+        #[cfg(any(target_os = "linux", target_os = "freebsd"))]
+        let item = cx.read_from_primary();
+        #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
+        let item = cx.read_from_clipboard();
+        if let Some(text) = item.and_then(|item| item.text()) {
+            self.paste(&text);
+        }
+        cx.stop_propagation();
+    }
+
+    /// The right click opens the menu (Copy, Paste) under the pointer.
+    fn on_right_click(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        window.focus(&self.focus, cx);
+        self.menu = Some(event.position);
+        cx.stop_propagation();
+        cx.notify();
+    }
+
+    /// The right click's menu: Copy (when something is selected), Paste.
+    fn menu_view(&self, at: Point<Pixels>, cx: &mut Context<Self>) -> impl IntoElement {
+        let selected = self.term.lock().selection.as_ref().is_some_and(|s| !s.is_empty()) || self.selected_text.is_some();
+        let item = |id: &'static str, label: &'static str, keys: &'static str, enabled: bool| {
+            div()
+                .id(id)
+                .flex()
+                .gap_6()
+                .justify_between()
+                .px_3()
+                .py_1()
+                .rounded_sm()
+                .text_sm()
+                .when(enabled, |d| d.cursor_pointer().hover(|d| d.bg(crate::theme::p().hover)))
+                .when(!enabled, |d| d.text_color(crate::theme::p().muted))
+                .child(label)
+                .child(div().text_xs().text_color(crate::theme::p().muted).child(keys))
+        };
+        deferred(
+            anchored().position(at).child(
+                div()
+                    .id("terminal-menu")
+                    .occlude()
+                    .min_w(px(180.))
+                    .p_1()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(crate::theme::p().border)
+                    .bg(crate::theme::p().surface)
+                    .text_color(crate::theme::p().text)
+                    .shadow_lg()
+                    .on_mouse_down_out(cx.listener(|view, _, _, cx| {
+                        view.menu = None;
+                        cx.notify();
+                    }))
+                    .child(item("terminal-menu-copy", "Copy", "Ctrl+Shift+C", selected).when(selected, |d| {
+                        d.on_click(cx.listener(|view, _, window, cx| {
+                            view.menu = None;
+                            view.copy(&keymap::TerminalCopy, window, cx);
+                            cx.notify();
+                        }))
+                    }))
+                    .child(item("terminal-menu-paste", "Paste", "Ctrl+Shift+V", true).on_click(cx.listener(|view, _, window, cx| {
+                        view.menu = None;
+                        view.paste_clipboard(&keymap::TerminalPaste, window, cx);
+                        cx.notify();
+                    }))),
+            ),
+        )
+        .with_priority(2)
     }
 }
 
@@ -548,6 +656,8 @@ impl Render for TerminalView {
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_move(cx.listener(Self::on_mouse_move))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            .on_mouse_down(MouseButton::Middle, cx.listener(Self::on_middle_click))
+            .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right_click))
             .cursor(CursorStyle::IBeam)
             .relative()
             .size_full()
@@ -558,6 +668,7 @@ impl Render for TerminalView {
                 viewport: None,
                 status_line: false,
             })
+            .children(self.menu.map(|at| self.menu_view(at, cx)))
             .when(self.exited, |d| {
                 d.child(
                     div()

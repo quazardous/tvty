@@ -372,7 +372,10 @@ window key a terminal masks.
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
-| ctrl+shift+c / ctrl+shift+v | copy the selection / paste (bracketed when the program asks) |
+| ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
+| drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |
+| middle click | paste the primary selection |
+| right click | a menu: Copy, Paste (Esc closes it) |
 
 Everything else goes to the terminal.
 

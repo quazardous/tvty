@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Copy and paste in the terminals: a drag selects whatever the program (tmux
+  with its mouse on, where it did nothing), copied at once to the primary
+  selection; middle click pastes it; Shift+Insert pastes the clipboard; a
+  right click opens Copy / Paste. What was selected is kept even when the
+  program draws over it (Claude Code). Ctrl+C stays ^C.
 - Customizable shortcuts: `keymap.json` binds a command to other keys, or
   gives a key back to the terminal's program, by context (Terminal when a
   terminal has the focus, Window elsewhere); read again once saved. Options

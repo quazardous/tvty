@@ -78,7 +78,7 @@ pub const COMMANDS: &[Command] = &[
     command!("list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList),
     command!("theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme),
     command!("terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection", TerminalCopy),
-    command!("terminal.paste", TERMINAL, ["ctrl-shift-v"], "Paste", TerminalPaste),
+    command!("terminal.paste", TERMINAL, ["ctrl-shift-v", "shift-insert"], "Paste the clipboard", TerminalPaste),
     command!("terminal.tab", TERMINAL, ["tab"], "Tab, to the program (not the focus to the next element)", SendTab),
     command!("terminal.back_tab", TERMINAL, ["shift-tab"], "Shift+Tab, to the program", SendBackTab),
 ];
