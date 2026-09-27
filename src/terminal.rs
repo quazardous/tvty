@@ -96,6 +96,11 @@ pub struct TerminalView {
     tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
     /// The left button is down on a selection being made.
     selecting: bool,
+    /// The selection being made, kept by tvty during the drag: the
+    /// emulator drops a selection whose lines the program writes over (Claude
+    /// Code draws its screen again and again), and the drag would lose it
+    /// under the pointer. Put back after each output and each move.
+    dragging: Option<Selection>,
     /// The right click's menu (Copy, Paste), where it was opened.
     menu: Option<Point<Pixels>>,
     /// The text selected last, read as the drag goes: a program that draws
@@ -246,6 +251,7 @@ impl TerminalView {
             tmux_scroll: None,
             selecting: false,
             menu: None,
+            dragging: None,
             selected_text: None,
         }
     }
@@ -258,6 +264,14 @@ impl TerminalView {
         match event {
             Event::Wakeup => {
                 stats::output();
+                // The program wrote over the selection being dragged: it
+                // stays, until the button is released.
+                if let Some(selection) = self.dragging.clone() {
+                    let mut term = self.term.lock();
+                    if term.selection.is_none() {
+                        term.selection = Some(selection);
+                    }
+                }
                 cx.notify();
             }
             Event::PtyWrite(text) => self.write(text.into_bytes()),
@@ -445,7 +459,9 @@ impl TerminalView {
             3.. => SelectionType::Lines,
             _ => SelectionType::Simple,
         };
-        self.term.lock().selection = Some(Selection::new(kind, point, side));
+        let selection = Selection::new(kind, point, side);
+        self.term.lock().selection = Some(selection.clone());
+        self.dragging = Some(selection);
         self.selected_text = None;
         self.selecting = true;
         cx.notify();
@@ -457,8 +473,10 @@ impl TerminalView {
         }
         let (point, side) = self.grid_point(event.position);
         let mut term = self.term.lock();
-        if let Some(selection) = term.selection.as_mut() {
+        // From tvty's own copy: the emulator's may have been dropped.
+        if let Some(selection) = self.dragging.as_mut() {
             selection.update(point, side);
+            term.selection = Some(selection.clone());
         }
         if let Some(text) = term.selection_to_string().filter(|t| !t.is_empty()) {
             self.selected_text = Some(text);
@@ -474,6 +492,9 @@ impl TerminalView {
         self.selecting = false;
         // A click without a drag selects nothing.
         let mut term = self.term.lock();
+        if let Some(selection) = self.dragging.take() {
+            term.selection = Some(selection);
+        }
         if term.selection.as_ref().is_some_and(|s| s.is_empty()) {
             term.selection = None;
         }

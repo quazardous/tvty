@@ -48,6 +48,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A drag in a terminal keeps its selection while the program draws its
+  screen again (Claude Code): it vanished under the pointer.
 - The desktop launcher survives a new session: it runs ~/.local/bin/tvty,
   always there, which runs the build — in a folder mounted after the
   session starts (an encrypted home folder), the build was missing when the
