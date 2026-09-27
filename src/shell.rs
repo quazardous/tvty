@@ -161,6 +161,9 @@ pub struct Shell {
     /// ends and comes back (the loop starts again), and is opened again
     /// rather than left on its end screen.
     pub(super) restarts_asked: HashMap<String, std::time::Instant>,
+    /// Sessions open as a copy: watched, never typed into nor resized.
+    /// The others have the controls (shared with any other client).
+    pub(super) copies: HashSet<String>,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -583,6 +586,7 @@ impl Shell {
             starting: None,
             open_when_running: None,
             restarts_asked: HashMap::new(),
+            copies: HashSet::new(),
             ended: None,
             viewer: None,
             wire: None,
@@ -1228,9 +1232,12 @@ impl Shell {
         if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
             return None;
         }
-        let terminal = cx.new(|cx| match &socket {
-            Some(socket) => TerminalView::attach(std::path::Path::new(socket), cx),
-            None => TerminalView::tmux(session, cx).expect("failed to spawn the terminal"),
+        let copy = self.copies.contains(session);
+        let terminal = cx.new(|cx| match (&socket, copy) {
+            (Some(socket), false) => TerminalView::attach(std::path::Path::new(socket), cx),
+            (Some(socket), true) => TerminalView::observe(std::path::Path::new(socket), cx),
+            (None, false) => TerminalView::tmux(session, cx).expect("failed to spawn the terminal"),
+            (None, true) => TerminalView::tmux_copy(session, cx).expect("failed to spawn the terminal"),
         });
         self.watch_end(session.to_string(), &terminal, window, cx);
         self.terminals.insert(session.to_string(), terminal.clone());

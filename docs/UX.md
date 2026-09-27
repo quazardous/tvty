@@ -51,7 +51,16 @@ where it runs: **on aiball's host** (the default, no tmux: aiball's
 `session.start`, then tvty attaches over the session's socket) or, box
 unticked, in claude-loop's tmux (`claude-loop start --no-attach`). Either
 way it starts **in that directory**, and tvty never starts Claude itself:
-it opens the session once it runs.
+it opens the session once it runs. An agent whose loop runs already (on
+the host, or claude-loop's in tmux) is never started again: tvty opens it
+**as a copy**, as claude-loop joins a loop that runs.
+
+A terminal has **the controls** or is **a copy** (the agent bar's chip).
+The controls are shared, as tmux shares them: claude-loop's own terminal
+and tvty both type, and the session's size follows the last one that
+typed. A copy only watches: nothing typed reaches Claude, and it never
+resizes the session — it is drawn at the session's size. Either leaves
+without stopping Claude.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
@@ -278,7 +287,9 @@ claude-loop's terms and full words — `all:` the project's open tickets,
 a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
 where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
-tmux), its name and where it works. A gesture aiball refuses
+tmux); whether this terminal has the **controls** or is a **copy** (a
+click switches: the terminal leaves and comes back in the other mode, its
+Claude goes on); its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread

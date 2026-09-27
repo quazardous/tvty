@@ -386,6 +386,17 @@ impl Shell {
                         shell.open_when_running = Some(format!("{}{agent}", crate::sessions::HOSTED_PREFIX));
                         crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {agent} on aiball's host in {}", home_short(&start.cwd))));
                     }
+                    // Its loop runs already (on the host, or claude-loop's
+                    // in tmux): opened as a copy, as claude-loop joins one;
+                    // the bar's chip takes the controls. Never a second Claude.
+                    Err(error) if format!("{error:#}").contains("HOST_BUSY") && shell.running_session(start.agent.as_deref()).is_some() => {
+                        let session = shell.running_session(start.agent.as_deref()).unwrap_or_default();
+                        shell.new_session = None;
+                        shell.copies.insert(session.clone());
+                        shell.open_when_running = Some(session);
+                        let agent = start.agent.clone().unwrap_or_default();
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
+                    }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {
                             form.busy = false;
@@ -412,28 +423,44 @@ impl Shell {
             let done = cx.background_executor().spawn({
                 let start = start.clone();
                 async move {
-                    // A loop of the host listed idle while its agent has not
-                    // said it is there yet (it just started): opened, not
-                    // started again.
-                    if let (Some(_), Some(agent)) = (&start.again, &start.agent) {
+                    // An agent whose loop runs on the host already is opened,
+                    // never started again. Listed idle (it just started, its
+                    // agent not there yet), with the controls; else as a
+                    // copy, as claude-loop joins a loop that runs.
+                    if let Some(agent) = &start.agent {
                         if aiball.host_runs(agent).unwrap_or(false) {
-                            return Ok((format!("{}{agent}", crate::sessions::HOSTED_PREFIX), false));
+                            return Ok((format!("{}{agent}", crate::sessions::HOSTED_PREFIX), false, start.again.is_none()));
                         }
                     }
-                    crate::loops::start(&start).map(|name| (name, true))
+                    crate::loops::start(&start).map(|name| (name, true, false))
                 }
             });
             let done = done.await;
             let _ = this.update(cx, |shell, cx| {
                 shell.starting = None;
                 match done {
-                    Ok((name, started)) => {
+                    Ok((name, started, copy)) => {
                         shell.new_session = None;
                         shell.open_when_running = Some(name.clone());
                         if started {
                             crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
                         }
+                        if copy {
+                            shell.copies.insert(name.clone());
+                            let agent = start.agent.clone().unwrap_or_default();
+                            crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
+                        }
                         let _ = shell.refresh_now.unbounded_send(());
+                    }
+                    // claude-loop says its loop runs already (in tmux): opened
+                    // as a copy, as claude-loop itself joins one.
+                    Err(error) if format!("{error:#}").contains("already runs") && shell.running_session(start.agent.as_deref()).is_some() => {
+                        let session = shell.running_session(start.agent.as_deref()).unwrap_or_default();
+                        shell.new_session = None;
+                        shell.copies.insert(session.clone());
+                        shell.open_when_running = Some(session);
+                        let agent = start.agent.clone().unwrap_or_default();
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
                     }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {
@@ -446,6 +473,14 @@ impl Shell {
             });
         })
         .detach();
+    }
+}
+
+impl Shell {
+    /// The terminal of `agent`'s running loop, as the board lists it.
+    fn running_session(&self, agent: Option<&str>) -> Option<String> {
+        let agent = agent?;
+        self.board.projects.iter().flat_map(|p| &p.terminals).find(|t| t.agent.as_deref() == Some(agent)).map(|t| t.session.clone())
     }
 }
 

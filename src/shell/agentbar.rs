@@ -395,6 +395,28 @@ impl Shell {
                             "its loop runs in tmux (claude-loop): tvty opens it through tmux"
                         })
                 })
+                // Copy or controls: whether this terminal types into it.
+                .child({
+                    let session = terminal.session.clone();
+                    let copy = self.copies.contains(&session);
+                    let tone = if copy { p().warning } else { p().muted };
+                    item()
+                        .id("agent-controls")
+                        .px_1()
+                        .rounded_sm()
+                        .border_1()
+                        .border_color(ink(if copy { p().warning } else { p().border }))
+                        .text_color(ink(tone))
+                        .cursor_pointer()
+                        .hover(|d| d.bg(p().hover))
+                        .child(if copy { "copy" } else { "controls" })
+                        .on_click(cx.listener(move |shell, _, window, cx| shell.set_copy(session.clone(), !copy, window, cx)))
+                        .tip(if copy {
+                            "a copy: you watch; nothing you type reaches its Claude, and the session keeps its size. A click takes the controls"
+                        } else {
+                            "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
+                        })
+                })
                 .child(item().text_color(ink(p().text)).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))

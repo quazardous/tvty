@@ -145,6 +145,9 @@ pub struct HostedSession {
     pub running: bool,
     #[serde(default)]
     pub attach: Option<AttachPoint>,
+    /// Its loop's tmux session, when it runs in claude-loop's tmux.
+    #[serde(default)]
+    pub tmux: Option<String>,
 }
 
 /// Where a client attaches: a socket on this machine, or none (`reason`).

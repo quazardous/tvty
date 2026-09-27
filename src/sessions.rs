@@ -90,7 +90,9 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 /// machine. Cheap: nothing is read from aiball.
 pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
     let consumers = live.consumers();
-    let projects = group(sessions, &consumers);
+    // Whom each loop runs for, as its plate says.
+    let owners: HashMap<String, String> = known.iter().filter_map(|l| Some((l.name.clone(), l.consumer.clone()?))).collect();
+    let projects = group(sessions, &consumers, &owners);
     let mut board = Board { known, homes: homes(&consumers), ..Default::default() };
     for project in projects.iter().filter(|p| p.on_board) {
         let tickets = live.tickets().get(&project.name).cloned().unwrap_or_default();
@@ -214,7 +216,7 @@ fn status_of(c: &Consumer) -> Option<Status> {
 
 /// Two ways a loop's terminal is there: aiball's host runs it (opened over
 /// its attach socket), or claude-loop runs it in tmux (opened through tmux).
-fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project> {
+fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashMap<String, String>) -> Vec<Project> {
     let mut projects: BTreeMap<String, (bool, Vec<Terminal>)> = BTreeMap::new();
     // The agents aiball's host runs.
     let hosted: Vec<(&Consumer, &str)> = consumers
@@ -238,12 +240,17 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer]) -> Vec<Project
         });
     }
     for (session, path) in sessions {
+        // A loop's agent: the one aiball says runs in it, else the one its
+        // plate names, else the one working in its folder — a lead and its
+        // crew share one, so the folder comes last.
         let agent = session
             .starts_with(LOOP_PREFIX)
             .then(|| {
-                consumers
-                    .iter()
-                    .find(|c| c.kind == "agent" && c.cwd.as_deref() == Some(path.as_str()))
+                let agents = || consumers.iter().filter(|c| c.kind == "agent");
+                agents()
+                    .find(|c| c.session.as_ref().and_then(|s| s.tmux.as_deref()) == Some(session.as_str()))
+                    .or_else(|| owners.get(&session).and_then(|owner| agents().find(|c| c.consumer_id == *owner)))
+                    .or_else(|| agents().find(|c| c.cwd.as_deref() == Some(path.as_str())))
             })
             .flatten();
         // One place per agent: the host's, when both are seen for a moment.
@@ -330,6 +337,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 #[cfg(test)]
 mod tests {
     use super::{HOSTED_PREFIX, Status, filter_words, found, group, homes, loop_says, project_at};
+    use std::collections::HashMap;
 
     #[test]
     fn a_live_loops_bar_says_its_phase() {
@@ -401,7 +409,7 @@ mod tests {
             // The host's agent seen in tmux a moment too: the host wins.
             ("cl-hosted".to_string(), "/w/hosted".to_string()),
         ];
-        let projects = group(tmux, &consumers);
+        let projects = group(tmux, &consumers, &HashMap::new());
         let demo = projects.iter().find(|p| p.name == "demo").unwrap();
         let by = |label: &str| demo.terminals.iter().filter(|t| t.label == label).collect::<Vec<_>>();
         let hosted = by("hosted");
@@ -413,17 +421,33 @@ mod tests {
     }
 
     #[test]
+    fn a_loop_in_a_shared_folder_is_its_own_agents() {
+        // A lead and its crew in one folder, each loop in tmux.
+        let consumers = vec![agent("lead", "/w/app", json!(null)), agent("crew", "/w/app", json!({ "running": true, "tmux": "cl-b" }))];
+        let tmux = vec![("cl-a".to_string(), "/w/app".to_string()), ("cl-b".to_string(), "/w/app".to_string()), ("cl-c".to_string(), "/w/app".to_string())];
+        let owners = HashMap::from([("cl-c".to_string(), "lead".to_string())]);
+        let projects = group(tmux, &consumers, &owners);
+        let agent_of = |session: &str| {
+            projects.iter().flat_map(|p| &p.terminals).find(|t| t.session == session).and_then(|t| t.agent.clone())
+        };
+        // aiball says: crew in cl-b; the plate says: lead in cl-c; cl-a, by its folder only.
+        assert_eq!(agent_of("cl-b").as_deref(), Some("crew"));
+        assert_eq!(agent_of("cl-c").as_deref(), Some("lead"));
+        assert_eq!(agent_of("cl-a").as_deref(), Some("lead"));
+    }
+
+    #[test]
     fn an_agents_counters_come_from_the_daemon() {
         let mut counted: Consumer = serde_json::from_value(json!({ "consumer_id": "crew", "kind": "agent", "cwd": "/w/crew",
             "project": "demo", "state": "idle", "session": null,
             "counters": { "open": 7, "actionable": 2, "backlog": 3, "events": 1, "computed_at": "2026-09-27T13:00:00Z" } }))
         .unwrap();
-        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], std::slice::from_ref(&counted));
+        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], std::slice::from_ref(&counted), &HashMap::new());
         let status = projects[0].terminals[0].status.clone().unwrap();
         assert_eq!(status.counters, Some(crate::aiball::AgentCounters { open: Some(7), backlog: Some(3), events: Some(1) }));
         // Not computed yet: none.
         counted.counters = None;
-        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], &[counted]);
+        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], &[counted], &HashMap::new());
         assert_eq!(projects[0].terminals[0].status.as_ref().unwrap().counters, None);
     }
 

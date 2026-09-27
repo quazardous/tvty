@@ -87,6 +87,9 @@ pub struct TerminalView {
     /// fast (a side dragged, the window resized) wait to hold still.
     last_new_size: Option<std::time::Instant>,
     sized: bool,
+    /// A copy: its grid is the session's size, never the element's (it
+    /// does not resize the session, so it draws it as it is).
+    follows_session: bool,
     exited: bool,
     /// The tmux session shown, to scroll its history in copy mode.
     tmux_session: Option<String>,
@@ -140,6 +143,35 @@ impl TerminalView {
         Ok(view)
     }
 
+    /// Attaches to a tmux session as a copy: read-only (`attach -r`), it
+    /// never types nor resizes the session.
+    /// Drawn at the session's window size, followed: the window changes
+    /// with its other clients (asked of tmux each second, off the UI thread).
+    pub fn tmux_copy(session: &str, cx: &mut Context<Self>) -> anyhow::Result<Self> {
+        let (columns, lines) = crate::sessions::window_size(session).unwrap_or((80, 24));
+        let mut view = Self::watch(session, columns, lines, cx)?;
+        view.follows_session = true;
+        let session = session.to_string();
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+                let asked = session.clone();
+                let window = cx.background_executor().spawn(async move { crate::sessions::window_size(&asked) }).await;
+                let alive = this.update(cx, |view, cx| {
+                    if let Some((columns, lines)) = window.filter(|s| *s != view.grid_size) {
+                        view.apply_size(columns, lines, size(px(8.), px(16.)));
+                        cx.notify();
+                    }
+                });
+                if alive.is_err() {
+                    break;
+                }
+            }
+        })
+        .detach();
+        Ok(view)
+    }
+
     /// Watches a tmux session live without ever resizing it: a read-only
     /// client that ignores its own size (`attach -r`), as large as the
     /// session's window so it sees all of it.
@@ -159,8 +191,11 @@ impl TerminalView {
 
     /// Watches a session a host holds, over its attach socket, as an
     /// observer: it never types nor resizes the session (a card).
+    /// Its grid follows the session's size, as the host says it.
     pub fn observe(socket: &std::path::Path, cx: &mut Context<Self>) -> Self {
-        Self::attached(socket, false, cx)
+        let mut view = Self::attached(socket, false, cx);
+        view.follows_session = true;
+        view
     }
 
     fn attached(socket: &std::path::Path, interactive: bool, cx: &mut Context<Self>) -> Self {
@@ -252,6 +287,7 @@ impl TerminalView {
             grid_size: (columns, lines),
             pending_size: None,
             last_new_size: None,
+            follows_session: false,
             sized: false,
             exited: false,
             tmux_session: None,
@@ -341,7 +377,7 @@ impl TerminalView {
     /// the size holds still when they follow each other — while a side is
     /// dragged, every column would make the program redraw its whole screen.
     fn resize(&mut self, columns: u16, lines: u16, cell: Size<Pixels>, cx: &mut Context<Self>) {
-        if columns == 0 || lines == 0 {
+        if columns == 0 || lines == 0 || self.follows_session {
             return;
         }
         if (columns, lines) == self.grid_size {

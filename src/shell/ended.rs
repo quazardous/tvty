@@ -30,6 +30,19 @@ impl Shell {
         .detach();
     }
 
+    /// Opens `session` again as a copy, or with the controls: its client
+    /// leaves and another comes, in the other mode; its Claude goes on.
+    pub(super) fn set_copy(&mut self, session: String, copy: bool, window: &mut Window, cx: &mut Context<Self>) {
+        if copy {
+            self.copies.insert(session.clone());
+        } else {
+            self.copies.remove(&session);
+        }
+        self.terminals.remove(&session);
+        self.select(session, window, cx);
+        cx.notify();
+    }
+
     /// Lets the ended terminal go: a later selection of the same name
     /// attaches afresh. Shown, it leaves the end screen in its place.
     fn session_ended(&mut self, session: &str, window: &mut Window, cx: &mut Context<Self>) {

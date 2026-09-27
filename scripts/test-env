@@ -15,6 +15,9 @@ export XDG_STATE_HOME="$TVTY_ROOT/dev/tvty-wbox/state"
 # its own fonts (XDG_DATA_HOME): the user's ~/.local/share/tvty/fonts is not read
 export XDG_DATA_HOME="$TVTY_ROOT/dev/tvty-wbox/data"
 export AIBALL_SOCK="$TVTY_ROOT/dev/fake-aiball/home/sock"
+# Its home too, as the daemon sees it (scripts/fake-aiball's short link):
+# claude-loop reads its session hosts there to tell a live loop.
+export AIBALL_HOME="${XDG_RUNTIME_DIR:-/tmp}/tvty-fake-aiball-$(id -u)"
 # Loops a test starts: their state apart, fake-claude instead of claude.
 export CLAUDE_LOOP_STATE_ROOT="$TVTY_ROOT/dev/claude-loop"
 export CL_CLAUDE_CMD="$(cd "$TVTY_ROOT/.." && pwd)/aiball/bin/fake-claude"

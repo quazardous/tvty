@@ -37,10 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A terminal has the controls or is a copy that only watches: a chip in
+  the agent bar switches. "+ session" on an agent that runs already opens
+  it as a copy instead of failing or starting a second Claude.
 - The agent bar says where its loop runs: "host" (aiball's session host)
   or "tmux".
 - The tickets' comment bubble points to who spoke last: left and bright
   when it was someone else, right and discreet when it was you.
+
+### Fixed
+
+- A loop in tmux is shown under its own agent, also when a lead and its
+  crew share one folder.
 
 ## [0.3.0] - 2026-09-27
 

@@ -47,6 +47,9 @@ pub struct Attach {
     stream: Mutex<Option<UnixStream>>,
     size: Mutex<(u16, u16)>,
     closed: std::sync::atomic::AtomicBool,
+    /// A client that types and whose size counts; a copy (an observer)
+    /// sends neither keys nor sizes.
+    interactive: bool,
 }
 
 impl Attach {
@@ -65,6 +68,7 @@ impl Attach {
             stream: Mutex::new(None),
             size: Mutex::new(size),
             closed: std::sync::atomic::AtomicBool::new(false),
+            interactive,
         });
         let (socket, this) = (socket.to_path_buf(), attach.clone());
         std::thread::Builder::new().name("attach".into()).spawn(move || {
@@ -122,7 +126,9 @@ impl Attach {
 
     /// Keys, as typed or pasted.
     pub fn input(&self, bytes: &[u8]) {
-        let _ = self.send(INPUT, bytes);
+        if self.interactive {
+            let _ = self.send(INPUT, bytes);
+        }
     }
 
     /// The size this client would like (it takes it once it types).
@@ -130,12 +136,16 @@ impl Attach {
         if let Ok(mut size) = self.size.lock() {
             *size = (columns, lines);
         }
-        let _ = self.send(RESIZE, json!({ "rows": lines, "cols": columns }).to_string().as_bytes());
+        if self.interactive {
+            let _ = self.send(RESIZE, json!({ "rows": lines, "cols": columns }).to_string().as_bytes());
+        }
     }
 
     /// This client took focus: its size is the one to use.
     pub fn focus(&self) {
-        let _ = self.send(FOCUS, b"{}");
+        if self.interactive {
+            let _ = self.send(FOCUS, b"{}");
+        }
     }
 
     /// Leaves the session (it goes on without this client).
