@@ -23,6 +23,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
     wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N)
+    wbox_ctl.py dblclick CONFIG [-s key=value ...] X Y
     wbox_ctl.py move   CONFIG [-s key=value ...] X1 Y1 X2 Y2 STEPS SECONDS
                        (the pointer glides, no button: hovering, to measure it)
     wbox_ctl.py hold   CONFIG [-s key=value ...] MODIFIER KEY TIMES [--name NAME]
@@ -198,6 +199,24 @@ def main():
         client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.RELEASED))
         client._send(vp, 4)
         client.roundtrip()
+        result = {"ok": True}
+    elif command == "dblclick":
+        # Two left clicks at X Y, 80 ms apart: a double click.
+        if len(args) != 2:
+            sys.exit("dblclick needs X Y")
+        x, y = (int(a) for a in args)
+        _warm_up(comp, x, y)
+        import time as clock
+        from wbox import pointer as wp
+        client = comp._vptr_client()
+        vp = client._ensure_vptr()
+        client._motion(vp, x, y)
+        for _ in range(2):
+            for state in (wp.PRESSED, wp.RELEASED):
+                client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(state))
+                client._send(vp, 4)
+                client.roundtrip()
+            clock.sleep(0.08)
         result = {"ok": True}
     elif command == "move":
         # Glide the pointer from X1 Y1 to X2 Y2 in STEPS over SECONDS, no

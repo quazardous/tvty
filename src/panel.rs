@@ -760,6 +760,7 @@ impl TicketPanel {
             return list.child(hint("No open ticket.")).into_any_element();
         }
         let mut at = 0;
+        let mut above: Option<SharedString> = None;
         while at < rows.len() {
             let band = rows[at].0.band;
             let end = rows[at..].iter().position(|(s, _)| s.band != band).map_or(rows.len(), |n| at + n);
@@ -767,8 +768,11 @@ impl TicketPanel {
             let scroll = self.scrolls.get(&band).cloned().unwrap_or_default();
             // Only the rows in view are laid out: a band of hundreds stays cheap.
             let shown = crate::accordion::window(count, ROW_HEIGHT, &scroll);
+            let id = SharedString::from(format!("band-{band:?}"));
             let section = crate::accordion::Section {
-                id: SharedString::from(format!("band-{band:?}")),
+                list: "tickets".into(),
+                above: above.replace(id.clone()),
+                id,
                 title: band.title().to_string(),
                 count,
                 folded: self.folded.contains(&band),

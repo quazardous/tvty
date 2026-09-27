@@ -6,11 +6,93 @@
 //! rows. When even those minimums do not fit, the whole list scrolls
 //! rather than letting them overlap: put the sections in [`list`].
 
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::theme::p;
+
+// ── Heights set by hand ──────────────────────────────────────────────
+//
+// Dragging a section's title moves the border with the section above: that
+// one gets a height of its own, kept by `list/section`. The others keep
+// their share. A double click on a title gives the list its shares back.
+
+fn heights_store() -> &'static Mutex<HashMap<String, f32>> {
+    static HEIGHTS: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    HEIGHTS.get_or_init(Default::default)
+}
+
+/// Where each section was laid out last: its top and its least height.
+fn placed() -> &'static Mutex<HashMap<String, (f32, f32)>> {
+    static PLACED: OnceLock<Mutex<HashMap<String, (f32, f32)>>> = OnceLock::new();
+    PLACED.get_or_init(Default::default)
+}
+
+fn key(list: &str, section: &str) -> String {
+    format!("{list}/{section}")
+}
+
+/// The heights set by hand, to keep (`list/section` → pixels).
+pub fn heights() -> HashMap<String, f32> {
+    heights_store().lock().map(|h| h.clone()).unwrap_or_default()
+}
+
+/// The heights kept from a previous run.
+pub fn set_heights(heights: HashMap<String, f32>) {
+    if let Ok(mut h) = heights_store().lock() {
+        *h = heights;
+    }
+}
+
+/// Set when the heights changed for good (a drag ended, a reset): who
+/// keeps them observes it.
+pub struct HeightsChanged;
+
+impl Global for HeightsChanged {}
+
+/// Says the heights changed for good.
+pub fn commit(cx: &mut App) {
+    cx.set_global(HeightsChanged);
+}
+
+/// What a title carries while dragged: the section whose height it sets.
+#[derive(Clone)]
+pub struct SectionDrag {
+    pub list: SharedString,
+    pub above: SharedString,
+}
+
+/// A drag shows nothing under the pointer.
+struct NoPreview;
+
+impl Render for NoPreview {
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+    }
+}
+
+/// The pointer, dragging a title, is at `y`: the section above ends there
+/// (its least height kept). Answers whether a height changed.
+pub fn drag_to(drag: &SectionDrag, y: Pixels) -> bool {
+    let key = key(&drag.list, &drag.above);
+    let Some((top, least)) = placed().lock().ok().and_then(|p| p.get(&key).copied()) else { return false };
+    // The pointer holds the title about its middle.
+    let height = (f32::from(y) - top - TITLE_HEIGHT / 2.).max(least).round();
+    let Ok(mut heights) = heights_store().lock() else { return false };
+    heights.insert(key, height) != Some(height)
+}
+
+/// Gives a list's sections their shares back.
+fn reset(list: &str) {
+    let prefix = format!("{list}/");
+    if let Ok(mut heights) = heights_store().lock() {
+        heights.retain(|k, _| !k.starts_with(&prefix));
+    }
+}
 
 /// A section's title line, in pixels.
 pub const TITLE_HEIGHT: f32 = 28.;
@@ -22,6 +104,10 @@ pub fn list(id: impl Into<ElementId>) -> Stateful<Div> {
 
 /// One section.
 pub struct Section {
+    /// The list it is in, and the section above it (none for the first):
+    /// dragging its title sets that one's height.
+    pub list: SharedString,
+    pub above: Option<SharedString>,
     pub id: SharedString,
     pub title: String,
     pub count: usize,
@@ -68,7 +154,26 @@ pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<
 impl Section {
     /// The section, its title folding it through `on_toggle`.
     pub fn render(self, on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Div {
-        let Self { id, title, count, folded, keep, scroll, body, before, after, windowed } = self;
+        let Self { list, above, id, title, count, folded, keep, scroll, body, before, after, windowed } = self;
+        let least = TITLE_HEIGHT + if folded { 0. } else { keep };
+        let height = (!folded)
+            .then(|| heights_store().lock().ok()?.get(&key(&list, &id)).copied())
+            .flatten()
+            .map(|h| h.max(least));
+        // Where it lies, for a drag of the title below it.
+        let place = {
+            let key = key(&list, &id);
+            canvas(
+                move |bounds, _, _| {
+                    if let Ok(mut placed) = placed().lock() {
+                        placed.insert(key, (f32::from(bounds.origin.y), least));
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full()
+        };
         // The rows were chosen from the last frame's size and scroll. Once
         // this one is laid out, the choice is checked: a list that grew or
         // moved (rows came, a section above folded) would leave blank rows
@@ -107,6 +212,11 @@ impl Section {
             .text_color(p().text)
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
+            // Dragged, it moves the border with the section above.
+            .when_some(above, |d, above| {
+                d.cursor(CursorStyle::ResizeUpDown)
+                    .on_drag(SectionDrag { list: list.clone(), above }, |_, _, _, cx| cx.new(|_| NoPreview))
+            })
             .child(div().w(px(10.)).text_color(p().accent).child(if folded { "▸" } else { "▾" }))
             .child(title.to_uppercase())
             .child(
@@ -118,13 +228,28 @@ impl Section {
                     .text_color(p().text)
                     .child(count.to_string()),
             )
-            .on_click(on_toggle);
+            .on_click({
+                let list = list.clone();
+                move |event, window, cx| {
+                    // A double click: the list's shares back.
+                    if event.click_count() == 2 {
+                        reset(&list);
+                        commit(cx);
+                    }
+                    on_toggle(event, window, cx)
+                }
+            });
         let keep = if folded { 0. } else { keep };
         div()
+            .relative()
             .flex()
             .flex_col()
-            .flex_initial()
+            .map(|d| match height {
+                Some(height) => d.flex_none().h(px(height)),
+                None => d.flex_initial(),
+            })
             .min_h(px(TITLE_HEIGHT + keep))
+            .child(place)
             .child(header)
             .when(!folded, |d| {
                 let rows = div()

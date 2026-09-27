@@ -33,7 +33,9 @@ A new one gets its tooltip with it.
 The sessions list ("Sessions", ‹ folds it) has three foldable sections,
 each with its count, like the ticket list's bands (one component,
 `src/accordion.rs`: ▾/▸ and a click, each section scrolls on its own and
-they share the height): **live** (the sessions that run, by project),
+they share the height — **dragging a title** moves the border with the
+section above, its least height kept; the heights are kept in `state.json`,
+and a double click on a title gives the list its shares back): **live** (the sessions that run, by project),
 **idle** (the loops this machine knows, from claude-loop's state
 directory, that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start

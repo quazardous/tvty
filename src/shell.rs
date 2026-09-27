@@ -133,6 +133,8 @@ pub struct Shell {
     stopping: HashSet<String>,
     /// The workspace to open again at start, once the board is there.
     restoring: Option<Restoring>,
+    /// The accordions' heights moved by a drag, counted: kept once it rests.
+    heights_moved: u64,
     /// The tmux sessions and loops of this machine were listed once.
     local_seen: bool,
     /// The slider is up, on this session.
@@ -434,6 +436,7 @@ impl Shell {
             rebuild_pending: false,
             stopping: HashSet::new(),
             restoring: None,
+            heights_moved: 0,
             local_seen: false,
             slider: None,
             slider_shown: 0,
@@ -459,6 +462,14 @@ impl Shell {
                 crate::daemon::Start::Missing(why) => Activity::news("tvty", Kind::Error, None, why),
             };
             let _ = cx.update(|cx| activity::publish(cx, said));
+        })
+        .detach();
+        // The accordions' heights set by hand: kept once a drag ends or a
+        // double click resets them.
+        crate::accordion::set_heights(shell.settings.section_heights.clone());
+        cx.observe_global::<crate::accordion::HeightsChanged>(|shell, _| {
+            shell.settings.section_heights = crate::accordion::heights();
+            shell.settings.save();
         })
         .detach();
         let newest_first = shell.settings.thread_newest_first;
@@ -2520,6 +2531,25 @@ impl Render for Shell {
             .capture_key_down(cx.listener(Self::on_key))
             .on_modifiers_changed(cx.listener(Self::on_modifiers))
             .on_drag_move(cx.listener(Self::on_drag_move))
+            // A section's title dragged, in the sessions list or the panel.
+            .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
+                if crate::accordion::drag_to(event.drag(cx), event.event.position.y) {
+                    shell.panel.update(cx, |_, cx| cx.notify());
+                    cx.notify();
+                    // Kept once the drag rests, wherever it is let go.
+                    shell.heights_moved += 1;
+                    let moved = shell.heights_moved;
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(Duration::from_millis(400)).await;
+                        let _ = this.update(cx, |shell, cx| {
+                            if shell.heights_moved == moved {
+                                crate::accordion::commit(cx);
+                            }
+                        });
+                    })
+                    .detach();
+                }
+            }))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .relative()
             .flex()

@@ -70,6 +70,8 @@ impl Shell {
                 (false, _) => vec![self.other_list(Other::Shut, cx)],
             };
             let section = crate::accordion::Section {
+                list: "sessions".into(),
+                above: (i > 0).then(|| SharedString::from(format!("sessions-{}", groups[i - 1].0))),
                 id: SharedString::from(format!("sessions-{word}")),
                 title: word.to_string(),
                 count,

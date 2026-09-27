@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The sections of the sessions list and of the ticket panel resize: drag a
+  title to move the border with the section above; kept from one start to
+  the next, a double click gives the shares back.
 - tvty closed and started again opens the terminals that were open, on
   the one shown last.
 

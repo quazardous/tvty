@@ -43,6 +43,8 @@ pub struct Settings {
     /// used last first, and the one shown; opened again at start.
     pub open_terminals: Vec<String>,
     pub shown_terminal: Option<String>,
+    /// The accordions' sections given a height by hand (`list/section`).
+    pub section_heights: std::collections::HashMap<String, f32>,
 }
 
 impl Default for Settings {
@@ -65,6 +67,7 @@ impl Default for Settings {
             sessions_folded: vec!["idle".into(), "shut".into()],
             open_terminals: Vec::new(),
             shown_terminal: None,
+            section_heights: Default::default(),
         }
     }
 }
