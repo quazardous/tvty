@@ -140,7 +140,10 @@ pub struct Windowed {
 /// are not laid out at all — with hundreds of rows, that is what keeps a
 /// frame cheap.
 pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<usize> {
-    let top = (-f32::from(scroll.offset().y)).max(0.);
+    // GPUI adds a wheel's delta to the offset before it bounds it: at the
+    // end, the offset may be past it for a frame. The rows then are those
+    // the bounded offset shows, not blank ones.
+    let top = (-f32::from(scroll.offset().y)).clamp(0., f32::from(scroll.max_offset().y).max(0.));
     let height = match f32::from(scroll.bounds().size.height) {
         // Not laid out yet: a screenful.
         h if h <= 0. => 1200.,
@@ -239,6 +242,30 @@ impl Section {
                     on_toggle(event, window, cx)
                 }
             });
+        // A wheel pushing past an end does nothing: stopped here, it does
+        // not move the offset nor draw the section again.
+        let ends = {
+            let scroll = scroll.clone();
+            canvas(
+                |bounds, _, _| bounds,
+                move |bounds, _, window, _| {
+                    let scroll = scroll.clone();
+                    window.on_mouse_event(move |event: &ScrollWheelEvent, phase, _, cx| {
+                        if phase != DispatchPhase::Capture || !bounds.contains(&event.position) {
+                            return;
+                        }
+                        let push = f32::from(event.delta.pixel_delta(px(16.)).y);
+                        let at = -f32::from(scroll.offset().y);
+                        let end = f32::from(scroll.max_offset().y);
+                        if (push < 0. && at >= end - 0.5) || (push > 0. && at <= 0.5) {
+                            cx.stop_propagation();
+                        }
+                    });
+                },
+            )
+            .absolute()
+            .size_full()
+        };
         let keep = if folded { 0. } else { keep };
         div()
             .relative()
@@ -271,6 +298,7 @@ impl Section {
                         .flex_initial()
                         .min_h(px(keep))
                         .child(rows)
+                        .child(ends)
                         .child(
                             div()
                                 .absolute()

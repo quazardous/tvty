@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The ticket lists no longer flicker when the wheel pushes past their end:
+  a wheel at the end is stopped, and the rows drawn follow the bounded
+  scroll.
 - No more "N pings unread" at start: aiball's count never goes down for a
   human (14 963 here), so it said nothing; the pings are notified as they
   come, and the full list's "Unread" filter lists what is new.
