@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- An "Eclipse Dark" colour theme, from the colours of Eclipse's classic
+  dark theme (as the VS Code "Eclipse Classic Dark" ports it).
 - Over a full screen (the options, the full list, a ticket or a new ticket
   full screen), the notifications come in the window's bottom left corner,
   out of its way, the newest in the corner.

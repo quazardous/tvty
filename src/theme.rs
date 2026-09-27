@@ -15,6 +15,7 @@ use gpui_kit::*;
 /// Themes shipped with tvty: `(file, contents)`.
 const BUNDLED: &[(&str, &str)] = &[
     ("catppuccin", include_str!("../themes/catppuccin.json")),
+    ("eclipse", include_str!("../themes/eclipse.json")),
     ("everforest", include_str!("../themes/everforest.json")),
     ("flexoki", include_str!("../themes/flexoki.json")),
     ("gruvbox", include_str!("../themes/gruvbox.json")),
