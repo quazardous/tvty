@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "⟳ restart" while Claude works reads "when idle": a click arms it, and
+  tvty restarts Claude as soon as it is idle, instead of "Claude is busy".
 - The sections of the sessions list and of the ticket panel resize: drag a
   title to move the border with the section above; kept from one start to
   the next, a double click gives the shares back.

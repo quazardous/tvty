@@ -148,10 +148,20 @@ impl Shell {
             .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
             .child(format!("{what}{since}{info}"))
             .tip("what its Claude does, and since when");
-        // Claude Code updated itself: a click restarts it, once idle.
-        let restart = bar.as_ref().is_some_and(|b| b.alerts.restart_needed).then(|| {
+        // Claude Code updated itself: a click restarts it. aiball refuses
+        // while Claude works: then a click arms it, and tvty restarts it as
+        // soon as it is idle.
+        let restart = bar.as_ref().filter(|b| b.alerts.restart_needed).map(|b| {
             let restarting = self.restarting.as_deref() == Some(agent.as_str());
+            let armed = self.restart_armed.contains(&agent);
+            let idle = b.phase == "idle";
             let target = agent.clone();
+            let (word, tip) = match (restarting, armed, idle) {
+                (true, _, _) => ("restarting…", "its Claude restarts, resuming its conversation"),
+                (_, true, _) => ("armed", "it restarts as soon as its Claude is idle; a click disarms"),
+                (_, _, true) => ("restart", "its Claude Code installed an update: a click restarts it, resuming its conversation"),
+                _ => ("when idle", "its Claude works: a click restarts it as soon as it is idle"),
+            };
             item()
                 .id("agent-restart")
                 .px_1p5()
@@ -159,14 +169,24 @@ impl Shell {
                 .border_1()
                 .border_color(p().warning)
                 .text_color(p().warning)
+                .when(armed, |d| d.bg(p().active))
                 .when(!restarting, |d| {
                     d.cursor_pointer()
                         .hover(|d| d.bg(p().hover))
-                        .on_click(cx.listener(move |shell, _, _, cx| shell.restart_claude(target.clone(), cx)))
+                        .on_click(cx.listener(move |shell, _, _, cx| {
+                            if !shell.restart_armed.remove(&target) {
+                                if idle {
+                                    shell.restart_claude(target.clone(), cx);
+                                } else {
+                                    shell.restart_armed.insert(target.clone());
+                                }
+                            }
+                            cx.notify();
+                        }))
                 })
                 .child("⟳")
-                .child(if restarting { "restarting…" } else { "restart" })
-                .tip("its Claude Code installed an update: a click restarts it once idle, resuming its conversation")
+                .child(word)
+                .tip(tip)
         });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
@@ -445,6 +465,21 @@ impl Shell {
         .detach();
     }
 
+    /// The armed restarts whose Claude is idle now go; those no longer
+    /// needed are dropped.
+    pub(super) fn fire_armed_restarts(&mut self, cx: &mut Context<Self>) {
+        let armed: Vec<String> = self.restart_armed.iter().cloned().collect();
+        for agent in armed {
+            let Some(bar) = self.board.bars.get(&agent).filter(|b| !b.stale) else { continue };
+            if !bar.bar.alerts.restart_needed {
+                self.restart_armed.remove(&agent);
+            } else if bar.bar.phase == "idle" && self.restarting.is_none() {
+                self.restart_armed.remove(&agent);
+                self.restart_claude(agent, cx);
+            }
+        }
+    }
+
     /// Restarts the agent's Claude Code (it installed an update): aiball
     /// waits for it to be idle, restarts it resuming its conversation, and
     /// tells the agent to carry on. Its bar then no longer asks for it.
@@ -459,15 +494,14 @@ impl Shell {
                 shell.restarting = None;
                 let activity = match done {
                     Ok(()) => crate::activity::Activity::done(None, format!("{agent}'s Claude restarts, resuming its conversation")),
-                    Err(error) => {
-                        let error = format!("{error:#}");
-                        let why = if error.contains("(NOT_IDLE)") {
-                            "Claude is busy — try again once it is idle".to_string()
-                        } else {
-                            short_error(&error)
-                        };
-                        crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), why)
+                    // Busy again by the time it went: armed again, it goes
+                    // once Claude is idle.
+                    Err(error) if format!("{error:#}").contains("(NOT_IDLE)") => {
+                        shell.restart_armed.insert(agent.clone());
+                        cx.notify();
+                        return;
                     }
+                    Err(error) => crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), short_error(&format!("{error:#}"))),
                 };
                 crate::activity::publish(cx, activity);
                 cx.notify();

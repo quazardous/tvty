@@ -102,6 +102,9 @@ pub struct Shell {
     afk_menu: bool,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
+    /// Agents whose Claude restarts as soon as it is idle (asked while it
+    /// worked).
+    restart_armed: HashSet<String>,
     backlog_view: Option<agentbar::BacklogView>,
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
@@ -420,6 +423,7 @@ impl Shell {
             compact: None,
             afk_menu: false,
             restarting: None,
+            restart_armed: HashSet::new(),
             backlog_view: None,
             session_scrolls: Default::default(),
             new_session: None,
@@ -550,6 +554,7 @@ impl Shell {
         self.forget_stopping(&mut board);
         if self.board != board {
             self.board = board;
+            self.fire_armed_restarts(cx);
             self.update_needs(cx);
             cx.notify();
         }

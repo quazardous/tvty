@@ -234,16 +234,20 @@ says, drawn by tvty from aiball (never read from tmux), about **the agent**
 to aiball (`/api/consumers/:id/bar`, and `agent_bar` on the live feed), all
 of it; before (a loop started earlier), what the agent's state says.
 
-Left to right: who drives the loop (▶ auto, ‖ held — with the time left
-when timed —, ✎ you type) — a click offers auto, hold 10 min, hold, through
-aiball (`POST /api/agents/:id/afk`) —; its Claude's phase, for how long, and
-the passing word (`retry 2`, `compacting`); "waits for an answer" when a
+Left to right: who drives the loop (▶ auto, 웃 held — `웃∞` for good, `웃 348s`
+with the seconds left of a ten-minute hold —, ✎ you type) — a click offers
+auto, hold 10 min, hold, through aiball (`consumer.afk`) —; its Claude's
+phase, for how long, and the passing word (`retry 2`, `compacting`); when
+its Claude Code installed an update, **⟳ restart** — aiball restarts it only
+while idle, so while it works the button reads "when idle" and a click
+**arms** it: tvty restarts it as soon as it is idle ("armed", a click
+disarms); "waits for an answer" when a
 dialog is up; the alerts in red (trust this folder?, not logged in, API
 unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
 it holds text), ⌨ while a human types, ⇄ the proxy; its events; its backlog
 and the tickets it holds — a click lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
-its wait credit; its name and where it works. A gesture aiball refuses
+its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread
