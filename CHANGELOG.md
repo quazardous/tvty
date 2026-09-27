@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A click on the agent bar's "host" / "tmux" badge moves the loop to the
+  other, once confirmed: its Claude restarts there, resuming its
+  conversation, and the terminal follows.
 - A terminal has the controls or is a copy that only watches: a chip in
   the agent bar switches. "+ session" on an agent that runs already opens
   it as a copy instead of failing or starting a second Claude.

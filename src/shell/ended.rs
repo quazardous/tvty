@@ -55,6 +55,13 @@ impl Shell {
         // name (its host stopped, then a new one), and the terminal opens
         // again once it is back — as many times as the restart takes.
         let agent = self.terminal_of(session).and_then(|(_, t)| t.agent.clone());
+        // A loop being moved (host ↔ tmux): it comes back as another session.
+        self.moves.retain(|_, (_, at)| at.elapsed() < std::time::Duration::from_secs(90));
+        if let Some((next, _)) = agent.as_ref().and_then(|a| self.moves.get(a)) {
+            self.open_when_running = Some(next.clone());
+            cx.notify();
+            return;
+        }
         self.restarts_asked.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
         if agent.is_some_and(|a| self.restarts_asked.contains_key(&a)) {
             self.open_when_running = Some(session.to_string());

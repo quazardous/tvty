@@ -266,6 +266,94 @@ impl Shell {
         let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
         let target = (agent.clone(), project.to_string());
 
+        // Where its loop runs, and moving it: a loop of this machine moves
+        // from aiball's host to tmux and back, once confirmed.
+        let (mode_chip, move_confirm) = {
+            let hosted = terminal.attach.is_some();
+            let session = terminal.session.clone();
+            let known = self.board.known.iter().find(|l| l.session() == session).map(|l| l.name.clone());
+            let moving = self.moves.contains_key(&agent);
+            let asked = self.move_asked.as_deref() == Some(session.as_str());
+            let chip = item()
+                .id("agent-mode")
+                .px_1()
+                .rounded_sm()
+                .border_1()
+                .border_color(ink(if asked { p().warning } else { p().border }))
+                .text_color(ink(p().muted))
+                .child(match (moving, hosted) {
+                    (true, _) => "moving…",
+                    (_, true) => "host",
+                    _ => "tmux",
+                });
+            let place = if hosted { "on aiball's session host" } else { "in tmux (claude-loop)" };
+            let other = if hosted { "into tmux" } else { "to aiball's host" };
+            let chip = match (&known, moving) {
+                (Some(_), false) => chip
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .on_click(cx.listener({
+                        let session = session.clone();
+                        move |shell, _, _, cx| {
+                            shell.move_asked = (shell.move_asked.as_deref() != Some(session.as_str())).then(|| session.clone());
+                            cx.notify();
+                        }
+                    }))
+                    .tip(format!("its loop runs {place}. A click offers to move it {other}")),
+                (Some(_), true) => chip.tip(format!("its loop moves {other}: it restarts there, resuming its conversation")),
+                (None, _) => chip.tip(format!("its loop runs {place}, on another machine: it moves from there")),
+            };
+            let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
+            let confirm = known.filter(|_| asked).map(|name| {
+                let (agent, to_host) = (agent.clone(), !hosted);
+                // Above the bar, its whole width: the bar has no room.
+                div()
+                    .id("agent-move")
+                    .occlude()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom(px(BAR_HEIGHT))
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1p5()
+                    .bg(p().surface)
+                    .border_t_1()
+                    .border_color(p().warning)
+                    .text_color(p().text)
+                    .child(format!("Move {agent} {other}? Its Claude restarts, resuming its conversation."))
+                    .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the move interrupts it.")))
+                    .child(
+                        item()
+                            .id("agent-move-go")
+                            .px_1p5()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(ink(p().warning))
+                            .text_color(ink(p().warning))
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover))
+                            .child("Move")
+                            .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
+                    )
+                    .child(
+                        item()
+                            .id("agent-move-cancel")
+                            .px_1p5()
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover))
+                            .child("Cancel")
+                            .on_click(cx.listener(|shell, _, _, cx| {
+                                shell.move_asked = None;
+                                cx.notify();
+                            })),
+                    )
+            });
+            (chip, confirm)
+        };
         Some(
             div()
                 .id("agent-bar")
@@ -379,22 +467,7 @@ impl Shell {
                 })
                 .child(div().flex_1())
                 // Where its loop runs: on aiball's host, or in tmux.
-                .child({
-                    let hosted = terminal.attach.is_some();
-                    item()
-                        .id("agent-mode")
-                        .px_1()
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(ink(p().border))
-                        .text_color(ink(p().muted))
-                        .child(if hosted { "host" } else { "tmux" })
-                        .tip(if hosted {
-                            "its loop runs on aiball's session host: tvty attaches to it directly"
-                        } else {
-                            "its loop runs in tmux (claude-loop): tvty opens it through tmux"
-                        })
-                })
+                .child(mode_chip)
                 // Copy or controls: whether this terminal types into it.
                 .child({
                     let session = terminal.session.clone();
@@ -420,6 +493,7 @@ impl Shell {
                 .child(item().text_color(ink(p().text)).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
+                .children(move_confirm)
                 .into_any_element(),
         )
     }
@@ -595,6 +669,37 @@ impl Shell {
                         crate::activity::Activity::done(None, format!("{agent}'s Claude restarts once idle, resuming its conversation"))
                     }
                     Err(error) => crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), short_error(&format!("{error:#}"))),
+                };
+                crate::activity::publish(cx, activity);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Moves `agent`'s loop (`name`) to aiball's host or into tmux, through
+    /// claude-loop, off the UI thread. Its session ends and comes back as
+    /// another one, which opens.
+    fn move_loop(&mut self, agent: String, name: String, to_host: bool, cx: &mut Context<Self>) {
+        self.move_asked = None;
+        let next = if to_host { format!("{}{agent}", crate::sessions::HOSTED_PREFIX) } else { name.clone() };
+        self.moves.insert(agent.clone(), (next.clone(), std::time::Instant::now()));
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let loop_name = name.clone();
+            let done = cx.background_executor().spawn(async move { crate::loops::move_to(&loop_name, to_host) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                let place = if to_host { "to aiball's host" } else { "into tmux" };
+                let activity = match done {
+                    Ok(()) => {
+                        shell.open_when_running = Some(next.clone());
+                        let _ = shell.refresh_now.unbounded_send(());
+                        crate::activity::Activity::done(None, format!("{agent} moved {place}, its conversation resumed"))
+                    }
+                    Err(error) => {
+                        shell.moves.remove(&agent);
+                        crate::activity::Activity::failed(None, &format!("move of {agent} {place}"), short_error(&format!("{error:#}")))
+                    }
                 };
                 crate::activity::publish(cx, activity);
                 cx.notify();

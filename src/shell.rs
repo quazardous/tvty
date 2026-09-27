@@ -147,6 +147,12 @@ pub struct Shell {
     compact: Option<Option<(Option<String>, u64)>>,
     /// The agent bar's AFK choices are open; its agent's backlog is open.
     afk_menu: bool,
+    /// The session whose loop the user asked to move (host ↔ tmux): its
+    /// confirmation shows in the agent bar.
+    pub(super) move_asked: Option<String>,
+    /// Loops being moved, by agent: the session they come back as, and
+    /// since when. The old one ends meanwhile; the new one opens.
+    pub(super) moves: HashMap<String, (String, std::time::Instant)>,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
     backlog_view: Option<agentbar::BacklogView>,
@@ -579,6 +585,8 @@ impl Shell {
             full_list_return: false,
             compact: None,
             afk_menu: false,
+            move_asked: None,
+            moves: HashMap::new(),
             restarting: None,
             backlog_view: None,
             session_scrolls: Default::default(),
@@ -1523,6 +1531,9 @@ impl Shell {
                 self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
                 cx.notify();
             }
+        } else if key == "escape" && self.move_asked.is_some() {
+            self.move_asked = None;
+            cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
             self.afk_menu = false;
@@ -3691,6 +3702,8 @@ impl Render for Shell {
         // A loop just started runs now: open it.
         if let Some(name) = self.open_when_running.clone().filter(|n| self.terminal_of(n).is_some()) {
             self.open_when_running = None;
+            // A move is over once its new session is there.
+            self.moves.retain(|_, (next, _)| *next != name);
             cx.defer_in(window, move |shell, window, cx| shell.select(name, window, cx));
         }
         // A drag released anywhere, even over the title bar: the edge's

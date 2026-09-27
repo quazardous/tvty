@@ -287,7 +287,10 @@ claude-loop's terms and full words — `all:` the project's open tickets,
 a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
 where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
-tmux); whether this terminal has the **controls** or is a **copy** (a
+tmux) — for a loop of this machine, a click offers to **move** it to the
+other (a confirmation over the bar, which says when Claude works; claude-loop
+restarts it there, resuming its conversation, and the terminal comes back
+on the new session, "moving…" meanwhile); whether this terminal has the **controls** or is a **copy** (a
 click switches: the terminal leaves and comes back in the other mode, its
 Claude goes on); its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.

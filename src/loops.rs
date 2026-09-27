@@ -127,13 +127,40 @@ pub fn start(start: &Start) -> anyhow::Result<String> {
         .with_context(|| format!("claude-loop {verb}: {}", last_line(&said)))
 }
 
+/// Moves a running loop onto aiball's session host (`to_host`) or into
+/// tmux: claude-loop restarts it there, resuming its conversation. Blocking:
+/// call it off the UI thread.
+pub fn move_to(name: &str, to_host: bool) -> anyhow::Result<()> {
+    let output = Command::new("claude-loop")
+        .args(move_args(name, to_host))
+        .env_remove("TMUX")
+        .output()
+        .context("claude-loop")?;
+    if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+        bail!("claude-loop restart: {}", last_line(&said));
+    }
+    Ok(())
+}
+
+fn move_args(name: &str, to_host: bool) -> Vec<String> {
+    let place = if to_host { "--host" } else { "--tmux" };
+    vec!["restart".into(), "--resume".into(), place.into(), name.into()]
+}
+
 fn last_line(text: &str) -> &str {
     text.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("no output").trim()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{KnownLoop, Start, start_args};
+    use super::{KnownLoop, Start, move_args, start_args};
+
+    #[test]
+    fn a_loop_moves_by_a_restart_that_resumes() {
+        assert_eq!(move_args("cl-app-1", true), ["restart", "--resume", "--host", "cl-app-1"]);
+        assert_eq!(move_args("cl-app-1", false), ["restart", "--resume", "--tmux", "cl-app-1"]);
+    }
 
     #[test]
     fn a_loop_starts_detached_for_its_agent() {
