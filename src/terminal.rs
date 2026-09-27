@@ -339,6 +339,20 @@ impl TerminalView {
         }
     }
 
+    /// Tab and shift+tab, which the window's root would take to move the
+    /// focus: in a terminal they are the program's.
+    fn send_tab(&mut self, _: &SendTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.clear_selection(cx);
+        self.write(b"\t".to_vec());
+        stats::key_sent();
+    }
+
+    fn send_back_tab(&mut self, _: &SendBackTab, _: &mut Window, cx: &mut Context<Self>) {
+        self.clear_selection(cx);
+        self.write(b"\x1b[Z".to_vec());
+        stats::key_sent();
+    }
+
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
@@ -522,12 +536,29 @@ impl Focusable for TerminalView {
     }
 }
 
+actions!(terminal, [SendTab, SendBackTab]);
+
+/// The terminal's key context: its bindings win over the window's.
+const KEY_CONTEXT: &str = "Terminal";
+
+/// The terminal's key bindings: tab and shift+tab go to the program — the
+/// window's root binds them to moving the focus.
+pub fn init(cx: &mut App) {
+    cx.bind_keys([
+        KeyBinding::new("tab", SendTab, Some(KEY_CONTEXT)),
+        KeyBinding::new("shift-tab", SendBackTab, Some(KEY_CONTEXT)),
+    ]);
+}
+
 impl Render for TerminalView {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = crate::stats::Timing::new("terminal");
         div()
             .id("terminal")
+            .key_context(KEY_CONTEXT)
             .track_focus(&self.focus)
+            .on_action(cx.listener(Self::send_tab))
+            .on_action(cx.listener(Self::send_back_tab))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll))
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))

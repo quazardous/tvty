@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Tab and Shift+Tab reach the terminal (a shell's completion, a program's
+  fields): the window took them to move the focus.
 - The ticket lists no longer flicker when the wheel pushes past their end:
   a wheel at the end is stopped, and the rows drawn follow the bounded
   scroll.
