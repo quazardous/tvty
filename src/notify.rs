@@ -114,6 +114,7 @@ pub fn init(cx: &mut App, max: usize, seconds: u64) {
 
 /// Shows `notice`; it goes by itself after its time.
 pub fn push(cx: &mut App, notice: Notice) {
+    log::info!("notification: {:?} from {}: {}", notice.kind, notice.from, notice.text);
     let first = cx.global::<Notices>().shown.is_empty();
     cx.global_mut::<Notices>().push(notice);
     if first {

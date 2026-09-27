@@ -296,8 +296,8 @@ a sentence stays in the text.
 
 ## The terminal comes to you
 
-When something newly waits on the user from an agent — a decision, or
-something new on a ticket it holds — a **notification** comes: in the
+When something newly waits on the user from an agent — a decision it
+proposes, or something new on a ticket it holds — a **notification** comes: in the
 terminal's top right corner — in the window's bottom left one while a full
 screen (the options, the full list, a ticket or a new ticket full screen)
 covers the terminal, out of its way — above everything (full screens and
@@ -319,11 +319,18 @@ never a notification themselves.
 **aiball's pings to the user** come too: tvty subscribes to them on aiball's
 bus (`user.<me>.pings`, over the socket), with the board itself. Each ping
 — an agent answered, mentioned you, proposes a plan or to close, a new
-ticket — is a notification (red for a panic); a click opens its ticket
+ticket — is a notification (red for a panic, yellow for a decision to
+take); a click opens its ticket
 (and the agent's terminal, when it has one here), which marks it read in
 aiball, so its web UI agrees. At start, one notification sums up the pings
 waiting unread; a click opens the full list filtered to the unread. A ticket
 has one notification at a time, the newest.
+A **proposal to decide** — a plan, a resolution, a wontfix, an escalation,
+by someone else on a project of the board — comes even when its ping does
+not: tvty also follows the board's messages (`board.events`), as aiball's
+web UI does. Whichever comes first is said; the other is not said again.
+tvty's log (`~/.local/state/tvty/tvty.log`) keeps the bus's connections,
+the pings, the proposals and the notifications, to tell a missed one apart.
 
 Views talk through an internal bus (`src/bus.rs`): one publishes a signal
 (a notification, a ticket to open, a new ticket asked for, the board

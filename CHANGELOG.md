@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A proposal to decide (a plan, a resolution, a wontfix, an escalation)
+  always comes as one yellow notification, even when its ping does not
+  arrive; tvty's log keeps the pings and notifications it saw.
 - The restart offer in the agent bar reads "⟳ update" until clicked, then
   "⟳ restart pending".
 - The agent bar shows the AFK mode as claude-loop does: ▶ or ‖ for the mode

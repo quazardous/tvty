@@ -7,7 +7,7 @@
 //! reconnection, the user now known): with `since`, the daemon replays what
 //! was missed, or sends the values whole again.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
 use serde_json::{Value, json};
 
@@ -26,6 +26,9 @@ enum Kind {
     /// aiball's managed config changed (a setting set or cleared, a file
     /// reloaded): read it again.
     Config,
+    /// Every message of the board, as aiball's web UI follows it: a
+    /// proposal to decide is said even when its ping does not come.
+    Board,
 }
 
 impl Kind {
@@ -37,6 +40,7 @@ impl Kind {
             Kind::Pings => format!("user.{user}.pings"),
             Kind::Sessions => "session.*.state".into(),
             Kind::Config => "config.changed".into(),
+            Kind::Board => "board.events".into(),
         }
     }
 }
@@ -103,7 +107,13 @@ pub struct Live {
     /// Who the subscriptions run as: a ticket row is its reader's (unread,
     /// whose turn), so another user's rows are another board.
     user: String,
+    /// The messages already said (by their ping or by the board), newest
+    /// last: one notification each, whichever comes first.
+    said: VecDeque<u64>,
 }
+
+/// How many said messages are remembered.
+const SAID: usize = 512;
 
 impl Live {
     /// What to subscribe to now; the user's pings when the connection runs
@@ -123,6 +133,7 @@ impl Live {
         let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar, Kind::Sessions, Kind::Config];
         if !user.is_empty() {
             kinds.push(Kind::Pings);
+            kinds.push(Kind::Board);
         }
         let since = self.since.as_ref().map(|(epoch, seq)| json!({ "epoch": epoch, "seq": seq }));
         let calls = kinds
@@ -153,6 +164,7 @@ impl Live {
                 }
             };
             let Some(id) = answer.get("id").and_then(id_of) else { continue };
+            log::info!("aiball bus: subscribed to {kind:?}");
             self.subscriptions.insert(id, kind);
             if let (Some(epoch), Some(seq)) = (answer.get("epoch"), answer.get("seq").and_then(Value::as_u64)) {
                 self.advance(epoch.clone(), seq);
@@ -244,6 +256,8 @@ impl Live {
             }
             // No value: config.managed is the whole read.
             Kind::Config => Vec::new(),
+            // A feed: no state of its own.
+            Kind::Board => Vec::new(),
         }
     }
 
@@ -340,15 +354,59 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Config => vec![Update::Config],
+            Kind::Board => self.proposal(data).map(Update::Ping).into_iter().collect(),
         }
     }
 
     /// A ping, from the message it carries; its ticket's title from the
     /// rows when the message is a comment.
-    fn ping(&self, data: &Value) -> Option<PingInfo> {
-        let mut info = self.ping_of(data.get("message")?)?;
+    fn ping(&mut self, data: &Value) -> Option<PingInfo> {
+        let message = data.get("message")?;
+        let mut info = self.ping_of(message)?;
         info.urgent = data.get("intent").and_then(Value::as_str) == Some("panic");
-        Some(info)
+        let first = self.first_said(message);
+        log::info!("aiball bus: a ping: #{} {} ({}){}", info.ticket, info.what, info.from, if first { "" } else { ", said already" });
+        first.then_some(info)
+    }
+
+    /// A proposal to decide (a plan, a resolution, a wontfix, an
+    /// escalation) someone else made on a project of the board, from a
+    /// `board.events` event: a message written, or let through moderation.
+    fn proposal(&mut self, event: &Value) -> Option<PingInfo> {
+        let kind = event.get("type").and_then(Value::as_str)?;
+        if kind != "message_created" && kind != "message_decided" {
+            return None;
+        }
+        let message = event.get("data")?;
+        let text = |key: &str| message.get(key).and_then(Value::as_str).unwrap_or_default();
+        if text("status") != "approved" || text("by_agent") == self.user || !self.tickets.contains_key(text("project")) {
+            return None;
+        }
+        let meta: Value = serde_json::from_str(text("meta")).ok()?;
+        let decision = meta.get("decision")?;
+        let waits = decision.get("status").and_then(Value::as_str) == Some("pending");
+        let proposal = matches!(decision.get("kind").and_then(Value::as_str), Some("plan" | "resolution" | "wontfix" | "escalation"));
+        if !waits || !proposal {
+            return None;
+        }
+        let info = self.ping_of(message)?;
+        let first = self.first_said(message);
+        log::info!("aiball bus: a proposal: #{} {} ({}){}", info.ticket, info.what, info.from, if first { "" } else { ", said already" });
+        first.then_some(info)
+    }
+
+    /// Whether `message` was not said yet; it is from now on. A message
+    /// without an id is always new.
+    fn first_said(&mut self, message: &Value) -> bool {
+        let Some(id) = message.get("id").and_then(Value::as_u64) else { return true };
+        if self.said.contains(&id) {
+            return false;
+        }
+        if self.said.len() == SAID {
+            self.said.pop_front();
+        }
+        self.said.push_back(id);
+        true
     }
 
     /// What a message a ping points at says: as the bus pushes it, or as
@@ -377,9 +435,10 @@ impl Live {
             project: text("project"),
             title,
             from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
-            what: if pending { "a new ticket to moderate".into() } else { crate::pings::what_it_is(&kind, decision) },
+            what: if pending { "a new ticket to moderate".into() } else { crate::pings::what_it_is(&kind, decision.clone()) },
             urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
             pending,
+            proposal: matches!(decision.as_deref(), Some("plan" | "resolution" | "wontfix" | "escalation")),
             at: text("created_at"),
         })
     }
@@ -527,6 +586,51 @@ mod tests {
         // Resuming names the epoch and the last seq.
         let plan = live.plan("david");
         assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 16 }));
+    }
+
+    #[test]
+    fn a_proposal_is_said_once_by_the_board_or_its_ping() {
+        let mut live = Live::default();
+        let plan = live.plan("david");
+        let mut answers: Vec<anyhow::Result<serde_json::Value>> = vec![
+            Ok(json!({ "id": "t", "epoch": "e1", "seq": 10, "replayed": false, "value": { "demo": [row(2, "approved")] } })),
+        ];
+        for id in ["s", "b", "h", "c", "p"] {
+            answers.push(Ok(json!({ "id": id, "epoch": "e1", "seq": 10, "replayed": false, "value": null })));
+        }
+        answers.push(Ok(json!({ "id": "w", "epoch": "e1", "seq": 10, "replayed": false, "value": null })));
+        live.subscribed(plan, answers);
+        let message = |id: u64, by: &str, decision: &str, status: &str| json!({ "id": id, "kind": "comment_added",
+            "status": "approved", "by_agent": by, "project": "demo", "ticket_id": 2, "title": null,
+            "created_at": "2026-09-27T20:00:00Z", "meta": json!({ "decision": { "kind": decision, "status": status } }).to_string() });
+        let board = |live: &mut Live, seq: u64, kind: &str, data: serde_json::Value| live.event(&json!({ "subscription": "w",
+            "subject": "board.events", "seq": seq, "data": { "type": kind, "data": data } }));
+
+        // A resolution by an agent: said, even with no ping.
+        match &board(&mut live, 11, "message_created", message(7, "demo-crew", "resolution", "pending"))[..] {
+            [Update::Ping(p)] => assert_eq!((p.ticket, p.title.as_str(), p.what.as_str()), (2, "t2", "proposes to close")),
+            other => panic!("{other:?}"),
+        }
+        // Its ping afterwards: said already.
+        let ping = live.event(&json!({ "subscription": "p", "subject": "user.david.pings", "seq": 12,
+            "data": { "ticket_id": 2, "message": { "id": 7, "kind": "comment_added", "status": "approved",
+                "by_agent": "demo-crew", "project": "demo", "ticket_id": 2, "title": null, "decision": "resolution" } } }));
+        assert!(ping.is_empty(), "{ping:?}");
+        // A ping first, then the board: said once too.
+        live.event(&json!({ "subscription": "p", "subject": "user.david.pings", "seq": 13,
+            "data": { "ticket_id": 2, "message": { "id": 8, "kind": "comment_added", "status": "approved",
+                "by_agent": "demo-crew", "project": "demo", "ticket_id": 2, "title": null, "decision": "plan" } } }));
+        assert!(board(&mut live, 14, "message_created", message(8, "demo-crew", "plan", "pending")).is_empty());
+        // Not said: one's own proposal, a decision taken, a project off the
+        // board, a plain comment.
+        assert!(board(&mut live, 15, "message_created", message(9, "david", "plan", "pending")).is_empty());
+        assert!(board(&mut live, 16, "message_decided", message(10, "demo-crew", "resolution", "accepted")).is_empty());
+        let mut elsewhere = message(11, "demo-crew", "resolution", "pending");
+        elsewhere["project"] = json!("other");
+        assert!(board(&mut live, 17, "message_created", elsewhere).is_empty());
+        let mut plain = message(12, "demo-crew", "resolution", "pending");
+        plain["meta"] = json!(null);
+        assert!(board(&mut live, 18, "message_created", plain).is_empty());
     }
 
     #[test]

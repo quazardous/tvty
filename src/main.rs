@@ -40,11 +40,13 @@ use gpui_kit::*;
 
 fn main() {
     // Quiet by default: Vulkan's loader warns about every driver it probes
-    // and skips (other vendors' GPUs), which is not tvty's business.
+    // and skips (other vendors' GPUs), which is not tvty's business. tvty's
+    // own lines at info: the bus's connections, the pings, the
+    // notifications — what tells a missed notification apart afterwards.
     // Written to stderr and to ~/.local/state/tvty/tvty.log (the previous
     // run's in tvty.log.1).
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(
-        "warn,wgpu_hal=error,gpui_component::theme::mono_font=error",
+        "warn,tvty=info,wgpu_hal=error,gpui_component::theme::mono_font=error",
     ))
     .target(env_logger::Target::Pipe(Box::new(config::log())))
     .init();

@@ -876,7 +876,7 @@ impl Shell {
         self.ping_seen(&ping.at.clone(), cx);
         let kind = if ping.urgent {
             Kind::Error
-        } else if ping.pending {
+        } else if ping.pending || ping.proposal {
             Kind::Decision
         } else {
             Kind::News
@@ -1069,8 +1069,9 @@ impl Shell {
         }
     }
 
-    /// Notifies what newly waits on the user: a decision or
-    /// something unread on a ticket an agent with a terminal holds.
+    /// Notifies what newly waits on the user: something unread on a ticket
+    /// an agent with a terminal holds. A decision is said by the proposal
+    /// itself (its ping, or the board's event).
     fn update_needs(&mut self, cx: &mut Context<Self>) {
         // Before aiball's board arrived (or arrived again as another
         // user), everything would look new: what waits then is where to
@@ -1110,11 +1111,8 @@ impl Shell {
             for need in found {
                 let key = (need.ticket, need.wait);
                 let shown = self.selected.as_deref() == Some(need.session.as_str());
-                if !before.contains(&key) && !shown {
-                    let (kind, what) = match need.wait {
-                        Wait::Decision => (Kind::Decision, "a decision waits on you"),
-                        Wait::Unread => (Kind::News, "something new"),
-                    };
+                if !before.contains(&key) && !shown && need.wait == Wait::Unread {
+                    let (kind, what) = (Kind::News, "something new");
                     activity::publish(
                         cx,
                         Activity::news(need.agent.clone(), kind, Some((need.project.clone(), need.ticket)), format!("{} — {what}", need.title))

@@ -16,6 +16,8 @@ pub struct PingInfo {
     pub urgent: bool,
     /// The ticket waits for moderation.
     pub pending: bool,
+    /// It proposes a decision (a plan, a resolution…): the user's to take.
+    pub proposal: bool,
     /// When it came, as aiball writes times (ISO 8601, UTC): they compare
     /// as text.
     pub at: String,
@@ -68,6 +70,7 @@ mod tests {
             what: "proposes to close".into(),
             urgent: false,
             pending: false,
+            proposal: true,
             at: at.into(),
         }
     }
