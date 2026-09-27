@@ -105,7 +105,7 @@ impl Attach {
             json!({
                 "version": 1,
                 "client": "tvty",
-                "mode": if interactive { "interactive" } else { "observer" },
+                "mode": if interactive { "interactive" } else { "readonly" },
                 "view": "stream",
                 "scrollback": SCROLLBACK,
                 "size": { "rows": lines, "cols": columns },

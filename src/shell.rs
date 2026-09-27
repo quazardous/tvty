@@ -1174,6 +1174,8 @@ impl Shell {
         let Some(terminal) = self.open_terminal(&session, window, cx) else { return };
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
+        // On aiball's host, the session takes this view's size again.
+        terminal.read(cx).take_size();
         if self.selected.as_deref() != Some(session.as_str()) {
             self.switches += 1;
         }

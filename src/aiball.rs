@@ -691,6 +691,15 @@ impl Aiball {
         self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project }))
     }
 
+    /// Whether aiball's host runs `agent`'s session, its program up — which
+    /// aiball knows before the agent itself says it is there.
+    pub fn host_runs(&self, agent: &str) -> anyhow::Result<bool> {
+        let sessions: Vec<Value> = self.rpc("session.list", json!({}))?;
+        Ok(sessions.iter().any(|s| {
+            s.get("agent").and_then(Value::as_str) == Some(agent) && s.get("running").and_then(Value::as_bool) == Some(true)
+        }))
+    }
+
     /// The user's unread pings, newest first: each its message, as aiball
     /// gives it.
     pub fn unread_pings(&self, limit: u32) -> anyhow::Result<Vec<Value>> {

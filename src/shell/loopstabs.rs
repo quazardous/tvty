@@ -407,19 +407,32 @@ impl Shell {
         }
         self.starting = Some(start.cwd.clone());
         cx.notify();
+        let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let done = cx.background_executor().spawn({
                 let start = start.clone();
-                async move { crate::loops::start(&start) }
+                async move {
+                    // A loop of the host listed idle while its agent has not
+                    // said it is there yet (it just started): opened, not
+                    // started again.
+                    if let (Some(_), Some(agent)) = (&start.again, &start.agent) {
+                        if aiball.host_runs(agent).unwrap_or(false) {
+                            return Ok((format!("{}{agent}", crate::sessions::HOSTED_PREFIX), false));
+                        }
+                    }
+                    crate::loops::start(&start).map(|name| (name, true))
+                }
             });
             let done = done.await;
             let _ = this.update(cx, |shell, cx| {
                 shell.starting = None;
                 match done {
-                    Ok(name) => {
+                    Ok((name, started)) => {
                         shell.new_session = None;
                         shell.open_when_running = Some(name.clone());
-                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
+                        if started {
+                            crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
+                        }
                         let _ = shell.refresh_now.unbounded_send(());
                     }
                     Err(error) => {

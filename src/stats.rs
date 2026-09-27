@@ -4,6 +4,9 @@
 //! - `stream <frames> fps <wakeups> wakeups, prepaint max <ms>`: every second the PTY talked,
 //!   with the slowest grid preparation of that second;
 //! - `resize <columns>x<lines>`: each new size sent to the PTY;
+//! - `reflow <ms> (sent after <ms>)`: from the view's new size to the first
+//!   frame painted after the program answered it, and how long of that went
+//!   before the size was sent (the settle while a side is dragged);
 //! - `cards <n> max <ms>`: every second cards were drawn (the slider, the
 //!   gallery), the most any one frame spent preparing them all;
 //! - `window <n> frames, max <ms>, total <ms>`: every second the window was
@@ -19,6 +22,9 @@ struct State {
     file: File,
     /// A keystroke waiting for its echo, and whether output came since.
     key: Option<(Instant, bool)>,
+    /// A new size: when the view saw it, when it was sent, whether output
+    /// came since.
+    reflow: Option<(Instant, Option<Instant>, bool)>,
     second: Instant,
     frames: u32,
     wakeups: u32,
@@ -46,6 +52,7 @@ static STATE: LazyLock<Option<Mutex<State>>> = LazyLock::new(|| {
     Some(Mutex::new(State {
         file,
         key: None,
+        reflow: None,
         second: Instant::now(),
         frames: 0,
         wakeups: 0,
@@ -86,6 +93,18 @@ pub fn output() {
         if let Some((_, answered)) = s.key.as_mut() {
             *answered = true;
         }
+        if let Some((_, Some(_), answered)) = s.reflow.as_mut() {
+            *answered = true;
+        }
+    });
+}
+
+/// The view saw a new size (the first one of a drag).
+pub fn size_seen() {
+    with(|s| {
+        if s.reflow.is_none() {
+            s.reflow = Some((Instant::now(), None, false));
+        }
     });
 }
 
@@ -98,6 +117,11 @@ pub fn frame() {
             let ms = at.elapsed().as_secs_f64() * 1000.;
             let _ = writeln!(s.file, "echo {ms:.1}");
             s.key = None;
+        }
+        if let Some((seen, Some(sent), true)) = s.reflow {
+            let ms = |t: Instant| (t - seen).as_secs_f64() * 1000.;
+            let _ = writeln!(s.file, "reflow {:.1} (sent after {:.1})", ms(Instant::now()), ms(sent));
+            s.reflow = None;
         }
         let elapsed = s.second.elapsed().as_secs_f64();
         if elapsed >= 1. {
@@ -130,6 +154,9 @@ pub fn prepaint(started: Instant) {
 pub fn resized(columns: u16, lines: u16) {
     with(|s| {
         let _ = writeln!(s.file, "resize {columns}x{lines}");
+        if let Some((_, sent, _)) = s.reflow.as_mut() {
+            *sent = Some(Instant::now());
+        }
     });
 }
 

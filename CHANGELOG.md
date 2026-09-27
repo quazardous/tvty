@@ -118,6 +118,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening or closing a side no longer waits 120 ms before the terminal
+  takes its new size (from ~140 ms to ~35 ms before the program redraws, on
+  aiball's host): a size alone goes at once, only a drag waits for the
+  size to hold still. On aiball's host, the terminal shown takes the
+  session's size back when selected or resized (another client typing
+  elsewhere kept it); cards attach read-only, as the protocol names it; a
+  loop of the host just started, not yet listed live, is opened rather
+  than started again.
 - A loop's boot shows as claude-loop shows it: yellow — the agent bar on
   yellow, "starting · 6s · 24s left" — and the session's row says
   "starting", not the agent's last state ("idle · 21m", left by its

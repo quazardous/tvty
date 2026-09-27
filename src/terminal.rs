@@ -83,6 +83,9 @@ pub struct TerminalView {
     grid_size: (u16, u16),
     /// A new size waiting to be sent, and whether one was ever sent.
     pending_size: Option<(u16, u16)>,
+    /// When the element last saw a new size: sizes that follow each other
+    /// fast (a side dragged, the window resized) wait to hold still.
+    last_new_size: Option<std::time::Instant>,
     sized: bool,
     exited: bool,
     /// The tmux session shown, to scroll its history in copy mode.
@@ -248,6 +251,7 @@ impl TerminalView {
             focus: cx.focus_handle(),
             grid_size: (columns, lines),
             pending_size: None,
+            last_new_size: None,
             sized: false,
             exited: false,
             tmux_session: None,
@@ -259,6 +263,14 @@ impl TerminalView {
             dragging: None,
             kept: None,
             selected_text: None,
+        }
+    }
+
+    /// Shown: on aiball's host, this client's size becomes the session's
+    /// (another client may have typed since). Nothing to do through tmux.
+    pub fn take_size(&self) {
+        if let Backend::Attach(attach) = &self.backend {
+            attach.focus();
         }
     }
 
@@ -319,9 +331,10 @@ impl TerminalView {
         }
     }
 
-    /// Resizes the grid and the PTY when the element's size in cells changed
-    /// — once the size holds still: while a side is dragged, every column
-    /// would make tmux, and the program in it, redraw its whole screen.
+    /// Resizes the grid and the PTY when the element's size in cells changed:
+    /// at once for a size alone (a side opened or closed, the font), once
+    /// the size holds still when they follow each other — while a side is
+    /// dragged, every column would make the program redraw its whole screen.
     fn resize(&mut self, columns: u16, lines: u16, cell: Size<Pixels>, cx: &mut Context<Self>) {
         if columns == 0 || lines == 0 {
             return;
@@ -335,6 +348,13 @@ impl TerminalView {
             return;
         }
         if self.pending_size == Some((columns, lines)) {
+            return;
+        }
+        stats::size_seen();
+        let alone = self.last_new_size.is_none_or(|at| at.elapsed() >= RESIZE_SETTLE);
+        self.last_new_size = Some(std::time::Instant::now());
+        if alone && self.pending_size.is_none() {
+            self.apply_size(columns, lines, cell);
             return;
         }
         self.pending_size = Some((columns, lines));
@@ -365,8 +385,13 @@ impl TerminalView {
                 cell_width: f32::from(cell.width) as u16,
                 cell_height: f32::from(cell.height) as u16,
             }),
-            // The session's size follows once this client owns it (`size`).
-            Backend::Attach(attach) => attach.resize(columns, lines),
+            // The session's size is its owner's: the last client that typed
+            // or took focus. The one on screen takes it, so that its new
+            // size applies, whoever typed last elsewhere.
+            Backend::Attach(attach) => {
+                attach.resize(columns, lines);
+                attach.focus();
+            }
             Backend::Closed => {}
         }
     }

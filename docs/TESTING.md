@@ -145,6 +145,10 @@ With `TVTY_STATS=<file>` (set in the wbox config, to
 
 - `echo <ms>` — keystroke sent to the PTY → first frame painted after the
   PTY answered;
+- `reflow <ms> (sent after <ms>)` — the terminal's view took a new size
+  (a side opened or closed) → first frame painted after the program
+  answered the new size; and how much of it went before the size was sent
+  (none for a size alone; the settle while a side is dragged);
 - `stream <n> fps <m> wakeups, prepaint max <ms>` — each second the PTY
   talked. The second is a full second: a burst shorter than that reads low,
   so measure on a sustained stream (`tvty-flood`).
