@@ -16,6 +16,18 @@ Its MCP tools (`tvty-wbox`) reach a Claude session started **in this
 directory**; `scripts/wbox_ctl.py` drives the same instance from anywhere,
 and `make check` chains build → launch → screenshot → stop.
 
+The MCP wiring is each machine's own (`.mcp.json` is not in the repo). For
+an agent working here, next to aiball's own server:
+
+```json
+{
+  "mcpServers": {
+    "aiball": { "command": "aiball-mcp" },
+    "tvty-wbox": { "type": "stdio", "command": "wbox-mcp", "args": ["serve", "dev/tvty-wbox/config.yaml"] }
+  }
+}
+```
+
 ## Something to attach to
 
 `scripts/fake-loop` starts plain tmux sessions, no tokens spent:

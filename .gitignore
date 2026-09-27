@@ -14,11 +14,14 @@ __pycache__/
 !/dev/tvty-wbox/config.yaml
 !/dev/tvty-wbox/scripts/
 
-# ── Local agent state ────────────────────────────────────────────────
-# A working copy's own: the session of the agent working in it, and
-# Claude Code's local settings.
+# ── Local agent wiring ───────────────────────────────────────────────
+# How this working copy is plugged into its tools — aiball (the agent's
+# identity, its session), the MCP servers (aiball, wbox), Claude Code's
+# settings: each machine's own, never the project's.
+/.aiball.yaml
 /.aiball-session_id
-/.claude/settings.local.json
+/.mcp.json
+/.claude/
 
 # ── Editors and systems ──────────────────────────────────────────────
 .idea/
