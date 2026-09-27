@@ -1820,11 +1820,13 @@ impl Shell {
     /// One setting's row: a number's stepper, a toggle's switch.
     fn setting_row(&self, setting: &'static Setting, words: &[String], cx: &mut Context<Self>) -> Option<AnyElement> {
         let key = setting.key;
+        let modified = SCHEMA.is_modified(&self.applied, key);
         Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
-                setting.label,
+                key,
                 marked(setting.label, words),
                 setting.about,
+                modified,
                 shown(n, unit),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, 1, cx)),
@@ -1832,12 +1834,15 @@ impl Shell {
             )
             .into_any_element(),
             (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
+                key,
                 marked(setting.label, words),
                 setting.about,
+                modified,
                 if checked { on } else { off },
                 Switch::new(SharedString::from(format!("options-switch-{key}")))
                     .checked(checked)
                     .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.set_pref(key, Value::Toggle(*wanted), cx))),
+                cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
             )
             .into_any_element(),
             _ => return None,
@@ -1860,7 +1865,15 @@ impl Shell {
             .gap_1()
             .flex_1()
             .min_w_0()
-            .child(div().font_weight(FontWeight::BOLD).child(setting.label))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().font_weight(FontWeight::BOLD).child(setting.label))
+                    .child(reset_button(key, SCHEMA.is_modified(&self.applied, key), cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)))),
+            )
+            .child(div().text_xs().text_color(p().muted).child(key))
             .child(div().pb_1().text_sm().text_color(p().muted).child(setting.about));
         let choice = |name: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
             div()
@@ -2182,18 +2195,23 @@ impl Shell {
                     what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("the program"));
                 }
                 let custom = map.is_changed(name);
-                let mut row = div().flex().flex_col().py_1p5().border_b_1().border_color(p().border).child(
+                let mut row = div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .py_1p5()
+                    .pl_2()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .when(custom, |d| d.child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent)))
+                    .child(
                     div()
                         .flex()
                         .items_center()
                         .gap_4()
                         .child(div().w(px(300.)).flex_none().child(chips))
                         .child(div().flex_1().min_w_0().text_sm().child(what))
-                        .when(custom, |d| {
-                            d.child(small(format!("key-{name}-default").into(), "Default").on_click(cx.listener(move |shell, _, _, cx| {
-                                shell.change_keys(cx, |map| map.reset(name))
-                            })))
-                        })
+                        .child(reset_button(name, custom, cx.listener(move |shell, _, _, cx| shell.change_keys(cx, |map| map.reset(name)))))
                         .child(div().w(px(130.)).flex_none().text_xs().text_color(p().muted).child(name)),
                 );
                 // What the key heard would do, or why it was refused.
@@ -3321,9 +3339,10 @@ fn option_row(
 
 /// A size: its name and what it does, − the value +, and back to default.
 fn option_stepper(
-    name: &'static str,
+    key: &'static str,
     label: impl IntoElement,
     about: &'static str,
+    modified: bool,
     value: String,
     minus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     plus: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
@@ -3331,7 +3350,7 @@ fn option_stepper(
 ) -> impl IntoElement {
     let button = |id: &str, label: &'static str| {
         div()
-            .id(SharedString::from(format!("options-{id}-{name}")))
+            .id(SharedString::from(format!("options-{id}-{key}")))
             .flex_none()
             .px_3()
             .py_1()
@@ -3342,15 +3361,29 @@ fn option_stepper(
             .hover(|d| d.bg(p().hover))
             .child(label)
     };
+    setting_frame(key, label, about, modified)
+        .gap_2()
+        .child(button("minus", "−").on_click(minus))
+        .child(div().w(px(64.)).flex_none().text_center().child(value))
+        .child(button("plus", "+").on_click(plus))
+        .child(reset_button(key, modified, reset))
+}
+
+/// A setting's frame: a bar on its left when it is not at its default
+/// (as VS Code marks one), its name, its key (as settings.toml spells it)
+/// and what it does; its controls follow.
+fn setting_frame(key: &'static str, label: impl IntoElement, about: &'static str, modified: bool) -> Div {
     div()
+        .relative()
         .flex()
         .items_center()
-        .gap_2()
+        .gap_4()
         .p_3()
         .rounded_md()
         .bg(p().surface)
         .border_1()
         .border_color(p().border)
+        .when(modified, |d| d.child(div().absolute().left_0().top_2().bottom_2().w(px(3.)).rounded_sm().bg(p().accent)))
         .child(
             div()
                 .flex()
@@ -3359,12 +3392,28 @@ fn option_stepper(
                 .flex_1()
                 .min_w_0()
                 .child(div().font_weight(FontWeight::BOLD).child(label))
+                .child(div().text_xs().text_color(p().muted).child(key))
                 .child(div().text_sm().text_color(p().muted).child(about)),
         )
-        .child(button("minus", "−").on_click(minus))
-        .child(div().w(px(56.)).flex_none().text_center().child(value))
-        .child(button("plus", "+").on_click(plus))
-        .child(button("reset", "Default").on_click(reset))
+}
+
+/// ↺ back to the default, only where there is one to go back to; its room
+/// kept otherwise, so that the rows line up.
+fn reset_button(key: &str, modified: bool, reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
+    div()
+        .id(SharedString::from(format!("options-reset-{key}")))
+        .flex_none()
+        .w(px(28.))
+        .text_center()
+        .rounded_md()
+        .when(modified, |d| {
+            d.text_color(p().accent)
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child("↺")
+                .tip("back to its default")
+                .on_click(reset)
+        })
 }
 
 /// `text` with the words searched for marked.
@@ -3395,28 +3444,19 @@ fn marked(text: &str, words: &[String]) -> StyledText {
 }
 
 /// A toggle: its name and what it does, its state, a switch.
-fn option_switch(label: impl IntoElement, about: &'static str, state: &'static str, switch: Switch) -> impl IntoElement {
-    div()
-        .flex()
-        .items_center()
-        .gap_4()
-        .p_3()
-        .rounded_md()
-        .bg(p().surface)
-        .border_1()
-        .border_color(p().border)
-        .child(
-            div()
-                .flex()
-                .flex_col()
-                .gap_1()
-                .flex_1()
-                .min_w_0()
-                .child(div().font_weight(FontWeight::BOLD).child(label))
-                .child(div().text_sm().text_color(p().muted).child(about)),
-        )
+fn option_switch(
+    key: &'static str,
+    label: impl IntoElement,
+    about: &'static str,
+    modified: bool,
+    state: &'static str,
+    switch: Switch,
+    reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    setting_frame(key, label, about, modified)
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         .child(switch)
+        .child(reset_button(key, modified, reset))
 }
 
 /// A key as a chip.
