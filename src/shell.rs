@@ -368,6 +368,69 @@ impl Alerts {
     }
 }
 
+/// An agent's own counters, as claude-loop's line has them: its backlog
+/// (`b`, the tickets for it to look at) and its events (`e`, not seen
+/// yet), with the project's open tickets (`a`, all) for its bar — and the
+/// critical ticket, when it holds it. The project's own counters are
+/// [`Alerts`], on its row.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) struct AgentCounts {
+    pub(crate) critical: bool,
+    pub(crate) all: Option<u32>,
+    /// None until its loop has said (claude-loop shows `b:-`).
+    pub(crate) backlog: Option<u32>,
+    pub(crate) events: u32,
+}
+
+impl AgentCounts {
+    /// Light badges, the letter inside: `b 2`, `e 10`; lit when not zero.
+    pub(crate) fn badges<K: Into<SharedString>>(&self, key: K) -> impl IntoElement + use<K> {
+        let key: SharedString = key.into();
+        let light = |what: &'static str, letter: &'static str, value: Option<u32>, lit: Hsla, tip: String| {
+            let on = value.is_some_and(|v| v > 0);
+            div()
+                .id(SharedString::from(format!("{key}-{what}")))
+                .flex()
+                .flex_none()
+                .items_center()
+                .gap_0p5()
+                .px_1()
+                .rounded_sm()
+                .border_1()
+                .border_color(if on { lit } else { p().border })
+                .text_xs()
+                .child(div().text_color(p().muted).child(letter))
+                .child(div().text_color(if on { lit } else { p().muted }).child(value.map_or("-".to_string(), |v| v.to_string())))
+                .tip(tip)
+        };
+        let backlog_tip = match self.backlog {
+            Some(n) => format!("backlog: {n} ticket{} for it to look at", if n == 1 { "" } else { "s" }),
+            None => "backlog: not known until its loop says".to_string(),
+        };
+        let events = self.events;
+        div()
+            .flex()
+            .items_center()
+            .gap_1()
+            .when(self.critical, |d| {
+                d.child(
+                    div()
+                        .id(SharedString::from(format!("{key}-critical")))
+                        .child(pill("!", critical()))
+                        .tip("it holds the critical ticket: the one that holds the most open tickets"),
+                )
+            })
+            .child(light("backlog", "b", self.backlog, p().text, backlog_tip))
+            .child(light(
+                "events",
+                "e",
+                Some(events),
+                unread(),
+                format!("events: {events} not seen yet — pings, answers, decisions waiting for it"),
+            ))
+    }
+}
+
 impl Shell {
     pub fn new(selected: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let aiball = Aiball::from_env();
@@ -1041,13 +1104,20 @@ impl Shell {
         Some(terminal)
     }
 
-    fn alerts_of(&self, project: &str, agent: Option<&str>) -> Alerts {
-        let tickets = self.board.tickets.get(project).into_iter().flatten();
+    /// The counters of the agent in `terminal`, from the bar its loop
+    /// pushes (else its events from aiball's state); none for a terminal
+    /// with no agent.
+    pub(crate) fn counts_of(&self, project: &str, terminal: &Terminal) -> Option<AgentCounts> {
+        let agent = terminal.agent.as_deref()?;
+        let counters = self.board.bars.get(agent).filter(|b| !b.stale).and_then(|b| b.bar.counters.clone());
         let critical = self.board.critical.get(project).copied();
-        match agent {
-            Some(agent) => Alerts::of(tickets.filter(|t| t.holder() == Some(agent)), critical),
-            None => Alerts::default(),
-        }
+        let tickets = self.board.tickets.get(project);
+        Some(AgentCounts {
+            critical: tickets.into_iter().flatten().any(|t| Some(t.id) == critical && t.holder() == Some(agent)),
+            all: counters.as_ref().and_then(|c| c.open).or_else(|| tickets.map(|t| t.len() as u32)),
+            backlog: counters.as_ref().and_then(|c| c.backlog),
+            events: counters.as_ref().and_then(|c| c.events).or_else(|| terminal.status.as_ref().map(|s| s.unseen)).unwrap_or(0),
+        })
     }
 
     // ── The panel ───────────────────────────────────────────────────────
@@ -2378,7 +2448,7 @@ impl Shell {
                 let session = terminal.session.clone();
                 let selected = self.selected.as_deref() == Some(session.as_str());
                 let open = self.terminals.contains_key(&session);
-                let alerts = self.alerts_of(&project.name, terminal.agent.as_deref());
+                let counts = self.counts_of(&project.name, terminal);
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
                 let restart = terminal
                     .agent
@@ -2460,7 +2530,7 @@ impl Shell {
                                                     .tip("its Claude Code installed an update: restart it from its bar"),
                                             )
                                         })
-                                        .child(alerts.badges(format!("row-{}", terminal.session))),
+                                        .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
                                 )
                                 .when_some(terminal.status.as_ref(), |d, status| d.child(status.line())),
                         )
@@ -2485,7 +2555,7 @@ impl Shell {
         cx: &App,
     ) -> Stateful<Div> {
         let session = &terminal.session;
-        let alerts = self.alerts_of(project, terminal.agent.as_deref());
+        let counts = self.counts_of(project, terminal);
         let centres = self.card_centres.clone();
         let key = session.clone();
         // Where the card lands, for up and down; the slider's enlarged card
@@ -2521,7 +2591,7 @@ impl Shell {
                     .bg(if chosen { p().active } else { p().surface })
                     .text_sm()
                     .child(div().flex_1().min_w_0().truncate().child(terminal.label.clone()))
-                    .child(alerts.badges(format!("card-{}", terminal.session))),
+                    .children(counts.map(|c| c.badges(format!("card-{}", terminal.session)))),
             )
             .when_some(terminal.status.as_ref(), |d, status| {
                 d.child(div().px_2().pb_1().bg(p().surface).child(status.line()))

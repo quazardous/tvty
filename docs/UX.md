@@ -18,10 +18,14 @@ A new one gets its tooltip with it.
   goes with the project whose folder it **started** in (a `cd` later does
   not move it). "+ terminal" opens one in the home directory, listed under
   "terminals".
-- Each terminal carries its agent's name, its current ticket, and its alerts
-  (unread, a decision waiting for you, the critical ticket, a human awaited).
-- A project shows the sum of its terminals' alerts, so a collapsed project
-  still says it needs you.
+- The projects carry the counters: the critical ticket, the decisions
+  waiting for you, the unread — so a collapsed project still says it needs
+  you.
+- A Claude session carries its agent's own, as claude-loop's line has them,
+  in light badges with their letter: **b** its backlog (tickets for it to
+  look at; `-` until its loop says), **e** its events not seen yet — lit
+  when not zero — and the red `!` when it holds the critical ticket. The
+  list, the tabs, the slider's and the gallery's cards show the same.
 - Each agent shows its **Claude's state**, as aiball centralises it (not
   read from tmux: the day loops run without tmux, nothing changes): a colour
   beside its name — blue working, grey idle, violet starting, none offline —
@@ -248,8 +252,10 @@ while idle, so while it works the button reads "when idle" and a click
 disarms); "waits for an answer" when a
 dialog is up; the alerts in red (trust this folder?, not logged in, API
 unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
-it holds text), ⌨ while a human types, ⇄ the proxy; its events; its backlog
-and the tickets it holds — a click lists **its own backlog** by tier
+it holds text), ⌨ while a human types, ⇄ the proxy; its counters in
+claude-loop's terms and full words — `all:` the project's open tickets,
+`backlog:`, `events:` (claude-loop's a: b: e:) — then the tickets it holds;
+a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
 its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.

@@ -191,13 +191,8 @@ impl Shell {
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
         // ── The rest, from the loop when it tells ──
-        let unseen = bar
-            .as_ref()
-            .and_then(|b| b.counters.as_ref())
-            .and_then(|c| c.events)
-            .or_else(|| status.as_ref().map(|s| s.unseen))
-            .unwrap_or(0);
-        let backlog = bar.as_ref().and_then(|b| b.counters.as_ref()).and_then(|c| c.backlog);
+        let counts = self.counts_of(project, terminal).unwrap_or_default();
+        let (unseen, backlog) = (counts.events, counts.backlog);
         let wake = bar.as_ref().and_then(|b| until(b.next_wake_at.as_deref()));
         // Work waits for the loop (events, backlog): the envelope stands, with
         // the countdown to the next wake once it is armed — as claude-loop's
@@ -267,12 +262,12 @@ impl Shell {
                         .when(b.zen, |d| d.child(item().id("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
                 })
                 .child(sep())
+                // As claude-loop's line counts them (a: b: e:), in words.
                 .child(
                     item()
-                        .id("agent-events")
-                        .when(unseen > 0, |d| d.text_color(p().text))
-                        .child(format!("{unseen} event{}", if unseen == 1 { "" } else { "s" }))
-                        .tip("its events not seen yet: pings, answers, decisions waiting for it"),
+                        .id("agent-all")
+                        .child(format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
+                        .tip("a: all the project's open tickets"),
                 )
                 .child(
                     item()
@@ -282,15 +277,26 @@ impl Shell {
                         .cursor_pointer()
                         .hover(|d| d.bg(p().hover))
                         .when(backlog_open, |d| d.bg(p().active))
-                        .when(holds > 0 || backlog.is_some_and(|b| b > 0), |d| d.text_color(p().text))
-                        .child(match backlog {
-                            Some(b) => format!("backlog {b} · holds {holds}"),
-                            None => format!("holds {holds}"),
-                        })
-                        .tip("its backlog (tickets for it to look at) and the tickets it holds; a click lists them")
+                        .when(backlog.is_some_and(|b| b > 0), |d| d.text_color(p().text))
+                        .child(format!("backlog:{}", backlog.map_or("-".to_string(), |n| n.to_string())))
+                        .tip("b: its backlog, the tickets for it to look at; a click lists them")
                         .on_click(cx.listener(move |shell, _, _, cx| {
                             shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
                         })),
+                )
+                .child(
+                    item()
+                        .id("agent-events")
+                        .when(unseen > 0, |d| d.text_color(p().text))
+                        .child(format!("events:{unseen}"))
+                        .tip("e: its events not seen yet — pings, answers, decisions waiting for it"),
+                )
+                .child(
+                    item()
+                        .id("agent-holds")
+                        .when(holds > 0, |d| d.text_color(p().text))
+                        .child(format!("holds {holds}"))
+                        .tip("the tickets it holds"),
                 )
                 .when(pending || wake.is_some(), |d| {
                     d.child(

@@ -208,7 +208,7 @@ impl Shell {
             let selected = self.selected.as_deref() == Some(session.as_str());
             let state = terminal.status.as_ref().and_then(|s| s.colour());
             let shell = terminal.agent.is_none() && terminal.attach.is_some();
-            let alerts = self.alerts_of(&group.name, terminal.agent.as_deref());
+            let counts = self.counts_of(&group.name, &terminal);
             bar = bar.child(
                 div()
                     .id(SharedString::from(format!("tab-{session}")))
@@ -228,7 +228,7 @@ impl Shell {
                     .when_some(state, |d, colour| d.child(dot(colour)))
                     .when(shell, |d| d.child(div().text_xs().text_color(p().muted).child(">_")))
                     .child(terminal.label.clone())
-                    .child(alerts.badges(format!("tab-{session}")))
+                    .children(counts.map(|c| c.badges(format!("tab-{session}"))))
                     // ×: shown on the tab shown, and on the one under the pointer.
                     .child(
                         div()

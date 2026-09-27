@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- A Claude session's row, tab and card show its agent's own counters, as
+  claude-loop does: `b` its backlog and `e` its events, in light badges
+  with their letter; the project's row keeps the project's counters. Its
+  bar reads `all: backlog: events:` (claude-loop's a: b: e:), then what it
+  holds.
 - Settings where Linux expects them: your preferences in
   `~/.config/tvty/settings.toml`, in sections, to edit by hand — tvty puts
   a change in force once saved, and a file that does not read is said and
