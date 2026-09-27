@@ -39,6 +39,8 @@ pub struct Status {
     pub unseen: u32,
     /// Where its Claude works.
     pub cwd: Option<String>,
+    /// Its counters, as the daemon computes them.
+    pub counters: Option<crate::aiball::AgentCounters>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -165,6 +167,7 @@ fn status_of(c: &Consumer) -> Option<Status> {
         online: c.present.unwrap_or(false),
         unseen: c.ping_unseen.unwrap_or(0),
         cwd: c.cwd.clone(),
+        counters: c.counters.clone(),
     })
 }
 
@@ -314,6 +317,21 @@ mod tests {
         assert_eq!(hosted[0].attach.as_deref(), Some("/h/hosted/attach.sock"));
         let looped = by("looped");
         assert_eq!((looped[0].session.as_str(), looped[0].attach.is_none()), ("cl-looped", true));
+    }
+
+    #[test]
+    fn an_agents_counters_come_from_the_daemon() {
+        let mut counted: Consumer = serde_json::from_value(json!({ "consumer_id": "crew", "kind": "agent", "cwd": "/w/crew",
+            "project": "demo", "state": "idle", "session": null,
+            "counters": { "open": 7, "actionable": 2, "backlog": 3, "events": 1, "computed_at": "2026-09-27T13:00:00Z" } }))
+        .unwrap();
+        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], std::slice::from_ref(&counted));
+        let status = projects[0].terminals[0].status.clone().unwrap();
+        assert_eq!(status.counters, Some(crate::aiball::AgentCounters { open: Some(7), backlog: Some(3), events: Some(1) }));
+        // Not computed yet: none.
+        counted.counters = None;
+        let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], &[counted]);
+        assert_eq!(projects[0].terminals[0].status.as_ref().unwrap().counters, None);
     }
 
     #[test]

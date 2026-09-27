@@ -45,6 +45,21 @@ pub struct Consumer {
     /// (not in claude-loop's tmux).
     #[serde(default)]
     pub session: Option<HostedSession>,
+    /// Its counters as the daemon computes them, loop or not; none until
+    /// computed once.
+    #[serde(default)]
+    pub counters: Option<AgentCounters>,
+}
+
+/// An agent's counters, as claude-loop's line has them (o: b: e:).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct AgentCounters {
+    #[serde(default)]
+    pub open: Option<u32>,
+    #[serde(default)]
+    pub backlog: Option<u32>,
+    #[serde(default)]
+    pub events: Option<u32>,
 }
 
 /// An agent's session on aiball's host.
@@ -625,6 +640,12 @@ impl Aiball {
     /// Removes a terminal the daemon's host holds (its program ended, or not).
     pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
         self.rpc_do("session.stop", json!({ "name": name }))
+    }
+
+    /// The daemon computes an agent's counters now; they come back through
+    /// its state, to every client.
+    pub fn refresh_counters(&self, agent: &str) -> anyhow::Result<()> {
+        self.rpc_do("consumer.counters", json!({ "consumer_id": agent }))
     }
 
     /// Restarts an agent's Claude Code once it is idle, resuming its

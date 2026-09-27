@@ -29,7 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   claude-loop does: `b` its backlog and `e` its events, in light badges
   with their letter; the project's row keeps the project's counters. Its
   bar reads `all: backlog: events:` (claude-loop's a: b: e:), then what it
-  holds.
+  holds. With an aiball that computes them, every agent has them, loop or
+  not, and showing its session asks for them afresh.
 - Settings where Linux expects them: your preferences in
   `~/.config/tvty/settings.toml`, in sections, to edit by hand — tvty puts
   a change in force once saved, and a file that does not read is said and

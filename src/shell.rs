@@ -1078,6 +1078,18 @@ impl Shell {
             self.switches += 1;
         }
         notify::dismiss_session(cx, &session);
+        // Its agent's counters computed afresh by the daemon: they come back
+        // through its state. An aiball without the method just says so.
+        if let Some(agent) = self.terminal_of(&session).and_then(|(_, t)| t.agent.clone()) {
+            let aiball = self.aiball.clone();
+            cx.background_executor()
+                .spawn(async move {
+                    if let Err(error) = aiball.refresh_counters(&agent) {
+                        log::debug!("counters of {agent}: {error:#}");
+                    }
+                })
+                .detach();
+        }
         self.recent.retain(|s| *s != session);
         self.recent.insert(0, session.clone());
         self.selected = Some(session);
@@ -1129,12 +1141,16 @@ impl Shell {
         board.projects.sort_by_key(|group| rank(group));
     }
 
-    /// The counters of the agent in `terminal`, from the bar its loop
-    /// pushes (else its events from aiball's state); none for a terminal
-    /// with no agent.
+    /// The counters of the agent in `terminal`: the daemon's (loop or not),
+    /// else those of the bar its loop pushes, else its events from aiball's
+    /// state; none for a terminal with no agent.
     pub(crate) fn counts_of(&self, project: &str, terminal: &Terminal) -> Option<AgentCounts> {
         let agent = terminal.agent.as_deref()?;
-        let counters = self.board.bars.get(agent).filter(|b| !b.stale).and_then(|b| b.bar.counters.clone());
+        let daemon = terminal.status.as_ref().and_then(|s| s.counters.clone());
+        let bar = self.board.bars.get(agent).filter(|b| !b.stale).and_then(|b| b.bar.counters.clone());
+        let counters = daemon
+            .map(|c| crate::aiball::BarCounters { open: c.open, backlog: c.backlog, events: c.events })
+            .or(bar);
         let critical = self.board.critical.get(project).copied();
         let tickets = self.board.tickets.get(project);
         Some(AgentCounts {
