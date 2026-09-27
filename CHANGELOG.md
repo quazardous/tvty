@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- The pings that came while tvty was closed (a restart, the machine
+  asleep) come at start as one notification: the last one said, the
+  others counted; a click opens its ticket.
 - An "Eclipse Dark" colour theme, from the colours of Eclipse's classic
   dark theme (as the VS Code "Eclipse Classic Dark" ports it).
 - Over a full screen (the options, the full list, a ticket or a new ticket

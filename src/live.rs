@@ -340,16 +340,25 @@ impl Live {
     /// A ping, from the message it carries; its ticket's title from the
     /// rows when the message is a comment.
     fn ping(&self, data: &Value) -> Option<PingInfo> {
-        let message = data.get("message")?;
+        let mut info = self.ping_of(data.get("message")?)?;
+        info.urgent = data.get("intent").and_then(Value::as_str) == Some("panic");
+        Some(info)
+    }
+
+    /// What a message a ping points at says: as the bus pushes it, or as
+    /// `ping.list` gives it (its decision then in its `meta`).
+    pub fn ping_of(&self, message: &Value) -> Option<PingInfo> {
         let text = |key: &str| message.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
         let ticket = message
             .get("ticket_id")
             .and_then(Value::as_u64)
             .or_else(|| message.get("id").and_then(Value::as_u64))?;
         let kind = text("kind");
+        let meta: Option<Value> = message.get("meta").and_then(Value::as_str).and_then(|m| serde_json::from_str(m).ok());
         let decision = message
             .pointer("/decision/kind")
             .or_else(|| message.get("decision"))
+            .or_else(|| meta.as_ref().and_then(|m| m.pointer("/decision/kind")))
             .and_then(Value::as_str)
             .map(str::to_string);
         let title = Some(text("title"))
@@ -363,8 +372,9 @@ impl Live {
             title,
             from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
             what: if pending { "a new ticket to moderate".into() } else { crate::pings::what_it_is(&kind, decision) },
-            urgent: data.get("intent").and_then(Value::as_str) == Some("panic"),
+            urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
             pending,
+            at: text("created_at"),
         })
     }
 

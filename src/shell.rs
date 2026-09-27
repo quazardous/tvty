@@ -113,6 +113,9 @@ pub struct Shell {
     /// arrows are on.
     sessions_filter: Entity<InputState>,
     filter_cursor: usize,
+    /// Whose pings that came while tvty was closed were looked for: the
+    /// bus opens as the local owner, then as the user once known.
+    missed_checked: Option<String>,
     /// aiball's config as last read, in the layer shown (none: the board's
     /// own, global), or why it could not be read.
     remote: Option<crate::aiball::ManagedConfig>,
@@ -545,6 +548,7 @@ impl Shell {
             options_jump: std::cell::Cell::new(None),
             sessions_filter,
             filter_cursor: 0,
+            missed_checked: None,
             remote: None,
             remote_layer: None,
             remote_error: None,
@@ -786,6 +790,11 @@ impl Shell {
                             shell.wire_whoami = Some(said);
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
+                            // Once the user is known: what came while tvty was closed.
+                            if !user.is_empty() && shell.missed_checked.as_deref() != Some(user.as_str()) {
+                                shell.missed_checked = Some(user.clone());
+                                shell.announce_missed(cx);
+                            }
                             cx.notify();
                         })
                     }
@@ -804,7 +813,49 @@ impl Shell {
 
     /// A ping to the user, as a notification: urgent in red, waiting for
     /// moderation in orange, else blue.
+    /// The newest ping known: those after it, at the next start, came
+    /// while tvty was closed.
+    fn ping_seen(&mut self, at: &str, cx: &mut Context<Self>) {
+        if !at.is_empty() && self.settings.workspace.pings_seen.as_deref().is_none_or(|seen| at > seen) {
+            self.settings.workspace.pings_seen = Some(at.to_string());
+            self.settings.save(cx);
+        }
+    }
+
+    /// At start: the unread pings that came while tvty was closed, as one
+    /// notification — the last one said, the others counted; a click opens
+    /// the last one's ticket. The bus replays what a dropped connection
+    /// missed, not what came before tvty ran.
+    fn announce_missed(&mut self, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let read = cx.background_executor().spawn(async move { aiball.unread_pings(50) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                let messages = match read {
+                    Ok(messages) => messages,
+                    Err(error) => {
+                        log::warn!("pings missed while closed: {error:#}");
+                        return;
+                    }
+                };
+                let pings: Vec<_> = messages.iter().filter_map(|m| shell.live.ping_of(m)).collect();
+                let newest = pings.iter().map(|p| p.at.clone()).max();
+                let missed = crate::pings::missed(pings, shell.settings.workspace.pings_seen.as_deref());
+                if let (Some(text), Some(last)) = (crate::pings::missed_text(&missed), missed.last()) {
+                    let kind = if missed.iter().any(|p| p.pending) { Kind::Decision } else { Kind::News };
+                    let about = (!last.project.is_empty()).then(|| (last.project.clone(), last.ticket));
+                    activity::publish(cx, Activity::news(last.from.clone(), kind, about, text));
+                }
+                if let Some(newest) = newest {
+                    shell.ping_seen(&newest, cx);
+                }
+            });
+        })
+        .detach();
+    }
+
     fn announce_ping(&mut self, ping: crate::pings::PingInfo, cx: &mut Context<Self>) {
+        self.ping_seen(&ping.at.clone(), cx);
         let kind = if ping.urgent {
             Kind::Error
         } else if ping.pending {

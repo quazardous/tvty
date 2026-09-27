@@ -686,6 +686,19 @@ impl Aiball {
         self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project }))
     }
 
+    /// The user's unread pings, newest first: each its message, as aiball
+    /// gives it.
+    pub fn unread_pings(&self, limit: u32) -> anyhow::Result<Vec<Value>> {
+        let answer: Value = self.rpc("ping.list", json!({ "unread": true, "limit": limit }))?;
+        Ok(answer
+            .get("pings")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|p| p.get("message").cloned())
+            .collect())
+    }
+
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {

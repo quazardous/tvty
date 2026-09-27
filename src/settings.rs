@@ -283,6 +283,9 @@ pub struct Workspace {
     pub shown_terminal: Option<String>,
     /// The project the last new ticket went to.
     pub last_ticket_project: Option<String>,
+    /// When the newest ping tvty knew of came: those after it, at the next
+    /// start, came while tvty was closed.
+    pub pings_seen: Option<String>,
 }
 
 impl Stored for Workspace {
@@ -295,6 +298,7 @@ impl Stored for Workspace {
             open_terminals: old.get("open_terminals").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
             shown_terminal: old.get("shown_terminal").and_then(Value::as_str).map(String::from),
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
+            pings_seen: None,
         })
     }
 }
