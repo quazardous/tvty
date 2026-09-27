@@ -333,10 +333,18 @@ cards keep their size: they fit the screen to themselves.
 ## Options
 
 A full page (⚙ in the title bar, or ctrl+,) with its sections on the left:
-Appearance (the window's and the terminals' colour themes), Layout (the sides: folded or not, their
-widths, reset), Keyboard shortcuts (all of them, from the one list in
-`src/options.rs`), About (version, aiball's socket, who tvty acts as, the
-live feed, where settings and themes live). Esc closes it.
+Appearance (sizes, notifications, the wheel's speed, the window's and the
+terminals' colour themes), Layout (the sides: folded or not, their widths,
+reset), Ticket list (the thread's order, the list's legend), Keyboard
+shortcuts (all of them, edited in place — see Keys), About (version,
+aiball's socket, who tvty acts as, the live feed, where settings and
+themes live). Esc closes it.
+
+The settings' pages are built from the settings themselves: each is
+declared once in `src/settings.rs` (its key in `settings.toml`, its page and
+group, what it says, its kind and bounds — `crates/tvty-config`), and a
+change from a page, a shortcut or a hand edit of the file goes the same way:
+into the store, which writes the file and puts it in force.
 
 ## The wheel
 
@@ -356,10 +364,18 @@ goes on to the terminal's program. `keymap.toml`, beside `settings.toml`,
 overrides the defaults below — a `[Terminal]` or `[Window]` section, and in
 it `ctrl-alt-t = "theme.next"`: a key bound to a command by its name, or
 `ctrl-c = false` to give it back to what has the focus. A key may be
-written as Options shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is read again once
-saved; a wrong one is said in a notification and changes nothing. Options
-> Keyboard shortcuts shows what is in force, what the file changed, and a
-window key a terminal masks.
+written as Options shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is
+read again once saved; a wrong one is said in a notification and changes
+nothing.
+
+Options > Keyboard shortcuts edits the same file: a key clicked listens for
+its replacement (every shortcut is off meanwhile, so that Ctrl+Tab is heard,
+not run; Esc gives up), + adds a key, × removes one (a default key is then
+given back), Default puts a command's keys back, Reset all every one. A key
+another command runs asks first (Replace / Cancel); a key a terminal's
+program types (a letter, Enter) is refused in the Terminal context. The
+page shows too what is changed, and a window key a terminal masks. The file
+keeps only what differs from the defaults (`crates/tvty-keys`).
 
 | Keys (by default) | |
 |---|---|

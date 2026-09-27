@@ -43,6 +43,16 @@ use tvty_config::{Kind as SettingKind, Setting, Value};
 
 /// The terminals' font size, which shortcuts step too.
 const TERMINAL_FONT: &str = "appearance.terminal_font_size";
+
+/// The shortcuts' page listening for a key for a command: the key it
+/// replaces (none: one more), the key pressed when it runs another command
+/// (to replace, or not), or why the key was refused.
+struct Capture {
+    command: &'static str,
+    replacing: Option<keymap::Key>,
+    pending: Option<(keymap::Key, &'static str)>,
+    refused: Option<String>,
+}
 use crate::terminal::TerminalView;
 
 /// How often the tmux sessions are listed (cheap: one `tmux ls`).
@@ -91,6 +101,8 @@ pub struct Shell {
     settings: Settings,
     /// The preferences in force, to tell what a change changes.
     applied: Preferences,
+    /// The shortcuts' page listening for a key.
+    capture: Option<Capture>,
     /// A side's edge is being dragged.
     resizing: Option<Side>,
     /// The edge has moved since it was pressed.
@@ -423,6 +435,7 @@ impl Shell {
             panel,
             settings: Settings::current(cx),
             applied: crate::config::get::<Preferences>(cx).clone(),
+            capture: None,
             resizing: None,
             dragged: false,
             options: None,
@@ -1115,6 +1128,11 @@ impl Shell {
 
     /// Before the terminal sees a key: the window's own shortcuts.
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
+        if self.capture.is_some() {
+            self.capture_key(event, cx);
+            cx.stop_propagation();
+            return;
+        }
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
@@ -1379,6 +1397,7 @@ impl Shell {
     // ── Options ─────────────────────────────────────────────────────────
 
     fn toggle_options(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.end_capture(cx);
         if self.options.take().is_none() {
             self.options = Some(Section::Appearance);
             theme::load(cx);
@@ -1424,6 +1443,7 @@ impl Shell {
                     .when(!chosen, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
                     .child(item.title())
                     .on_click(cx.listener(move |shell, _, _, cx| {
+                        shell.end_capture(cx);
                         shell.options = Some(item);
                         cx.notify();
                     })),
@@ -1438,7 +1458,7 @@ impl Shell {
                 .into_any_element(),
             Section::Layout => self.options_layout(window, cx).into_any_element(),
             Section::TicketList => self.options_settings("Ticket list", cx).child(options_ticket_list()).into_any_element(),
-            Section::Shortcuts => options_shortcuts(cx).into_any_element(),
+            Section::Shortcuts => self.options_shortcuts(cx).into_any_element(),
             Section::About => self.options_about(cx).into_any_element(),
         };
         div()
@@ -1674,6 +1694,265 @@ impl Shell {
         table.child(option_note(
             "tvty — Terminal Velocity. MIT licence. Bundled themes: see themes/README.md.",
         ))
+    }
+
+    // ── Shortcuts ───────────────────────────────────────────────────────
+
+    /// Listens for a key for `command` (replacing `replacing`, or one more):
+    /// every binding off meanwhile, so that the key comes here whatever it
+    /// runs.
+    fn start_capture(&mut self, command: &'static str, replacing: Option<keymap::Key>, cx: &mut Context<Self>) {
+        if self.capture.is_none() {
+            keymap::suspend(cx);
+        }
+        self.capture = Some(Capture { command, replacing, pending: None, refused: None });
+        cx.notify();
+    }
+
+    fn end_capture(&mut self, cx: &mut Context<Self>) {
+        if self.capture.take().is_some() {
+            keymap::resume(cx);
+            cx.notify();
+        }
+    }
+
+    /// A key pressed while listening: Esc gives up; a key a terminal's
+    /// program types is refused there; a key another command runs asks
+    /// first; any other is bound.
+    fn capture_key(&mut self, event: &KeyDownEvent, cx: &mut Context<Self>) {
+        let Some(key) = keymap::key_of(&event.keystroke) else { return };
+        if key.canonical() == "escape" {
+            self.end_capture(cx);
+            return;
+        }
+        let Some(capture) = self.capture.as_mut() else { return };
+        let Some(command) = keymap::COMMANDS.iter().find(|c| c.name == capture.command) else { return };
+        capture.pending = None;
+        capture.refused = None;
+        if command.context == keymap::TERMINAL && key.is_typing() {
+            capture.refused = Some(format!("{} is typing: in a terminal it stays the program's", key.pretty()));
+        } else if let Some(other) = keymap::current(cx).conflict(command.name, &key) {
+            capture.pending = Some((key, other));
+        } else {
+            self.bind_captured(key, cx);
+            return;
+        }
+        cx.notify();
+    }
+
+    /// The key heard bound to the command listened for — taken from the
+    /// command that ran it, if any.
+    fn bind_captured(&mut self, key: keymap::Key, cx: &mut Context<Self>) {
+        let Some(capture) = self.capture.as_ref() else { return };
+        let mut map = keymap::current(cx);
+        let bound = match &capture.replacing {
+            Some(old) => map.rebind(capture.command, old, &key),
+            None => map.bind(capture.command, &key),
+        };
+        match bound {
+            Ok(()) => keymap::save(cx, &map),
+            Err(error) => log::warn!("shortcuts: {error}"),
+        }
+        self.end_capture(cx);
+    }
+
+    /// The keymap changed by `change`, and kept.
+    fn change_keys(&mut self, cx: &mut Context<Self>, change: impl FnOnce(&mut keymap::Keymap)) {
+        self.end_capture(cx);
+        let mut map = keymap::current(cx);
+        change(&mut map);
+        keymap::save(cx, &map);
+        cx.notify();
+    }
+
+    /// The shortcuts in force, by context: a key clicked listens for its
+    /// replacement, × removes it, + adds one, Default puts a command's keys
+    /// back; the keys given back to the program; those a terminal masks;
+    /// then the keys that are not commands. Every change goes to
+    /// keymap.toml, which the user may edit too.
+    fn options_shortcuts(&self, cx: &mut Context<Self>) -> Div {
+        let (map, error) = keymap::in_force(cx);
+        let bindings = map.bindings();
+        let listening = |command: &str, key: Option<&keymap::Key>| {
+            self.capture.as_ref().is_some_and(|c| c.command == command && c.replacing.as_ref() == key)
+        };
+        let small = |id: SharedString, label: &'static str| {
+            div()
+                .id(id)
+                .px_2()
+                .rounded_sm()
+                .text_xs()
+                .border_1()
+                .border_color(p().border)
+                .cursor_pointer()
+                .hover(|d| d.bg(p().hover))
+                .child(label)
+        };
+        let listening_chip = |id: SharedString| {
+            div()
+                .id(id)
+                .px_1p5()
+                .rounded_sm()
+                .border_1()
+                .border_color(p().accent)
+                .text_sm()
+                .text_color(p().accent)
+                .child("Press a key… (Esc gives up)")
+        };
+        let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
+        let changed = map.commands().iter().any(|c| map.is_changed(c.name)) || bindings.iter().any(|b| b.command.is_none());
+        let mut page = div()
+            .flex()
+            .flex_col()
+            .max_w(px(960.))
+            .child(option_note("Each shortcut is a command, bound in a context: Terminal when a terminal has the focus, Window anywhere else. The deepest binding wins; a key bound nowhere goes to the terminal's program."))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    .pb_2()
+                    .child(div().flex_1().min_w_0().text_sm().text_color(p().muted).child(format!(
+                        "Click a key to change it, + to add one, × to remove it. Kept in {file}, which you may edit too."
+                    )))
+                    .when(changed, |d| {
+                        d.child(small("keys-reset-all".into(), "Reset all").on_click(cx.listener(|shell, _, _, cx| shell.change_keys(cx, |map| map.reset_all()))))
+                    }),
+            )
+            .when_some(error, |d, error| {
+                d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
+            });
+        let masked = map.masked();
+        for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
+            page = page.child(option_group(title));
+            for command in keymap::COMMANDS.iter().filter(|c| c.context == context) {
+                let name = command.name;
+                let mut chips = div().flex().flex_wrap().items_center().gap_1();
+                for binding in bindings.iter().filter(|b| b.context == context && b.command == Some(name)) {
+                    let key = binding.key.clone();
+                    let id = format!("key-{name}-{}", key.canonical());
+                    if listening(name, Some(&key)) {
+                        chips = chips.child(listening_chip(id.into()));
+                        continue;
+                    }
+                    let (again, gone) = (key.clone(), key.clone());
+                    chips = chips.child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .rounded_sm()
+                            .border_1()
+                            .border_color(p().border)
+                            .bg(p().surface)
+                            .text_sm()
+                            .child(
+                                div()
+                                    .id(SharedString::from(id.clone()))
+                                    .px_1p5()
+                                    .cursor_pointer()
+                                    .hover(|d| d.bg(p().hover))
+                                    .child(key.pretty())
+                                    .on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, Some(again.clone()), cx))),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("{id}-x")))
+                                    .px_1()
+                                    .text_color(p().muted)
+                                    .cursor_pointer()
+                                    .hover(|d| d.bg(p().hover).text_color(p().danger))
+                                    .child("×")
+                                    .on_click(cx.listener(move |shell, _, _, cx| {
+                                        shell.change_keys(cx, |map| map.unbind(context, &gone))
+                                    })),
+                            ),
+                    );
+                }
+                chips = if listening(name, None) {
+                    chips.child(listening_chip(format!("key-{name}-new").into()))
+                } else {
+                    chips.child(small(format!("key-{name}-add").into(), "+").on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, None, cx))))
+                };
+                let mut what = command.what.to_string();
+                if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(name)) {
+                    what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("the program"));
+                }
+                let custom = map.is_changed(name);
+                let mut row = div().flex().flex_col().py_1p5().border_b_1().border_color(p().border).child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_4()
+                        .child(div().w(px(300.)).flex_none().child(chips))
+                        .child(div().flex_1().min_w_0().text_sm().child(what))
+                        .when(custom, |d| {
+                            d.child(small(format!("key-{name}-default").into(), "Default").on_click(cx.listener(move |shell, _, _, cx| {
+                                shell.change_keys(cx, |map| map.reset(name))
+                            })))
+                        })
+                        .child(div().w(px(130.)).flex_none().text_xs().text_color(p().muted).child(name)),
+                );
+                // What the key heard would do, or why it was refused.
+                if let Some(capture) = self.capture.as_ref().filter(|c| c.command == name) {
+                    if let Some((key, other)) = capture.pending.clone() {
+                        row = row.child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap_2()
+                                .pt_1()
+                                .text_sm()
+                                .child(format!("{} runs {other}: take it for {name}?", key.pretty()))
+                                .child(small("key-replace".into(), "Replace").on_click(cx.listener(move |shell, _, _, cx| shell.bind_captured(key.clone(), cx))))
+                                .child(small("key-cancel".into(), "Cancel").on_click(cx.listener(|shell, _, _, cx| shell.end_capture(cx)))),
+                        );
+                    }
+                    if let Some(refused) = capture.refused.clone() {
+                        row = row.child(div().pt_1().text_sm().text_color(p().danger).child(refused));
+                    }
+                }
+                page = page.child(row);
+            }
+            // The keys given back to what has the focus: × binds them again.
+            for freed in bindings.iter().filter(|b| b.context == context && b.command.is_none()) {
+                let key = freed.key.clone();
+                let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
+                page = page.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_4()
+                        .py_1p5()
+                        .border_b_1()
+                        .border_color(p().border)
+                        .child(
+                            div().w(px(300.)).flex_none().child(
+                                div().flex().items_center().gap_1().child(key_chip(key.pretty())).child(
+                                    small(format!("freed-{context}-{}", key.canonical()).into(), "×").on_click(cx.listener(move |shell, _, _, cx| {
+                                        shell.change_keys(cx, |map| map.restore(context, &key))
+                                    })),
+                                ),
+                            ),
+                        )
+                        .child(div().flex_1().min_w_0().text_sm().child(to)),
+                );
+            }
+        }
+        page = page.child(option_group("Fixed keys"));
+        for (keys, what) in FIXED_KEYS {
+            page = page.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_4()
+                    .py_1p5()
+                    .border_b_1()
+                    .border_color(p().border)
+                    .child(div().w(px(300.)).flex_none().child(div().flex().flex_wrap().gap_1().children(keys.split(" · ").map(|k| key_chip(k.to_string())))))
+                    .child(div().flex_1().min_w_0().text_sm().child(*what)),
+            );
+        }
+        page
     }
 
     // ── Preferences ─────────────────────────────────────────────────────
@@ -2767,68 +3046,9 @@ fn option_switch(name: &'static str, about: &'static str, state: &'static str, s
         .child(switch)
 }
 
-/// The shortcuts in force, by context, as `keymap.toml` leaves them; the
-/// keys given back to the program; those a terminal masks; then the keys
-/// that are not commands.
-fn options_shortcuts(cx: &App) -> impl IntoElement {
-    let (keymap, error) = keymap::in_force(cx);
-    let bindings = keymap.bindings();
-    let chip = |key: String| {
-        div().px_1p5().rounded_sm().border_1().border_color(p().border).bg(p().surface).text_sm().child(key)
-    };
-    let row = |keys: Vec<String>, what: String, name: Option<&'static str>, custom: bool| {
-        div()
-            .flex()
-            .items_center()
-            .gap_4()
-            .py_1p5()
-            .border_b_1()
-            .border_color(p().border)
-            .child(div().w(px(260.)).flex_none().child(div().flex().flex_wrap().gap_1().children(keys.into_iter().map(chip))))
-            .child(div().flex_1().min_w_0().text_sm().child(what))
-            .when(custom, |d| d.child(div().text_xs().text_color(p().accent).child("custom")))
-            .child(div().w(px(150.)).flex_none().text_xs().text_color(p().muted).children(name))
-    };
-    let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
-    let mut page = div()
-        .flex()
-        .flex_col()
-        .max_w(px(900.))
-        .child(option_note("Each shortcut is a command, bound in a context: Terminal when a terminal has the focus, Window anywhere else. The deepest binding wins; a key bound nowhere goes to the terminal's program."))
-        .child(div().text_sm().text_color(p().muted).pb_2().child(format!(
-            "To change them: {file} — a [Terminal] or [Window] section, and in it ctrl-alt-t = \"theme.next\" to bind a key to a command, or ctrl-c = false to give it to what has the focus. Read again once saved."
-        )))
-        .when_some(error, |d, error| {
-            d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
-        });
-    let masked = keymap.masked();
-    for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
-        page = page.child(option_group(title));
-        for command in keymap::COMMANDS.iter().filter(|c| c.context == context) {
-            let bound: Vec<&keymap::Binding> = bindings.iter().filter(|b| b.context == context && b.command == Some(command.name)).collect();
-            let keys = bound.iter().map(|b| b.key.pretty()).collect::<Vec<_>>();
-            // Changed by the file: a key of its own, or a default key taken.
-            let custom = keymap.is_changed(command.name);
-            let mut what = command.what.to_string();
-            if keys.is_empty() {
-                what = format!("{what} (no key)");
-            }
-            if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(command.name)) {
-                what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("false (the program's)"));
-            }
-            page = page.child(row(keys, what, Some(command.name), custom));
-        }
-        // The keys given back to what has the focus.
-        for freed in bindings.iter().filter(|b| b.context == context && b.command.is_none()) {
-            let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
-            page = page.child(row(vec![freed.key.pretty()], to.to_string(), None, true));
-        }
-    }
-    page = page.child(option_group("Fixed keys"));
-    for (keys, what) in FIXED_KEYS {
-        page = page.child(row(keys.split(" · ").map(str::to_string).collect(), what.to_string(), None, false));
-    }
-    page
+/// A key as a chip.
+fn key_chip(key: String) -> impl IntoElement {
+    div().px_1p5().rounded_sm().border_1().border_color(p().border).bg(p().surface).text_sm().child(key)
 }
 
 /// The legend of the ticket list: its bands, its glyphs, its stripe.

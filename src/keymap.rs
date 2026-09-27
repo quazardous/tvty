@@ -20,7 +20,7 @@
 
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
-pub use tvty_keys::{Binding, Command, Keymap, KeymapFile};
+pub use tvty_keys::{Binding, Command, Key, Keymap, KeymapFile};
 
 use crate::config::{self, Place, Stored};
 
@@ -156,6 +156,30 @@ pub fn init(cx: &mut App) {
         cx.refresh_windows();
     })
     .detach();
+}
+
+/// Every binding off while the options listen for a key: the key pressed
+/// comes to them, whatever it runs ([`resume`] binds them again).
+pub fn suspend(cx: &mut App) {
+    cx.clear_key_bindings();
+}
+
+pub fn resume(cx: &mut App) {
+    apply(cx);
+}
+
+/// Keeps `keymap`'s changes in keymap.toml, the difference from the
+/// defaults only; the store binds them.
+pub fn save(cx: &mut App, keymap: &Keymap) {
+    config::update::<Shortcuts>(cx, |file| file.0 = keymap.file());
+}
+
+/// The key a keystroke is; none for a modifier pressed alone.
+pub fn key_of(keystroke: &Keystroke) -> Option<Key> {
+    if matches!(keystroke.key.as_str(), "shift" | "control" | "alt" | "platform" | "function" | "") {
+        return None;
+    }
+    Key::parse(&keystroke.unparse()).ok()
 }
 
 /// The keymap in force, and the file's error if any.

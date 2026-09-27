@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selection; middle click pastes it; Shift+Insert pastes the clipboard; a
   right click opens Copy / Paste. What was selected is kept even when the
   program draws over it (Claude Code). Ctrl+C stays ^C.
+- Shortcuts edited in Options > Keyboard shortcuts: click a key and press
+  the new one, + to add a key, × to remove one, Default to put a command's
+  keys back. A key another command uses asks before taking it; a key a
+  terminal's program types is refused there.
 - Customizable shortcuts: `keymap.toml` binds a command to other keys, or
   gives a key back to the terminal's program, by context (Terminal when a
   terminal has the focus, Window elsewhere); read again once saved. Options

@@ -160,7 +160,9 @@ impl Keymap {
 
     /// Whether the keys of `command` differ from its defaults.
     pub fn is_changed(&self, command: &str) -> bool {
-        self.changes.iter().any(|((context, key), change)| *change == Some(command) || (change.is_none() && self.default_of(context, key) == Some(command)))
+        // A key of its own, or a default key taken from it (given back, or
+        // bound to another command).
+        self.changes.iter().any(|((context, key), change)| *change == Some(command) || self.default_of(context, key) == Some(command))
     }
 
     fn set(&mut self, context: &str, key: &Key, to: Option<&'static str>) {
@@ -355,6 +357,18 @@ mod tests {
         assert_eq!(map.keys_of("font.bigger").len(), 2);
         assert!(map.is_changed("theme.next"));
         map.reset_all();
+        assert_eq!(map.file(), KeymapFile::default());
+    }
+
+    #[test]
+    fn a_key_taken_by_another_command_changes_both() {
+        let mut map = keymap();
+        map.bind("theme.next", &key("ctrl-shift-b")).unwrap();
+        assert!(map.is_changed("theme.next") && map.is_changed("sidebar.toggle"));
+        assert!(map.keys_of("sidebar.toggle").is_empty());
+        // Its reset takes its key back.
+        map.reset("sidebar.toggle");
+        assert_eq!(map.keys_of("sidebar.toggle"), vec![key("ctrl-shift-b")]);
         assert_eq!(map.file(), KeymapFile::default());
     }
 
