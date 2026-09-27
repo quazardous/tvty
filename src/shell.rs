@@ -383,11 +383,13 @@ pub(crate) struct AgentCounts {
 }
 
 impl AgentCounts {
-    /// Light badges, the letter inside: `b 2`, `e 10`; lit when not zero.
+    /// Light badges, the letter inside: `b 2`, `e 10` — on their colour when
+    /// not zero, faint otherwise.
     pub(crate) fn badges<K: Into<SharedString>>(&self, key: K) -> impl IntoElement + use<K> {
         let key: SharedString = key.into();
         let light = |what: &'static str, letter: &'static str, value: Option<u32>, lit: Hsla, tip: String| {
             let on = value.is_some_and(|v| v > 0);
+            let (bg, fg) = if on { (lit, crate::theme::on(lit)) } else { (p().hover, p().muted) };
             div()
                 .id(SharedString::from(format!("{key}-{what}")))
                 .flex()
@@ -396,11 +398,11 @@ impl AgentCounts {
                 .gap_0p5()
                 .px_1()
                 .rounded_sm()
-                .border_1()
-                .border_color(if on { lit } else { p().border })
+                .bg(bg)
                 .text_xs()
-                .child(div().text_color(p().muted).child(letter))
-                .child(div().text_color(if on { lit } else { p().muted }).child(value.map_or("-".to_string(), |v| v.to_string())))
+                .text_color(fg)
+                .child(div().opacity(0.7).child(letter))
+                .child(value.map_or("-".to_string(), |v| v.to_string()))
                 .tip(tip)
         };
         let backlog_tip = match self.backlog {
@@ -420,7 +422,7 @@ impl AgentCounts {
                         .tip("it holds the critical ticket: the one that holds the most open tickets"),
                 )
             })
-            .child(light("backlog", "b", self.backlog, p().text, backlog_tip))
+            .child(light("backlog", "b", self.backlog, p().info, backlog_tip))
             .child(light(
                 "events",
                 "e",

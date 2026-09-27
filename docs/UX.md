@@ -23,8 +23,9 @@ A new one gets its tooltip with it.
   you.
 - A Claude session carries its agent's own, as claude-loop's line has them,
   in light badges with their letter: **b** its backlog (tickets for it to
-  look at; `-` until its loop says), **e** its events not seen yet — lit
-  when not zero — and the red `!` when it holds the critical ticket. The
+  look at; `-` until its loop says), **e** its events not seen yet — on
+  their colour when not zero, faint otherwise — and the red `!` when it
+  holds the critical ticket. The
   list, the tabs, the slider's and the gallery's cards show the same.
 - Each agent shows its **Claude's state**, as aiball centralises it (not
   read from tmux: the day loops run without tmux, nothing changes): a colour
