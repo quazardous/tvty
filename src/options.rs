@@ -30,39 +30,12 @@ impl Section {
     }
 }
 
-/// `(keys, what they do)`, grouped: `(group, shortcuts)`.
-pub const SHORTCUTS: &[(&str, &[(&str, &str)])] = &[
-    (
-        "Switching",
-        &[
-            ("Ctrl+Tab", "Slider: the groups as stacks, most recent first; arrows move; release Ctrl to open"),
-            ("Ctrl+Shift+Tab", "Slider, backwards"),
-            ("Ctrl+PgUp · Ctrl+PgDn", "The tab before · after, in the group shown"),
-            ("Ctrl+Shift+Space", "Gallery of every terminal; type to filter, arrows move, Enter opens"),
-            ("Ctrl+Enter", "Go to the newest notification: the agent's terminal, its ticket"),
-            ("Ctrl+Shift+N", "A new ticket (also + in the panel and the full list); Ctrl+Enter files it"),
-        ],
-    ),
-    (
-        "Window",
-        &[
-            ("Ctrl+Shift+B", "Fold or unfold the projects' list"),
-            ("Ctrl+Shift+T", "Fold or unfold the ticket panel"),
-            ("Ctrl+Shift+L", "The ticket list, full screen (also ⤢ in the panel)"),
-            ("Ctrl+Shift+K", "Next colour theme"),
-            ("Ctrl+Shift+= · Ctrl+Shift+− · Ctrl+Shift+0", "Terminal font bigger · smaller · default"),
-            ("Ctrl+,", "Options"),
-            ("Esc", "Close the gallery, the slider, the theme list, the options, the full list"),
-        ],
-    ),
-    (
-        "Terminal",
-        &[
-            ("Ctrl+Shift+C", "Copy the selection"),
-            ("Ctrl+Shift+V", "Paste"),
-            ("Drag · double click · triple click", "Select text · a word · a line"),
-            ("Shift+drag", "Select even when the program takes the mouse"),
-            ("Mouse wheel", "Scroll the history"),
-        ],
-    ),
+/// The keys that are not commands (see [`crate::keymap`]): those of what
+/// is up, and the mouse's. `(keys, what they do)`.
+pub const FIXED_KEYS: &[(&str, &str)] = &[
+    ("Esc", "Close the gallery, the slider, the theme list, the options, the full list"),
+    ("Arrows", "In the slider and the gallery: move to the card seen there"),
+    ("Drag · double click · triple click", "In a terminal: select text · a word · a line"),
+    ("Shift+drag", "Select even when the program takes the mouse"),
+    ("Mouse wheel", "Scroll the history"),
 ];

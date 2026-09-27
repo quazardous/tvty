@@ -349,7 +349,18 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 
 ## Keys
 
-| Keys | |
+Every shortcut is a **command**, bound to keys in a **context** that
+follows the focus: `Terminal` when a terminal has it, `Window` anywhere
+else (`src/keymap.rs`). The deepest binding wins, and a key bound nowhere
+goes on to the terminal's program. `keymap.json`, beside `state.json`,
+overrides the defaults below — `{ "Terminal": { "ctrl-c": null }, "Window":
+{ "ctrl-alt-t": "theme.next" } }`: a key bound to a command by its name, or
+`null` to give it back to what has the focus. It is read again once
+saved; a wrong one is said in a notification and changes nothing. Options
+> Keyboard shortcuts shows what is in force, what the file changed, and a
+window key a terminal masks.
+
+| Keys (by default) | |
 |---|---|
 | ctrl+tab (shift: backwards) | the slider, a stack per group, most recent first; arrows move too; release ctrl to switch |
 | ctrl+pgup / ctrl+pgdn | the tab before / after, in the group shown |

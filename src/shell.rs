@@ -19,7 +19,7 @@ use crate::keymap;
 use crate::tip::Tip as _;
 use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
-use crate::options::{SHORTCUTS, Section};
+use crate::options::{FIXED_KEYS, Section};
 use crate::activity::{self, Activity};
 use crate::bus::{self, Signal};
 use crate::fulllist::{CloseFullList, FullList};
@@ -1418,7 +1418,7 @@ impl Shell {
             Section::Appearance => self.options_appearance(cx).into_any_element(),
             Section::Layout => self.options_layout(window, cx).into_any_element(),
             Section::TicketList => options_ticket_list().into_any_element(),
-            Section::Shortcuts => options_shortcuts().into_any_element(),
+            Section::Shortcuts => options_shortcuts(cx).into_any_element(),
             Section::About => self.options_about(cx).into_any_element(),
         };
         div()
@@ -2761,40 +2761,65 @@ fn option_stepper(
         .child(button("reset", "Default").on_click(reset))
 }
 
-fn options_shortcuts() -> impl IntoElement {
-    let mut page = div().flex().flex_col().max_w(px(760.));
-    for (group, shortcuts) in SHORTCUTS {
-        page = page.child(option_group(group));
-        for (keys, what) in *shortcuts {
-            page = page.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_4()
-                    .py_1p5()
-                    .border_b_1()
-                    .border_color(p().border)
-                    .child(
-                        div().w(px(260.)).flex_none().child(
-                            div()
-                                .flex()
-                                .flex_wrap()
-                                .gap_1()
-                                .children(keys.split(" · ").map(|k| {
-                                    div()
-                                        .px_1p5()
-                                        .rounded_sm()
-                                        .border_1()
-                                        .border_color(p().border)
-                                        .bg(p().surface)
-                                        .text_sm()
-                                        .child(k.to_string())
-                                })),
-                        ),
-                    )
-                    .child(div().flex_1().min_w_0().text_sm().child(*what)),
-            );
+/// The shortcuts in force, by context, as `keymap.json` leaves them; the
+/// keys given back to the program; those a terminal masks; then the keys
+/// that are not commands.
+fn options_shortcuts(cx: &App) -> impl IntoElement {
+    let (bindings, error) = keymap::in_force(cx);
+    let chip = |key: String| {
+        div().px_1p5().rounded_sm().border_1().border_color(p().border).bg(p().surface).text_sm().child(key)
+    };
+    let row = |keys: Vec<String>, what: String, name: Option<&'static str>, custom: bool| {
+        div()
+            .flex()
+            .items_center()
+            .gap_4()
+            .py_1p5()
+            .border_b_1()
+            .border_color(p().border)
+            .child(div().w(px(260.)).flex_none().child(div().flex().flex_wrap().gap_1().children(keys.into_iter().map(chip))))
+            .child(div().flex_1().min_w_0().text_sm().child(what))
+            .when(custom, |d| d.child(div().text_xs().text_color(p().accent).child("custom")))
+            .child(div().w(px(150.)).flex_none().text_xs().text_color(p().muted).children(name))
+    };
+    let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.json".into());
+    let mut page = div()
+        .flex()
+        .flex_col()
+        .max_w(px(900.))
+        .child(option_note("Each shortcut is a command, bound in a context: Terminal when a terminal has the focus, Window anywhere else. The deepest binding wins; a key bound nowhere goes to the terminal's program."))
+        .child(div().text_sm().text_color(p().muted).pb_2().child(format!(
+            "To change them: {file} — {{ \"Terminal\": {{ \"ctrl-c\": null }}, \"Window\": {{ \"ctrl-alt-t\": \"theme.next\" }} }}: a key bound to a command, or null to give it to what has the focus. Read again once saved."
+        )))
+        .when_some(error, |d, error| {
+            d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
+        });
+    let masked = keymap::masked(&bindings);
+    for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
+        page = page.child(option_group(title));
+        for command in keymap::COMMANDS.iter().filter(|c| c.context == context) {
+            let bound: Vec<&keymap::Binding> = bindings.iter().filter(|b| b.context == context && b.command == Some(command.name)).collect();
+            let keys = bound.iter().map(|b| keymap::pretty(&b.key)).collect::<Vec<_>>();
+            // Changed by the file: a key of its own, or a default key taken.
+            let custom = bound.iter().any(|b| b.custom) || command.keys.iter().any(|k| !bound.iter().any(|b| b.key == *k));
+            let mut what = command.what.to_string();
+            if keys.is_empty() {
+                what = format!("{what} (no key)");
+            }
+            if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(command.name)) {
+                what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("null (the program's)"));
+            }
+            page = page.child(row(keys, what, Some(command.name), custom));
         }
+        // The keys given back to what has the focus.
+        for freed in bindings.iter().filter(|b| b.context == context && b.command.is_none()) {
+            let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
+            page = page.child(row(vec![keymap::pretty(&freed.key)], to.to_string(), None, true));
+        }
+    }
+    page = page.child(option_group("Fixed keys"));
+    for (keys, what) in FIXED_KEYS {
+        page = page.child(row(keys.split(" · ").map(str::to_string).collect(), what.to_string(), None, false));
     }
     page
 }
