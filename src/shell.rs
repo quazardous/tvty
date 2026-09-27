@@ -3615,22 +3615,23 @@ impl Render for Shell {
             self.folded(Side::Right, alerts.colors(), cx).into_any_element()
         };
         // The notices sit in the terminal's top right corner: left of the
-        // panel, or of its folded edge; a full screen covers the terminal,
-        // then the window's corner.
+        // panel, or of its folded edge, below the tabs; over a full screen,
+        // in the window's bottom left corner, out of its way.
         let paddings = window_paddings(window);
         let covered = panel_full || self.options.is_some() || self.full_list_shown || self.new_ticket_shown;
-        // Below the tabs, when there are.
-        let notices_top = f32::from(paddings.top)
-            + TITLE_BAR_HEIGHT
-            + NOTICE_MARGIN
-            + if tabbed && !covered { tabs::TAB_BAR } else { 0. };
-        let notices_right = f32::from(paddings.right)
-            + NOTICE_MARGIN
-            + match () {
-                _ if covered => 0.,
-                _ if self.settings.layout.panel_open => self.panel_width(window) + EDGE_WIDTH,
-                _ => FOLDED_WIDTH,
-            };
+        let corner = if covered {
+            notify::Corner::BottomLeft {
+                bottom: f32::from(paddings.bottom) + NOTICE_MARGIN,
+                left: f32::from(paddings.left) + NOTICE_MARGIN,
+            }
+        } else {
+            notify::Corner::TopRight {
+                top: f32::from(paddings.top) + TITLE_BAR_HEIGHT + NOTICE_MARGIN + if tabbed { tabs::TAB_BAR } else { 0. },
+                right: f32::from(paddings.right)
+                    + NOTICE_MARGIN
+                    + if self.settings.layout.panel_open { self.panel_width(window) + EDGE_WIDTH } else { FOLDED_WIDTH },
+            }
+        };
         let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
         let options = self.options.map(|section| self.options_view(section, window, cx));
         let full_list = self.full_list.clone().filter(|_| self.full_list_shown);
@@ -3800,7 +3801,7 @@ impl Render for Shell {
             .children(menu)
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
-            .children(notify::stack(notices_top, notices_right, cx))
+            .children(notify::stack(corner, cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }

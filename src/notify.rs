@@ -1,5 +1,6 @@
-//! Notifications: in the terminal's top right corner, above everything, a
-//! little translucent; stacked top down, the newest highest, at most N; each
+//! Notifications: in the terminal's top right corner (the window's bottom
+//! left one over a full screen), above everything, a little translucent;
+//! stacked from their corner, the newest in it, at most N; each
 //! gone after a few seconds, unless the pointer is on it. While one is up,
 //! its ticket shines in every list shown ([`lit`]).
 //!
@@ -197,24 +198,29 @@ fn colour(kind: Kind) -> Hsla {
     }
 }
 
-/// The stack, `top` and `right` from the window's top right corner (the
-/// terminal's, where the shell puts it), above everything: the newest in
-/// the corner, the older ones under it.
-pub fn stack(top: f32, right: f32, cx: &App) -> Option<AnyElement> {
+/// Where the stack sits, from a corner of the window.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Corner {
+    /// The terminal's top right corner.
+    TopRight { top: f32, right: f32 },
+    /// The window's bottom left corner: over a full screen, out of its way.
+    BottomLeft { bottom: f32, left: f32 },
+}
+
+/// The stack, at its corner, above everything: the newest in the corner,
+/// the older ones away from it.
+pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
     let shown = &cx.global::<Notices>().shown;
     if shown.is_empty() {
         return None;
     }
-    let mut column = div()
-        .id("notices")
-        .absolute()
-        .top(px(top))
-        .right(px(right))
-        .w(px(380.))
-        .flex()
-        .flex_col()
-        .gap_2();
-    for notice in shown.iter().rev() {
+    let column = div().id("notices").absolute().w(px(380.)).flex().flex_col().gap_2();
+    let (mut column, newest_last) = match corner {
+        Corner::TopRight { top, right } => (column.top(px(top)).right(px(right)), false),
+        Corner::BottomLeft { bottom, left } => (column.bottom(px(bottom)).left(px(left)), true),
+    };
+    let order: Vec<&Notice> = if newest_last { shown.iter().collect() } else { shown.iter().rev().collect() };
+    for notice in order {
         let (id, colour) = (notice.id, colour(notice.kind));
         let open = notice.clone();
         let what = match &notice.ticket {

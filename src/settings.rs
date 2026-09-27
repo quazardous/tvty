@@ -124,7 +124,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Appearance",
         group: "Notifications",
         label: "Shown at most",
-        about: "In the terminal's top right corner, the newest highest; older ones make room.",
+        about: "In the terminal's top right corner (bottom left over a full screen), the newest in the corner; older ones make room.",
         kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true },
     },
     Setting {

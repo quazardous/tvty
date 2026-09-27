@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Over a full screen (the options, the full list, a ticket or a new ticket
+  full screen), the notifications come in the window's bottom left corner,
+  out of its way, the newest in the corner.
 - A filter atop the sessions' list: type, and the live, idle and shut
   sessions keep those whose project, agent, name or folder hold every
   word, marked; ctrl+shift+f goes there (unfolding the list), Enter opens
