@@ -55,17 +55,38 @@ pub fn known() -> Vec<KnownLoop> {
 }
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew
-/// agent when `crew`.
+/// agent when `crew` — or, `again`, a loop this machine knows, restarted
+/// where it ran (on aiball's host, or in tmux), its conversation resumed.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Start {
     pub cwd: String,
     pub project: Option<String>,
     pub agent: Option<String>,
     pub crew: bool,
+    pub again: Option<String>,
+}
+
+impl KnownLoop {
+    /// Its agent: its own, or the one it runs as on aiball's host.
+    pub fn agent(&self) -> Option<&str> {
+        self.consumer.as_deref().or(self.host_agent.as_deref())
+    }
+
+    /// The session tvty opens it by: its agent's on aiball's host, its
+    /// tmux session's name otherwise.
+    pub fn session(&self) -> String {
+        match &self.host_agent {
+            Some(agent) => format!("{}{agent}", crate::sessions::HOSTED_PREFIX),
+            None => self.name.clone(),
+        }
+    }
 }
 
 /// The arguments of `claude-loop` for `start`.
 pub fn start_args(start: &Start) -> Vec<String> {
+    if let Some(name) = &start.again {
+        return vec!["restart".to_string(), "--resume".to_string(), name.clone()];
+    }
     let mut args = vec!["start".to_string(), "--no-attach".to_string()];
     if let Some(project) = &start.project {
         args.extend(["--project".to_string(), project.clone()]);
@@ -77,7 +98,8 @@ pub fn start_args(start: &Start) -> Vec<String> {
 }
 
 /// Starts a loop, detached, in its directory. Blocking: call it off the UI
-/// thread. Answers the loop's name, found by where it works and for whom.
+/// thread. Answers the session to open, found by where the loop works and
+/// for whom.
 pub fn start(start: &Start) -> anyhow::Result<String> {
     let cwd = Path::new(&start.cwd);
     if !cwd.is_dir() {
@@ -90,15 +112,19 @@ pub fn start(start: &Start) -> anyhow::Result<String> {
         .output()
         .context("claude-loop")?;
     let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+    let verb = if start.again.is_some() { "restart" } else { "start" };
     if !output.status.success() {
-        bail!("claude-loop start: {}", last_line(&said));
+        bail!("claude-loop {verb}: {}", last_line(&said));
     }
-    // The loop's plate says where it works and for whom: its name is there.
+    // The loop's plate says where it works, for whom, and where it runs.
     known()
         .into_iter()
-        .find(|l| Path::new(&l.cwd) == cwd && (start.agent.is_none() || l.consumer == start.agent))
-        .map(|l| l.name)
-        .with_context(|| format!("claude-loop start: {}", last_line(&said)))
+        .find(|l| match &start.again {
+            Some(name) => l.name == *name,
+            None => Path::new(&l.cwd) == cwd && (start.agent.is_none() || l.agent() == start.agent.as_deref()),
+        })
+        .map(|l| l.session())
+        .with_context(|| format!("claude-loop {verb}: {}", last_line(&said)))
 }
 
 fn last_line(text: &str) -> &str {
@@ -107,13 +133,32 @@ fn last_line(text: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Start, start_args};
+    use super::{KnownLoop, Start, start_args};
 
     #[test]
     fn a_loop_starts_detached_for_its_agent() {
-        let s = Start { cwd: "/w".into(), project: Some("demo".into()), agent: Some("demo-app".into()), crew: false };
+        let s = Start { cwd: "/w".into(), project: Some("demo".into()), agent: Some("demo-app".into()), crew: false, again: None };
         assert_eq!(start_args(&s), ["start", "--no-attach", "--project", "demo", "--agent", "demo-app"]);
-        let crew = Start { crew: true, project: None, ..s };
+        let crew = Start { crew: true, project: None, ..s.clone() };
         assert_eq!(start_args(&crew), ["start", "--no-attach", "--crew", "demo-app"]);
+        // A loop known here starts again where it ran, its talk resumed.
+        let again = Start { again: Some("cl-demo-1".into()), ..s };
+        assert_eq!(start_args(&again), ["restart", "--resume", "cl-demo-1"]);
+    }
+
+    #[test]
+    fn a_loop_on_the_host_opens_as_its_agent() {
+        let on_host = KnownLoop {
+            name: "cl-w-1".into(),
+            cwd: "/w".into(),
+            consumer: None,
+            project: None,
+            role: None,
+            host_agent: Some("w-claude".into()),
+        };
+        assert_eq!(on_host.agent(), Some("w-claude"));
+        assert_eq!(on_host.session(), format!("{}w-claude", crate::sessions::HOSTED_PREFIX));
+        let in_tmux = KnownLoop { host_agent: None, consumer: Some("w-claude".into()), ..on_host };
+        assert_eq!(in_tmux.session(), "cl-w-1");
     }
 }

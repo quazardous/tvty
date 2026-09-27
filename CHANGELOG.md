@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An idle loop is listed under the project aiball knows its agent in, not
   under "No project" when its plate names none (a loop moved onto
   aiball's host keeps only its agent there).
+- "start" on an idle loop of aiball's host whose program ended (its host
+  still up) restarts it there, its conversation resumed, and opens it —
+  claude-loop refused a plain start. A loop started on the host opens as
+  its agent's terminal.
 - A loop moved onto aiball's session host is no longer listed as idle
   too (its "start" was refused): it shows as its agent's terminal only.
 - Closing a shell on aiball's host no longer reports "no answer" when the

@@ -35,15 +35,10 @@ pub(super) struct NewSession {
 }
 
 impl Shell {
-    /// A loop's agent: its own, or the one it runs as on aiball's host.
-    fn loop_agent(l: &KnownLoop) -> Option<&str> {
-        l.consumer.as_deref().or(l.host_agent.as_deref())
-    }
-
     /// A loop's project as aiball knows its agent; its plate's otherwise (a
     /// plate may name none: a loop moved onto the host keeps only its agent).
     fn loop_project(&self, l: &KnownLoop) -> Option<String> {
-        let agent = Self::loop_agent(l);
+        let agent = l.agent();
         self.board
             .homes
             .iter()
@@ -67,7 +62,7 @@ impl Shell {
             })
             .filter(|l| {
                 let project = self.loop_project(l).unwrap_or_default();
-                crate::sessions::found(words, &[&project, Self::loop_agent(l).unwrap_or(""), &l.name, &l.cwd])
+                crate::sessions::found(words, &[&project, l.agent().unwrap_or(""), &l.name, &l.cwd])
             })
             .collect();
         loops.sort_by_cached_key(|l| {
@@ -185,13 +180,17 @@ impl Shell {
                         list = list.child(heading(project.clone()));
                         last = Some(project);
                     }
-                    let agent = Self::loop_agent(l).map(str::to_string);
+                    let agent = l.agent().map(str::to_string);
                     let name = agent.clone().unwrap_or_else(|| l.name.clone());
                     let start = Start {
                         cwd: l.cwd.clone(),
                         project: known,
                         agent,
                         crew: l.role.as_deref() == Some("crew"),
+                        // A loop moved onto aiball's host starts again there,
+                        // through claude-loop's restart: its start is refused
+                        // while its host is up, its program ended.
+                        again: l.host_agent.is_some().then(|| l.name.clone()),
                     };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
                 }
@@ -202,7 +201,7 @@ impl Shell {
                     list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No agent without a loop" } else { "No agent found" }));
                 }
                 for (agent, project, cwd) in homes {
-                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false };
+                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None };
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, cx, start));
                 }
             }
@@ -350,6 +349,7 @@ impl Shell {
                                         project: Some(form.project.clone()),
                                         agent: (!agent.is_empty()).then_some(agent),
                                         crew: form.crew,
+                                        again: None,
                                     };
                                     if form.on_host {
                                         shell.start_on_host(start, cx);

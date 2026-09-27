@@ -42,16 +42,20 @@ impl Shell {
             Some((project, terminal)) => (Some(project.to_string()), terminal.agent.clone()),
             None => (None, None),
         };
-        let known = self.board.known.iter().find(|l| l.name == session);
+        // Its loop: in tmux by its name, on aiball's host by its agent.
+        let known = self.board.known.iter().find(|l| l.session() == session);
         let start = known.map(|l| Start {
             cwd: l.cwd.clone(),
-            project: l.project.clone(),
-            agent: l.consumer.clone(),
+            project: project.clone().or_else(|| l.project.clone()),
+            agent: l.agent().map(str::to_string),
             crew: l.role.as_deref() == Some("crew"),
+            // On the host, its host outlives its program: started again
+            // there, through claude-loop's restart.
+            again: l.host_agent.is_some().then(|| l.name.clone()),
         });
         self.ended = Some(EndedSession {
             session: session.to_string(),
-            agent: agent.or_else(|| known.and_then(|l| l.consumer.clone())),
+            agent: agent.or_else(|| known.and_then(|l| l.agent().map(str::to_string))),
             project: project.or_else(|| known.and_then(|l| l.project.clone())),
             start,
         });
