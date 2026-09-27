@@ -1429,14 +1429,12 @@ impl TicketPanel {
                             .flex_col()
                             .flex_1()
                             .min_w_0()
-                            .items_center()
                             .child(
-                                // A readable measure for the talk.
+                                // The talk takes the whole width left.
                                 div()
                                     .flex()
                                     .flex_col()
                                     .w_full()
-                                    .max_w(px(820.))
                                     .h_full()
                                     // The count and the fold on their line, the
                                     // summary under them, the talk's width: a
@@ -1859,8 +1857,11 @@ impl TicketPanel {
             col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload (see the web UI)"));
         }
 
+        // A third of the window, no wider than its fields need: on a wide
+        // screen the rest goes to the talk.
         div()
             .w_1_3()
+            .max_w(px(460.))
             .flex_none()
             .h_full()
             .px_4()
