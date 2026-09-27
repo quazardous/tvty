@@ -39,25 +39,6 @@ pub struct OrderChanged(pub bool);
 /// The detail went full screen, or back to the panel.
 pub struct FullChanged;
 
-/// The full-screen detail's fields column was resized (its width, px).
-pub struct FieldsWidthChanged(pub f32);
-
-/// What the border between the fields and the talk carries while dragged.
-struct FieldsDrag;
-
-/// A drag that shows nothing under the pointer.
-struct NoPreview;
-
-impl Render for NoPreview {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-    }
-}
-
-/// The fields column, full screen: its bounds, and its width by default (a
-/// third of the window, no wider than its fields need).
-const FIELDS_MIN: f32 = 240.;
-const FIELDS_DEFAULT_MAX: f32 = 460.;
 
 /// What the panel is about: a project, and the agent of the terminal shown.
 #[derive(Clone, Debug, PartialEq)]
@@ -131,8 +112,6 @@ pub struct TicketPanel {
     scrolls: HashMap<Band, ScrollHandle>,
     /// The thread's order: newest first (top-down) or last (by the reply).
     newest_first: bool,
-    /// The full-screen fields column's width set by a drag; none: the default.
-    fields_width: Option<f32>,
     /// Who can be @mentioned, read once.
     mentions: Vec<String>,
     /// The detail fills the window: the ticket's invariants on the left
@@ -160,13 +139,15 @@ pub struct TicketPanel {
 
 impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
-impl EventEmitter<FieldsWidthChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
 
 
 impl TicketPanel {
     pub fn new(aiball: Aiball, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The full-screen fields column's width, dragged here or on another
+        // full page.
+        cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
         let reply = cx.new(|cx| {
             TextareaState::new(window, cx)
                 .placeholder("Reply… (ctrl+enter sends)")
@@ -216,7 +197,6 @@ impl TicketPanel {
             folded: HashSet::new(),
             scrolls: HashMap::new(),
             newest_first: false,
-            fields_width: None,
             mentions: Vec::new(),
             full: false,
             full_folded: false,
@@ -416,11 +396,6 @@ impl TicketPanel {
         let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
         self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
         self.change(format!("related to #{target} ({kind})"), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
-    }
-
-    pub fn set_fields_width(&mut self, width: Option<f32>, cx: &mut Context<Self>) {
-        self.fields_width = width;
-        cx.notify();
     }
 
     pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {
@@ -1447,40 +1422,9 @@ impl TicketPanel {
                     .child(title),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    // The border between the fields and the talk is dragged:
-                    // the fields' width follows, within bounds.
-                    .on_drag_move(cx.listener(|panel, event: &DragMoveEvent<FieldsDrag>, _, cx| {
-                        let bounds = event.bounds;
-                        let max = (f32::from(bounds.size.width) * 0.6).max(FIELDS_MIN);
-                        let width = f32::from(event.event.position.x - bounds.origin.x).clamp(FIELDS_MIN, max);
-                        panel.fields_width = Some(width);
-                        cx.emit(FieldsWidthChanged(width));
-                        cx.notify();
-                    }))
+                crate::sidecol::row()
                     .child(left)
-                    .child(
-                        div()
-                            .id("fields-edge")
-                            .w(px(5.))
-                            .flex_none()
-                            .h_full()
-                            .bg(p().border)
-                            .cursor(CursorStyle::ResizeColumn)
-                            .hover(|d| d.bg(p().accent))
-                            .on_drag(FieldsDrag, |_, _, _, cx| cx.new(|_| NoPreview))
-                            // A double click gives the default width back.
-                            .on_click(cx.listener(|panel, event: &ClickEvent, _, cx| {
-                                if event.click_count() == 2 {
-                                    panel.fields_width = None;
-                                    cx.emit(FieldsWidthChanged(0.));
-                                    cx.notify();
-                                }
-                            })),
-                    )
+                    .child(crate::sidecol::edge("fields-edge"))
                     .child(
                         div()
                             .flex()
@@ -1915,15 +1859,9 @@ impl TicketPanel {
             col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload (see the web UI)"));
         }
 
-        // As dragged; by default a third of the window, no wider than its
-        // fields need: on a wide screen the rest goes to the talk.
-        div()
-            .map(|d| match self.fields_width {
-                Some(width) => d.w(px(width.max(FIELDS_MIN))),
-                None => d.w_1_3().max_w(px(FIELDS_DEFAULT_MAX)),
-            })
-            .flex_none()
-            .h_full()
+        // As dragged, or its default: on a wide screen the rest goes to
+        // the talk (see crate::sidecol).
+        crate::sidecol::column(cx)
             .px_4()
             .pb_4()
             .bg(p().surface)

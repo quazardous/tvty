@@ -26,6 +26,7 @@ mod rowstate;
 mod sessions;
 mod settings;
 mod shell;
+mod sidecol;
 mod stats;
 mod status;
 mod terminal;
@@ -61,6 +62,8 @@ fn main() {
         fonts::load(cx);
         // The sets of settings (settings.toml, the layout, the workspace).
         settings::init(cx);
+        // The full pages' side column, as last dragged.
+        cx.set_global(sidecol::SideWidth(config::get::<settings::Layout>(cx).fields_width));
         let prefs = config::get::<settings::Preferences>(cx).clone();
         bus::init(cx);
         notify::init(

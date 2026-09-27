@@ -89,6 +89,8 @@ impl EventEmitter<CloseFullList> for FullList {}
 
 impl FullList {
     pub fn new(aiball: Aiball, scope: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The side column's width, dragged here or on another full page.
+        cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
         let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search titles…"));
         // The rows a notification is about shine while it is up.
         cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
@@ -640,20 +642,9 @@ impl Render for FullList {
                     ),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_1()
-                    .min_h_0()
-                    .child(
-                        div()
-                            .w_1_3()
-                            .flex_none()
-                            .h_full()
-                            .bg(p().surface)
-                            .border_r_1()
-                            .border_color(p().border)
-                            .child(side.overflow_y_scrollbar()),
-                    )
+                crate::sidecol::row()
+                    .child(crate::sidecol::column(cx).bg(p().surface).child(side.overflow_y_scrollbar()))
+                    .child(crate::sidecol::edge("full-list-edge"))
                     .child(div().flex_1().min_w_0().h_full().child(list.overflow_y_scrollbar())),
             )
     }

@@ -74,7 +74,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   talk was held to 820 px, centred, and its fields took a third of the
   screen (now 460 px at most). The border between the fields and the talk
   is dragged to resize them (kept), a double click on it gives the default
-  back.
+  back. The full ticket list and the new ticket's page do the same, with
+  the same width: dragged on one page, it holds on the others.
 - The desktop launcher survives a new session: it runs ~/.local/bin/tvty,
   always there, which runs the build — in a folder mounted after the
   session starts (an encrypted home folder), the build was missing when the

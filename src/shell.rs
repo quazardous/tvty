@@ -34,7 +34,7 @@ mod stacks;
 mod tabs;
 use tabs::Restoring;
 mod viewer;
-use crate::panel::{CollapsePanel, FieldsWidthChanged, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
+use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::{Preferences, SCHEMA, Settings};
 use gpui_kit::component::switch::Switch;
@@ -417,9 +417,9 @@ impl Shell {
             shell.set_pref("tickets.newest_first", Value::Toggle(order.0), cx);
         })
         .detach();
-        // The full-screen ticket's fields column, as dragged (0: the default).
-        cx.subscribe(&panel, |shell, _, width: &FieldsWidthChanged, cx| {
-            shell.settings.layout.fields_width = (width.0 > 0.).then_some(width.0);
+        // The full pages' side column, as dragged: kept with the layout.
+        cx.observe_global::<crate::sidecol::SideWidth>(|shell, cx| {
+            shell.settings.layout.fields_width = crate::sidecol::width(cx);
             shell.settings.save(cx);
         })
         .detach();
@@ -510,11 +510,7 @@ impl Shell {
         })
         .detach();
         let newest_first = shell.applied.tickets.newest_first;
-        let fields_width = shell.settings.layout.fields_width;
-        shell.panel.update(cx, |panel, cx| {
-            panel.set_newest_first(newest_first, cx);
-            panel.set_fields_width(fields_width, cx);
-        });
+        shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
             None => {

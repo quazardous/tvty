@@ -131,7 +131,9 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
   ticket, a high priority, the time. A thread full screen is headed by the
   same count and who spoke last; its fields column (a third of the window,
   460 px at most, by default) is resized by dragging its border, and a
-  double click on the border gives the default back.
+  double click on the border gives the default back. The full list's side
+  and the new ticket's fields are the same column, with the same width
+  (`src/sidecol.rs`).
 
 The legend is in the options page, under "Ticket list".
 

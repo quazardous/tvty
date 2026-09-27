@@ -98,6 +98,8 @@ impl EventEmitter<Created> for NewTicketForm {}
 
 impl NewTicketForm {
     pub fn new(aiball: Aiball, project: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
+        // The fields column's width, dragged here or on another full page.
+        cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Title"));
         let summary = cx.new(|cx| InputState::new(window, cx).placeholder("Summary, one line (optional)"));
         let body = cx.new(|cx| {
@@ -621,15 +623,10 @@ impl NewTicketForm {
         };
         col = col.child(group("Links")).child(field("sub-ticket of", parent));
 
-        div()
-            .w_1_3()
-            .flex_none()
-            .h_full()
+        crate::sidecol::column(cx)
             .px_4()
             .pb_4()
             .bg(p().surface)
-            .border_r_1()
-            .border_color(p().border)
             .child(col.overflow_y_scrollbar())
     }
 }
@@ -712,7 +709,7 @@ impl Render for NewTicketForm {
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseNewTicket))),
                     ),
             )
-            .child(div().flex().flex_1().min_h_0().child(self.fields(cx)).child(words))
+            .child(crate::sidecol::row().child(self.fields(cx)).child(crate::sidecol::edge("new-ticket-edge")).child(words))
     }
 }
 
