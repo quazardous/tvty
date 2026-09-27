@@ -10,6 +10,7 @@ mod daemon;
 mod emoji;
 mod fonts;
 mod composer;
+mod config;
 mod fulllist;
 mod icons;
 mod images;
