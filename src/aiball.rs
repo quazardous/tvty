@@ -232,6 +232,11 @@ pub struct BarBoot {
 pub struct BarRead {
     pub bar: AgentBar,
     pub stale: bool,
+    /// When tvty saw its phase change (seconds since the epoch): the bar
+    /// says the phase, not since when; none when it has not changed since
+    /// tvty started.
+    #[serde(skip)]
+    pub phase_since: Option<u64>,
 }
 
 /// An agent's own backlog, as it sees it.

@@ -85,7 +85,8 @@ impl Shell {
                 ("웃", left.map_or("held".into(), |s| format!("{s}s")), p().warning)
             }
             (Some("wait"), _) => ("웃", "held".to_string(), p().warning),
-            (Some("boot"), _) => ("…", "boot".to_string(), p().info),
+            // On the bar's yellow, as claude-loop's.
+            (Some("boot"), _) => ("…", "boot".to_string(), crate::theme::on(p().warning)),
             (Some("loop"), _) => ("▶", "auto".to_string(), p().success),
             _ => ("·", "—".to_string(), p().muted),
         };
@@ -130,12 +131,18 @@ impl Shell {
             Some("boot") => "starting",
             _ => "idle",
         };
+        let booting = phase.as_deref() == Some("boot");
+        // On the bar's yellow while its loop boots, every text in one ink.
+        let ink = |colour: Hsla| if booting { crate::theme::on(p().warning) } else { colour };
         let since = match &bar {
-            Some(b) if b.phase == "boot" => b
-                .boot
-                .as_ref()
-                .and_then(|boot| parse_time(&boot.started_at))
-                .map(|s| format!(" · {}", ago(now().saturating_sub(s)))),
+            // As claude-loop's 🚀: since when, and how long it has left —
+            // the boot lasts until its deadline, pushed back while a resume
+            // or a compaction shows.
+            Some(b) if b.phase == "boot" => b.boot.as_ref().and_then(|boot| {
+                let started = parse_time(&boot.started_at)?;
+                let left = until(boot.deadline_at.as_deref()).map(|s| format!(" · {}s left", s)).unwrap_or_default();
+                Some(format!(" · {}{left}", ago(now().saturating_sub(started))))
+            }),
             _ => status
                 .as_ref()
                 .and_then(|s| s.since)
@@ -145,9 +152,17 @@ impl Shell {
         let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
         let state = item()
             .id("agent-state")
-            .text_color(if phase.as_deref() == Some("busy") { p().accent } else { p().muted })
+            .text_color(match phase.as_deref() {
+                Some("busy") => p().accent,
+                Some("boot") => crate::theme::on(p().warning),
+                _ => p().muted,
+            })
             .child(format!("{what}{since}{info}"))
-            .tip("what its Claude does, and since when");
+            .tip(if booting {
+                "its loop is starting: Claude loads, may resume its conversation or compact; the loop wakes it once the boot ends (30 s at least, longer while a resume or a compaction shows)"
+            } else {
+                "what its Claude does, and since when"
+            });
         // Claude Code updated itself: a click restarts it. aiball refuses
         // while Claude works: then a click arms it, and tvty restarts it as
         // soon as it is idle.
@@ -213,20 +228,22 @@ impl Shell {
                 .h(px(BAR_HEIGHT))
                 .px_2()
                 .bg(p().surface)
+                // Yellow while its loop boots, as claude-loop's bar.
+                .when(booting, |d| d.bg(p().warning).text_color(crate::theme::on(p().warning)))
                 .border_t_1()
                 .border_color(p().border)
                 .text_xs()
-                .text_color(p().muted)
+                .text_color(ink(p().muted))
                 .child(afk)
                 .children(afk_choices)
                 .child(sep())
                 .child(if online {
                     state.into_any_element()
                 } else {
-                    item().text_color(p().danger).child("offline").into_any_element()
+                    item().text_color(ink(p().danger)).child("offline").into_any_element()
                 })
                 .children(restart)
-                .children(dialog.map(|_| item().text_color(p().warning).child("waits for an answer")))
+                .children(dialog.map(|_| item().text_color(ink(p().warning)).child("waits for an answer")))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
                     d.when(a.trust_dialog, |d| d.child(loud("trust this folder?")))
@@ -238,7 +255,7 @@ impl Shell {
                             d.child(
                                 item()
                                     .id("agent-prompt")
-                                    .text_color(if b.prompt.has_input { p().accent } else { p().muted })
+                                    .text_color(ink(if b.prompt.has_input { p().accent } else { p().muted }))
                                     .child("❯")
                                     .tip(if b.prompt.has_input {
                                         "Claude's prompt is on screen, with text not sent yet"
@@ -251,7 +268,7 @@ impl Shell {
                             d.child(
                                 item()
                                     .id("agent-typing")
-                                    .text_color(p().danger)
+                                    .text_color(ink(p().danger))
                                     .child("⌨")
                                     .tip("a human typed in its terminal a moment ago: the loop holds off"),
                             )
@@ -277,7 +294,7 @@ impl Shell {
                         .cursor_pointer()
                         .hover(|d| d.bg(p().hover))
                         .when(backlog_open, |d| d.bg(p().active))
-                        .when(backlog.is_some_and(|b| b > 0), |d| d.text_color(p().text))
+                        .when(backlog.is_some_and(|b| b > 0), |d| d.text_color(ink(p().text)))
                         .child(format!("backlog:{}", backlog.map_or("-".to_string(), |n| n.to_string())))
                         .tip("b: its backlog, the tickets for it to look at; a click lists them")
                         .on_click(cx.listener(move |shell, _, _, cx| {
@@ -287,14 +304,14 @@ impl Shell {
                 .child(
                     item()
                         .id("agent-events")
-                        .when(unseen > 0, |d| d.text_color(p().text))
+                        .when(unseen > 0, |d| d.text_color(ink(p().text)))
                         .child(format!("events:{unseen}"))
                         .tip("e: its events not seen yet — pings, answers, decisions waiting for it"),
                 )
                 .child(
                     item()
                         .id("agent-holds")
-                        .when(holds > 0, |d| d.text_color(p().text))
+                        .when(holds > 0, |d| d.text_color(ink(p().text)))
                         .child(format!("holds {holds}"))
                         .tip("the tickets it holds"),
                 )
@@ -302,7 +319,7 @@ impl Shell {
                     d.child(
                         item()
                             .id("agent-wake")
-                            .when(wake.is_some(), |d| d.text_color(p().text))
+                            .when(wake.is_some(), |d| d.text_color(ink(p().text)))
                             .child("✉")
                             .children(wake.map(ago))
                             .tip(match wake {
@@ -312,7 +329,7 @@ impl Shell {
                     )
                 })
                 .child(div().flex_1())
-                .child(item().text_color(p().text).child(agent.clone()))
+                .child(item().text_color(ink(p().text)).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .into_any_element(),

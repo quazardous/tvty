@@ -309,7 +309,13 @@ impl Live {
                     self.bars.remove(&agent);
                 } else {
                     match serde_json::from_value::<BarRead>(data.clone()) {
-                        Ok(bar) => {
+                        Ok(mut bar) => {
+                            // Since when it is in its phase: kept while it stays.
+                            bar.phase_since = match self.bars.get(&agent) {
+                                Some(before) if before.bar.phase == bar.bar.phase => before.phase_since,
+                                Some(_) => Some(crate::status::now()),
+                                None => None,
+                            };
                             self.bars.insert(agent, bar);
                         }
                         Err(error) => log::debug!("aiball bus: a bar tvty does not read: {error}"),

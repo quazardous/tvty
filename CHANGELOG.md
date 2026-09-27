@@ -112,6 +112,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A loop's boot shows as claude-loop shows it: yellow — the agent bar on
+  yellow, "starting · 6s · 24s left" — and the session's row says
+  "starting", not the agent's last state ("idle · 21m", left by its
+  previous run); once booted, it is idle since the boot ended.
 - Idle loops of no aiball project are listed last, under "No project", not
   under a bare "—"; and each project heads its idle loops once.
 - An idle loop is listed under the project aiball knows its agent in, not

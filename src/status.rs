@@ -20,7 +20,8 @@ impl Status {
         }
         Some(match self.state.as_str() {
             "busy" => p().accent,
-            "boot" => p().info,
+            // Yellow, as claude-loop's bar has always shown a boot.
+            "boot" => p().warning,
             _ => p().muted,
         })
     }
@@ -50,7 +51,7 @@ impl Status {
         let (glyph, glyph_colour) = match self.driver.as_str() {
             "stop" => ("✎", p().danger),
             "wait" => ("‖", p().warning),
-            "boot" => ("…", p().info),
+            "boot" => ("…", p().warning),
             _ => ("▶", p().success),
         };
         let what = match self.state.as_str() {

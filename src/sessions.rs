@@ -104,6 +104,12 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
             board.bars.insert(agent.clone(), bar.clone());
         }
     }
+    let mut projects = projects;
+    for terminal in projects.iter_mut().flat_map(|p| p.terminals.iter_mut()) {
+        if let (Some(status), Some(bar)) = (terminal.status.as_mut(), terminal.agent.as_ref().and_then(|a| board.bars.get(a))) {
+            loop_says(status, bar);
+        }
+    }
     board.projects = projects;
     // The daemon's own terminals: with the project they started in, after
     // its agents; the others together, before tmux's.
@@ -171,6 +177,29 @@ fn homes(consumers: &[Consumer]) -> Vec<(String, Option<String>, String)> {
 }
 
 /// An agent's Claude, as aiball centralises it.
+/// What a live loop's bar says wins over the agent's own state: the
+/// loop knows its phase — a boot above all, while Claude, at its prompt,
+/// already says idle (its state the one it left, the last time).
+fn loop_says(status: &mut Status, bar: &crate::aiball::BarRead) {
+    if bar.stale {
+        return;
+    }
+    let phase_since = bar.phase_since;
+    let bar = &bar.bar;
+    if status.state != bar.phase {
+        status.state = bar.phase.clone();
+        status.since = None;
+    }
+    status.driver = bar.presence.clone();
+    if let Some(started) = bar.boot.as_ref().and_then(|b| crate::status::parse_time(&b.started_at)) {
+        status.since = Some(started);
+    } else if let Some(changed) = phase_since {
+        // The agent's own date may be older than the loop's phase (its
+        // state the one left the last time): the later one.
+        status.since = Some(status.since.map_or(changed, |since| since.max(changed)));
+    }
+}
+
 fn status_of(c: &Consumer) -> Option<Status> {
     Some(Status {
         state: c.state.clone()?,
@@ -300,7 +329,48 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, filter_words, found, group, homes, project_at};
+    use super::{HOSTED_PREFIX, Status, filter_words, found, group, homes, loop_says, project_at};
+
+    #[test]
+    fn a_live_loops_bar_says_its_phase() {
+        let mut status = Status {
+            state: "idle".into(),
+            since: Some(1),
+            driver: "loop".into(),
+            online: true,
+            unseen: 0,
+            cwd: None,
+            counters: None,
+        };
+        let bar: crate::aiball::BarRead = serde_json::from_value(serde_json::json!({
+            "stale": false,
+            "bar": { "phase": "boot", "presence": "boot", "afk": { "mode": "off", "expires_at": null },
+                     "prompt": { "visible": true, "has_input": false }, "human_typing": false,
+                     "marker": { "info": null, "health_prompt": false, "resume_picker": false, "resume_mode_picker": false },
+                     "alerts": { "link_down": false, "daemon_down": false, "not_logged_in": false, "trust_dialog": false,
+                                 "api_unreachable": false, "restart_needed": false },
+                     "proxy_alive": true, "zen": false, "counters": null, "next_wake_at": null,
+                     "boot": { "started_at": "2026-09-27T18:42:23.294Z", "deadline_at": "2026-09-27T18:42:53.294Z" },
+                     "host": "external" }
+        }))
+        .unwrap();
+        loop_says(&mut status, &bar);
+        assert_eq!((status.state.as_str(), status.driver.as_str()), ("boot", "boot"));
+        assert_eq!(status.since, crate::status::parse_time("2026-09-27T18:42:23.294Z"));
+        // A stale bar says nothing: the loop is gone.
+        let mut idle = Status { state: "idle".into(), since: Some(1), ..status.clone() };
+        loop_says(&mut idle, &crate::aiball::BarRead { stale: true, ..bar.clone() });
+        assert_eq!((idle.state.as_str(), idle.since), ("idle", Some(1)));
+        // Out of its boot, idle since the loop said so, not since an older
+        // state of the agent's.
+        let mut after = Status { state: "idle".into(), since: Some(1), ..status.clone() };
+        let mut out = bar;
+        out.bar.phase = "idle".into();
+        out.bar.boot = None;
+        out.phase_since = Some(500);
+        loop_says(&mut after, &out);
+        assert_eq!(after.since, Some(500));
+    }
 
     #[test]
     fn a_filter_finds_rows_by_every_word() {
