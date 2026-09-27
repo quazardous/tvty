@@ -1,13 +1,28 @@
-/target
-dev/tvty-wbox/log/
-dev/tvty-wbox/screenshots/
-.aiball-session_id
-dev/fake-aiball/
-dev/tmux/
-dev/tvty-wbox/config/
-dev/claude-loop/
-dev/loops/
-dev/tvty-wbox/data/
-dev/tvty-wbox/state/
-dev/readme-demo/
+# ── Build ────────────────────────────────────────────────────────────
+/target/
 __pycache__/
+*.pyc
+
+# ── Test and demo runtime ────────────────────────────────────────────
+# Everything under dev/ is made by the tests and the demo (a throwaway
+# aiball, tmux servers, loop state, settings, logs, screenshots), except
+# the fixtures kept below: a new runtime directory is ignored by itself.
+/dev/*
+!/dev/sim/
+!/dev/tvty-wbox/
+/dev/tvty-wbox/*
+!/dev/tvty-wbox/config.yaml
+!/dev/tvty-wbox/scripts/
+
+# ── Local agent state ────────────────────────────────────────────────
+# A working copy's own: the session of the agent working in it, and
+# Claude Code's local settings.
+/.aiball-session_id
+/.claude/settings.local.json
+
+# ── Editors and systems ──────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
