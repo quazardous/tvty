@@ -86,7 +86,11 @@ project's tickets meanwhile; the loop shows under idle.
 - **One order everywhere**: the projects' list, the slider and the gallery
   lay the groups out alike — by default the group used last first, as
   ctrl+tab goes (the groups never used after, alphabetical), or
-  alphabetical: **⇅** in the list's header, or Options > Layout. A group's
+  alphabetical: **⇅** in the list's header, or Options > Layout. The
+  projects' list takes that order once, when the work left last time is
+  back, and keeps it: a click never moves a project under the pointer
+  (projects that come later go last; ⇅ takes it afresh); the slider and
+  the gallery follow the order of use as it goes. A group's
   terminals keep their place, so that its tabs never move. While the slider
   is up, nothing moves: the chosen card is enlarged over its own slot.
 - **A filter atop the list** (ctrl+shift+f unfolds the list and goes to

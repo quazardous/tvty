@@ -99,6 +99,14 @@ pub struct Shell {
     selected: Option<String>,
     /// Sessions by last use, most recent first: the slider's order.
     recent: Vec<String>,
+    /// The projects' list's order, the one used last first, taken once the
+    /// work left last time is back: a click does not move a project under
+    /// the pointer (the slider keeps the order of use live). Projects that
+    /// come later go last; ⇅ takes the order afresh.
+    sidebar_order: Option<Vec<String>>,
+    /// When tvty started: a work left with terminals gone for good never
+    /// ends its restoring, and the list's order is taken a moment after.
+    began: std::time::Instant,
     panel: Entity<TicketPanel>,
     settings: Settings,
     /// The preferences in force, to tell what a change changes.
@@ -544,6 +552,8 @@ impl Shell {
             terminals: HashMap::new(),
             selected: None,
             recent: Vec::new(),
+            sidebar_order: None,
+            began: std::time::Instant::now(),
             panel,
             settings: Settings::current(cx),
             applied: crate::config::get::<Preferences>(cx).clone(),
@@ -703,6 +713,7 @@ impl Shell {
         let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
         self.forget_stopping(&mut board);
         self.order_groups(&mut board);
+        self.keep_sidebar_order(&board);
         if self.board != board {
             self.board = board;
             self.fire_armed_restarts(cx);
@@ -1232,6 +1243,32 @@ impl Shell {
     /// ctrl+tab goes; the groups never used after, alphabetical), or
     /// alphabetical as the board comes. Within a group the terminals keep
     /// their place, so that the tabs do not move under the pointer.
+    /// The projects' list's order: taken once the work is back, then only
+    /// grown with the projects that come; alphabetical needs none.
+    fn keep_sidebar_order(&mut self, board: &sessions::Board) {
+        if !self.applied.sessions.recent_first {
+            self.sidebar_order = None;
+            return;
+        }
+        let names = board.projects.iter().map(|p| p.name.clone());
+        match self.sidebar_order.as_mut() {
+            None if !board.projects.is_empty()
+                && self.live.ready()
+                && (self.restoring.is_none() || self.began.elapsed() > std::time::Duration::from_secs(3)) =>
+            {
+                self.sidebar_order = Some(names.collect())
+            }
+            None => {}
+            Some(order) => {
+                for name in names {
+                    if !order.contains(&name) {
+                        order.push(name);
+                    }
+                }
+            }
+        }
+    }
+
     fn order_groups(&self, board: &mut sessions::Board) {
         if !self.applied.sessions.recent_first {
             return;
@@ -1299,7 +1336,8 @@ impl Shell {
     /// The live sessions the filter finds, by project, as listed; all of
     /// them without a filter.
     pub(super) fn live_found(&self, words: &[String]) -> Vec<(&sessions::Project, Vec<&Terminal>)> {
-        self.board
+        let mut found = self
+            .board
             .projects
             .iter()
             .map(|p| {
@@ -1311,7 +1349,12 @@ impl Shell {
                 (p, shown)
             })
             .filter(|(_, shown)| words.is_empty() || !shown.is_empty())
-            .collect()
+            .collect::<Vec<_>>();
+        // In the order the list took once the work was back.
+        if let Some(order) = &self.sidebar_order {
+            found.sort_by_key(|(p, _)| order.iter().position(|n| *n == p.name).unwrap_or(usize::MAX));
+        }
+        found
     }
 
     /// The session the arrows are on, while filtering.

@@ -118,6 +118,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The projects' list no longer moves a project to the top when one of its
+  terminals is clicked: it takes the order of use once, when the work left
+  last time is back (⇅ takes it again); the slider still follows the order
+  of use as it goes.
 - A terminal closed then opened again at once opens at once: the stop of
   the closed one (the host gives an interactive shell up to 10 s) no
   longer holds up tvty's other calls to aiball, and a name being stopped
