@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is left to do (accept aiball's MCP server in Claude Code), and starts the
   first session.
 - F11 puts the window full screen, and back; the ☰ menu has it too.
+- Every ticket reference is a link — in a thread's words and events, the
+  relations, the step it waits on —, and another project's ticket takes
+  the panel to its project.
 
 ### Changed
 
@@ -46,6 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Selecting text in the ticket panel no longer makes it blink.
+- A relation made from the other ticket reads the right way round ("blocks",
+  not "depends on").
 - tvty opens as it was left — windowed at its size, maximized or full screen —
   after a quit as after Restart.
 - Esc in the title bar's "#…" empties it and lets it go, and the window's

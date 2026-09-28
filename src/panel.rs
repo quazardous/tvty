@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
+use crate::ui::ticketref;
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
@@ -979,7 +980,7 @@ impl TicketPanel {
                         .flex_1()
                         .when(yours, |d| d.font_weight(FontWeight::BOLD))
                         .text_color(if yours { p().text } else { p().muted })
-                        .child(sentence),
+                        .child(ticketref::inline("turn", &sentence)),
                 )
         });
         let mut chips: Vec<AnyElement> = Vec::new();
@@ -1019,9 +1020,11 @@ impl TicketPanel {
             }
         }
         for relation in &ticket.relations {
-            let verb = match (relation.kind.as_str(), relation.reciprocal) {
-                ("depends_on", false) | ("blocks", true) => "depends on",
-                ("blocks", false) | ("depends_on", true) => "blocks",
+            // aiball gives a relation as seen from this ticket, a reciprocal
+            // one's kind already turned round.
+            let verb = match relation.kind.as_str() {
+                "depends_on" => "depends on",
+                "blocks" => "blocks",
                 _ => continue,
             };
             let target = relation.target_ticket_id;
@@ -1036,7 +1039,9 @@ impl TicketPanel {
                     .flex()
                     .items_center()
                     .gap_1()
-                    .child(format!("{verb} #{target}{}", stage.map(|s| format!(" {s}")).unwrap_or_default()))
+                    .child(verb)
+                    .child(ticketref::link(SharedString::from(format!("chip-rel-{target}")), target, None))
+                    .when_some(stage, |d, stage| d.child(stage))
                     .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), p().muted, 12.)))
                     .into_any_element(),
             );
@@ -1750,27 +1755,40 @@ impl TicketPanel {
                     crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project: parent_project.clone(), parent: Some(parent) })
                 })),
         );
+        // A row of references: its label, then each one a link.
+        let refs = |text: &'static str, ids: Vec<u64>| {
+            div()
+                .flex()
+                .gap_2()
+                .py_0p5()
+                .px_1()
+                .child(label(text))
+                .child(div().flex_1().min_w_0().flex().flex_wrap().gap_2().children(
+                    ids.into_iter().map(|id| ticketref::link(SharedString::from(format!("inv-ref-{text}-{id}")), id, None)),
+                ))
+        };
         if let Some(parent) = ticket.parent_ticket_id {
-            col = col.child(row("inv-parent", "sub-ticket of", format!("#{parent}"), None, cx));
+            col = col.child(refs("sub-ticket of", vec![parent]));
         }
         if !ticket.sub_tickets.is_empty() {
-            let subs: Vec<String> = ticket
+            let subs: Vec<u64> = ticket
                 .sub_tickets
                 .iter()
                 .filter_map(|t| t.get("id").and_then(|id| id.as_u64()).or_else(|| t.as_u64()))
-                .map(|id| format!("#{id}"))
                 .collect();
-            col = col.child(row("inv-subs", "sub-tickets", subs.join(", "), None, cx));
+            col = col.child(refs("sub-tickets", subs));
         }
         for relation in &ticket.relations {
+            // As seen from this ticket (a reciprocal's kind already turned
+            // round by aiball); only "duplicates" keeps its word both ways.
             let verb = match (relation.kind.as_str(), relation.reciprocal) {
-                ("depends_on", false) | ("blocks", true) => "depends on",
-                ("blocks", false) | ("depends_on", true) => "blocks",
+                ("depends_on", _) => "depends on",
+                ("blocks", _) => "blocks",
                 ("relates_to", _) => "relates to",
                 ("duplicates", false) => "duplicates",
                 ("duplicates", true) => "duplicated by",
-                ("parent_of", false) | ("child_of", true) => "parent of",
-                ("child_of", false) | ("parent_of", true) => "child of",
+                ("parent_of", _) => "parent of",
+                ("child_of", _) => "child of",
                 _ => continue,
             };
             let target = relation.target_ticket_id;
@@ -1790,7 +1808,15 @@ impl TicketPanel {
                     .py_0p5()
                     .px_1()
                     .child(label(verb))
-                    .child(div().flex_1().min_w_0().child(format!("#{target}{stage}")))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .gap_1()
+                            .child(ticketref::link(SharedString::from(format!("inv-rel-{target}")), target, None))
+                            .child(stage.trim().to_string()),
+                    )
                     .children(remove),
             );
         }
@@ -1861,15 +1887,12 @@ impl TicketPanel {
         let (unfolded, busy) = (&detail.unfolded, detail.busy);
         if let Shape::Event { verb, count } = &entry.shape {
             let times = if *count > 1 { format!(" ×{count}") } else { String::new() };
-            return div()
-                .text_xs()
-                .text_color(p().muted)
-                .child(format!(
-                    "{} {verb}{times}{}",
-                    who(&comment.by_agent, user),
-                    ago(&comment.created_at).map(|a| format!(" · {a}")).unwrap_or_default()
-                ))
-                .into_any_element();
+            let line = format!(
+                "{} {verb}{times}{}",
+                who(&comment.by_agent, user),
+                ago(&comment.created_at).map(|a| format!(" · {a}")).unwrap_or_default()
+            );
+            return ticketref::inline(format!("event-{}", entry.id), &line).text_xs().text_color(p().muted).into_any_element();
         }
         // Full screen, everything shows whole unless the user folds it.
         let foldable = matches!(entry.shape, Shape::Folded(_)) && (!self.full || self.full_folded);
@@ -2150,8 +2173,7 @@ impl TicketPanel {
                                         .gap_1()
                                         .child(if short.is_some() { "or on" } else { "on" })
                                         .child(
-                                            buttons::link(("resume-ticket", id), format!("#{n}"))
-                                                .on_click(cx.listener(move |panel, _, _, cx| panel.open(n, cx))),
+                                            ticketref::link(("resume-ticket", id), n, None),
                                         )
                                 }))
                                 .tip(tip),
@@ -2383,7 +2405,9 @@ impl TicketPanel {
         let mut col = div().flex().flex_col().gap_1();
         for (i, segment) in crate::images::segments(text, &self.images).into_iter().enumerate() {
             col = match segment {
-                crate::images::Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("{id}-{i}")), md)),
+                crate::images::Segment::Text(md) => col.child(
+                    TextView::markdown(SharedString::from(format!("{id}-{i}")), crate::ui::ticketref::linkify(&md)).on_link_click(crate::ui::ticketref::on_link),
+                ),
                 crate::images::Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
                 crate::images::Segment::Pictures(pictures) => {
                     let mut row = div().w_full().flex().flex_wrap().gap_2();

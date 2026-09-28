@@ -523,13 +523,9 @@ impl Shell {
                             .hover(|d| d.bg(p().hover))
                             .child(div().flex_none().text_color(p().muted).child(format!("#{ticket}")))
                             .child(div().flex_1().min_w_0().truncate().child(row.title.clone()))
-                            .on_click(cx.listener(move |shell, _, _, cx| {
+                            .on_click(cx.listener(move |shell, _, window, cx| {
                                 shell.backlog_view = None;
-                                if !shell.settings.layout.panel_open {
-                                    shell.toggle_panel(cx);
-                                }
-                                shell.panel.update(cx, |panel, cx| panel.open_in(Some(project.clone()), ticket, cx));
-                                cx.notify();
+                                shell.show_ticket(project.clone(), ticket, window, cx);
                             })),
                     );
                 }

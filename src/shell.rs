@@ -546,6 +546,7 @@ impl Shell {
             Signal::Copied => shell.show_copied(cx),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
+            Signal::GoToTicket { reference, project } => shell.follow_reference(reference.clone(), project.clone(), window, cx),
             Signal::AskNewTicket { project, parent } => shell.open_new_ticket(project.clone(), *parent, window, cx),
             Signal::OpenPictures { pictures, index } => {
                 shell.viewer = Some(viewer::Viewer::new(pictures.clone(), *index));
@@ -1278,6 +1279,12 @@ impl Shell {
     fn go_to_project(&mut self, project: &str, window: &mut Window, cx: &mut Context<Self>) {
         let here = self.selected.as_deref().and_then(|s| self.terminal_of(s)).is_some_and(|(p, _)| p == project);
         if here {
+            // Its terminal is shown, but another project's tickets may be
+            // (chosen in the list): back to the terminal's.
+            if self.project_shown.as_deref().is_some_and(|shown| shown != project) {
+                self.project_shown = None;
+                self.sync_panel(cx);
+            }
             return;
         }
         let terminals: Vec<String> = self
@@ -1358,6 +1365,49 @@ impl Shell {
             });
         })
         .detach();
+    }
+
+    /// A ticket's reference clicked, wherever it was painted: its project
+    /// asked of aiball when not known, then [`Self::show_ticket`].
+    fn follow_reference(&mut self, reference: String, project: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if let (Some(project), Ok(ticket)) = (project.clone(), reference.parse::<u64>()) {
+            self.show_ticket(project, ticket, window, cx);
+            return;
+        }
+        let aiball = self.aiball.clone();
+        let window_handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            let asked = reference.clone();
+            let found = cx.background_executor().spawn(async move { aiball.resolve_ticket(&asked) }).await;
+            let _ = cx.update_window(window_handle, |_, window, cx| {
+                let _ = this.update(cx, |shell, cx| match found {
+                    Ok((ticket, found)) => shell.show_ticket(project.unwrap_or(found), ticket, window, cx),
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("go to #{reference}"), format!("{error:#}"))),
+                });
+            });
+        })
+        .detach();
+    }
+
+    /// A ticket, where the user reads: full screen, it opens full screen;
+    /// in the panel beside a terminal, another project's first moves the
+    /// scope there (its terminal used last), then it opens in the panel.
+    pub(super) fn show_ticket(&mut self, project: String, ticket: u64, window: &mut Window, cx: &mut Context<Self>) {
+        if self.full_list_shown {
+            self.open_full_ticket(project, ticket, window, cx);
+            return;
+        }
+        // From the new ticket form (its parent): put away, its draft kept.
+        self.new_ticket_shown = false;
+        if !self.settings.layout.panel_open {
+            self.toggle_panel(cx);
+        }
+        let panel = self.panel.read(cx);
+        if !panel.is_full() && panel.scope_project().as_deref() != Some(project.as_str()) {
+            self.go_to_project(&project, window, cx);
+        }
+        self.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
+        cx.notify();
     }
 
     /// Text went to the clipboard: "Copied to clipboard", 1.5 s, the latest

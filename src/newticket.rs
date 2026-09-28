@@ -593,7 +593,7 @@ impl NewTicketForm {
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(format!("#{parent}"))
+                .child(crate::ui::ticketref::link("new-parent", parent, None))
                 .child(
                     buttons::remove("new-parent-drop", "✕", "no parent")
                         .text_xs()

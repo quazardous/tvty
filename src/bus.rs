@@ -18,6 +18,9 @@ pub enum Signal {
     OpenNotice(Notice),
     /// Open a ticket of a project full screen (from the full list).
     OpenTicket { project: String, ticket: u64 },
+    /// A ticket's reference was clicked (a ticket id, or a comment's hash):
+    /// go to it, in `project` when known.
+    GoToTicket { reference: String, project: Option<String> },
     /// A new ticket: on this project (else the one shown), under this parent.
     AskNewTicket { project: Option<String>, parent: Option<u64> },
     /// Something changed on the board: read it again.

@@ -307,6 +307,13 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   moderation; the reply box; Close or Reopen. What is typed is posted first,
   so every gesture carries its why. The rest (snooze, editing, relations,
   votes) stays in aiball's web UI.
+- **Every ticket reference is a link**, and follows the same way wherever it
+  is painted — a thread's words (`#12`, a comment's `#C.` link; not in code
+  or an address), its events, the relations and sub-tickets, the step it
+  waits on, the agent's backlog, a new ticket's parent. Full screen, the
+  ticket opens full screen; in the panel beside a terminal, another
+  project's ticket first moves the panel there (its terminal used last, or
+  its tickets alone), then opens.
 
 ## The agent's bar
 
