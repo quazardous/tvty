@@ -409,10 +409,13 @@ terminal, its width set the same way. Both widths are remembered.
 
 Both sides — the projects' list and the ticket panel — fold with a **grip**
 on their edge (or their key, below) into a **10-pixel strip** that still
-shows what waits, as dots: red for the critical ticket, orange for a
-decision, blue for unread. On the left, one dot per project with something
-waiting; on the right, the selected terminal's project. A click on the
-strip unfolds it. Both states are remembered.
+says something. On the left, one mark per running Claude, in the list's
+order: its colour its state (grey idle, blue working, yellow booting, faint
+offline), its shape who drives it (▶ on its own, ‖ held for a while, ■ held
+until let go, a dot otherwise), its name and state under the pointer. On the
+right, the selected terminal's project, as dots: red for the critical
+ticket, orange for a decision, blue for unread. A click on the strip
+unfolds it. Both states are remembered.
 
 ## Colour themes
 

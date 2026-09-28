@@ -409,11 +409,6 @@ impl Alerts {
         colors
     }
 
-    /// The most pressing thing waiting, if any.
-    fn color(&self) -> Option<Hsla> {
-        self.colors().first().copied()
-    }
-
     /// The badges, each saying what it counts under the pointer; `key` sets
     /// them apart from the other badges of the window.
     pub(crate) fn badges<K: Into<SharedString>>(&self, key: K) -> impl IntoElement + use<K> {
@@ -3576,7 +3571,27 @@ impl Shell {
     }
 
     /// A folded side: 14 pixels, a dot per thing waiting, a click unfolds.
-    fn folded(&self, side: Side, dots: Vec<Hsla>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+    /// Each running Claude, as the folded list shows it: grey idle, blue
+    /// working, yellow booting; ▶ on its own, ‖ held for a while, ■ held
+    /// until let go, a dot otherwise.
+    fn loop_marks(&self) -> Vec<Mark> {
+        self.board
+            .projects
+            .iter()
+            .flat_map(|p| &p.terminals)
+            .filter_map(|t| {
+                let agent = t.agent.as_ref()?;
+                let status = t.status.as_ref()?;
+                let colour = status.colour().unwrap_or(p().muted.opacity(0.4));
+                let bar = self.board.bars.get(agent).filter(|b| !b.stale).map(|b| &b.bar);
+                let presence = bar.map(|b| b.presence.as_str()).unwrap_or(status.driver.as_str());
+                let (glyph, said) = loop_mark(&status.state, presence, bar.map(|b| b.afk.mode.as_str()));
+                Some(Mark { colour, glyph, tip: Some(format!("{agent}: {said}")) })
+            })
+            .collect()
+    }
+
+    fn folded(&self, side: Side, marks: Vec<Mark>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
             .id(match side {
                 Side::Left => "sidebar-folded",
@@ -3598,10 +3613,17 @@ impl Shell {
             .border_color(p().border)
             .cursor_pointer()
             .hover(|d| d.bg(p().surface.blend(p().active)))
-            .children(
-                dots.into_iter()
-                    .map(|color| div().flex_none().size(px(6.)).rounded_full().bg(color)),
-            )
+            .children(marks.into_iter().enumerate().map(|(i, mark)| {
+                let shape = match mark.glyph {
+                    Some(glyph) => div().flex_none().text_size(px(9.)).line_height(px(10.)).text_color(mark.colour).child(glyph),
+                    None => div().flex_none().size(px(6.)).rounded_full().bg(mark.colour),
+                };
+                let one = div().id(("folded-mark", i)).flex().justify_center().w_full().child(shape);
+                match mark.tip {
+                    Some(tip) => one.tip(tip).into_any_element(),
+                    None => one.into_any_element(),
+                }
+            }))
             .on_click(cx.listener(move |shell, _, _, cx| match side {
                 Side::Left => shell.toggle_sidebar(cx),
                 Side::Right => shell.toggle_panel(cx),
@@ -4114,17 +4136,10 @@ impl Render for Shell {
                 .child(self.edge(Side::Left, cx))
         });
         let left = {
-            let dots = self
-                .board
-                .projects
-                .iter()
-                .filter_map(|p| {
-                    let tickets = self.board.tickets.get(&p.name).into_iter().flatten();
-                    let alerts = Alerts::of(tickets, self.board.critical.get(&p.name).copied());
-                    alerts.color()
-                })
-                .collect();
-            self.folded(Side::Left, dots, cx)
+            // Folded, the list says how its Claudes are doing: one mark
+            // each, coloured by its state, shaped by who drives it.
+            let marks = self.loop_marks();
+            self.folded(Side::Left, marks, cx)
         };
         // Full screen, the panel lies over the window; its place shows the
         // folded strip meanwhile.
@@ -4151,7 +4166,7 @@ impl Render for Shell {
                     Alerts::of(tickets, self.board.critical.get(project).copied())
                 })
                 .unwrap_or_default();
-            self.folded(Side::Right, alerts.colors(), cx).into_any_element()
+            self.folded(Side::Right, alerts.colors().into_iter().map(Mark::dot).collect(), cx).into_any_element()
         };
         // The notices sit in the terminal's top right corner: left of the
         // panel, or of its folded edge, below the tabs; over a full screen,
@@ -4790,6 +4805,38 @@ fn see_through(appearance: &crate::settings::Appearance, window: &mut Window) {
     window.set_background_appearance(look);
 }
 
+/// A running Claude's mark on the folded list: the glyph of who drives it
+/// (▶ on its own, ‖ held for a while, ■ held until let go, none: a dot),
+/// and its state and mode in words.
+fn loop_mark(state: &str, presence: &str, armed: Option<&str>) -> (Option<&'static str>, String) {
+    let (glyph, mode) = match (presence, armed) {
+        (_, Some("wait_inf")) => (Some("■"), "held until let go"),
+        ("wait" | "stop", _) | (_, Some("wait_10m")) => (Some("‖"), "held for a while"),
+        ("loop", _) => (Some("▶"), "on its own"),
+        _ => (None, ""),
+    };
+    let state = match state {
+        "busy" => "working",
+        "boot" => "booting",
+        _ => "idle",
+    };
+    (glyph, if mode.is_empty() { state.to_string() } else { format!("{state}, {mode}") })
+}
+
+/// A mark of a folded side: a dot, or a glyph, in a colour, with what it
+/// says under the pointer.
+struct Mark {
+    colour: Hsla,
+    glyph: Option<&'static str>,
+    tip: Option<String>,
+}
+
+impl Mark {
+    fn dot(colour: Hsla) -> Self {
+        Self { colour, glyph: None, tip: None }
+    }
+}
+
 /// Whether a text field (a search, the reply, a form's box) has the focus.
 fn in_field(window: &Window) -> bool {
     window.context_stack().iter().any(|c| c.contains("Input"))
@@ -4806,6 +4853,15 @@ fn ticket_reference(typed: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_folded_claude_says_its_state_and_who_drives_it() {
+        use super::loop_mark;
+        assert_eq!(loop_mark("busy", "loop", Some("off")), (Some("▶"), "working, on its own".to_string()));
+        assert_eq!(loop_mark("idle", "wait", Some("wait_10m")), (Some("‖"), "idle, held for a while".to_string()));
+        assert_eq!(loop_mark("idle", "wait", Some("wait_inf")), (Some("■"), "idle, held until let go".to_string()));
+        assert_eq!(loop_mark("boot", "boot", None), (None, "booting".to_string()));
+    }
+
     #[test]
     fn a_ticket_is_named_by_its_number_or_a_comments_link() {
         use super::ticket_reference;
