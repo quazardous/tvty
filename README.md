@@ -1,6 +1,6 @@
 # Terminal Velocity
 
-**Twenty AI agents. One window. No tab hunting.**
+**Twenty AI agents in loops. Tickets driven. One window. No tab hunting.**
 
 *Beta · Linux for now.*
 
