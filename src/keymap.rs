@@ -39,6 +39,7 @@ actions!(
         GotoTicket,
         AfkCycle,
         ToggleOptions,
+        HelpMenu,
         FontBigger,
         FontSmaller,
         FontReset,
@@ -91,6 +92,7 @@ commands! {
     "sessions.filter", WINDOW, ["ctrl-shift-f"], "Filter the sessions: type, Enter opens, arrows move, Esc clears", FilterSessions;
     "ticket.goto", WINDOW, ["ctrl-shift-g"], "Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)", GotoTicket;
     "options.toggle", WINDOW, ["ctrl-,"], "Options", ToggleOptions;
+    "help.menu", WINDOW, ["f1"], "Help: about tvty, its documentation, what's new, a restart", HelpMenu;
     "font.bigger", WINDOW, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
     "font.smaller", WINDOW, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
     "font.reset", WINDOW, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;

@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A ? in the title bar (F1): about tvty, its documentation, what's new, GitHub,
+  report an issue, and Restart tvty — the Claude Code sessions keep running
+  and the terminals come back.
 - Terminal opacity (Options > Appearance > Colours): below 100 %, the desktop
   shows through the terminals, live; blurred on KDE if asked. Range settings
   like it are set with a slider.

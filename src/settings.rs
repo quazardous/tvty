@@ -423,6 +423,15 @@ pub fn report_errors(cx: &mut gpui_kit::App) {
     crate::config::report::<crate::keymap::Shortcuts>(cx);
 }
 
+/// Writes every set now, what waits included: the tvty that follows (a
+/// restart) reads them as they are.
+pub fn flush(cx: &mut gpui_kit::App) {
+    crate::config::flush::<Preferences>(cx);
+    crate::config::flush::<Layout>(cx);
+    crate::config::flush::<Workspace>(cx);
+    crate::config::flush::<crate::keymap::Shortcuts>(cx);
+}
+
 /// Registers the sets, taking an older tvty's file apart the first time.
 pub fn init(cx: &mut gpui_kit::App) {
     crate::config::register::<Preferences>(cx);

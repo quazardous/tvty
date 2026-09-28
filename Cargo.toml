@@ -4,6 +4,11 @@ version = "0.3.0"
 edition = "2024"
 description = "A native terminal for working with many AI agents, their tickets beside"
 license = "MIT"
+repository = "https://github.com/quazardous/tvty"
+homepage = "https://github.com/quazardous/tvty"
+readme = "README.md"
+keywords = ["terminal", "ai-agents", "claude", "tmux", "gpui"]
+categories = ["command-line-utilities", "development-tools"]
 
 [workspace]
 members = ["crates/*"]

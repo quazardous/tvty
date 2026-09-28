@@ -30,6 +30,7 @@ use crate::notify::{self, Kind, Notice};
 mod agentbar;
 mod ended;
 mod frame;
+mod help;
 mod loopstabs;
 mod quit;
 mod stacks;
@@ -248,6 +249,8 @@ pub struct Shell {
     /// The theme list is open, under the title bar; on the terminals'
     /// themes rather than the window's.
     theme_menu: bool,
+    /// The title bar's ? menu is open.
+    help_menu: bool,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -689,6 +692,7 @@ impl Shell {
             waiting: None,
             switches: 0,
             theme_menu: false,
+            help_menu: false,
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -1841,6 +1845,9 @@ impl Shell {
             if let Some(list) = self.full_list.clone() {
                 list.update(cx, |list, cx| list.select_all(cx));
             }
+        } else if key == "escape" && self.help_menu {
+            self.help_menu = false;
+            cx.notify();
         } else if key == "escape" && self.theme_menu {
             self.theme_menu = false;
             cx.notify();
@@ -2896,10 +2903,7 @@ impl Shell {
         let shown = |place| dir(place).map(|d| d.display().to_string()).unwrap_or_default();
         let rows = [
             // The version and the commit it was built from (`+`: with changes not committed).
-            ("Version", match env!("TVTY_COMMIT") {
-                "" => env!("CARGO_PKG_VERSION").to_string(),
-                commit => format!("{} · {commit}", env!("CARGO_PKG_VERSION")),
-            }),
+            ("Version", help::version()),
             ("aiball socket", crate::aiball::socket_path().display().to_string()),
             ("Acting as", self.aiball.user.clone()),
             (
@@ -4130,6 +4134,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.reset_pref(TERMINAL_FONT, cx)))
@@ -4247,6 +4252,11 @@ impl Render for Shell {
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
                     )
                     .child(
+                        buttons::icon("help-button", "?", buttons::hint(cx, "Help, about, restart", "help.menu"))
+                            .text_sm()
+                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                    )
+                    .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
                             .mr_2()
                             .text_sm()
@@ -4255,6 +4265,7 @@ impl Render for Shell {
             )
             .child(body)
             .children(menu)
+            .children(self.help_menu_view(cx))
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))

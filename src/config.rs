@@ -83,6 +83,13 @@ pub fn register<T: Stored>(cx: &mut App) {
     }
 }
 
+/// Writes now what waits to be written: before another tvty reads it.
+pub fn flush<T: Stored>(cx: &mut App) {
+    if cx.global::<Store<T>>().pending > 0 {
+        save::<T>(cx);
+    }
+}
+
 /// The set's value.
 pub fn get<T: Stored>(cx: &App) -> &T {
     &cx.global::<Store<T>>().value

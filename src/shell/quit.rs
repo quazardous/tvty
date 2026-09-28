@@ -67,6 +67,35 @@ impl Shell {
         }
     }
 
+    /// Restarts tvty: the window only — the Claude Code sessions and the
+    /// terminals' tmux sessions run on, and the new tvty opens the same
+    /// terminals again. Its binary is the one on disk now (a new build
+    /// included).
+    pub(super) fn restart_tvty(&mut self, cx: &mut Context<Self>) {
+        self.help_menu = false;
+        let exe = match own_binary() {
+            Ok(exe) => exe,
+            Err(error) => {
+                return crate::activity::publish(cx, crate::activity::Activity::failed(None, "restart tvty", error));
+            }
+        };
+        self.quitting = true;
+        self.save_workspace(cx);
+        self.settings.save(cx);
+        crate::settings::flush(cx);
+        crate::instance::release();
+        match std::process::Command::new(&exe).spawn() {
+            Ok(child) => {
+                log::info!("restart: {} started (pid {}), this one quits", exe.display(), child.id());
+                cx.quit();
+            }
+            Err(error) => {
+                self.quitting = false;
+                crate::activity::publish(cx, crate::activity::Activity::failed(None, "restart tvty", format!("{}: {error}", exe.display())));
+            }
+        }
+    }
+
     fn quit_now(&mut self, cx: &mut Context<Self>) {
         self.quitting = true;
         self.save_workspace(cx);
@@ -252,6 +281,15 @@ impl Shell {
         }
         true
     }
+}
+
+/// This tvty's binary as it is on disk now: rebuilt since it started, the
+/// running one's path reads "… (deleted)", and the new file is the one.
+fn own_binary() -> Result<std::path::PathBuf, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let text = exe.to_string_lossy();
+    let path = std::path::PathBuf::from(text.strip_suffix(" (deleted)").unwrap_or(&text));
+    if path.is_file() { Ok(path) } else { Err(format!("{} is gone", path.display())) }
 }
 
 /// A card over a dimmed window, which takes every click.

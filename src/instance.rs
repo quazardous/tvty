@@ -35,6 +35,19 @@ pub enum Claim {
     Alone,
 }
 
+/// Whether this tvty holds the rendez-vous (the first one).
+static HOLDS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Lets the rendez-vous go, before a restart: the tvty that follows claims
+/// it instead of handing over to this one. Only the one holding it does.
+pub fn release() {
+    if HOLDS.swap(false, std::sync::atomic::Ordering::Relaxed)
+        && let Some(path) = socket()
+    {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
 fn socket() -> Option<PathBuf> {
     Some(config::dir(Place::State)?.join("tvty.sock"))
 }
@@ -64,7 +77,10 @@ pub fn claim(session: Option<&str>) -> Claim {
     std::thread::Builder::new()
         .name("instance".into())
         .spawn(move || listen(listener, tx))
-        .map(|_| Claim::First(rx))
+        .map(|_| {
+            HOLDS.store(true, std::sync::atomic::Ordering::Relaxed);
+            Claim::First(rx)
+        })
         .unwrap_or(Claim::Alone)
 }
 

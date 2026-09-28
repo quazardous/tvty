@@ -518,6 +518,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | F9 | the shown agent's AFK mode, one step |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
+| F1 | the title bar's ? menu: about tvty (version, build), the documentation, the shortcuts, what's new, GitHub, report an issue — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |
