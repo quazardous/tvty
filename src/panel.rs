@@ -2115,6 +2115,7 @@ impl TicketPanel {
         if let Some(hashid) = comment.hashid.clone() {
             row = row.child(item("copy", format!("#C.{hashid}"), p().muted).on_click(cx.listener(move |panel, _, _, cx| {
                 cx.write_to_clipboard(ClipboardItem::new_string(format!("#C.{hashid}")));
+                crate::bus::emit(cx, crate::bus::Signal::Copied);
                 panel.comment_menu = None;
                 cx.notify();
             })));

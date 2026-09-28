@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A brief "Copied to clipboard" confirms a copy (a terminal's selection, a
+  comment's #C. link); Options > Appearance can hide it.
 - Launching tvty again brings the running one forward (on the session
   asked for, `tvty SESSION`) instead of opening a second window. A test
   tvty, with a state directory of its own, stays apart;

@@ -181,6 +181,10 @@ pub struct Shell {
     quitting: bool,
     /// The loops stopped at the last quit were offered (once, at start).
     restart_offered: bool,
+    /// "Copied to clipboard" is up; counts the copies, so that only the
+    /// latest one's timer takes it down.
+    copied: Option<usize>,
+    copies_made: usize,
     /// Sessions open as a copy: watched, never typed into nor resized.
     /// The others have the controls (shared with any other client).
     pub(super) copies: HashSet<String>,
@@ -518,6 +522,7 @@ impl Shell {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
             Signal::Notices => cx.notify(),
+            Signal::Copied => shell.show_copied(cx),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
             Signal::AskNewTicket { project, parent } => shell.open_new_ticket(project.clone(), *parent, window, cx),
@@ -640,6 +645,8 @@ impl Shell {
             stopping_all: false,
             quitting: false,
             restart_offered: false,
+            copied: None,
+            copies_made: 0,
             ended: None,
             viewer: None,
             wire: None,
@@ -1204,6 +1211,56 @@ impl Shell {
                 .find(|t| t.session == session)
                 .map(|t| (p.name.as_str(), t))
         })
+    }
+
+    /// Text went to the clipboard: "Copied to clipboard", 1.5 s, the latest
+    /// copy's.
+    fn show_copied(&mut self, cx: &mut Context<Self>) {
+        if !self.applied.notifications.copied {
+            return;
+        }
+        self.copies_made += 1;
+        let this_copy = self.copies_made;
+        self.copied = Some(this_copy);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(std::time::Duration::from_millis(1500)).await;
+            let _ = this.update(cx, |shell, cx| {
+                if shell.copied == Some(this_copy) {
+                    shell.copied = None;
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// The "copied" pill, low and centred under the terminal (`right`: the
+    /// panel's width beside it; none over a full screen); it takes no click.
+    fn copied_pill(&self, right: f32) -> Option<AnyElement> {
+        self.copied?;
+        Some(
+            div()
+                .absolute()
+                .left_0()
+                .right(px(right))
+                .bottom(px(56.))
+                .flex()
+                .justify_center()
+                .child(
+                    div()
+                        .px_3()
+                        .py_1p5()
+                        .rounded_full()
+                        .bg(p().surface.opacity(0.95))
+                        .border_1()
+                        .border_color(p().border)
+                        .text_sm()
+                        .text_color(p().text)
+                        .child("Copied to clipboard"),
+                )
+                .into_any_element(),
+        )
     }
 
     /// A project's name heading its sessions: a click shows its tickets in
@@ -4101,6 +4158,13 @@ impl Render for Shell {
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))
+            .children(self.copied_pill(if covered {
+                0.
+            } else if self.settings.layout.panel_open {
+                self.panel_width(window) + EDGE_WIDTH
+            } else {
+                FOLDED_WIDTH
+            }))
             .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))

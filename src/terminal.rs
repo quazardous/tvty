@@ -458,6 +458,7 @@ impl TerminalView {
         let text = self.term.lock().selection_to_string().filter(|t| !t.is_empty()).or_else(|| self.selected_text.clone());
         if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
+            crate::bus::emit(cx, crate::bus::Signal::Copied);
         }
     }
 

@@ -78,11 +78,13 @@ pub struct Notifications {
     pub seconds: Option<u64>,
     /// The user's own gestures (closed, replied, decided…) notified too.
     pub own: bool,
+    /// A brief "copied" when text goes to the clipboard.
+    pub copied: bool,
 }
 
 impl Default for Notifications {
     fn default() -> Self {
-        Self { max: None, seconds: None, own: true }
+        Self { max: None, seconds: None, own: true, copied: true }
     }
 }
 
@@ -149,6 +151,14 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Notifications",
         label: "Your own gestures",
         about: "A ticket closed, a reply posted, a plan accepted: said once aiball has it. A refusal is always said.",
+        kind: Kind::Toggle { default: true, on: "shown", off: "hidden" },
+    },
+    Setting {
+        key: "notifications.copied",
+        page: "Appearance",
+        group: "Notifications",
+        label: "Copied",
+        about: "A brief \"Copied to clipboard\" at the bottom when text goes to the clipboard (not for a mere selection).",
         kind: Kind::Toggle { default: true, on: "shown", off: "hidden" },
     },
     Setting {
@@ -232,6 +242,7 @@ impl Stored for Preferences {
                 max: old.get("notify_max").and_then(Value::as_u64).map(|v| v as usize),
                 seconds: old.get("notify_seconds").and_then(Value::as_u64),
                 own: old.get("notify_own").and_then(Value::as_bool).unwrap_or(true),
+                copied: true,
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },

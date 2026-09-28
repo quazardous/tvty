@@ -26,6 +26,8 @@ pub enum Signal {
     OpenPictures { pictures: Vec<crate::images::Picture>, index: usize },
     /// Something happened: the activity service makes it a notification.
     Activity(crate::activity::Activity),
+    /// Text went to the clipboard: a brief "copied" says so.
+    Copied,
 }
 
 pub struct Bus;
