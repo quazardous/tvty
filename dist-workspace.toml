@@ -1,0 +1,38 @@
+[workspace]
+members = ["cargo:."]
+
+# Config for 'dist' (cargo-dist): the releases, their checksums, installers
+# and install receipts, which the updater reads (axoupdater).
+[dist]
+# The preferred dist version to use in CI (Cargo.toml SemVer syntax)
+cargo-dist-version = "0.32.0"
+# CI backends to support
+ci = "github"
+# The installers to generate for each app: `curl … | sh`; PowerShell and msi
+# join once tvty runs on Windows.
+installers = ["shell"]
+# Target platforms to build apps for (Rust target-triple syntax): Linux for
+# now (tvty needs tmux; Windows comes with psmux).
+targets = ["x86_64-unknown-linux-gnu"]
+# Path that installers should place binaries in
+install-path = "~/.local/bin"
+# Where to host releases
+hosting = "github"
+# The updater is Terminal Velocity's own, not dist's program
+install-updater = false
+# The launcher and the icon, beside the binary in the archive
+include = ["packaging/linux", "assets/tvty.svg"]
+# The pull requests build the release too, to catch a broken one early
+pr-run-mode = "plan"
+
+# GPUI's system libraries, to build on the CI's Ubuntu
+[dist.dependencies.apt]
+pkg-config = "*"
+libxkbcommon-dev = "*"
+libxkbcommon-x11-dev = "*"
+libxcb1-dev = "*"
+libwayland-dev = "*"
+libvulkan-dev = "*"
+libfontconfig-dev = "*"
+libfreetype-dev = "*"
+libasound2-dev = "*"

@@ -45,3 +45,8 @@ opt-level = 1
 [profile.dev.package."*"]
 debug = false
 opt-level = 3
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
