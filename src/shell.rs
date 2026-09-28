@@ -1276,8 +1276,13 @@ impl Shell {
         window.focus(&focus, cx);
         // On aiball's host, the session takes this view's size again.
         terminal.read(cx).take_size();
+        // Another project: the terminal slides in; a tab of the same one
+        // shows at once.
         if self.selected.as_deref() != Some(session.as_str()) {
-            self.switches += 1;
+            let project_of = |s: &str| self.terminal_of(s).map(|(p, _)| p.to_string());
+            if self.selected.as_deref().map(project_of) != Some(project_of(&session)) {
+                self.switches += 1;
+            }
         }
         notify::dismiss_session(cx, &session);
         // Its agent's counters computed afresh by the daemon: they come back

@@ -333,7 +333,7 @@ gallery included), a little translucent. They stack from their corner, the
 newest in it, at most five; each goes after six seconds, unless the pointer is on it (both
 set in Options > Appearance). While one is up, its ticket **shines** in
 every list shown, in the notification's colour. A click, or ctrl+enter for the newest, brings that
-agent's terminal (it slides in) and opens the ticket in the panel; × lets
+agent's terminal (it slides in when the project changes — a tab of the same project shows at once) and opens the ticket in the panel; × lets
 it go. No switch happens on its own: the user may be typing elsewhere.
 What came while tvty was closed comes at start as one notification — the
 last ping said, the others counted ("· and 2 more while tvty was
