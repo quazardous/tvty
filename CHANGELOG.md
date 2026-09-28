@@ -24,8 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.1] - 2026-09-28
+
 ### Added
 
+- **Terminal Velocity Updater**, a small window that installs aiball when it
+  is missing, then Terminal Velocity, puts both in your applications, and
+  keeps them up to date — one line to install it (see the README), and the
+  menu's Updates… opens it again. tvty says itself when a newer release is
+  out, or when aiball is too old for it (Options > Layout > Updates).
+- Releases come with installers (`curl … | sh`) and checksums.
 - Write / Preview tabs above a new ticket's body and a full-screen reply;
   the new ticket form has no summary field any more.
 - A new project in a few clicks: "+ project" (or the menu) picks a folder,
@@ -43,77 +51,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remote Control from the agent's bar: "RC" says whether its Claude can be
   taken up from claude.ai or the mobile app, and turns it on or off for its
   folder, the loop restarting with it.
-
-### Changed
-
-- tvty drives the agents' loops through aiball — list, start, stop,
-  restart, move between aiball's host and tmux — and no longer runs
-  claude-loop itself.
-- The folded sessions list shows each running Claude: grey idle, blue working,
-  yellow booting; ▶ on its own, ‖ held for a while, ■ held until let go.
-- The title bar's menu (about, documentation, restart…) opens from the app's
-  icon, at its left, and opens aiball's board (its web UI); the window and About say
-  Terminal Velocity in full; the theme menu has the terminals' opacity slider.
-- A slider moves by its steps (5 % for the opacity), and to the finest
-  (1 %) with Shift held.
-
-### Fixed
-
-- The agent's bar shows ■ for a loop held until let go, as the folded list
-  does (it said ‖, a hold for a while).
-- About says what Terminal Velocity is, with links to its repository,
-  aiball's and the licence.
-- A shortcut acts where it makes sense: the workspace's (Ctrl+Shift+B, tabs,
-  F9…) no longer reach a full-screen page, and a global one that goes
-  somewhere (slider, gallery, a notification) leaves the page first.
-- The folded sessions list's marks come in the list's order.
-- Selecting text in the ticket panel no longer makes it blink.
-- A relation made from the other ticket reads the right way round ("blocks",
-  not "depends on").
-- tvty opens as it was left — windowed at its size, maximized or full screen —
-  after a quit as after Restart.
-- Esc in the title bar's "#…" empties it and lets it go, and the window's
-  shortcuts work from it too.
-- A notification keeps its quote when another word on the same ticket replaces
-  it, and a new ticket's notification quotes its body too; your own reply or
-  ticket is said with its title and its words.
-- With see-through terminals, the side strips stay opaque under the
-  pointer, and an empty terminal place is as see-through as a terminal.
-- Pasting an image into a terminal (Ctrl+Shift+V, the menu's Paste) hands
-  the program Ctrl+V, on which Claude Code reads the image itself.
-
-## [0.4.0-beta.1] - 2026-09-28
-
-The first public beta, for aiball users.
-
-### Changed
-
-- A folded comment, or a ticket's folded body, leads with ▸ (▾ once open),
-  as the lists' sections do; its head and its grey line both unfold it.
-- Notifications are wider and quote the start of what was written: the
-  comment, or the new ticket's body, under its title. A click on one goes
-  to its project too, even when its agent has no terminal here.
-- Esc in a text field only leaves the field; the next Esc closes the page
-  it sits on (options, new ticket, full list, a ticket full screen). A
-  click anywhere else (a button, a menu) leaves the field too.
-- A ticket waiting for moderation shows its proposal but no Accept or
-  Reject: it is decided once the ticket is approved.
-- Every button shows it is clickable the same way: a background under the
-  pointer, the hand, and a tooltip with its shortcut on the icons (the
-  chevrons, ⤢, ⚙); links, icons, chips and main buttons each look alike.
-- The terminal slides in only when the project changes; a tab of the same
-  project shows at once.
-- A proposal to decide (a plan, a resolution, a wontfix, an escalation)
-  always comes as one yellow notification, even when its ping does not
-  arrive; tvty's log keeps the pings and notifications it saw.
-- The restart offer in the agent bar reads "⟳ update" until clicked, then
-  "⟳ restart pending".
-- The agent bar shows the AFK mode as claude-loop does: ▶ or ‖ for the mode
-  in force, ⌨ while you type, and the little man for the mode F9 arms,
-  dotted until it takes effect. F9 works anywhere in the window.
-
-### Added
-
 - A ? in the title bar (F1): about tvty, its documentation, what's new, GitHub,
   report an issue, and Restart tvty — the Claude Code sessions keep running
   and the terminals come back.
@@ -150,8 +87,66 @@ The first public beta, for aiball users.
 - The tickets' comment bubble points to who spoke last: left and bright
   when it was someone else, right and discreet when it was you.
 
+### Changed
+
+- tvty drives the agents' loops through aiball — list, start, stop,
+  restart, move between aiball's host and tmux — and no longer runs
+  claude-loop itself.
+- The folded sessions list shows each running Claude: grey idle, blue working,
+  yellow booting; ▶ on its own, ‖ held for a while, ■ held until let go.
+- The title bar's menu (about, documentation, restart…) opens from the app's
+  icon, at its left, and opens aiball's board (its web UI); the window and About say
+  Terminal Velocity in full; the theme menu has the terminals' opacity slider.
+- A slider moves by its steps (5 % for the opacity), and to the finest
+  (1 %) with Shift held.
+- A folded comment, or a ticket's folded body, leads with ▸ (▾ once open),
+  as the lists' sections do; its head and its grey line both unfold it.
+- Notifications are wider and quote the start of what was written: the
+  comment, or the new ticket's body, under its title. A click on one goes
+  to its project too, even when its agent has no terminal here.
+- Esc in a text field only leaves the field; the next Esc closes the page
+  it sits on (options, new ticket, full list, a ticket full screen). A
+  click anywhere else (a button, a menu) leaves the field too.
+- A ticket waiting for moderation shows its proposal but no Accept or
+  Reject: it is decided once the ticket is approved.
+- Every button shows it is clickable the same way: a background under the
+  pointer, the hand, and a tooltip with its shortcut on the icons (the
+  chevrons, ⤢, ⚙); links, icons, chips and main buttons each look alike.
+- The terminal slides in only when the project changes; a tab of the same
+  project shows at once.
+- A proposal to decide (a plan, a resolution, a wontfix, an escalation)
+  always comes as one yellow notification, even when its ping does not
+  arrive; tvty's log keeps the pings and notifications it saw.
+- The restart offer in the agent bar reads "⟳ update" until clicked, then
+  "⟳ restart pending".
+- The agent bar shows the AFK mode as claude-loop does: ▶ or ‖ for the mode
+  in force, ⌨ while you type, and the little man for the mode F9 arms,
+  dotted until it takes effect. F9 works anywhere in the window.
+
 ### Fixed
 
+- The agent's bar shows ■ for a loop held until let go, as the folded list
+  does (it said ‖, a hold for a while).
+- About says what Terminal Velocity is, with links to its repository,
+  aiball's and the licence.
+- A shortcut acts where it makes sense: the workspace's (Ctrl+Shift+B, tabs,
+  F9…) no longer reach a full-screen page, and a global one that goes
+  somewhere (slider, gallery, a notification) leaves the page first.
+- The folded sessions list's marks come in the list's order.
+- Selecting text in the ticket panel no longer makes it blink.
+- A relation made from the other ticket reads the right way round ("blocks",
+  not "depends on").
+- tvty opens as it was left — windowed at its size, maximized or full screen —
+  after a quit as after Restart.
+- Esc in the title bar's "#…" empties it and lets it go, and the window's
+  shortcuts work from it too.
+- A notification keeps its quote when another word on the same ticket replaces
+  it, and a new ticket's notification quotes its body too; your own reply or
+  ticket is said with its title and its words.
+- With see-through terminals, the side strips stay opaque under the
+  pointer, and an empty terminal place is as see-through as a terminal.
+- Pasting an image into a terminal (Ctrl+Shift+V, the menu's Paste) hands
+  the program Ctrl+V, on which Claude Code reads the image itself.
 - A folded body or comment says "🖼 image" instead of the image's markdown;
   an image alone in a quote is drawn with no empty quote; an image that
   failed to load is tried again at the next read, not until a restart.

@@ -43,16 +43,42 @@ replayed by [`demo/run`](demo/run), agents included.*
 
 ## Install
 
-> **Beta.** tvty is for people who already run
+> **Beta.** tvty is for people who work with
 > [aiball](https://github.com/quazardous/aiball) and its claude-loop agents:
 > it is aiball's desktop client, not a standalone terminal. Linux only for
-> now (Wayland or X11, GNOME and KDE). Expect rough edges, and tell us
-> (the menu under the app's icon > Report an issue).
+> now (Wayland or X11, GNOME and KDE; x86_64). Expect rough edges, and tell
+> us (the menu under the app's icon > Report an issue).
 
-**You need** aiball 0.49 or later, running (its daemon, `claude-loop`
-with it), tmux 3.x, and Rust (stable, 1.85 or later) to build tvty.
+**The easy way: Terminal Velocity Updater.** One small program installs
+aiball when it is missing (through aiball's own installer), then Terminal
+Velocity, puts both in your desktop's applications, and keeps them up to
+date — what each has, the latest release, one button, and what it does,
+line by line:
 
-**GPUI's system libraries**, to build:
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/quazardous/tvty/releases/latest/download/tvty-updater-installer.sh | sh
+~/.local/bin/tvty-updater
+```
+
+![Terminal Velocity Updater: aiball and Terminal Velocity, where each stands, one button](docs/images/updater.png)
+
+Later, **Updates…** in Terminal Velocity's menu opens it again; tvty says
+itself when a newer release is out (Options > Layout > Updates turns that
+off).
+
+**You need** tmux 3.x, and the libraries every Wayland or X11 desktop has
+(xkbcommon, Vulkan, fontconfig, freetype). aiball needs Node.js and git; the
+updater says what is missing.
+
+**Terminal Velocity alone**, without the updater, from the same release:
+
+```bash
+curl --proto '=https' --tlsv1.2 -LsSf \
+  https://github.com/quazardous/tvty/releases/latest/download/tvty-installer.sh | sh
+```
+
+**From source** — Rust (stable, 1.85 or later) and GPUI's system libraries:
 
 ```bash
 # Fedora
@@ -64,21 +90,11 @@ sudo apt install build-essential pkg-config libxkbcommon-dev libxkbcommon-x11-de
 # Arch
 sudo pacman -S base-devel libxkbcommon libxkbcommon-x11 libxcb wayland \
   vulkan-icd-loader fontconfig freetype2 alsa-lib
-```
 
-**Build and install** — a launcher in `~/.local/bin/tvty`, Terminal Velocity
-in your desktop's applications:
-
-```bash
 git clone https://github.com/quazardous/tvty && cd tvty
 cargo build --release
 make install-desktop BIN=$PWD/target/release/tvty
 ```
-
-Each [release](https://github.com/quazardous/tvty/releases) also has a
-built binary for x86_64 Linux (the libraries above still needed, without
-`-dev`): put it anywhere and point `make install-desktop BIN=…` at it, or run
-it as it is.
 
 **First start.** `tvty` finds aiball over its local socket (`$AIBALL_SOCK`,
 else aiball's default) and acts as its human user (`$TVTY_USER`, else the
@@ -87,9 +103,9 @@ and whether the bus answered. `tvty SESSION` opens that tmux session at
 start. aiball's web UI stays for everything else — remote, phone, another
 OS.
 
-**A new project.** The menu's **New project** (under the app's icon, top left) (or **+ project** atop the
-sessions list) walks through it: pick a folder, name the project and its
-agent, and tvty sets it up with `aiball init`, then says what comes next
+**A new project.** The menu's **New project** (under the app's icon, top left), or **+ project** atop the
+sessions list, walks through it: pick a folder, name the project and its
+agent, and aiball sets it up (its `project.init`), then says what comes next
 (accepting aiball's MCP server in Claude) and starts its first session.
 
 One tvty runs per state directory (`~/.local/state/tvty`): launching it again
