@@ -94,6 +94,14 @@ impl Notices {
         self.next += 1;
         notice.id = self.next;
         notice.born = Instant::now();
+        // One about the same ticket gives way; what it quoted stays, when
+        // the newer quotes nothing (several paths tell one event, not all
+        // with its words).
+        if notice.detail.is_none()
+            && let Some(before) = self.shown.iter().find(|n| n.ticket.is_some() && n.ticket == notice.ticket)
+        {
+            notice.detail = before.detail.clone();
+        }
         self.shown.retain(|n| !(n.ticket.is_some() && n.ticket == notice.ticket));
         self.shown.insert(0, notice);
         self.shown.truncate(self.max);
@@ -119,7 +127,13 @@ pub fn init(cx: &mut App, max: usize, seconds: u64) {
 
 /// Shows `notice`; it goes by itself after its time.
 pub fn push(cx: &mut App, notice: Notice) {
-    log::info!("notification: {:?} from {}: {}", notice.kind, notice.from, notice.text);
+    log::info!(
+        "notification: {:?} from {}: {}{}",
+        notice.kind,
+        notice.from,
+        notice.text,
+        if notice.detail.is_some() { " (quoted)" } else { "" }
+    );
     let first = cx.global::<Notices>().shown.is_empty();
     cx.global_mut::<Notices>().push(notice);
     if first {
@@ -316,6 +330,16 @@ mod tests {
         }
         let tickets: Vec<u64> = n.shown.iter().map(|n| n.ticket.as_ref().unwrap().1).collect();
         assert_eq!(tickets, vec![5, 4, 3]);
+    }
+
+    #[test]
+    fn a_replacement_keeps_what_was_quoted() {
+        let mut n = notices(3);
+        let mut quoted = Notice::new(Kind::News, "a", "x").about("p", 1);
+        quoted.detail = Some("the words".into());
+        n.push(quoted);
+        n.push(Notice::new(Kind::Decision, "a", "y").about("p", 1));
+        assert_eq!((n.shown.len(), n.shown[0].text.as_str(), n.shown[0].detail.as_deref()), (1, "y", Some("the words")));
     }
 
     #[test]

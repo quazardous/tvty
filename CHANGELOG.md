@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A notification keeps its quote when another word on the same ticket replaces
+  it, and a new ticket's notification quotes its body too.
 - With see-through terminals, the side strips stay opaque under the
   pointer, and an empty terminal place is as see-through as a terminal.
 - Pasting an image into a terminal (Ctrl+Shift+V, the menu's Paste) hands

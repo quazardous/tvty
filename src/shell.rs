@@ -795,7 +795,24 @@ impl Shell {
         } else {
             Activity::news(filed.by, Kind::News, about, format!("{} — a new ticket", filed.title))
         };
-        activity::publish(cx, activity);
+        if activity.own {
+            return activity::publish(cx, activity);
+        }
+        // Someone else's: the start of its body quoted, read from aiball
+        // (a ticket is its own message); said without it if that fails.
+        let (aiball, ticket) = (self.aiball.clone(), filed.ticket);
+        cx.spawn(async move |_, cx| {
+            let body = cx.background_executor().spawn(async move { aiball.message_body(ticket) }).await;
+            let excerpt = match body {
+                Ok(body) => crate::thread::excerpt(body.as_deref(), crate::live::EXCERPT),
+                Err(error) => {
+                    log::warn!("the new ticket #{ticket}: {error:#}");
+                    String::new()
+                }
+            };
+            let _ = cx.update(|cx| activity::publish(cx, activity.quoting(excerpt)));
+        })
+        .detach();
     }
 
     /// Builds the board again from what aiball pushed and the local sessions.
