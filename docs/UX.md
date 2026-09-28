@@ -48,7 +48,7 @@ right (`src/shell/newproject.rs`):
    the folder (`app`, `app-claude`), a crew agent or the lead, a private
    project, no claiming — each with what it means. A name the board has
    already is refused. The command is shown as it will run.
-3. **Set it up**: tvty runs `claude-loop init` there — aiball's own
+3. **Set it up**: tvty runs `aiball init` there — aiball's own
    command, not a copy of it — and shows what it said, or its error.
 4. **What next**: start the agent ("Start its first session", on aiball's
    host: the project shows in the list, its tickets beside); accept

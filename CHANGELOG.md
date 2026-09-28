@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Write / Preview tabs above a new ticket's body and a full-screen reply;
   the new ticket form has no summary field any more.
 - A new project in a few clicks: "+ project" (or the ☰ menu) picks a folder,
-  names the project and its agent, runs claude-loop init there, says what
+  names the project and its agent, runs aiball init there, says what
   is left to do (accept aiball's MCP server in Claude Code), and starts the
   first session.
 - F11 puts the window full screen, and back; the ☰ menu has it too.

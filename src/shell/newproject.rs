@@ -1,5 +1,6 @@
-//! "New project": a folder made an aiball project, the way `claude-loop
-//! init` does it — tvty runs that command, it does not copy what it does —
+//! "New project": a folder made an aiball project, the way `aiball init`
+//! does it — tvty runs aiball's command, it does not copy what it does (nor
+//! goes through claude-loop, the terminal's side) —
 //! then its first session started. Four steps in one frame of one size:
 //! the folder, who works in it, the outcome, what is left to do (accept
 //! aiball's MCP server in Claude Code). Nothing is written before "Set it
@@ -52,7 +53,7 @@ pub(super) struct NewProject {
     private: bool,
     no_claim: bool,
     running: bool,
-    /// What `claude-loop init` said: its output, or its error.
+    /// What `aiball init` said: its output, or its error.
     outcome: Option<Result<String, String>>,
 }
 
@@ -117,7 +118,7 @@ fn name_from(folder: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// `claude-loop init`'s arguments.
+/// `aiball init`'s arguments.
 fn init_args(name: &str, agent: &str, crew: bool, private: bool, no_claim: bool) -> Vec<String> {
     let mut args = vec!["init".into(), "--project".into(), name.into(), "--agent".into(), agent.into()];
     if crew {
@@ -220,7 +221,7 @@ impl Shell {
         on_board && *folder != Folder::Configured(Some(name.to_string()))
     }
 
-    /// Runs `claude-loop init` in the folder, with the choices made.
+    /// Runs `aiball init` in the folder, with the choices made.
     fn set_it_up(&mut self, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_mut() else { return };
         if wizard.running {
@@ -235,12 +236,12 @@ impl Shell {
             let said = cx
                 .background_executor()
                 .spawn(async move {
-                    let output = std::process::Command::new("claude-loop")
+                    let output = std::process::Command::new("aiball")
                         .args(&args)
                         .current_dir(&folder)
                         .env_remove("TMUX")
                         .output()
-                        .map_err(|e| format!("claude-loop: {e}"))?;
+                        .map_err(|e| format!("aiball: {e}"))?;
                     let text = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
                     if output.status.success() { Ok(text.trim().to_string()) } else { Err(text.trim().to_string()) }
                 })
@@ -273,7 +274,7 @@ impl Shell {
     }
 
     /// Back to an earlier step (the stepper's), never forward past what
-    /// was done, never while claude-loop runs.
+    /// was done, never while aiball init runs.
     fn wizard_back_to(&mut self, step: usize, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_mut() else { return };
         if wizard.running || step >= wizard.step.index() {
@@ -442,7 +443,7 @@ impl Shell {
                 )
                 .child(div().pl_6().text_xs().text_color(p().muted).child(about))
         };
-        let command = format!("claude-loop {}", init_args(&name, &agent, wizard.crew, wizard.private, wizard.no_claim).join(" "));
+        let command = format!("aiball {}", init_args(&name, &agent, wizard.crew, wizard.private, wizard.no_claim).join(" "));
         let running = wizard.running;
         let go = problem.is_none() && !running;
         let page = div()
@@ -489,9 +490,9 @@ impl Shell {
             .flex_col()
             .gap_3()
             .child(div().text_color(if ok { p().success } else { p().danger }).child(if ok {
-                format!("{name} is set up. claude-loop init said:")
+                format!("{name} is set up. aiball init said:")
             } else {
-                "claude-loop init did not go through:".to_string()
+                "aiball init did not go through:".to_string()
             }))
             .child(
                 div()

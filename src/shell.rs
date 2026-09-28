@@ -3717,7 +3717,7 @@ impl Shell {
             .child(
                 buttons::link("new-project", "+ project")
                     .text_xs()
-                    .tip("a folder made an aiball project (claude-loop init), then its first session")
+                    .tip("a folder made an aiball project (aiball init), then its first session")
                     .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
             )
             // A shell the daemon holds: it outlives tvty.
