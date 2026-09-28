@@ -59,6 +59,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The agent's bar shows ■ for a loop held until let go, as the folded list
+  does (it said ‖, a hold for a while).
+- About says what Terminal Velocity is, with links to its repository,
+  aiball's and the licence.
 - A shortcut acts where it makes sense: the workspace's (Ctrl+Shift+B, tabs,
   F9…) no longer reach a full-screen page, and a global one that goes
   somewhere (slider, gallery, a notification) leaves the page first.

@@ -3104,6 +3104,21 @@ impl Shell {
                         .child(div().text_xl().font_weight(FontWeight::BOLD).child(NAME))
                         .child(div().text_sm().text_color(p().muted).child("tvty")),
                 ),
+        )
+        // What it is, and where it lives.
+        .child(div().pb_2().child(
+            "A native terminal for working with many AI coding agents at once: their terminals grouped by \
+             project, each project's tickets beside — the agent asks, you decide, it carries on. \
+             Built on aiball, which runs the agents' loops and their board.",
+        ))
+        .child(
+            div()
+                .flex()
+                .gap_3()
+                .pb_3()
+                .child(buttons::link("about-github", "GitHub ↗").on_click(|_, _, cx| cx.open_url(help::REPOSITORY)))
+                .child(buttons::link("about-aiball", "aiball on GitHub ↗").on_click(|_, _, cx| cx.open_url(help::AIBALL_REPOSITORY)))
+                .child(buttons::link("about-license", "MIT licence ↗").on_click(|_, _, cx| cx.open_url(&format!("{}/blob/main/LICENSE", help::REPOSITORY)))),
         );
         for (label, value) in rows {
             table = table.child(

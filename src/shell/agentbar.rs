@@ -42,7 +42,8 @@ enum Tone {
 }
 
 /// What the agent bar shows of who drives the loop, as claude-loop's bar:
-/// the mode in force (▶ the loop runs on its own, ‖ held — typing holds
+/// the mode in force (▶ the loop runs on its own, ‖ held a while, ■ held
+/// until let go — typing holds
 /// too), ⌨ while a human types, and the little man with the mode armed by
 /// F9 (grey: away, so auto; the seconds of a ten-minute hold; ∞). F9 moves
 /// the little man at once and the mode in force 3 s after the last press:
@@ -59,9 +60,11 @@ fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typ
     if presence == Some("boot") {
         return AfkMarks { in_force: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
     }
-    let in_force = match presence {
-        Some("loop") => Some(("▶", Tone::Green)),
-        Some("wait") | Some("stop") => Some(("‖", Tone::Orange)),
+    let in_force = match (presence, armed) {
+        (Some("loop"), _) => Some(("▶", Tone::Green)),
+        // Held until let go (not AFK, for good): stopped, as the folded list says it.
+        (Some("wait"), Some("wait_inf")) => Some(("■", Tone::Red)),
+        (Some("wait") | Some("stop"), _) => Some(("‖", Tone::Orange)),
         _ => None,
     };
     let man = match armed {
@@ -857,6 +860,8 @@ mod tests {
         // david's "held" was this: ⏸ in force, the grey man armed.
         assert!(afk_marks(Some("wait"), Some("off"), None, false).arming);
         assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).armed, Some(("웃∞".into(), Tone::Red)));
+        // Held until let go: stopped, not paused.
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).in_force, Some(("■", Tone::Red)));
         // Typing holds, marks ⌨, arms nothing.
         let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600), true);
         assert_eq!((typing.in_force, typing.typing, typing.arming), (Some(("‖", Tone::Orange)), true, false));

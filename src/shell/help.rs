@@ -9,7 +9,9 @@ use crate::options::Section;
 use crate::theme::p;
 
 /// The repository, as Cargo.toml declares it.
-const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+pub(super) const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+/// aiball's, the engine tvty runs on.
+pub(super) const AIBALL_REPOSITORY: &str = "https://github.com/quazardous/aiball";
 
 /// What the menu offers.
 #[derive(Clone, Copy)]
