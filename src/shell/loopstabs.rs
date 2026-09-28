@@ -136,16 +136,7 @@ impl Shell {
     fn other_list(&self, which: Other, cx: &mut Context<Self>) -> AnyElement {
         let mut list = div().flex().flex_col();
         let words = self.filter_words(cx);
-        let heading = |text: String| {
-            div()
-                .px_3()
-                .pt_2()
-                .pb_1()
-                .text_xs()
-                .font_weight(FontWeight::BOLD)
-                .text_color(p().muted)
-                .child(text.to_uppercase())
-        };
+        let heading = |text: String, cx: &mut Context<Self>| div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx));
         let row = |id: String, name: String, cwd: &str, cx: &mut Context<Self>, start: Start| {
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
             div()
@@ -177,7 +168,7 @@ impl Shell {
                     let known = self.loop_project(l);
                     let project = known.clone().unwrap_or_else(|| "No project".into());
                     if last.as_deref() != Some(project.as_str()) {
-                        list = list.child(heading(project.clone()));
+                        list = list.child(heading(project.clone(), cx));
                         last = Some(project);
                     }
                     let agent = l.agent().map(str::to_string);
@@ -200,7 +191,15 @@ impl Shell {
                 if homes.is_empty() {
                     list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No agent without a loop" } else { "No agent found" }));
                 }
+                let mut homes = homes;
+                homes.sort_by_key(|(_, project, _)| (project.is_none(), project.clone().unwrap_or_default().to_lowercase()));
+                let mut last: Option<String> = None;
                 for (agent, project, cwd) in homes {
+                    let heading_of = project.clone().unwrap_or_else(|| "No project".into());
+                    if last.as_deref() != Some(heading_of.as_str()) {
+                        list = list.child(heading(heading_of.clone(), cx));
+                        last = Some(heading_of);
+                    }
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None };
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, cx, start));
                 }

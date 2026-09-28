@@ -44,7 +44,10 @@ and a double click on a title gives the list its shares back): **live** (the ses
 **idle** (the loops this machine knows, from claude-loop's state
 directory, that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start
-opens one where the agent works). "+ session" on a project opens a small
+opens one where the agent works). A click on a project's name, in any of
+the three, shows its tickets in the panel with no session opened ("no
+session open" when none of its sessions is here); choosing a terminal
+brings the panel back to that terminal's project. "+ session" on a project opens a small
 form: the working directory — proposed from the project's loops or agents,
 checked as it is typed —, the agent, whether it is a crew agent, and
 where it runs: **on aiball's host** (the default, no tmux: aiball's

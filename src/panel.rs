@@ -45,6 +45,8 @@ pub struct FullChanged;
 pub struct Scope {
     pub project: String,
     pub agent: Option<String>,
+    /// Shown from the projects' list, no session of it open.
+    pub sessionless: bool,
 }
 
 struct Detail {
@@ -2241,6 +2243,9 @@ impl Render for TicketPanel {
                         .map(|s| s.project.clone())
                         .unwrap_or_else(|| "Tickets".into()),
                 ))
+                .when(self.scope.as_ref().is_some_and(|s| s.sessionless), |d| {
+                    d.child(div().text_xs().text_color(p().muted).child("no session open"))
+                })
             })
             // What the project's tickets ask of you, as its row in the
             // sessions list counts it: the critical one, decisions, unread.

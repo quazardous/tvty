@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A click on a project's name in the sessions list shows its tickets,
+  without opening a session; the stopped and shut agents are grouped by
+  project too.
 - A step says when its agent resumes: "resumes 08:16 or on #8" on its
   comment, the time in the list's step glyph tip.
 - A click on the agent bar's "host" / "tmux" badge moves the loop to the

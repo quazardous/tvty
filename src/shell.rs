@@ -167,6 +167,9 @@ pub struct Shell {
     /// ends and comes back (the loop starts again), and is opened again
     /// rather than left on its end screen.
     pub(super) restarts_asked: HashMap<String, std::time::Instant>,
+    /// A project shown in the panel from the projects' list, with none of
+    /// its sessions open; until a terminal is chosen.
+    pub(super) project_shown: Option<String>,
     /// Sessions open as a copy: watched, never typed into nor resized.
     /// The others have the controls (shared with any other client).
     pub(super) copies: HashSet<String>,
@@ -595,6 +598,7 @@ impl Shell {
             open_when_running: None,
             restarts_asked: HashMap::new(),
             copies: HashSet::new(),
+            project_shown: None,
             ended: None,
             viewer: None,
             wire: None,
@@ -1160,31 +1164,76 @@ impl Shell {
         })
     }
 
-    /// Points the panel at the selected terminal's project and agent.
+    /// A project's name heading its sessions: a click shows its tickets in
+    /// the panel (a project aiball knows), no session opened.
+    pub(super) fn project_heading(&self, project: &str, label: impl IntoElement, cx: &mut Context<Self>) -> Stateful<Div> {
+        let known = self.live.tickets().contains_key(project);
+        let shown = self.project_shown.as_deref() == Some(project);
+        let name = project.to_string();
+        div()
+            .id(SharedString::from(format!("heading-{project}")))
+            .flex_1()
+            .min_w_0()
+            .truncate()
+            .text_xs()
+            .font_weight(FontWeight::BOLD)
+            .text_color(if shown { p().accent } else { p().muted })
+            .child(label)
+            .when(known, |d| {
+                d.cursor_pointer()
+                    .hover(|d| d.text_color(p().text))
+                    .on_click(cx.listener(move |shell, _, _, cx| shell.show_project(name.clone(), cx)))
+                    .tip("its tickets in the panel, no session opened")
+            })
+    }
+
+    /// Shows `project`'s tickets in the panel, with no session of it open;
+    /// the terminal shown stays.
+    pub(super) fn show_project(&mut self, project: String, cx: &mut Context<Self>) {
+        self.project_shown = Some(project);
+        self.sync_panel(cx);
+        cx.notify();
+    }
+
+    /// Points the panel at the selected terminal's project and agent — or
+    /// at the project chosen in the projects' list.
     fn sync_panel(&mut self, cx: &mut Context<Self>) {
         let on_board = |name: &str| self.board.projects.iter().any(|p| p.name == name && p.on_board);
-        let scope = self
-            .selected
+        let shown = self
+            .project_shown
+            .clone()
+            .filter(|p| self.live.tickets().contains_key(p))
+            .map(|project| {
+                // Said only when none of its sessions is here.
+                let sessionless = !self.board.projects.iter().any(|g| g.name == project && !g.terminals.is_empty());
+                Scope { project, agent: None, sessionless }
+            });
+        let scope = shown.or_else(|| {
+            self.selected
             .as_deref()
             .and_then(|s| self.terminal_of(s))
             .filter(|(project, _)| on_board(project))
             .map(|(project, terminal)| Scope {
                 project: project.to_string(),
                 agent: terminal.agent.clone(),
+                sessionless: false,
             })
             // An ended session keeps its project's tickets in view.
             .or_else(|| {
                 let ended = self.ended_shown()?;
                 let project = ended.project.clone().filter(|p| on_board(p))?;
-                Some(Scope { project, agent: ended.agent.clone() })
-            });
+                Some(Scope { project, agent: ended.agent.clone(), sessionless: false })
+            })
+        });
+        // A project shown with no session open is not on the board: its
+        // tickets as aiball pushes them.
         let tickets = scope
             .as_ref()
-            .and_then(|s| self.board.tickets.get(&s.project).cloned())
+            .and_then(|s| self.board.tickets.get(&s.project).or_else(|| self.live.tickets().get(&s.project)).cloned())
             .unwrap_or_default();
         let critical = scope
             .as_ref()
-            .and_then(|s| self.board.critical.get(&s.project).copied());
+            .and_then(|s| self.board.critical.get(&s.project).copied().or_else(|| tickets.iter().find(|t| t.critical.is_some()).map(|t| t.id)));
         let aiball = self.aiball.clone();
         self.panel.update(cx, |panel, cx| {
             panel.set_scope(scope, cx);
@@ -1196,6 +1245,8 @@ impl Shell {
         // Shown again (or started again under its name): attach afresh; a
         // session still gone ends at once and brings the end screen back.
         self.ended = None;
+        // A terminal chosen: the panel follows it again.
+        self.project_shown = None;
         let Some(terminal) = self.open_terminal(&session, window, cx) else { return };
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
@@ -3403,16 +3454,7 @@ impl Shell {
                     .px_3()
                     .pt_2()
                     .pb_1()
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_xs()
-                            .font_weight(FontWeight::BOLD)
-                            .text_color(p().muted)
-                            .child(marked(&project.name.to_uppercase(), &words)),
-                    )
+                    .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
                     .child(alerts.badges(format!("project-{}", project.name)))
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
