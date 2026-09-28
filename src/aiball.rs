@@ -315,6 +315,9 @@ pub struct TicketRow {
     /// ... and it went quiet.
     #[serde(default)]
     pub stalled_step: bool,
+    /// When the step's agent said it resumes.
+    #[serde(default)]
+    pub step_resume_at: Option<String>,
     #[serde(default)]
     pub latest_plan_rejected: bool,
     #[serde(default)]
@@ -573,6 +576,14 @@ impl Comment {
         meta_of(self.meta.as_deref())
             .and_then(|m| m.get("step").and_then(Value::as_bool))
             .unwrap_or(false)
+    }
+
+    /// When a step's agent resumes: at a time (`resume_on.timer`), or when
+    /// another ticket moves (`resume_on.ticket`), whichever comes first.
+    pub fn step_resume(&self) -> (Option<String>, Option<u64>) {
+        let Some(meta) = meta_of(self.meta.as_deref()) else { return (None, None) };
+        let at = meta.get("step_resume_at").and_then(Value::as_str).map(str::to_string);
+        (at, meta.get("step_resume_on_ticket").and_then(Value::as_u64))
     }
 
     /// The commits the comment cites, as short SHAs.

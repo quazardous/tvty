@@ -37,6 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A step says when its agent resumes: "resumes 08:16 or on #8" on its
+  comment, the time in the list's step glyph tip.
 - A click on the agent bar's "host" / "tmux" badge moves the loop to the
   other, once confirmed: its Claude restarts there, resuming its
   conversation, and the terminal follows.

@@ -220,7 +220,9 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   chips only when they say something (who holds it — a lapsed claim does
   not count —, a high priority, the tickets it holds, tokens, what it
   depends on or blocks); and the latest `summary_until`, pinned: where it
-  stands.
+  stands. A step's comment says when its agent resumes, as it said
+  (`resumes 08:16 or on #8`: a time to come, local, and the ticket it waits
+  on, a click away); the list's step glyph says the time in its tip.
 - **The talk**, oldest first, so the latest word sits by the reply box, where
   the thread opens. Comments before the latest snapshot fold to one line —
   their own snapshot, else their first line — as aiball's `brief` mode cuts

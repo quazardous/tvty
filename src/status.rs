@@ -99,6 +99,30 @@ pub(crate) fn ago(seconds: u64) -> String {
     }
 }
 
+/// When a step's agent resumes, short enough for a row: the local time
+/// alone today, the day and time another day; none once it passed.
+pub(crate) fn resume_short(iso: &str) -> Option<String> {
+    resume_short_at(iso, chrono::Local::now())
+}
+
+fn resume_short_at<Tz: chrono::TimeZone>(iso: &str, now: chrono::DateTime<Tz>) -> Option<String>
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let at = chrono::DateTime::parse_from_rfc3339(iso).ok()?.with_timezone(&now.timezone());
+    if at <= now {
+        return None;
+    }
+    let pattern = if at.date_naive() == now.date_naive() { "%H:%M" } else { "%d/%m %H:%M" };
+    Some(at.format(pattern).to_string())
+}
+
+/// The same, whole: `2026-09-28 00:33`, local.
+pub(crate) fn resume_full(iso: &str) -> Option<String> {
+    let at = chrono::DateTime::parse_from_rfc3339(iso).ok()?.with_timezone(&chrono::Local);
+    Some(at.format("%Y-%m-%d %H:%M").to_string())
+}
+
 /// Seconds since the epoch of an ISO-8601 UTC time as aiball writes it
 /// (`2026-09-24T15:35:57.678Z`).
 pub fn parse_time(text: &str) -> Option<u64> {
@@ -139,6 +163,23 @@ pub fn format_time(at: std::time::SystemTime) -> String {
         rest / 60 % 60,
         rest % 60
     )
+}
+
+#[cfg(test)]
+mod resume_tests {
+    use super::resume_short_at;
+    use chrono::TimeZone as _;
+
+    #[test]
+    fn a_resume_says_its_time_today_its_day_else_nothing_once_passed() {
+        let paris = chrono::FixedOffset::east_opt(2 * 3600).unwrap();
+        let now = paris.with_ymd_and_hms(2026, 9, 28, 0, 10, 0).unwrap();
+        // 22:33 UTC is 00:33 in Paris, the same day.
+        assert_eq!(resume_short_at("2026-09-27T22:33:00.000Z", now).as_deref(), Some("00:33"));
+        assert_eq!(resume_short_at("2026-09-28T22:33:00.000Z", now).as_deref(), Some("29/09 00:33"));
+        assert_eq!(resume_short_at("2026-09-27T22:00:00.000Z", now), None);
+        assert_eq!(resume_short_at("not a time", now), None);
+    }
 }
 
 #[cfg(test)]

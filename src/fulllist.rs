@@ -533,7 +533,7 @@ impl FullList {
                     .pt_0p5()
                     .flex_none()
                     .when_some(state.glyph, |d, glyph| {
-                        d.child(crate::panel::glyph_chip(glyph, glyph_colour(glyph, yours), 18.))
+                        d.child(crate::panel::glyph_chip(glyph, glyph_colour(glyph, yours), 18., ticket))
                     }),
             )
             .child(

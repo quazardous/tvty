@@ -859,7 +859,7 @@ impl TicketPanel {
                     .w(px(16.))
                     .pt_0p5()
                     .flex_none()
-                    .when_some(state.glyph, |d, glyph| d.child(glyph_chip(glyph, glyph_colour(glyph), 16.))),
+                    .when_some(state.glyph, |d, glyph| d.child(glyph_chip(glyph, glyph_colour(glyph), 16., ticket))),
             )
             .child(
                 div()
@@ -1952,7 +1952,7 @@ impl TicketPanel {
                         &comment.by_agent,
                         &comment.created_at,
                         entry.decision.clone(),
-                        entry.step,
+                        entry.step.map(|latest| (latest, comment.step_resume())),
                         entry.pending,
                         foldable,
                         user,
@@ -2129,7 +2129,7 @@ impl TicketPanel {
         by: &str,
         when: &str,
         decision: Option<(String, DecisionState)>,
-        step: Option<bool>,
+        step: Option<(bool, (Option<String>, Option<u64>))>,
         pending: bool,
         foldable: bool,
         user: &str,
@@ -2146,11 +2146,49 @@ impl TicketPanel {
             .child(who(by, user))
             .when_some(ago(when), |d, when| d.child(when))
             .when_some(decision, |d, (kind, state)| d.child(decision_chip(&kind, state)))
-            .when_some(step, |d, latest| {
-                d.child(
-                    div()
-                        .text_color(if latest { p().accent } else { p().muted })
-                        .child(icons::labelled(Icon::Step, if latest { p().accent } else { p().muted }, 12., "step")),
+            .when_some(step, |d, (latest, (at, on_ticket))| {
+                let colour = if latest { p().accent } else { p().muted };
+                // When its agent resumes, as it said: a time still to come,
+                // and (the live step only) another ticket's move.
+                let short = at.as_deref().and_then(crate::status::resume_short);
+                let on_ticket = on_ticket.filter(|_| latest);
+                let tip = [
+                    short.is_some().then(|| at.as_deref().and_then(crate::status::resume_full)).flatten().map(|t| format!("the agent resumes at {t}")),
+                    on_ticket.map(|n| format!("{} when #{n} moves (a reply, a decision, a close)", if short.is_some() { "or" } else { "the agent resumes" })),
+                ]
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>()
+                .join(", ");
+                d.child(div().text_color(colour).child(icons::labelled(Icon::Step, colour, 12., "step"))).when(
+                    short.is_some() || on_ticket.is_some(),
+                    |d| {
+                        d.child(
+                            div()
+                                .id(("resume", id))
+                                .flex()
+                                .gap_1()
+                                .text_color(colour)
+                                .child("resumes")
+                                .children(short.clone())
+                                .children(on_ticket.map(|n| {
+                                    div()
+                                        .id(("resume-on", id))
+                                        .flex()
+                                        .gap_1()
+                                        .child(if short.is_some() { "or on" } else { "on" })
+                                        .child(
+                                            div()
+                                                .id(("resume-ticket", id))
+                                                .cursor_pointer()
+                                                .underline()
+                                                .child(format!("#{n}"))
+                                                .on_click(cx.listener(move |panel, _, _, cx| panel.open(n, cx))),
+                                        )
+                                }))
+                                .tip(tip),
+                        )
+                    },
                 )
             })
             .when(pending, |d| d.child(pill("to moderate", p().warning)))
@@ -2514,9 +2552,18 @@ pub(crate) fn priority_chip(ticket: &TicketRow, size: f32) -> Option<Stateful<Di
     Some(div().child(icons::icon(icon, icons::priority_colour(priority), size)).id("priority").tip(format!("priority: {priority}")))
 }
 
-/// The state glyph, saying what it means.
-pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32) -> Stateful<Div> {
-    div().child(icons::icon(icons::of_glyph(glyph), colour, size)).id("glyph").tip(glyph.meaning())
+/// The state glyph, saying what it means — a step, when its agent resumes.
+pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketRow) -> Stateful<Div> {
+    let resume = ticket
+        .step_resume_at
+        .as_deref()
+        .filter(|at| glyph == Glyph::Step && crate::status::resume_short(at).is_some())
+        .and_then(crate::status::resume_full);
+    let tip = match resume {
+        Some(at) => format!("step — the agent resumes at {at}"),
+        None => glyph.meaning().to_string(),
+    };
+    div().child(icons::icon(icons::of_glyph(glyph), colour, size)).id("glyph").tip(tip)
 }
 
 /// A decision, as a chip: the list's glyphs, and "superseded" when a newer
