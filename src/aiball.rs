@@ -620,6 +620,12 @@ impl Aiball {
         serde_json::from_value(answer).with_context(|| format!("{method}: an answer tvty does not read"))
     }
 
+    /// A method of aiball's bus, its answer read as `T`: for a module that
+    /// speaks one part of the bus itself (the loops).
+    pub fn call<T: DeserializeOwned>(&self, method: &str, params: Value) -> anyhow::Result<T> {
+        self.rpc(method, params)
+    }
+
     /// A method of aiball's bus whose answer does not matter.
     fn rpc_do(&self, method: &str, params: Value) -> anyhow::Result<()> {
         self.rpc::<Value>(method, params).map(drop)

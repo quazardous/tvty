@@ -70,8 +70,8 @@ each with its count, like the ticket list's bands (one component,
 they share the height — **dragging a title** moves the border with the
 section above, its least height kept; the heights are kept with the layout,
 and a double click on a title gives the list its shares back): **live** (the sessions that run, by project),
-**idle** (the loops this machine knows, from claude-loop's state
-directory, that are stopped: ▶ start runs one again where it worked, for
+**idle** (the loops this machine knows, as aiball lists them
+(`loop.list`), that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start
 opens one where the agent works). A click on a project's name, in any of
 the three, shows its tickets in the panel with no session opened ("no
@@ -81,7 +81,7 @@ form: the working directory — proposed from the project's loops or agents,
 checked as it is typed —, the agent, whether it is a crew agent, and
 where it runs: **on aiball's host** (the default, no tmux: aiball's
 `session.start`, then tvty attaches over the session's socket) or, box
-unticked, in claude-loop's tmux (`claude-loop start --no-attach`). Either
+unticked, in claude-loop's tmux (the same `session.start`, in tmux). Either
 way it starts **in that directory**, and tvty never starts Claude itself:
 it opens the session once it runs. An agent whose loop runs already (on
 the host, or claude-loop's in tmux) is never started again: tvty opens it
@@ -95,11 +95,11 @@ resizes the session — it is drawn at the session's size. Either leaves
 without stopping Claude.
 
 **Quitting tvty** with Claude Code loops of this machine running asks
-whether to stop them too (`claude-loop stop`: they stay restartable) or
+whether to stop them too (through aiball: they stay restartable) or
 keep them running — or cancel; "Remember this choice" keeps the answer
 (Options > Layout > Sessions > On quit). The loops tvty stopped are kept
 in its workspace: at the next start it asks whether to restart them
-(`claude-loop restart --resume`, each where it ran, its conversation
+(aiball's `loop.restart`, each where it ran, its conversation
 resumed), with its own remembered choice (On start). tvty quits once they
 stopped, 15 s at most. Loops of another machine are never touched.
 
@@ -349,8 +349,8 @@ a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
 where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
 tmux) — for a loop of this machine, a click offers to **move** it to the
-other (a confirmation over the bar, which says when Claude works; claude-loop
-restarts it there, resuming its conversation, and the terminal comes back
+other (a confirmation over the bar, which says when Claude works; aiball
+restarts it there — `loop.restart` —, resuming its conversation, and the terminal comes back
 on the new session, "moving…" meanwhile); whether this terminal has the **controls** or is a **copy** (a
 click switches: the terminal leaves and comes back in the other mode, its
 Claude goes on); its name and where it works. A gesture aiball refuses

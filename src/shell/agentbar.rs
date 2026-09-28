@@ -650,7 +650,8 @@ impl Shell {
         cx.notify();
         cx.spawn(async move |this, cx| {
             let loop_name = name.clone();
-            let done = cx.background_executor().spawn(async move { crate::loops::move_to(&loop_name, to_host) }).await;
+            let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { return };
+            let done = cx.background_executor().spawn(async move { crate::loops::move_to(&aiball, &loop_name, to_host) }).await;
             let _ = this.update(cx, |shell, cx| {
                 let place = if to_host { "to aiball's host" } else { "into tmux" };
                 let activity = match done {

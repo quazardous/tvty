@@ -14,6 +14,13 @@
 # on the daemon's host (session.start) runs fake-claude too, never Claude.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# Nothing of the caller's own loop reaches the daemon, nor the loops it
+# starts (session.start, loop.restart): run from inside an agent's loop,
+# its variables (state directory, session host's control socket) would be
+# taken for theirs — as scripts/test-env clears them.
+for var in $(env | sed -n 's/^\(CL_[A-Z_]*\|AIBALL_[A-Z_]*\|CLAUDE_LOOP_[A-Z_]*\|TMUX_PANE\)=.*/\1/p'); do
+    unset "$var"
+done
 # The demo loops run on the test tmux server (scripts/test-env); the
 # daemon keeps its own socket and config below.
 TMUX_TMPDIR="$ROOT/dev/tmux"; export TMUX_TMPDIR; unset TMUX

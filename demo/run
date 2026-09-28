@@ -23,6 +23,11 @@ WORK=/tmp/tvty-demo
 SIMCLI="$SIBLINGS/simai-cli/dist/main.js"
 export TMUX_TMPDIR="$DIR/tmux"
 unset TMUX
+# Nothing of the caller's own loop reaches the demo's daemon and what it
+# starts (as scripts/test-env).
+for var in $(env | sed -n 's/^\(CL_[A-Z_]*\|AIBALL_[A-Z_]*\|CLAUDE_LOOP_[A-Z_]*\|TMUX_PANE\)=.*/\1/p'); do
+    unset "$var"
+done
 
 # project agent… per line, as demo/seed.py has them.
 AGENTS="battle-station:exhaust-port battle-station:superlaser battle-station:tractor-beam

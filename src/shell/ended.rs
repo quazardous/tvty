@@ -82,7 +82,7 @@ impl Shell {
             crew: l.role.as_deref() == Some("crew"),
             // On the host, its host outlives its program: started again
             // there, through claude-loop's restart.
-            again: l.host_agent.is_some().then(|| l.name.clone()),
+            again: l.on_host().then(|| l.name.clone()),
         });
         self.ended = Some(EndedSession {
             session: session.to_string(),

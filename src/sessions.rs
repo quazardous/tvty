@@ -90,8 +90,8 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 /// machine. Cheap: nothing is read from aiball.
 pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
     let consumers = live.consumers();
-    // Whom each loop runs for, as its plate says.
-    let owners: HashMap<String, String> = known.iter().filter_map(|l| Some((l.name.clone(), l.consumer.clone()?))).collect();
+    // Whom each loop's tmux session runs for, as aiball lists its loops.
+    let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
     let mut board = Board { known, homes: homes(&consumers), ..Default::default() };
     for project in projects.iter().filter(|p| p.on_board) {

@@ -751,9 +751,10 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             use futures::{FutureExt as _, StreamExt as _};
             loop {
+                let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { break };
                 let local = cx
                     .background_executor()
-                    .spawn(async { (sessions::tmux_sessions(), crate::loops::known()) })
+                    .spawn(async move { (sessions::tmux_sessions(), crate::loops::known(&aiball)) })
                     .await;
                 let alive = this.update(cx, |shell, cx| {
                     if !shell.local_seen {

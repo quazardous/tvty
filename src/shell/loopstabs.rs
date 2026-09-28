@@ -59,7 +59,7 @@ impl Shell {
             .filter(|l| self.terminal_of(&l.name).is_none())
             // A loop on aiball's host shows as its agent's hosted terminal.
             .filter(|l| {
-                l.host_agent.as_ref().is_none_or(|agent| self.terminal_of(&format!("{}{agent}", crate::sessions::HOSTED_PREFIX)).is_none())
+                !l.on_host() || self.terminal_of(&l.session()).is_none()
             })
             .filter(|l| {
                 let project = self.loop_project(l).unwrap_or_default();
@@ -79,7 +79,7 @@ impl Shell {
             .homes
             .iter()
             .filter(|(agent, _, cwd)| {
-                !self.board.known.iter().any(|l| l.consumer.as_deref() == Some(agent.as_str()) || l.cwd == *cwd)
+                !self.board.known.iter().any(|l| l.agent() == Some(agent.as_str()) || l.cwd == *cwd)
                     && !self.board.projects.iter().any(|p| p.terminals.iter().any(|t| t.agent.as_deref() == Some(agent.as_str())))
             })
             .filter(|(agent, project, cwd)| crate::sessions::found(words, &[project.as_deref().unwrap_or(""), agent, cwd]))
@@ -182,7 +182,7 @@ impl Shell {
                         // A loop moved onto aiball's host starts again there,
                         // through claude-loop's restart: its start is refused
                         // while its host is up, its program ended.
-                        again: l.host_agent.is_some().then(|| l.name.clone()),
+                        again: l.on_host().then(|| l.name.clone()),
                     };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
                 }
@@ -235,7 +235,7 @@ impl Shell {
         let known = self.board.known.iter().find(|l| l.project.as_deref() == Some(project.as_str()) && l.role.is_none());
         let home = self.board.homes.iter().find(|h| h.1.as_deref() == Some(project.as_str()));
         let cwd_value = self.project_folder(&project).unwrap_or_default();
-        let agent_value = known.and_then(|l| l.consumer.clone()).or_else(|| home.map(|h| h.0.clone())).unwrap_or_default();
+        let agent_value = known.and_then(|l| l.agent.clone()).or_else(|| home.map(|h| h.0.clone())).unwrap_or_default();
         let cwd = cx.new(|cx| InputState::new(window, cx).placeholder("working directory").default_value(cwd_value));
         let agent = cx.new(|cx| InputState::new(window, cx).placeholder("agent").default_value(agent_value));
         // The directory is checked as it is typed.
@@ -420,7 +420,7 @@ impl Shell {
                             return Ok((format!("{}{agent}", crate::sessions::HOSTED_PREFIX), false, start.again.is_none()));
                         }
                     }
-                    crate::loops::start(&start).map(|name| (name, true, false))
+                    crate::loops::start(&aiball, &start).map(|name| (name, true, false))
                 }
             });
             let done = done.await;

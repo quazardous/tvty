@@ -222,7 +222,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Layout",
         group: "Sessions",
         label: "On quit",
-        about: "When tvty quits with Claude Code loops of this machine running: ask, stop them (claude-loop stop: they stay restartable), or keep them running.",
+        about: "When tvty quits with Claude Code loops of this machine running: ask, stop them (through aiball: they stay restartable), or keep them running.",
         kind: Kind::Choice,
     },
     Setting {

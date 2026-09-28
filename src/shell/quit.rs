@@ -126,19 +126,21 @@ impl Shell {
         self.stopping_all = true;
         self.ask = None;
         cx.notify();
+        let aiball = self.aiball.clone();
+        let known: Vec<crate::loops::KnownLoop> = self.board.known.iter().filter(|l| loops.contains(&l.name)).cloned().collect();
         cx.spawn(async move |this, cx| {
-            let asked = loops.clone();
             let (done, wait) = futures::channel::oneshot::channel();
             std::thread::spawn(move || {
-                let stopped: Vec<String> = asked
+                let stopped: Vec<String> = known
                     .into_iter()
-                    .filter(|name| match crate::loops::stop(name) {
+                    .filter(|l| match crate::loops::stop(&aiball, l) {
                         Ok(()) => true,
                         Err(error) => {
                             log::warn!("{error:#}");
                             false
                         }
                     })
+                    .map(|l| l.name)
                     .collect();
                 let _ = done.send(stopped);
             });
@@ -188,6 +190,7 @@ impl Shell {
     fn restart_loops(&mut self, names: Vec<String>, cx: &mut Context<Self>) {
         self.ask = None;
         cx.notify();
+        let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let count = names.len();
             let failed = cx
@@ -195,7 +198,7 @@ impl Shell {
                 .spawn(async move {
                     names
                         .into_iter()
-                        .filter_map(|name| crate::loops::restart(&name).err().map(|e| format!("{e:#}")))
+                        .filter_map(|name| crate::loops::restart(&aiball, &name).err().map(|e| format!("{e:#}")))
                         .collect::<Vec<_>>()
                 })
                 .await;
@@ -253,7 +256,7 @@ impl Shell {
             let known = self.board.known.iter().find(|l| l.name == *name);
             let who = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
             let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
-            let place = if known.is_some_and(|l| l.host_agent.is_some()) { "host" } else { "tmux" };
+            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
             div().flex().gap_2().child(div().text_color(p().text).child(who)).child(div().text_color(p().muted).child(format!("{project} · {place}")))
         });
         let remember = self.remember;
