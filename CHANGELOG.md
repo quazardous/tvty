@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A shortcut acts where it makes sense: the workspace's (Ctrl+Shift+B, tabs,
+  F9…) no longer reach a full-screen page, and a global one that goes
+  somewhere (slider, gallery, a notification) leaves the page first.
 - The folded sessions list's marks come in the list's order.
 - Selecting text in the ticket panel no longer makes it blink.
 - A relation made from the other ticket reads the right way round ("blocks",

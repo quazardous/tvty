@@ -1,7 +1,18 @@
 //! The shortcuts: named commands bound to keys in a context. The context
-//! follows the focus — `Terminal` (a terminal has it), under `Window` (the
-//! rest of tvty) — and the deepest binding wins: a key bound in `Terminal`
-//! is the terminal's, a key bound nowhere goes to the program.
+//! follows the focus, as GPUI builds it from the focused element up: each
+//! surface that holds the focus is one — `Window` (the whole window, the
+//! commands that work everywhere), `Workspace` (the terminals, the sessions
+//! list and the panel beside them), `Terminal` (a terminal, in the
+//! workspace), and each full-screen page (`FullList`, `Ticket`, `Options`,
+//! `NewTicket`, `NewProject`, `Gallery`), beside the workspace, not in it.
+//! A command lives where it makes sense: a workspace one is not there on a
+//! full-screen page. The deepest binding wins: a key bound in `Terminal` is
+//! the terminal's, a key bound nowhere goes to the program.
+//!
+//! The global ones (`Window`) reach every surface; they are chosen not to
+//! be a key a text field edits with nor one a terminal's program needs
+//! (a test says so), and one that goes somewhere leaves the full-screen
+//! page first.
 //!
 //! The defaults are below; `keymap.toml`, in tvty's config directory,
 //! overrides them —
@@ -54,9 +65,11 @@ actions!(
     ]
 );
 
-/// The key context of the window's content (the shell).
+/// The key context of the window's content (the shell): everywhere.
 pub const WINDOW: &str = "Window";
-/// The key context of a terminal, under the window's.
+/// The terminals, the sessions list and the panel beside them.
+pub const WORKSPACE: &str = "Workspace";
+/// A terminal, in the workspace.
 pub const TERMINAL: &str = "Terminal";
 
 /// Declares the commands: the table `tvty-keys` reads, and the action each
@@ -84,20 +97,20 @@ commands! {
     "notice.open", WINDOW, ["ctrl-enter"], "Go to the newest notification: the agent's terminal, its ticket", OpenNotice;
     "slider.next", WINDOW, ["ctrl-tab"], "Slider: the groups as stacks, most recent first; release Ctrl to open", SliderNext;
     "slider.back", WINDOW, ["ctrl-shift-tab"], "Slider, backwards", SliderBack;
-    "tab.next", WINDOW, ["ctrl-pagedown"], "The tab after, in the group shown", TabNext;
-    "tab.back", WINDOW, ["ctrl-pageup"], "The tab before, in the group shown", TabBack;
+    "tab.next", WORKSPACE, ["ctrl-pagedown"], "The tab after, in the group shown", TabNext;
+    "tab.back", WORKSPACE, ["ctrl-pageup"], "The tab before, in the group shown", TabBack;
     "gallery.toggle", WINDOW, ["ctrl-shift-space"], "Gallery of every terminal; type to filter, arrows move, Enter opens", Gallery;
-    "panel.toggle", WINDOW, ["ctrl-shift-t"], "Fold or unfold the ticket panel", TogglePanel;
-    "sidebar.toggle", WINDOW, ["ctrl-shift-b"], "Fold or unfold the projects' list", ToggleSidebar;
-    "afk.cycle", WINDOW, ["f9"], "The shown agent's AFK mode: auto → hold 10 min → hold, in force 3 s after the last press (a terminal without an agent gets F9)", AfkCycle;
-    "sessions.filter", WINDOW, ["ctrl-shift-f"], "Filter the sessions: type, Enter opens, arrows move, Esc clears", FilterSessions;
+    "panel.toggle", WORKSPACE, ["ctrl-shift-t"], "Fold or unfold the ticket panel", TogglePanel;
+    "sidebar.toggle", WORKSPACE, ["ctrl-shift-b"], "Fold or unfold the projects' list", ToggleSidebar;
+    "afk.cycle", WORKSPACE, ["f9"], "The shown agent's AFK mode: auto → hold 10 min → hold, in force 3 s after the last press (a terminal without an agent gets F9)", AfkCycle;
+    "sessions.filter", WORKSPACE, ["ctrl-shift-f"], "Filter the sessions: type, Enter opens, arrows move, Esc clears", FilterSessions;
     "ticket.goto", WINDOW, ["ctrl-shift-g"], "Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)", GotoTicket;
     "options.toggle", WINDOW, ["ctrl-,"], "Options", ToggleOptions;
     "help.menu", WINDOW, ["f1"], "Help: about tvty, its documentation, what's new, a restart", HelpMenu;
     "window.fullscreen", WINDOW, ["f11"], "The window full screen, or back", FullScreen;
-    "font.bigger", WINDOW, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
-    "font.smaller", WINDOW, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
-    "font.reset", WINDOW, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;
+    "font.bigger", WORKSPACE, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
+    "font.smaller", WORKSPACE, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
+    "font.reset", WORKSPACE, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;
     "ticket.new", WINDOW, ["ctrl-shift-n"], "A new ticket (also + in the panel and the full list)", NewTicket;
     "list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList;
     "theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme;
@@ -108,7 +121,7 @@ commands! {
 }
 
 /// The contexts, outermost first.
-pub const CONTEXTS: &[&str] = &[WINDOW, TERMINAL];
+pub const CONTEXTS: &[&str] = &[WINDOW, WORKSPACE, TERMINAL];
 
 // ── keymap.toml ──────────────────────────────────────────────────────
 
@@ -214,7 +227,7 @@ pub fn key_bindings(bindings: &[Binding]) -> Vec<KeyBinding> {
 
 #[cfg(test)]
 mod tests {
-    use super::{COMMANDS, CONTEXTS, Keymap, action, key_bindings};
+    use super::{COMMANDS, CONTEXTS, Keymap, TERMINAL, WINDOW, action, key_bindings};
 
     #[test]
     fn every_default_key_binds() {
@@ -225,5 +238,27 @@ mod tests {
     #[test]
     fn every_command_has_its_action() {
         assert!(COMMANDS.iter().all(|c| action(c.name).is_some()));
+    }
+
+    #[test]
+    fn every_command_lives_in_a_known_context() {
+        assert!(COMMANDS.iter().all(|c| CONTEXTS.contains(&c.context)), "a command in an unknown context");
+    }
+
+    /// A global key reaches every surface, fields and terminals included:
+    /// none may be a key a field edits with, nor one of the terminal's.
+    #[test]
+    fn no_global_key_is_an_editing_key_or_a_terminals() {
+        const EDITING: &[&str] = &[
+            "ctrl-a", "ctrl-c", "ctrl-v", "ctrl-x", "ctrl-z", "ctrl-shift-z", "ctrl-y", "ctrl-left", "ctrl-right",
+            "ctrl-backspace", "ctrl-delete", "tab", "shift-tab", "escape", "enter", "backspace", "delete", "home", "end",
+        ];
+        let terminal: Vec<&str> = COMMANDS.iter().filter(|c| c.context == TERMINAL).flat_map(|c| c.keys.iter().copied()).collect();
+        for command in COMMANDS.iter().filter(|c| c.context == WINDOW) {
+            for key in command.keys {
+                assert!(!EDITING.contains(key), "{}: {key} is a field's editing key", command.name);
+                assert!(!terminal.contains(key), "{}: {key} is the terminal's", command.name);
+            }
+        }
     }
 }

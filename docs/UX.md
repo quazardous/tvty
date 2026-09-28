@@ -533,10 +533,20 @@ unfold it on a click, with a background under the pointer.
 ## Keys
 
 Every shortcut is a **command**, bound to keys in a **context** that
-follows the focus: `Terminal` when a terminal has it, `Window` anywhere
-else (`src/keymap.rs`). The deepest binding wins, and a key bound nowhere
+follows the focus — each surface that holds it is one (`src/keymap.rs`):
+`Window` everywhere; `Workspace`, the terminals, the sessions list and the
+panel beside them; `Terminal`, a terminal in it; and each full-screen page
+(`FullList`, `Ticket`, `Options`, `NewTicket`, `NewProject`, `Gallery`),
+beside the workspace, not in it. A workspace command (the sides folded, the
+tabs, the sessions filter, F9, the font size) is not there on a full-screen
+page; the page up takes the focus, and gives it back to the terminal when
+it goes. A global one (`Window`) reaches every surface, fields and terminals
+included — none is a key a field edits with nor one of the terminal's (a
+test says so) — and one that goes somewhere (the slider, the gallery, a
+notification, a ticket gone to) puts the full-screen page away first, its
+draft kept. The deepest binding wins, and a key bound nowhere
 goes on to the terminal's program. `keymap.toml`, beside `settings.toml`,
-overrides the defaults below — a `[Terminal]` or `[Window]` section, and in
+overrides the defaults below — a `[Window]`, `[Workspace]` or `[Terminal]` section, and in
 it `ctrl-alt-t = "theme.next"`: a key bound to a command by its name, or
 `ctrl-c = false` to give it back to what has the focus. A key may be
 written as Options shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is

@@ -144,7 +144,11 @@ pub fn remote_items(config: &crate::aiball::ManagedConfig) -> Vec<Item> {
 pub const SHORTCUTS_PAGE: &str = "Keyboard shortcuts";
 
 pub fn context_group(context: &str) -> &'static str {
-    if context == keymap::TERMINAL { "Terminal" } else { "Window" }
+    match context {
+        keymap::TERMINAL => "Terminal",
+        keymap::WORKSPACE => "Workspace",
+        _ => "Window",
+    }
 }
 
 /// The shortcuts: one item per command, found by its name, what it does and

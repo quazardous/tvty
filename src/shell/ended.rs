@@ -90,7 +90,7 @@ impl Shell {
             project: project.or_else(|| known.and_then(|l| l.project.clone())),
             start,
         });
-        window.focus(&self.focus.clone(), cx);
+        self.focus_home(window, cx);
         self.sync_panel(cx);
         cx.notify();
     }

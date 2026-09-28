@@ -265,6 +265,9 @@ pub struct Shell {
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
+    /// The focus of the full-screen page up, when one is: its surface's key
+    /// context holds the keys, the workspace's do not reach it.
+    page_focus: FocusHandle,
     /// Lists the local sessions again now, before the next tick.
     refresh_now: futures::channel::mpsc::UnboundedSender<()>,
 }
@@ -566,7 +569,7 @@ impl Shell {
             Signal::AskNewTicket { project, parent } => shell.open_new_ticket(project.clone(), *parent, window, cx),
             Signal::OpenPictures { pictures, index } => {
                 shell.viewer = Some(viewer::Viewer::new(pictures.clone(), *index));
-                window.focus(&shell.focus.clone(), cx);
+                shell.focus_home(window, cx);
                 cx.notify();
             }
             // The activity service's.
@@ -589,7 +592,7 @@ impl Shell {
                 } else {
                     shell.restore_compact(cx);
                 }
-                cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+                cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
             }
             cx.notify();
         })
@@ -717,6 +720,7 @@ impl Shell {
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
+            page_focus: cx.focus_handle(),
             refresh_now,
         };
         shell.wire = Some(wire);
@@ -755,7 +759,7 @@ impl Shell {
                 if !open.is_empty() {
                     shell.restoring = Some(tabs::Restoring::new(open, shell.settings.workspace.shown_terminal.clone()));
                 }
-                window.focus(&shell.focus.clone(), cx)
+                shell.focus_home(window, cx)
             }
         }
         shell
@@ -1058,7 +1062,7 @@ impl Shell {
                 self.toggle_panel(cx);
             }
             self.panel.update(cx, |panel, cx| panel.set_full(true, cx));
-            cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+            cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
             return;
         }
         let scope = self.panel.read(cx).scope_project();
@@ -1096,7 +1100,7 @@ impl Shell {
         self.full_list_shown = true;
         // Keys go to the list, not to the terminal: after the click that
         // opened it, if a click did, has settled focus.
-        cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+        cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
         if self.full_list.is_some() {
             self.sync_full_list(cx);
             cx.notify();
@@ -1162,7 +1166,7 @@ impl Shell {
                         panel.set_full(true, cx);
                     });
                     let _ = shell.refresh_now.unbounded_send(());
-                    cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+                    cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
                     cx.notify();
                 })
                 .detach();
@@ -1179,7 +1183,7 @@ impl Shell {
         if !self.full_list_shown && !self.panel.read(cx).is_full() {
             self.focus_terminal(window, cx);
         } else {
-            window.focus(&self.focus.clone(), cx);
+            self.focus_home(window, cx);
         }
         cx.notify();
     }
@@ -1196,7 +1200,7 @@ impl Shell {
             panel.open_in(Some(project), ticket, cx);
             panel.set_full(true, cx);
         });
-        cx.defer_in(window, |shell, window, cx| window.focus(&shell.focus.clone(), cx));
+        cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
         cx.notify();
     }
 
@@ -1216,7 +1220,7 @@ impl Shell {
             }
             // No terminal shown: the window's own, so that a box let go
             // (Esc, a click) does not keep the keys.
-            None => window.focus(&self.focus.clone(), cx),
+            None => self.focus_home(window, cx),
         }
     }
 
@@ -1278,6 +1282,7 @@ impl Shell {
     /// Goes where a notification points: the agent's terminal, the panel
     /// open on the ticket.
     fn open_notice(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
+        self.leave_page(window, cx);
         if let Some(session) = notice.session.clone() {
             self.select(session, window, cx);
         } else if let Some((project, _)) = notice.ticket.as_ref() {
@@ -1325,16 +1330,63 @@ impl Shell {
     /// Out of the field being typed in: to the page it sits on (options,
     /// new ticket, full list, a ticket full screen), else to the terminal.
     fn leave_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let page = self.options.is_some()
-            || self.new_ticket_shown
-            || self.full_list_shown
-            || self.new_project.is_some()
-            || self.panel.read(cx).is_full();
-        if page {
-            window.focus(&self.focus.clone(), cx);
+        if self.page_shown(cx).is_some() {
+            self.focus_home(window, cx);
         } else {
             self.focus_terminal(window, cx);
         }
+        cx.notify();
+    }
+
+    /// The full-screen page up, the topmost when several are (its key
+    /// context): none, the workspace has the window.
+    pub(super) fn page_shown(&self, cx: &App) -> Option<&'static str> {
+        if self.new_project.is_some() {
+            Some("NewProject")
+        } else if self.options.is_some() {
+            Some("Options")
+        } else if self.new_ticket_shown {
+            Some("NewTicket")
+        } else if self.panel.read(cx).is_full() {
+            Some("Ticket")
+        } else if self.full_list_shown {
+            Some("FullList")
+        } else if self.gallery.is_some() {
+            Some("Gallery")
+        } else {
+            None
+        }
+    }
+
+    /// The focus when no field nor terminal has it: the page's up, else the
+    /// workspace's — so that the keys reach the surface shown, and only it.
+    pub(super) fn focus_home(&self, window: &mut Window, cx: &mut App) {
+        let home = if self.page_shown(cx).is_some() { &self.page_focus } else { &self.focus };
+        window.focus(&home.clone(), cx);
+    }
+
+    /// Before a global command that goes somewhere (the slider, the
+    /// gallery, a notification, a ticket gone to): the full-screen pages put
+    /// away, their drafts kept, as their Esc would.
+    pub(super) fn leave_page(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page_shown(cx).is_none() {
+            return;
+        }
+        self.new_project = None;
+        self.options = None;
+        self.new_ticket_shown = false;
+        self.gallery = None;
+        // The full list and a ticket full screen give the panel back as
+        // it was, as their Esc does.
+        self.full_list_return = false;
+        if self.panel.read(cx).is_full() {
+            self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
+        }
+        if self.full_list_shown {
+            self.full_list_shown = false;
+            self.restore_compact(cx);
+        }
+        self.focus_terminal(window, cx);
         cx.notify();
     }
 
@@ -1366,6 +1418,7 @@ impl Shell {
                 let _ = this.update(cx, |shell, cx| match found {
                     Ok((ticket, project)) => {
                         shell.goto.update(cx, |g, cx| g.set_value("", window, cx));
+                        shell.leave_page(window, cx);
                         if !shell.settings.layout.panel_open {
                             shell.toggle_panel(cx);
                         }
@@ -2032,13 +2085,14 @@ impl Shell {
             self.close_gallery(window, cx);
             return;
         }
+        self.leave_page(window, cx);
         self.card_centres.borrow_mut().clear();
         self.gallery = Some(Gallery {
             filter: String::new(),
             chosen: self.selected.clone(),
         });
         // Keys go to the window while the gallery is up.
-        window.focus(&self.focus.clone(), cx);
+        self.focus_home(window, cx);
         self.watch_cards(cx);
         cx.notify();
     }
@@ -2202,7 +2256,7 @@ impl Shell {
             Section::Appearance => named(schema("Appearance")),
             Section::Layout => named(schema("Layout").into_iter().chain(["Sides"]).collect()),
             Section::TicketList => named(schema("Ticket list").into_iter().chain(["Legend"]).collect()),
-            Section::Shortcuts => named(vec!["Window", "Terminal", "Fixed keys"]),
+            Section::Shortcuts => named(vec!["Window", "Workspace", "Terminal", "Fixed keys"]),
             Section::Aiball => self.remote_layout().into_iter().map(|(group, _)| group.into()).collect(),
             Section::About => Vec::new(),
         }
@@ -3184,7 +3238,11 @@ impl Shell {
             sections.push((None, header.into_any_element()));
         }
         let masked = map.masked();
-        for (context, title) in [(keymap::WINDOW, "Window — anywhere in tvty"), (keymap::TERMINAL, "Terminal — when a terminal has the focus")] {
+        for (context, title) in [
+            (keymap::WINDOW, "Window — anywhere in tvty, full-screen pages included"),
+            (keymap::WORKSPACE, "Workspace — the terminals, the sessions list and the panel beside them"),
+            (keymap::TERMINAL, "Terminal — when a terminal has the focus"),
+        ] {
             let mut group = div().flex().flex_col().max_w(px(960.)).child(option_group(title));
             let mut rows = 0;
             for command in keymap::COMMANDS.iter().filter(|c| c.context == context && only.is_none_or(|o| o.contains(c.name))) {
@@ -4289,7 +4347,7 @@ impl Render for Shell {
         // A click on something that takes no focus (a list, the panel)
         // leaves none: the keys would reach nothing, the shell's shortcuts
         // included. Once the click is done, the shell takes them back.
-        let shell_focus = self.focus.clone();
+        let shell_focus = if self.page_shown(cx).is_some() { self.page_focus.clone() } else { self.focus.clone() };
         let keep_focus = canvas(
             |_, _, _| {},
             move |_, _, window, _| {
@@ -4320,9 +4378,29 @@ impl Render for Shell {
             window.set_window_title(&title);
             self.os_title = title.clone();
         }
+        // The full-screen pages: each its own surface (its key context),
+        // beside the workspace, the topmost holding the page's focus.
+        let page = self.page_shown(cx);
+        // One rule for every way a page opens or goes: the keys follow what
+        // is shown. A page up with the focus still in the workspace (a
+        // terminal, its panel) takes it; the page gone, the terminal does.
+        if page.is_some() && self.focus.contains_focused(window, cx) {
+            cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
+        } else if page.is_none() && self.page_focus.is_focused(window) {
+            cx.defer_in(window, |shell, window, cx| shell.focus_terminal(window, cx));
+        }
+        let page_focus = self.page_focus.clone();
+        let surface = move |name: &'static str, content: AnyElement| {
+            div()
+                .id(name)
+                .absolute()
+                .inset_0()
+                .key_context(name)
+                .when(page == Some(name), |d| d.track_focus(&page_focus))
+                .child(content)
+        };
         let body = div()
             .id("shell")
-            .track_focus(&self.focus)
             .on_drag_move(cx.listener(Self::on_drag_move))
             // A section's title dragged, in the sessions list or the panel.
             .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
@@ -4353,29 +4431,39 @@ impl Render for Shell {
             .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
             .text_color(p().text)
             .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
-            .child(left)
             .child(
+                // The workspace: the terminals, the sessions list, the panel
+                // beside them — its key context, the shell's own focus.
                 div()
-                    .relative()
-                    .flex_1()
-                    .h_full()
-                    .min_w_0()
-                    .child(center)
-                    .children(overlay),
+                    .id("workspace")
+                    .key_context(crate::keymap::WORKSPACE)
+                    .track_focus(&self.focus)
+                    .size_full()
+                    .flex()
+                    .child(left)
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .h_full()
+                            .min_w_0()
+                            .child(center)
+                            .children(overlay),
+                    )
+                    .child(right)
+                    .children(slider),
             )
-            .child(right)
-            .children(slider)
-            .children(gallery)
             .child(keep_focus)
-            .children(full_list)
+            .children(gallery.map(|g| surface("Gallery", g.into_any_element())))
+            .children(full_list.map(|l| surface("FullList", l.into_any_element())))
             .when(panel_full, |d| {
-                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone()))
+                d.child(surface("Ticket", div().size_full().occlude().bg(p().bg).child(self.panel.clone()).into_any_element()))
             })
-            .children(new_ticket)
-            .children(options)
+            .children(new_ticket.map(|t| surface("NewTicket", t.into_any_element())))
+            .children(options.map(|o| surface("Options", o.into_any_element())))
             // Inside the shell, which hears the keys (Esc) and keeps the
             // focus when a click leaves one of its boxes.
-            .children(self.new_project_view(cx));
+            .children(self.new_project_view(cx).map(|w| surface("NewProject", w)));
 
         // The window draws its own title bar: GNOME leaves decorations to the
         // application (as with VS Code or Zed). It moves the window and
@@ -4398,8 +4486,16 @@ impl Render for Shell {
                 // No notification: the key goes on (a terminal's program, a field).
                 None => cx.propagate(),
             }))
-            .on_action(cx.listener(|shell, _: &keymap::SliderNext, _, cx| shell.step_slider(1, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::SliderBack, _, cx| shell.step_slider(-1, cx)))
+            // The slider goes to a terminal: from a full-screen page, it
+            // leaves it first.
+            .on_action(cx.listener(|shell, _: &keymap::SliderNext, window, cx| {
+                shell.leave_page(window, cx);
+                shell.step_slider(1, cx)
+            }))
+            .on_action(cx.listener(|shell, _: &keymap::SliderBack, window, cx| {
+                shell.leave_page(window, cx);
+                shell.step_slider(-1, cx)
+            }))
             .on_action(cx.listener(|shell, _: &keymap::TabNext, window, cx| shell.step_tab(1, window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::TabBack, window, cx| shell.step_tab(-1, window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::Gallery, window, cx| shell.toggle_gallery(window, cx)))
