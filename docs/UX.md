@@ -509,6 +509,9 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | middle click | paste the primary selection |
 | right click | a menu: Copy, Paste (Esc closes it) |
 
+Esc in a text field (a search, the reply, a form's box) only leaves the
+field; the next Esc closes the page it sits on.
+
 Everything else goes to the terminal.
 
 ## Open points

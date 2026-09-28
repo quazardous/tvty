@@ -1731,6 +1731,20 @@ impl Shell {
             cx.stop_propagation();
             return;
         }
+        // In a field (a search, a reply, a form's box), Esc only leaves it:
+        // the page it sits on stays, and the next Esc closes that. With no
+        // page up, the keys go back to the terminal.
+        if key == "escape" && window.context_stack().iter().any(|c| c.contains("Input")) {
+            let page = self.options.is_some() || self.new_ticket_shown || self.full_list_shown || self.panel.read(cx).is_full();
+            if page {
+                window.focus(&self.focus.clone(), cx);
+            } else {
+                self.focus_terminal(window, cx);
+            }
+            cx.notify();
+            cx.stop_propagation();
+            return;
+        }
         // The shortcuts are commands bound in `crate::keymap` (they come
         // before this); here, the keys of what is up: Esc, the slider's and
         // the gallery's.

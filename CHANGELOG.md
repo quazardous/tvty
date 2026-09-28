@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Esc in a text field only leaves the field; the next Esc closes the page
+  it sits on (options, new ticket, full list, a ticket full screen).
 - A ticket waiting for moderation shows its proposal but no Accept or
   Reject: it is decided once the ticket is approved.
 - Every button shows it is clickable the same way: a background under the
