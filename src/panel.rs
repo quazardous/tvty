@@ -227,6 +227,7 @@ impl TicketPanel {
     ) {
         self.gesture(
             what.to_string(),
+            String::new(),
             run,
             |panel, _, _| {
                 panel.comment_menu = None;
@@ -378,6 +379,7 @@ impl TicketPanel {
         let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) else { return };
         self.gesture(
             what.into(),
+            String::new(),
             move |aiball| run(aiball, ticket),
             |panel, _, _| panel.editing = None,
             window,
@@ -533,6 +535,7 @@ impl TicketPanel {
     fn gesture(
         &mut self,
         what: String,
+        quote: String,
         run: impl FnOnce(&Aiball) -> anyhow::Result<()> + Send + 'static,
         on_success: impl FnOnce(&mut Self, &mut Window, &mut Context<Self>) + 'static,
         window: &mut Window,
@@ -544,6 +547,8 @@ impl TicketPanel {
         };
         let ticket = detail.ticket;
         let about = detail.project.clone().or(scope_project).map(|project| (project, ticket));
+        // Said as the others' are: the ticket's title, then what was done.
+        let title = detail.thread.as_ref().map(|t| t.ticket.title.clone());
         detail.busy = true;
         detail.error = None;
         let aiball = self.aiball.clone();
@@ -558,7 +563,11 @@ impl TicketPanel {
                             panel.load(ticket, false, cx);
                             crate::bus::emit(cx, crate::bus::Signal::BoardChanged);
                             if !what.is_empty() {
-                                crate::activity::publish(cx, crate::activity::Activity::done(about, what));
+                                let said = match title {
+                                    Some(title) => format!("{title} — {what}"),
+                                    None => what,
+                                };
+                                crate::activity::publish(cx, crate::activity::Activity::done(about, said).quoting(quote));
                             }
                         }
                         Err(error) => {
@@ -605,8 +614,11 @@ impl TicketPanel {
         };
         let ticket = detail.ticket;
         let (quiet, answers) = (detail.quiet, detail.answers.clone());
+        // The reply's words, in its notification.
+        let quote = crate::thread::excerpt(Some(&body), crate::live::EXCERPT);
         self.gesture(
             what,
+            quote,
             move |aiball| {
                 if !body.is_empty() {
                     let comment = aiball.reply(&project, ticket, &body, quiet)?;

@@ -1137,7 +1137,8 @@ impl Shell {
                         shell.toggle_panel(cx);
                     }
                     let (project, ticket) = (created.project.clone(), created.ticket);
-                    activity::publish(cx, Activity::done(Some((project.clone(), ticket)), "filed"));
+                    let quote = crate::thread::excerpt(Some(&created.body), crate::live::EXCERPT);
+                    activity::publish(cx, Activity::done(Some((project.clone(), ticket)), format!("filed — {}", created.title)).quoting(quote));
                     shell.panel.update(cx, |panel, cx| {
                         panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);

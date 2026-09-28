@@ -44,7 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Esc in the title bar's "#…" empties it and lets it go, and the window's
   shortcuts work from it too.
 - A notification keeps its quote when another word on the same ticket replaces
-  it, and a new ticket's notification quotes its body too.
+  it, and a new ticket's notification quotes its body too; your own reply or
+  ticket is said with its title and its words.
 - With see-through terminals, the side strips stay opaque under the
   pointer, and an empty terminal place is as see-through as a terminal.
 - Pasting an image into a terminal (Ctrl+Shift+V, the menu's Paste) hands

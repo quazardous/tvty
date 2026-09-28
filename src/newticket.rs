@@ -27,6 +27,9 @@ pub struct CloseNewTicket;
 pub struct Created {
     pub project: String,
     pub ticket: u64,
+    /// Its title and body, as filed: its notification says them.
+    pub title: String,
+    pub body: String,
 }
 
 const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
@@ -398,7 +401,7 @@ impl NewTicketForm {
         self.error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let project = ticket.project.clone();
+            let (project, title, body) = (ticket.project.clone(), ticket.title.clone(), ticket.body.clone());
             let filed = cx
                 .background_executor()
                 .spawn(async move {
@@ -411,7 +414,7 @@ impl NewTicketForm {
                     match filed {
                         Ok(ticket) => {
                             form.clear(window, cx);
-                            cx.emit(Created { project, ticket });
+                            cx.emit(Created { project, ticket, title, body });
                         }
                         Err(error) => form.error = Some(format!("{error:#}")),
                     }
