@@ -30,3 +30,31 @@ jobs:
         run: cargo build --locked --workspace
       - name: Tests
         run: cargo test --locked --workspace
+
+  # What the desktop decides about the window (frame, focus, blur request),
+  # under labwc in a headless wbox: the protocols KDE's KWin uses for them.
+  desktop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: GPUI's libraries, labwc, the tools wbox drives
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
+            libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev \
+            libasound2-dev mesa-vulkan-drivers labwc xwayland grim wlrctl \
+            tmux xterm python3-venv
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: wbox
+        run: |
+          python3 -m venv "$RUNNER_TEMP/wbox"
+          "$RUNNER_TEMP/wbox/bin/pip" install "git+https://github.com/quazardous/wbox-mcp"
+          echo "WBOX_PYTHON=$RUNNER_TEMP/wbox/bin/python" >> "$GITHUB_ENV"
+      - name: Build
+        run: cargo build --locked
+      - name: Desktop check
+        env:
+          TVTY_NO_AIBALL: "1"
+        run: scripts/desktop-check

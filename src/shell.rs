@@ -254,6 +254,9 @@ pub struct Shell {
     help_menu: bool,
     /// The "New project" wizard, while open.
     new_project: Option<newproject::NewProject>,
+    /// The decorations the compositor granted, as last logged: said once,
+    /// and again when they change (a desktop check reads them).
+    decorations_said: Option<String>,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -692,6 +695,7 @@ impl Shell {
             theme_menu: false,
             help_menu: false,
             new_project: None,
+            decorations_said: None,
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -4063,6 +4067,16 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        // Who draws the frame, as the compositor settled it: tvty asks to
+        // draw its own (client); a server frame would double it.
+        let decorations = match window.window_decorations() {
+            Decorations::Server => "server".to_string(),
+            Decorations::Client { .. } => "client".to_string(),
+        };
+        if self.decorations_said.as_ref() != Some(&decorations) {
+            log::info!("window: decorations {decorations}");
+            self.decorations_said = Some(decorations);
+        }
         let _timing = crate::stats::Timing::new("shell");
         // The workspace as it was left, once aiball and tmux have answered.
         if self.restoring.as_ref().is_some_and(|r| r.due(|s| self.terminal_of(s).is_some())) && self.live.ready() && self.local_seen {
@@ -4802,6 +4816,7 @@ fn see_through(appearance: &crate::settings::Appearance, window: &mut Window) {
         (true, false) => WindowBackgroundAppearance::Transparent,
         (true, true) => WindowBackgroundAppearance::Blurred,
     };
+    log::info!("window: background {look:?}");
     window.set_background_appearance(look);
 }
 

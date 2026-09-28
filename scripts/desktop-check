@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# desktop-check — what the desktop decides about tvty's window, checked in
+# wbox under labwc (it announces the protocols KDE's KWin uses for these:
+# xdg-decoration, KDE server decoration, xdg-activation):
+#
+#   1. tvty draws its own frame: the compositor granted client decorations;
+#   2. its window is the active one once started;
+#   3. with the terminals see-through and "Blur behind" on, it asks the
+#      compositor for a blurred background.
+#
+# Known, said but not failed: a second launch does not bring the window
+# forward under Wayland (GPUI cannot use the launcher's activation token).
+#
+# Exit 0 when 1–3 hold. Uses the test tvty (scripts/test-tvty): its own
+# settings, restored at the end.
+set -uo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+PY="${WBOX_PYTHON:-$(head -1 "$(command -v wbox-mcp)" | sed -n 's/^#!//p')}"
+ctl() { "$PY" scripts/wbox_ctl.py "$1" dev/tvty-wbox/config.yaml "${@:2}"; }
+LOG=dev/tvty-wbox/state/tvty/tvty.log
+SETTINGS=dev/tvty-wbox/config/tvty/settings.toml
+failed=0
+say() { printf '%-8s %s\n' "$1" "$2"; }
+check() { if eval "$2"; then say PASS "$1"; else say FAIL "$1"; failed=1; fi; }
+
+# The test settings as they are, given back whatever happens.
+backup=$(mktemp)
+cp "$SETTINGS" "$backup" 2>/dev/null || : > "$backup"
+restore() { cp "$backup" "$SETTINGS"; rm -f "$backup"; ctl down >/dev/null 2>&1; }
+trap restore EXIT
+
+ctl down >/dev/null 2>&1
+ctl up >/dev/null || { say FAIL "wbox did not start"; exit 1; }
+for _ in $(seq 1 30); do grep -q "window: decorations" "$LOG" 2>/dev/null && break; sleep 0.5; done
+
+active() { ctl windows | python3 -c 'import json,sys; w=[w for w in json.load(sys.stdin)["windows"] if w["app_id"]=="tvty"]; sys.exit(0 if w and w[0].get("activated") else 1)'; }
+
+check "tvty draws its own frame (client decorations)" 'grep -q "window: decorations client" "$LOG"'
+check "its window is the active one" 'active'
+
+# See-through terminals, blurred: settings.toml is read again once saved.
+python3 - "$SETTINGS" <<'PY'
+import sys, re
+path = sys.argv[1]
+text = open(path).read() if open(path).read().strip() else ""
+text = re.sub(r"^(terminal_opacity|terminal_blur) = .*\n", "", text, flags=re.M)
+if "[appearance]" in text:
+    text = text.replace("[appearance]\n", "[appearance]\nterminal_opacity = 70.0\nterminal_blur = true\n", 1)
+else:
+    text = "[appearance]\nterminal_opacity = 70.0\nterminal_blur = true\n\n" + text
+open(path, "w").write(text)
+PY
+for _ in $(seq 1 20); do grep -q "window: background Blurred" "$LOG" && break; sleep 0.5; done
+check "it asks for a blurred background" 'grep -q "window: background Blurred" "$LOG"'
+
+# The known limit: a second launch while another window has the focus.
+if command -v xterm >/dev/null; then
+    (DISPLAY=:2 xterm -e sh -c 'sleep 20' >/dev/null 2>&1 &)
+    sleep 2
+    (unset TMUX; WAYLAND_DISPLAY=wayland-1 timeout 10 scripts/test-tvty >/dev/null 2>&1)
+    sleep 1.5
+    if active; then say PASS "a second launch brings it forward"; else say KNOWN "a second launch does not bring it forward (GPUI, Wayland activation)"; fi
+fi
+
+exit $failed

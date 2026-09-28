@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down
+.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -71,6 +71,11 @@ wbox-type:
 
 wbox-scroll:
 	$(WBOX_CTL) scroll $(WBOX_CONFIG) $(X) $(Y) $(N)
+
+# What the desktop decides about tvty's window (frame, focus, blur), under
+# labwc in wbox: see scripts/desktop-check.
+desktop-check:
+	scripts/desktop-check
 
 wbox-log:
 	@tail -n 50 dev/tvty-wbox/log/*.log 2>/dev/null || echo "no log yet"

@@ -125,6 +125,27 @@ scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/te
 Reading the real board is fine (a screenshot of the alerts); a click on a
 real ticket marks it read for the user, so don't.
 
+## What the desktop decides
+
+`make desktop-check` (`scripts/desktop-check`) looks at what the compositor
+decides about tvty's window, under labwc in wbox — labwc announces the
+protocols KDE's KWin uses for these (xdg-decoration, KDE server decoration,
+xdg-activation):
+
+1. tvty draws its own frame: the compositor granted client decorations
+   (tvty logs `window: decorations client|server`);
+2. its window is the active one (`wbox_ctl windows`, the compositor's own
+   list);
+3. with the terminals see-through and "Blur behind" on, it asks for a
+   blurred background (`window: background Blurred` in its log).
+
+A second launch does not bring the window forward under Wayland — GPUI
+cannot use the launcher's activation token: said as `KNOWN`, not failed.
+The check restores the test settings it changes. CI runs it (the `desktop`
+job) with `TVTY_NO_AIBALL=1`: the test tvty then starts without the fake
+aiball, which a runner does not have. KWin itself (the blur drawn) is left
+to a KWin backend of wbox, when one exists.
+
 ## The README's pictures
 
 `demo/run up` builds a small fictional world apart from everything else —
