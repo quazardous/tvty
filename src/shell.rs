@@ -163,6 +163,8 @@ pub struct Shell {
     /// The session whose loop the user asked to move (host ↔ tmux): its
     /// confirmation shows in the agent bar.
     pub(super) move_asked: Option<String>,
+    /// The session whose Claude's Remote Control is asked to change.
+    pub(super) rc_asked: Option<String>,
     /// Loops being moved, by agent: the session they come back as, and
     /// since when. The old one ends meanwhile; the new one opens.
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
@@ -673,6 +675,7 @@ impl Shell {
             compact: None,
             afk_menu: false,
             move_asked: None,
+            rc_asked: None,
             moves: HashMap::new(),
             restarting: None,
             backlog_view: None,
@@ -1972,8 +1975,9 @@ impl Shell {
                 self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
                 cx.notify();
             }
-        } else if key == "escape" && self.move_asked.is_some() {
+        } else if key == "escape" && (self.move_asked.is_some() || self.rc_asked.is_some()) {
             self.move_asked = None;
+            self.rc_asked = None;
             cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
@@ -4384,7 +4388,9 @@ impl Render for Shell {
         // One rule for every way a page opens or goes: the keys follow what
         // is shown. A page up with the focus still in the workspace (a
         // terminal, its panel) takes it; the page gone, the terminal does.
-        if page.is_some() && self.focus.contains_focused(window, cx) {
+        // Nothing focused (at start, a view gone): the surface shown takes
+        // it, or the keys would reach the window's root alone.
+        if window.focused(cx).is_none() || (page.is_some() && self.focus.contains_focused(window, cx)) {
             cx.defer_in(window, |shell, window, cx| shell.focus_home(window, cx));
         } else if page.is_none() && self.page_focus.is_focused(window) {
             cx.defer_in(window, |shell, window, cx| shell.focus_terminal(window, cx));
