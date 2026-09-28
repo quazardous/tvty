@@ -87,12 +87,30 @@ pub fn plain(icon: Icon, size: f32) -> Svg {
 /// A loop's glyph (▶ ‖ ■ …) in `colour`: the pause drawn as two bars
 /// filling a square `size` pixels wide — the font's ‖ is a thin, tall pair
 /// beside ▶ and ■ — any other as text.
+///
+/// Every glyph sits in a box `size` pixels high — square for one sign, as
+/// wide as its words otherwise ("… boot") — centred: one sign replacing
+/// another moves nothing around it.
 pub fn loop_glyph(glyph: &str, colour: Hsla, size: f32) -> AnyElement {
+    let slot = div().flex_none().h(px(size)).min_w(px(size)).flex().items_center().justify_center();
     if glyph == "‖" {
         let bar = || div().h_full().w(px((size * 0.34).round().max(2.))).rounded(px(1.)).bg(colour);
-        return div().flex_none().size(px(size)).flex().justify_between().child(bar()).child(bar()).into_any_element();
+        return slot.w(px(size)).justify_between().child(bar()).child(bar()).into_any_element();
     }
-    div().text_color(colour).child(glyph.to_string()).into_any_element()
+    let slot = if glyph.chars().count() == 1 { slot.w(px(size)) } else { slot };
+    slot.text_color(colour).text_size(px(size * 1.3)).line_height(px(size)).child(glyph.to_string()).into_any_element()
+}
+
+/// A plain dot in the same box as [`loop_glyph`]'s.
+pub fn loop_dot(colour: Hsla, size: f32) -> AnyElement {
+    div()
+        .flex_none()
+        .size(px(size))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(div().size(px((size * 0.85).round())).rounded_full().bg(colour))
+        .into_any_element()
 }
 
 /// A row's state glyph, drawn.
