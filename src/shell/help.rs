@@ -135,7 +135,7 @@ impl Shell {
                 if !crate::updates::open_updater() {
                     crate::activity::publish(
                         cx,
-                        crate::activity::Activity::failed(None, "open the updater", "tvty-updater is not installed: see the README's Install"),
+                        crate::activity::Activity::failed(None, "open the updater", "tvty-updater is not installed: see the README's Quick start"),
                     );
                 }
             }

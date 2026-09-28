@@ -155,9 +155,11 @@ machine), their agents present on the bus (`demo/presence.py`), tickets in
 every state with pictures (`demo/seed.py`, `demo/images.py`), and each
 agent's terminal replaying `demo/scenes/<agent>.txt` with simai-cli in
 `/tmp/tvty-demo`. `demo/run shots` (`make readme-shots`) runs tvty on it in
-a wbox of its own (1600×1000), drives it and writes `docs/images/`;
-`demo/run down` removes it all. Its clicks are positions: after a change of
-layout, look at the pictures.
+a wbox of its own (1920×1200), drives it and writes `docs/images/`;
+`demo/run film` drives it again while grim films the wbox's display, about
+ten frames a second, into `docs/images/tvty.gif` — the README's film, one
+agent answering live. `demo/run down` removes it all. Their clicks are
+positions: after a change of layout, look at the pictures.
 
 ## Measuring
 

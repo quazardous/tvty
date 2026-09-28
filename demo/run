@@ -4,6 +4,7 @@
 #   demo/run up      its own aiball (three projects, their agents, tickets
 #                    with pictures), the agents' terminals, their presence
 #   demo/run shots   tvty on it in wbox, the pictures into docs/images/
+#   demo/run film    tvty filmed on it, the README's GIF
 #   demo/run down    all of it stopped and removed
 #   demo/run tvty    tvty on it (what wbox runs)
 #
@@ -92,8 +93,9 @@ case "${1:-}" in
     down) down ;;
     tvty) shift; tvty "$@" ;;
     shots) exec python3 "$ROOT/demo/shots.py" ;;
+    film) exec python3 "$ROOT/demo/film.py" ;;
     *)
-        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
         exit 1
         ;;
 esac
