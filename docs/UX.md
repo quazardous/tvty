@@ -389,7 +389,8 @@ strip unfolds it. Both states are remembered.
 
 ## Colour themes
 
-**Terminal opacity** (Options > Appearance > Colours, 100 % by default):
+**Terminal opacity** (a slider under the title bar's theme menu, and in
+Options > Appearance > Colours; 100 % by default):
 below 100 %, the desktop shows through the terminals' background, live —
 the compositor blends it at every frame, on Wayland and X11. What a program
 colours itself, the lists, the tickets and the full pages stay opaque; the

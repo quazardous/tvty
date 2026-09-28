@@ -3432,7 +3432,35 @@ impl Shell {
             .shadow_lg()
             .overflow_hidden()
             .child(tabs)
-            .child(list.overflow_y_scrollbar())
+            .child(div().flex_1().min_h_0().child(list.overflow_y_scrollbar()))
+            .children(self.theme_menu_opacity())
+    }
+
+    /// Under the themes, the terminals' opacity: the slider of Options >
+    /// Appearance > Colours, the same one.
+    fn theme_menu_opacity(&self) -> Option<Div> {
+        let slider = self.sliders.get("appearance.terminal_opacity")?;
+        let percent = self.applied.appearance.terminal_opacity.unwrap_or(100.);
+        Some(
+            div()
+                .flex_none()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .px_3()
+                .py_2()
+                .border_t_1()
+                .border_color(p().border)
+                .text_sm()
+                .child(
+                    div()
+                        .flex()
+                        .justify_between()
+                        .child("Terminal opacity")
+                        .child(div().text_color(p().muted).child(format!("{percent:.0} %"))),
+                )
+                .child(Slider::new(slider)),
+        )
     }
 
     /// Under the theme list, the rest of the window: a click there closes

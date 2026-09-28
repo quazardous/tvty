@@ -59,9 +59,9 @@ The first public beta, for aiball users.
 - A ? in the title bar (F1): about tvty, its documentation, what's new, GitHub,
   report an issue, and Restart tvty — the Claude Code sessions keep running
   and the terminals come back.
-- Terminal opacity (Options > Appearance > Colours): below 100 %, the desktop
-  shows through the terminals, live; blurred on KDE if asked. Range settings
-  like it are set with a slider.
+- Terminal opacity (the title bar's theme menu, or Options > Appearance >
+  Colours): below 100 %, the desktop shows through the terminals, live;
+  blurred on KDE if asked. Range settings like it are set with a slider.
 - The full ticket list acts on several tickets at once: ctrl+click, shift+click
   or ctrl+a chooses them, and the left side offers what applies (approve,
   close, mark read, snooze, link…).
