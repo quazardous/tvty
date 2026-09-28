@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Terminal Velocity Updater
+Comment=Install and update Terminal Velocity and aiball
+Exec=@EXEC@
+Icon=tvty
+Terminal=false
+Categories=System;
+StartupWMClass=tvty-updater
