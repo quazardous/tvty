@@ -66,6 +66,14 @@ pub struct Appearance {
     pub terminal_font_size: Option<f32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub window_font_size: Option<f32>,
+    /// The terminals' background, in percent (the rest lets the desktop
+    /// through); none: opaque.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub terminal_opacity: Option<f32>,
+    /// Behind a see-through terminal, the desktop blurred (where the
+    /// compositor can: KDE).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub terminal_blur: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -119,7 +127,7 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Sizes",
         label: "Terminal font",
         about: "The terminals' text. Ctrl+Shift+= / Ctrl+Shift+− / Ctrl+Shift+0 too.",
-        kind: Kind::Number { min: 8., max: 32., step: 1., default: 14., unit: "px", integer: false },
+        kind: Kind::Number { min: 8., max: 32., step: 1., default: 14., unit: "px", integer: false, slider: false },
     },
     Setting {
         key: "appearance.window_font_size",
@@ -127,7 +135,7 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Sizes",
         label: "Window text",
         about: "Everything around the terminals — lists, tickets, menus.",
-        kind: Kind::Number { min: 12., max: 22., step: 1., default: 16., unit: "px", integer: false },
+        kind: Kind::Number { min: 12., max: 22., step: 1., default: 16., unit: "px", integer: false, slider: false },
     },
     Setting {
         key: "notifications.max",
@@ -135,7 +143,7 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Notifications",
         label: "Shown at most",
         about: "In the terminal's top right corner (bottom left over a full screen), the newest in the corner; older ones make room.",
-        kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true },
+        kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true, slider: false },
     },
     Setting {
         key: "notifications.seconds",
@@ -143,7 +151,7 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Notifications",
         label: "Seconds shown",
         about: "Then it goes, unless the pointer is on it.",
-        kind: Kind::Number { min: 2., max: 30., step: 1., default: 6., unit: "s", integer: true },
+        kind: Kind::Number { min: 2., max: 30., step: 1., default: 6., unit: "s", integer: true, slider: false },
     },
     Setting {
         key: "notifications.own",
@@ -167,7 +175,7 @@ pub const SCHEMA: Schema = Schema(&[
         group: "Mouse",
         label: "Wheel speed",
         about: "Times tvty's own: at 1, a notch is about three ticket rows, five lines of a terminal's history.",
-        kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false },
+        kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false, slider: false },
     },
     Setting {
         key: "appearance.theme",
@@ -184,6 +192,22 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Terminal",
         about: "The terminals' own, or the window's — a dark terminal in a light window.",
         kind: Kind::Choice,
+    },
+    Setting {
+        key: "appearance.terminal_opacity",
+        page: "Appearance",
+        group: "Colours",
+        label: "Terminal opacity",
+        about: "Below 100 %, the desktop shows through the terminals' background, live. The lists, the tickets and the colours a program sets stay opaque.",
+        kind: Kind::Number { min: 50., max: 100., step: 5., default: 100., unit: "%", integer: true, slider: true },
+    },
+    Setting {
+        key: "appearance.terminal_blur",
+        page: "Appearance",
+        group: "Colours",
+        label: "Blur behind",
+        about: "Behind a see-through terminal, the desktop blurred. Only where the compositor offers it (KDE); elsewhere it shows sharp.",
+        kind: Kind::Toggle { default: false, on: "blurred", off: "sharp" },
     },
     Setting {
         key: "sessions.recent_first",
@@ -237,6 +261,8 @@ impl Stored for Preferences {
                 terminal_theme: str_of("terminal_theme"),
                 terminal_font_size: f32_of("terminal_font_size"),
                 window_font_size: f32_of("window_font_size"),
+                terminal_opacity: None,
+                terminal_blur: false,
             },
             notifications: Notifications {
                 max: old.get("notify_max").and_then(Value::as_u64).map(|v| v as usize),
@@ -417,7 +443,9 @@ mod tests {
         let prefs = Preferences::default();
         for setting in SCHEMA.0 {
             let value = match setting.kind {
-                Kind::Number { max, .. } => Value::Number(max),
+                // Away from its default: its top, or its bottom when the
+                // top is the default (an opacity).
+                Kind::Number { min, max, default, .. } => Value::Number(if max == default { min } else { max }),
                 Kind::Toggle { default, .. } => Value::Toggle(!default),
                 Kind::Choice => Value::Choice(Some("x".into())),
                 Kind::Action { .. } => continue,

@@ -28,8 +28,9 @@ pub struct Setting {
 /// What a setting takes.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Kind {
-    /// A number between bounds, by steps.
-    Number { min: f64, max: f64, step: f64, default: f64, unit: &'static str, integer: bool },
+    /// A number between bounds, by steps; `slider`: shown as a slider (a
+    /// range the eye reads, an opacity), else as − and + buttons.
+    Number { min: f64, max: f64, step: f64, default: f64, unit: &'static str, integer: bool, slider: bool },
     /// On or off, each state with its word (`shown` / `hidden`).
     Toggle { default: bool, on: &'static str, off: &'static str },
     /// One of a list the program gives (themes); none: the default.
@@ -254,9 +255,9 @@ mod tests {
     }
 
     const SCHEMA: Schema = Schema(&[
-        Setting { key: "look.font", page: "Look", group: "Sizes", label: "Font", about: "", kind: Kind::Number { min: 8., max: 32., step: 1., default: 14., unit: "px", integer: false } },
+        Setting { key: "look.font", page: "Look", group: "Sizes", label: "Font", about: "", kind: Kind::Number { min: 8., max: 32., step: 1., default: 14., unit: "px", integer: false, slider: false } },
         Setting { key: "look.theme", page: "Look", group: "Colours", label: "Theme", about: "", kind: Kind::Choice },
-        Setting { key: "alerts.max", page: "Alerts", group: "Alerts", label: "At most", about: "", kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true } },
+        Setting { key: "alerts.max", page: "Alerts", group: "Alerts", label: "At most", about: "", kind: Kind::Number { min: 1., max: 10., step: 1., default: 5., unit: "", integer: true, slider: false } },
         Setting { key: "alerts.own", page: "Alerts", group: "Alerts", label: "Own", about: "", kind: Kind::Toggle { default: true, on: "shown", off: "hidden" } },
     ]);
 
@@ -305,7 +306,7 @@ mod tests {
         let prefs = SCHEMA.with(&prefs, "alerts.max", Value::Number(3.4)).unwrap();
         assert_eq!(prefs.alerts.max, 3);
         // A fractional step writes the number people expect.
-        const SPEED: Schema = Schema(&[Setting { key: "look.font", page: "", group: "", label: "", about: "", kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false } }]);
+        const SPEED: Schema = Schema(&[Setting { key: "look.font", page: "", group: "", label: "", about: "", kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false, slider: false } }]);
         let prefs = SPEED.stepped(&Prefs::default(), "look.font", 6).unwrap();
         assert_eq!(prefs.look.font, Some(2.2));
     }

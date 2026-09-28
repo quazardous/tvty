@@ -92,6 +92,7 @@ fn main() {
         theme::set_window_font(prefs.appearance.window_font_size, cx);
         keymap::init(cx);
         terminal::set_font_size(prefs.appearance.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
+        terminal::set_opacity(prefs.appearance.terminal_opacity);
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {
@@ -115,7 +116,11 @@ fn main() {
                     // Root draws the window's frame; no shadow around it: where
                     // the compositor does not show it as transparent, it reads
                     // as a wide dark border.
-                    cx.new(|cx| gpui_kit::component::Root::new(view, window, cx).window_shadow_size(px(0.)))
+                    // Its background is the shell's to paint: see-through
+                    // where the terminals are, when asked.
+                    cx.new(|cx| {
+                        gpui_kit::component::Root::new(view, window, cx).window_shadow_size(px(0.)).bg(transparent_black())
+                    })
                 },
             )
             .expect("failed to open the window");

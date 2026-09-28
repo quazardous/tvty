@@ -389,6 +389,13 @@ strip unfolds it. Both states are remembered.
 
 ## Colour themes
 
+**Terminal opacity** (Options > Appearance > Colours, 100 % by default):
+below 100 %, the desktop shows through the terminals' background, live —
+the compositor blends it at every frame, on Wayland and X11. What a program
+colours itself, the lists, the tickets and the full pages stay opaque; the
+window turns see-through only then. "Blur behind" blurs it where the
+compositor can (KDE); elsewhere it shows sharp.
+
 Everything takes its colours from one theme — the window, the panels, the
 alerts, the terminals' palette (the theme's ANSI colours, text, background,
 cursor, selection). Pick it from the title bar (◐ and its name), or step
@@ -417,13 +424,15 @@ A full page (⚙ in the title bar, or ctrl+,): on the left a search box
 groups — a click on a group brings it up, the one in view is lit. A search
 finds settings and shortcuts together, by name, text, key
 (`terminal_font_size`, `ctrl+shift+b`) or value, the words marked, the tree
-cut down to what matched; Esc clears it, then closes the page. A setting or
+cut down to what matched; Esc clears it, then closes the page. A number is
+stepped with − and +, or slid when it is a range the eye reads (an
+opacity, in %). A setting or
 a shortcut away from its default stands out (lighter, a bar on its left),
 says its default (`Default: 16 px`) and has a "↺ Default" button that puts
 it back — in an aiball project, "↺ Board", the board's value; `@modified` lists every one; a setting shows its key as settings.toml
 spells it. The pages:
 Appearance (sizes, notifications, the wheel's speed, the window's and the
-terminals' colour themes), Layout (the sides: folded or not, their widths,
+terminals' colour themes, the terminals' opacity), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
 shortcuts (all of them, edited in place — see Keys), aiball (the board's
 config, read and written through aiball: a layer chosen at its head,

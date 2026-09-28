@@ -39,6 +39,7 @@ mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::{Preferences, SCHEMA, Settings};
+use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
 use gpui_kit::component::switch::Switch;
 use tvty_config::schema::shown;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -113,6 +114,9 @@ pub struct Shell {
     settings: Settings,
     /// The preferences in force, to tell what a change changes.
     applied: Preferences,
+    /// The number settings shown as sliders, by key: their state, kept
+    /// with the preferences in force.
+    sliders: HashMap<&'static str, Entity<SliderState>>,
     /// The shortcuts' page listening for a key.
     capture: Option<Capture>,
     /// The options' search box, their scroll, and a group to bring up.
@@ -514,6 +518,8 @@ impl Shell {
         // its first session found.
         let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
         let goto = cx.new(|cx| InputState::new(window, cx).placeholder("#…"));
+        let sliders = option_sliders(window, cx);
+        see_through(&crate::config::get::<Preferences>(cx).appearance.clone(), window);
         // Enter: the input says it before any key handler would see it.
         cx.subscribe_in(&goto, window, |shell: &mut Self, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
@@ -622,6 +628,7 @@ impl Shell {
             panel,
             settings: Settings::current(cx),
             applied: crate::config::get::<Preferences>(cx).clone(),
+            sliders,
             capture: None,
             options_search,
             options_scroll: ScrollHandle::new(),
@@ -2692,17 +2699,20 @@ impl Shell {
     /// [`Self::set_pref`]; `words`, searched for, are marked.
     fn settings_group(&self, group: &'static str, settings: &[&'static Setting], words: &[String], cx: &mut Context<Self>) -> Div {
         let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(option_group(group));
-        if settings.iter().all(|s| s.kind == SettingKind::Choice) {
-            let mut lists = div().flex().gap_6();
-            for setting in settings {
-                lists = lists.child(self.choice_list(setting, cx));
-            }
-            return out.child(lists);
-        }
-        for setting in settings {
+        // The rows first (a number, a toggle), then the choices, as lists
+        // side by side: long, they would push the rows out of sight.
+        let (choices, rows): (Vec<_>, Vec<_>) = settings.iter().partition(|s| s.kind == SettingKind::Choice);
+        for setting in rows {
             if let Some(row) = self.setting_row(setting, words, cx) {
                 out = out.child(row);
             }
+        }
+        if !choices.is_empty() {
+            let mut lists = div().flex().gap_6();
+            for setting in choices {
+                lists = lists.child(self.choice_list(setting, cx));
+            }
+            out = out.child(lists);
         }
         out
     }
@@ -2717,6 +2727,16 @@ impl Shell {
             _ => Away::default("—"),
         });
         Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
+            (SettingKind::Number { unit, slider: true, .. }, Some(Value::Number(n))) => option_slider(
+                key.into(),
+                marked(setting.label, words),
+                setting.about.into(),
+                away,
+                shown(n, unit),
+                self.sliders.get(key)?,
+                cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
+            )
+            .into_any_element(),
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
                 key.into(),
                 marked(setting.label, words),
@@ -3227,6 +3247,15 @@ impl Shell {
         if old == new {
             return;
         }
+        for (key, slider) in &self.sliders {
+            if let Some(Value::Number(n)) = SCHEMA.value(&new, key) {
+                slider.update(cx, |state, cx| {
+                    if state.value().start() != n as f32 {
+                        state.set_value(n as f32, window, cx);
+                    }
+                });
+            }
+        }
         let (was, now) = (&old.appearance, &new.appearance);
         if was.theme != now.theme {
             let name = theme::known_or_default(now.theme.as_deref(), cx);
@@ -3234,6 +3263,10 @@ impl Shell {
         }
         if was.terminal_theme != now.terminal_theme {
             theme::apply_terminal(now.terminal_theme.as_deref(), cx);
+        }
+        if (was.terminal_opacity, was.terminal_blur) != (now.terminal_opacity, now.terminal_blur) {
+            crate::terminal::set_opacity(now.terminal_opacity);
+            see_through(now, window);
         }
         if was.terminal_font_size != now.terminal_font_size {
             crate::terminal::set_font_size(now.terminal_font_size.unwrap_or(crate::terminal::FONT_SIZE_DEFAULT));
@@ -4130,7 +4163,8 @@ impl Render for Shell {
             .w_full()
             .flex_1()
             .min_h_0()
-            .bg(p().bg)
+            // Nothing under see-through terminals (see the window's root).
+            .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
             .text_color(p().text)
             .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
             .child(left)
@@ -4167,7 +4201,9 @@ impl Render for Shell {
             .flex()
             .flex_col()
             .size_full()
-            .bg(p().bg)
+            // See-through terminals: nothing under them, the desktop shows
+            // as their opacity says; every other view paints its own.
+            .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
             // A click leaves the field being typed in, wherever it lands —
             // a button, a menu, a list: only a field takes the focus on a
             // click, the rest never did. A click on a field (the same or
@@ -4345,6 +4381,51 @@ fn option_stepper(
         .child(div().min_w(px(64.)).flex_none().whitespace_nowrap().text_center().child(value))
         .child(plus)
         .child(reset_button(&id, away.as_ref(), reset))
+}
+
+/// A range setting (an opacity, a percentage): the kit's slider, the value
+/// it gives beside it, and ↺ when away from the default.
+fn option_slider(
+    key: SharedString,
+    label: impl IntoElement,
+    about: SharedString,
+    away: Option<Away>,
+    value: String,
+    slider: &Entity<SliderState>,
+    reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    let id = key.clone();
+    setting_frame(key, label, about, away.as_ref())
+        .gap_3()
+        .child(div().w(px(180.)).flex_none().child(Slider::new(slider)))
+        .child(div().min_w(px(48.)).flex_none().whitespace_nowrap().text_right().child(value))
+        .child(reset_button(&id, away.as_ref(), reset))
+}
+
+/// A slider's state for every number setting the schema shows as one; a
+/// move writes the preference (settings.toml, and in force at once).
+fn option_sliders(window: &mut Window, cx: &mut Context<Shell>) -> HashMap<&'static str, Entity<SliderState>> {
+    let prefs = crate::config::get::<Preferences>(cx).clone();
+    let mut sliders = HashMap::new();
+    for setting in SCHEMA.0 {
+        let SettingKind::Number { min, max, step, slider: true, .. } = setting.kind else { continue };
+        let key = setting.key;
+        let value = match SCHEMA.value(&prefs, key) {
+            Some(Value::Number(n)) => n,
+            _ => max,
+        };
+        let state = cx.new(|_| SliderState::new().min(min as f32).max(max as f32).step(step as f32).default_value(value as f32));
+        cx.subscribe_in(&state, window, move |shell: &mut Shell, _, event: &SliderEvent, _, cx| {
+            let (SliderEvent::Change(value) | SliderEvent::Release(value)) = event;
+            let n = f64::from(value.start());
+            if SCHEMA.value(&shell.applied, key) != Some(Value::Number(n)) {
+                shell.set_pref(key, Value::Number(n), cx);
+            }
+        })
+        .detach();
+        sliders.insert(key, state);
+    }
+    sliders
 }
 
 /// A setting's frame: its name, its key (as settings.toml spells it) and
@@ -4564,6 +4645,18 @@ fn options_ticket_list() -> impl IntoElement {
 
 /// What the "#…" names, as `ticket.get` takes it: a ticket's number
 /// (`42`, `#42`), or a comment's hashid (its `#C.` link, or `C.` and the hashid).
+/// The window lets the desktop through (blurred, where the compositor can)
+/// while the terminals are not opaque; opaque otherwise, as it costs the
+/// compositor nothing then.
+fn see_through(appearance: &crate::settings::Appearance, window: &mut Window) {
+    let look = match (crate::terminal::set_opacity(appearance.terminal_opacity) < 1., appearance.terminal_blur) {
+        (false, _) => WindowBackgroundAppearance::Opaque,
+        (true, false) => WindowBackgroundAppearance::Transparent,
+        (true, true) => WindowBackgroundAppearance::Blurred,
+    };
+    window.set_background_appearance(look);
+}
+
 /// Whether a text field (a search, the reply, a form's box) has the focus.
 fn in_field(window: &Window) -> bool {
     window.context_stack().iter().any(|c| c.contains("Input"))

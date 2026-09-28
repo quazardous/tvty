@@ -42,6 +42,21 @@ pub fn set_font_size(size: f32) -> f32 {
     size
 }
 
+/// The terminals' background opacity, 0 to 1 (1: opaque), as bits.
+static OPACITY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Sets the terminals' background opacity from a percentage (none: opaque);
+/// answers it, from 0 to 1. The colours a program sets stay opaque.
+pub fn set_opacity(percent: Option<f32>) -> f32 {
+    let opacity = (percent.unwrap_or(100.) / 100.).clamp(0.05, 1.);
+    OPACITY.store(opacity.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    opacity
+}
+
+pub fn opacity() -> f32 {
+    f32::from_bits(OPACITY.load(std::sync::atomic::Ordering::Relaxed))
+}
+
 pub fn font_size() -> f32 {
     f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
 }
@@ -777,7 +792,7 @@ impl Render for TerminalView {
             .cursor(CursorStyle::IBeam)
             .relative()
             .size_full()
-            .bg(to_hsla(default_rgb(NamedColor::Background as usize)))
+            .bg(to_hsla(default_rgb(NamedColor::Background as usize)).opacity(opacity()))
             .child(TerminalElement {
                 term: self.term.clone(),
                 view: Some(cx.entity()),

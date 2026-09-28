@@ -52,6 +52,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Terminal opacity (Options > Appearance > Colours): below 100 %, the desktop
+  shows through the terminals, live; blurred on KDE if asked. Range settings
+  like it are set with a slider.
 - The full ticket list acts on several tickets at once: ctrl+click, shift+click
   or ctrl+a chooses them, and the left side offers what applies (approve,
   close, mark read, snooze, link…).
