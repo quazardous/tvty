@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 use anyhow::{Context as _, bail};
-use axoupdater::{AxoUpdater, ReleaseSource, ReleaseSourceType, Version};
+use axoupdater::{AxoUpdater, ReleaseSource, ReleaseSourceType, UpdateRequest, Version};
 
 /// The oldest aiball this Terminal Velocity works with.
 pub const MIN_AIBALL: &str = "0.49.0";
@@ -106,6 +106,8 @@ pub fn tvty_status() -> Status {
     }
     let mut updater = AxoUpdater::new_for("tvty");
     updater.set_release_source(tvty_source());
+    // Terminal Velocity is in beta: its pre-releases are its releases.
+    updater.configure_version_specifier(UpdateRequest::LatestMaybePrerelease);
     let latest = runtime().block_on(async { updater.query_new_version().await.map(|v| v.map(|v| v.to_string())) });
     match latest {
         Ok(latest) => status.latest = latest,
@@ -117,7 +119,7 @@ pub fn tvty_status() -> Status {
 /// A release query's failure, in words: a repository with no release yet
 /// says 404.
 fn said_of(error: &str) -> String {
-    if error.contains("404") {
+    if error.contains("404") || error.contains("no stable releases") || error.contains("no releases") {
         "no release published yet".into()
     } else {
         format!("latest release not known: {error}")
@@ -144,6 +146,7 @@ pub fn update_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         updater.set_install_dir(bin_dir().to_string_lossy().to_string());
         updater.set_current_version(Version::parse("0.0.0").expect("a version"))?;
     }
+    updater.configure_version_specifier(UpdateRequest::LatestMaybePrerelease);
     updater.disable_installer_output();
     say("downloading and installing the latest release…".into());
     match updater.run_sync()? {
@@ -171,24 +174,43 @@ pub fn previous_dir() -> PathBuf {
 }
 
 const DESKTOP: &str = include_str!("../../../packaging/linux/tvty.desktop");
-const ICON: &[u8] = include_bytes!("../../../assets/tvty.svg");
+/// Terminal Velocity's icon, shown by the updater too.
+pub const ICON: &[u8] = include_bytes!("../../../assets/tvty.svg");
 const UPDATER_DESKTOP: &str = include_str!("../packaging/tvty-updater.desktop");
 
 /// Terminal Velocity's launcher and icon, and the updater's own, where the
 /// desktop finds them.
 pub fn install_launcher(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share"));
+    launchers_in(&data, &bin_dir(), say)
+}
+
+fn launchers_in(data: &Path, bin: &Path, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let apps = data.join("applications");
     let icons = data.join("icons/hicolor/scalable/apps");
     std::fs::create_dir_all(&apps)?;
     std::fs::create_dir_all(&icons)?;
-    let exec = |name: &str| bin_dir().join(name).display().to_string();
+    let exec = |name: &str| bin.join(name).display().to_string();
     std::fs::write(apps.join("tvty.desktop"), DESKTOP.replace("@EXEC@", &exec("tvty")))?;
     std::fs::write(apps.join("tvty-updater.desktop"), UPDATER_DESKTOP.replace("@EXEC@", &exec("tvty-updater")))?;
     std::fs::write(icons.join("tvty.svg"), ICON)?;
-    say(format!("launchers and icon in {}", data.display()));
+    // The desktops read them at once when told (GNOME, KDE); a missing tool
+    // only delays it to the next login.
+    let _ = Command::new("update-desktop-database").arg(&apps).output();
+    let _ = Command::new("gtk-update-icon-cache").args(["-f", "-t"]).arg(data.join("icons/hicolor")).output();
+    say(format!("Terminal Velocity and its updater are in your applications ({})", apps.display()));
     Ok(())
 }
+
+/// Starts Terminal Velocity, on its own (it outlives the updater).
+pub fn launch_tvty() -> anyhow::Result<()> {
+    Command::new(program("tvty")).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn().context("starting tvty")?;
+    Ok(())
+}
+
+/// Where each project lives.
+pub const TVTY_URL: &str = "https://github.com/quazardous/tvty";
+pub const AIBALL_URL: &str = AIBALL_REPO;
 
 // ── aiball ───────────────────────────────────────────────────────────────
 
@@ -324,6 +346,18 @@ mod tests {
         assert_eq!(status.installed.as_deref(), Some("0.49.0"));
         assert_eq!(status.latest.as_deref(), Some("0.50.0"));
         assert_eq!(status.state(Some("0.49.0")), State::UpdateAvailable);
+    }
+
+    #[test]
+    fn launchers_point_at_the_installed_programs() {
+        let dir = std::env::temp_dir().join(format!("tvty-updater-launchers-{}", std::process::id()));
+        let bin = std::path::Path::new("/opt/x/bin");
+        super::launchers_in(&dir, bin, &mut |_| {}).unwrap();
+        let tvty = std::fs::read_to_string(dir.join("applications/tvty.desktop")).unwrap();
+        let updater = std::fs::read_to_string(dir.join("applications/tvty-updater.desktop")).unwrap();
+        assert!(tvty.contains("Exec=/opt/x/bin/tvty\n") && updater.contains("Exec=/opt/x/bin/tvty-updater\n"));
+        assert!(dir.join("icons/hicolor/scalable/apps/tvty.svg").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

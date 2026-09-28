@@ -54,6 +54,7 @@ enum Gesture {
 }
 
 struct Updater {
+    icon: Arc<Image>,
     tvty: Option<Status>,
     aiball: Option<Status>,
     /// What is being done, and what was said.
@@ -65,7 +66,8 @@ struct Updater {
 
 impl Updater {
     fn new(cx: &mut Context<Self>) -> Self {
-        let mut this = Self { tvty: None, aiball: None, busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new() };
+        let icon = Arc::new(Image::from_bytes(ImageFormat::Svg, tvty_updater::ICON.to_vec()));
+        let mut this = Self { icon, tvty: None, aiball: None, busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new() };
         this.check(cx);
         this
     }
@@ -257,18 +259,61 @@ impl Render for Updater {
                     .flex_col()
                     .gap_3()
                     .p_4()
-                    .child(self.row(Program::Aiball, cx))
-                    .child(self.row(Program::Tvty, cx))
+                    // Who it is, and where the projects live.
                     .child(
                         div()
                             .flex()
                             .items_center()
                             .gap_3()
-                            .child(div().flex_1().text_sm().text_color(if self.failed { theme.danger } else { theme.muted_foreground }).child(match (busy, self.failed) {
+                            .child(img(self.icon.clone()).size(px(40.)).flex_none())
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .flex()
+                                    .flex_col()
+                                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(NAME))
+                                    .child(div().text_sm().text_color(theme.muted_foreground).child("Installs Terminal Velocity and aiball, and keeps them up to date."))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_wrap()
+                                            .gap_4()
+                                            .pt_1()
+                                            .child(link("link-tvty", "Terminal Velocity on GitHub ↗", tvty_updater::TVTY_URL, &theme))
+                                            .child(link("link-aiball", "aiball on GitHub ↗", tvty_updater::AIBALL_URL, &theme))
+                                            .child(link("link-licence", "MIT licence ↗", &format!("{}/blob/main/LICENSE", tvty_updater::TVTY_URL), &theme)),
+                                    ),
+                            ),
+                    )
+                    .child(self.row(Program::Aiball, cx))
+                    .child(self.row(Program::Tvty, cx))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_wrap()
+                            .items_center()
+                            .gap_3()
+                            .child(div().flex_1().min_w(px(240.)).text_sm().text_color(if self.failed { theme.danger } else { theme.muted_foreground }).child(match (busy, self.failed) {
                                 (Some(doing), _) => doing.to_string(),
                                 (None, true) => "It did not go through: what was said is below.".to_string(),
                                 (None, false) => "aiball first, then Terminal Velocity: each updates its own way.".to_string(),
                             }))
+                            // Installed and done: it may start now.
+                            .when(busy.is_none() && matches!(self.state(Program::Tvty), Some(State::UpToDate | State::Unknown)), |d| {
+                                d.child(
+                                    Button::new("launch")
+                                        .label("Launch Terminal Velocity")
+                                        .on_click(cx.listener(|updater, _, _, cx| {
+                                            let line = match tvty_updater::launch_tvty() {
+                                                Ok(()) => "Terminal Velocity started".to_string(),
+                                                Err(error) => format!("✗ {error:#}"),
+                                            };
+                                            updater.log.lock().expect("the log").push(line);
+                                            cx.notify();
+                                        })),
+                                )
+                            })
                             .child(
                                 Button::new("check-again")
                                     .label("Check again")
@@ -302,15 +347,36 @@ impl Render for Updater {
                             } else {
                                 lines.into_iter().map(|l| div().child(l)).collect()
                             }),
-                    ),
+                    )
+                    .child(div().text_xs().text_color(theme.muted_foreground).child(
+                        "Beta software, provided as is, without warranty (MIT licence). Installing aiball sets its daemon up as a \
+                         service of your user (systemd). The updater asks GitHub for the latest releases, and nothing else leaves \
+                         this machine.",
+                    )),
             )
     }
+}
+
+/// A link to a page, opened in the browser.
+fn link(id: &'static str, label: &'static str, url: &str, theme: &gpui_kit::component::Theme) -> impl IntoElement {
+    let url = url.to_string();
+    div()
+        .id(id)
+        .flex_none()
+        .text_sm()
+        .text_color(theme.link)
+        .cursor_pointer()
+        .hover(|d| d.underline())
+        .on_click(move |_, _, cx| cx.open_url(&url))
+        .child(label)
 }
 
 fn main() {
     gpui_kit::application().run(|cx| {
         gpui_kit::init(cx);
-        let bounds = Bounds::centered(None, size(px(760.), px(560.)), cx);
+        // Dark, as Terminal Velocity opens by default.
+        gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
+        let bounds = Bounds::centered(None, size(px(880.), px(700.)), cx);
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {
