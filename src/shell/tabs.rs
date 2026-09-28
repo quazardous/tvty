@@ -13,6 +13,7 @@ use super::Shell;
 use crate::panel::dot;
 use crate::sessions::{self, Board, Project, Terminal};
 use crate::theme::p;
+use crate::ui::buttons;
 use crate::tip::Tip as _;
 
 /// How long a start waits for the terminals it opens again to be listed.
@@ -266,16 +267,9 @@ impl Shell {
         };
         if let Some((tip, project)) = new {
             bar = bar.child(
-                div()
-                    .id("tab-new")
-                    .flex_none()
+                buttons::link("tab-new", "+")
                     .self_center()
                     .px_2()
-                    .rounded_sm()
-                    .text_color(p().accent)
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child("+")
                     .tip(tip)
                     .on_click(cx.listener(move |shell, _, _, cx| match &project {
                         Some(project) => shell.new_project_terminal(project, cx),

@@ -447,6 +447,26 @@ one call at a time, those that come meanwhile added up into the next: a
 fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 `speed` under `[scroll]` in `settings.toml` multiplies both (1 by default).
 
+## Buttons
+
+Everything that acts, and is not a row of a list (a ticket, a session, a
+tab, a menu item), is one of four kinds (`src/ui/buttons.rs`):
+
+- **link**: an action in words, in the accent colour, no border ("+
+  terminal", "← Tickets", "⇅ recent", "✕ Esc");
+- **icon**: a glyph alone (‹ › ⤢ ⚙ ⋯), muted; its tooltip says the action
+  and its shortcut. The ✕ or × that takes something away turns red under
+  the pointer;
+- **chip**: a bordered label, for an option or a state to change ("+ New",
+  a choice among several, the agent bar's chips); a chosen one has the
+  chosen row's background and an accent border;
+- **primary**: the main answer of a form or a dialog.
+
+Under the pointer each gets a light background (an icon's glyph
+brightens), pressed a stronger one, and the hand pointer; one with
+nothing to do now is greyed, with neither. In a bar, groups of actions are
+set apart by a thin vertical line; inside a group, a plain gap.
+
 ## Keys
 
 Every shortcut is a **command**, bound to keys in a **context** that

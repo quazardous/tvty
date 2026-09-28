@@ -12,6 +12,7 @@ use gpui_kit::*;
 
 use crate::aiball::{Aiball, TicketRow};
 use crate::icons::{self, Icon};
+use crate::ui::buttons::{self, Look as _};
 use crate::panel::{ago, count, glyph_colour};
 use crate::rowstate::{self, Band, RowState, Turn};
 use crate::shell::Alerts;
@@ -259,9 +260,7 @@ impl FullList {
         use crate::bulk::Action;
         let rows = self.selected_rows();
         let refs: Vec<&TicketRow> = rows.iter().collect();
-        let link = |id: &'static str, label: &'static str| {
-            div().id(id).px_1p5().rounded_sm().text_xs().text_color(p().accent).cursor_pointer().hover(|d| d.bg(p().hover)).child(label)
-        };
+        let link = |id: &'static str, label: &'static str| buttons::link(id, label).text_xs();
         let mut side = div()
             .id("bulk-side")
             .flex()
@@ -319,16 +318,9 @@ impl FullList {
                         .text_sm()
                         .child(format!("{} {count} ticket{}?", action.label(), if count == 1 { "" } else { "s" }))
                         .child(
-                            div()
-                                .id("bulk-confirm")
-                                .px_2()
-                                .rounded_sm()
-                                .border_1()
+                            buttons::chip("bulk-confirm", action.label())
                                 .border_color(p().warning)
                                 .text_color(p().warning)
-                                .cursor_pointer()
-                                .hover(|d| d.bg(p().hover))
-                                .child(action.label())
                                 .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, cx))),
                         )
                         .child(link("bulk-cancel", "Cancel").on_click(cx.listener(|list, _, _, cx| {
@@ -532,16 +524,10 @@ impl FullList {
                 let on = self.tags.contains(tag);
                 let name = tag.to_string();
                 chips = chips.child(
-                    div()
-                        .id(SharedString::from(format!("tag-{tag}")))
-                        .px_1p5()
-                        .rounded_sm()
+                    buttons::chip(SharedString::from(format!("tag-{tag}")), tag.to_string())
                         .text_xs()
-                        .cursor_pointer()
-                        .border_1()
-                        .border_color(if on { p().accent } else { p().border })
-                        .text_color(if on { p().text } else { p().muted })
-                        .child(tag.to_string())
+                        .when(!on, |d| d.text_color(p().muted))
+                        .chosen(on)
                         .on_click(cx.listener(move |list, _, _, cx| {
                             if !list.tags.remove(&name) {
                                 list.tags.insert(name.clone());
@@ -586,17 +572,11 @@ impl FullList {
         on: bool,
         on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Stateful<Div> {
-        div()
-            .id(id)
-            .px_2()
+        buttons::chip(id, label)
             .py_0p5()
-            .rounded_md()
             .text_xs()
-            .cursor_pointer()
-            .border_1()
-            .border_color(if on { p().accent } else { p().border })
-            .text_color(if on { p().text } else { p().muted })
-            .child(label)
+            .when(!on, |d| d.text_color(p().muted))
+            .chosen(on)
             .on_click(on_click)
     }
 
@@ -815,31 +795,18 @@ impl Render for FullList {
                     .child(div().flex_1())
                     .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
                     .child(
-                        div()
-                            .id("full-list-new")
-                            .mr_2()
-                            .px_2()
-                            .rounded_sm()
+                        buttons::link("full-list-new", "+ New ticket")
                             .text_sm()
-                            .text_color(p().accent)
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover))
-                            .child("+ New ticket")
+                            .tip(buttons::hint(cx, "A new ticket", "ticket.new"))
                             .on_click(cx.listener(|list, _, _, cx| {
                                 let project = list.scope.clone();
                                 crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
                             })),
                     )
+                    .child(buttons::separator())
                     .child(
-                        div()
-                            .id("full-list-close")
-                            .px_2()
-                            .rounded_sm()
+                        buttons::link("full-list-close", "✕  Esc")
                             .text_sm()
-                            .text_color(p().muted)
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover).text_color(p().text))
-                            .child("✕  Esc")
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseFullList))),
                     ),
             )

@@ -4,7 +4,7 @@
 
 use gpui_kit::*;
 
-use crate::theme::p;
+use crate::ui::buttons;
 
 /// The `@name` being typed at the end of `text`, lowercase.
 pub fn typed_mention(text: &str) -> Option<String> {
@@ -59,16 +59,8 @@ pub fn mention_chips<V: 'static>(
     for name in names.iter().filter(|n| n.to_lowercase().starts_with(typed)).take(8) {
         let (chosen, pick) = (name.clone(), pick.clone());
         row = row.child(
-            div()
-                .id(SharedString::from(format!("{id}-{name}")))
-                .px_1p5()
-                .rounded_sm()
+            buttons::chip(SharedString::from(format!("{id}-{name}")), format!("@{name}"))
                 .text_xs()
-                .border_1()
-                .border_color(p().border)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(format!("@{name}"))
                 .on_click(cx.listener(move |view, _, window, cx| pick(view, chosen.clone(), window, cx))),
         );
     }

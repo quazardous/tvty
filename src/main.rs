@@ -36,6 +36,7 @@ mod terminal;
 mod thread;
 mod theme;
 mod tip;
+mod ui;
 mod wheel;
 mod wire;
 

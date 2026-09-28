@@ -14,6 +14,7 @@ use gpui_kit::*;
 use super::Shell;
 use crate::loops::{KnownLoop, Start};
 use crate::theme::p;
+use crate::ui::buttons;
 
 /// The idle and shut sections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -284,14 +285,8 @@ impl Shell {
                 )
                 .child(Input::new(&form.agent).small())
                 .child(
-                    div()
-                        .id("new-session-crew")
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .cursor_pointer()
+                    buttons::link("new-session-crew", if crew { "☑" } else { "☐" })
                         .text_color(if crew { p().text } else { p().muted })
-                        .child(if crew { "☑" } else { "☐" })
                         .child("a crew agent, next to the main loop")
                         .on_click(cx.listener(|shell, _, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
@@ -301,14 +296,8 @@ impl Shell {
                         })),
                 )
                 .child(
-                    div()
-                        .id("new-session-host")
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .cursor_pointer()
+                    buttons::link("new-session-host", if on_host { "☑" } else { "☐" })
                         .text_color(if on_host { p().text } else { p().muted })
-                        .child(if on_host { "☑" } else { "☐" })
                         .child("on aiball's host, without tmux")
                         .on_click(cx.listener(|shell, _, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {

@@ -12,6 +12,7 @@ use tvty_config::Value;
 
 use super::Shell;
 use crate::theme::p;
+use crate::ui::buttons;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
 const STOP_WAIT: Duration = Duration::from_secs(15);
@@ -209,19 +210,6 @@ impl Shell {
             let place = if known.is_some_and(|l| l.host_agent.is_some()) { "host" } else { "tmux" };
             div().flex().gap_2().child(div().text_color(p().text).child(who)).child(div().text_color(p().muted).child(format!("{project} · {place}")))
         });
-        let button = |id: &'static str, label: &'static str, primary: bool| {
-            div()
-                .id(id)
-                .px_3()
-                .py_1()
-                .rounded_md()
-                .border_1()
-                .border_color(if primary { p().accent } else { p().border })
-                .text_color(if primary { p().accent } else { p().text })
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(label)
-        };
         let remember = self.remember;
         let body = div()
             .flex()
@@ -230,13 +218,10 @@ impl Shell {
             .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
             .child(div().flex().flex_col().gap_1().text_sm().children(list))
             .child(
-                div()
-                    .id("quit-remember")
-                    .flex()
+                buttons::link("quit-remember", if remember { "☑" } else { "☐" })
                     .gap_2()
                     .text_sm()
-                    .cursor_pointer()
-                    .child(if remember { "☑" } else { "☐" })
+                    .text_color(p().text)
                     .child("Remember this choice (Options > Layout > Sessions)")
                     .on_click(cx.listener(|shell, _, _, cx| {
                         shell.remember = !shell.remember;
@@ -250,10 +235,10 @@ impl Shell {
                     .gap_2()
                     .justify_end()
                     .when(cancel, |d| {
-                        d.child(button("quit-cancel", "Cancel", false).on_click(cx.listener(|shell, _, _, cx| shell.cancel_ask(cx))))
+                        d.child(buttons::chip("quit-cancel", "Cancel").px_3().py_1().on_click(cx.listener(|shell, _, _, cx| shell.cancel_ask(cx))))
                     })
-                    .child(button("quit-no", no, false).on_click(cx.listener(|shell, _, _, cx| shell.answer(false, cx))))
-                    .child(button("quit-yes", yes, true).on_click(cx.listener(|shell, _, _, cx| shell.answer(true, cx)))),
+                    .child(buttons::chip("quit-no", no).px_3().py_1().on_click(cx.listener(|shell, _, _, cx| shell.answer(false, cx))))
+                    .child(buttons::primary("quit-yes", yes).on_click(cx.listener(|shell, _, _, cx| shell.answer(true, cx)))),
             );
         Some(dialog(body).into_any_element())
     }

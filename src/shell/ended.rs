@@ -11,6 +11,7 @@ use super::loopstabs::home_short;
 use crate::loops::Start;
 use crate::terminal::{Ended, TerminalView};
 use crate::theme::p;
+use crate::ui::buttons;
 
 /// What is known of a session that ended while selected.
 pub(super) struct EndedSession {
@@ -144,20 +145,11 @@ impl Shell {
         let who = ended.agent.clone().unwrap_or_else(|| name.clone());
         let starting = self.starting.is_some();
         let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
-            div()
-                .id(id)
-                .flex()
-                .items_center()
+            buttons::chip(id, label)
                 .gap_2()
                 .px_3()
                 .py_1p5()
-                .rounded_md()
-                .border_1()
-                .border_color(if primary { p().accent } else { p().border })
-                .text_color(if primary { p().accent } else { p().text })
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(label)
+                .when(primary, |d| d.border_color(p().accent).text_color(p().accent))
                 .child(div().text_xs().text_color(p().muted).child(key))
         };
         div()

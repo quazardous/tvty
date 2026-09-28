@@ -18,6 +18,7 @@ use gpui_kit::*;
 use crate::aiball::{Aiball, NewTicket};
 use crate::{composer, field};
 use crate::theme::p;
+use crate::ui::buttons::{self, Look as _};
 
 /// The form puts itself away (Esc, ✕); the draft stays.
 pub struct CloseNewTicket;
@@ -483,12 +484,8 @@ impl NewTicketForm {
                     .child(label)
                     .when(removable, |d| {
                         d.child(
-                            div()
-                                .id(SharedString::from(format!("new-{id}-drop-{value}")))
-                                .text_color(p().muted)
-                                .cursor_pointer()
-                                .hover(|d| d.text_color(p().danger))
-                                .child("✕")
+                            buttons::remove(SharedString::from(format!("new-{id}-drop-{value}")), "✕", "take it out")
+                                .min_w(px(0.))
                                 .on_click(cx.listener(move |form, _, _, cx| form.unpick(pick, &value, cx))),
                         )
                     }),
@@ -500,18 +497,10 @@ impl NewTicketForm {
         let none = found.is_empty() && !query.trim().is_empty();
         for (value, label, own) in found {
             suggested = suggested.child(
-                div()
-                    .id(SharedString::from(format!("new-{id}-{value}")))
-                    .px_1p5()
+                buttons::chip(SharedString::from(format!("new-{id}-{value}")), label)
                     .py_0p5()
-                    .rounded_sm()
                     .text_xs()
-                    .border_1()
-                    .border_color(p().border)
-                    .text_color(if own { p().text } else { p().muted })
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child(label)
+                    .when(!own, |d| d.text_color(p().muted))
                     .on_click(cx.listener(move |form, _, window, cx| form.pick(pick, value.clone(), window, cx))),
             );
         }
@@ -527,19 +516,11 @@ impl NewTicketForm {
     fn fields(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let label = |text: &'static str| div().w(px(80.)).flex_none().pt_0p5().text_color(p().muted).child(text);
         let choice = |id: String, text: String, on: bool, cx: &mut Context<Self>, set: Box<dyn Fn(&mut Self, &mut Context<Self>)>| {
-            div()
-                .id(SharedString::from(id))
-                .px_1p5()
+            buttons::chip(SharedString::from(id), text)
                 .py_0p5()
-                .rounded_sm()
                 .text_xs()
-                .border_1()
-                .border_color(if on { p().accent } else { p().border })
-                .bg(if on { p().accent.opacity(0.15) } else { p().bg.opacity(0.) })
-                .text_color(if on { p().text } else { p().muted })
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(text)
+                .when(!on, |d| d.text_color(p().muted))
+                .chosen(on)
                 .on_click(cx.listener(move |form, _, _, cx| {
                     set(form, cx);
                     cx.notify();
@@ -606,14 +587,8 @@ impl NewTicketForm {
                 .gap_2()
                 .child(format!("#{parent}"))
                 .child(
-                    div()
-                        .id("new-parent-drop")
-                        .px_1()
+                    buttons::remove("new-parent-drop", "✕", "no parent")
                         .text_xs()
-                        .text_color(p().muted)
-                        .cursor_pointer()
-                        .hover(|d| d.text_color(p().danger))
-                        .child("✕")
                         .on_click(cx.listener(|form, _, _, cx| {
                             form.parent = None;
                             cx.notify();
@@ -697,15 +672,8 @@ impl Render for NewTicketForm {
                     .border_color(p().border)
                     .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child(title))
                     .child(
-                        div()
-                            .id("new-ticket-close")
-                            .px_2()
-                            .rounded_sm()
+                        buttons::link("new-ticket-close", "✕  Esc")
                             .text_sm()
-                            .text_color(p().muted)
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover).text_color(p().text))
-                            .child("✕  Esc")
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseNewTicket))),
                     ),
             )

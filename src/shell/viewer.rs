@@ -11,6 +11,7 @@ use gpui_kit::*;
 use super::Shell;
 use crate::images::Picture;
 use crate::theme::p;
+use crate::ui::buttons;
 
 /// Room kept around a fitted image, and for the bar.
 const MARGIN: f32 = 32.;
@@ -127,14 +128,7 @@ impl Shell {
             .child("wheel or + − zoom · 1 real size · 0 fit · drag to move · Esc")
             .when_some(path, |d, path| {
                 d.child(
-                    div()
-                        .id("viewer-open")
-                        .px_2()
-                        .rounded_sm()
-                        .text_color(p().accent)
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .child("open")
+                    buttons::link("viewer-open", "open")
                         .on_click(move |_, _, _| {
                             let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
                         }),
@@ -203,17 +197,10 @@ impl Shell {
                 )
                 .child(bar)
                 .child(
-                    div()
-                        .id("viewer-close")
+                    buttons::link("viewer-close", "✕  Esc")
                         .absolute()
                         .top_2()
                         .right_3()
-                        .px_2()
-                        .rounded_sm()
-                        .text_color(p().muted)
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover).text_color(p().text))
-                        .child("✕  Esc")
                         .on_click(cx.listener(|shell, _, _, cx| {
                             shell.viewer = None;
                             cx.notify();

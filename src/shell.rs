@@ -17,6 +17,7 @@ use gpui_kit::component::{Sizable as _, TitleBar, window_paddings};
 use crate::aiball::{Aiball, TicketRow};
 use crate::keymap;
 use crate::tip::Tip as _;
+use crate::ui::buttons::{self, Look as _};
 use crate::theme::{self, p};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use crate::options::{FIXED_KEYS, Section};
@@ -2214,15 +2215,8 @@ impl Shell {
             .pb_4()
             .child(div().flex_1().min_w_0().truncate().text_xl().font_weight(FontWeight::BOLD).child(title))
             .child(
-                div()
-                    .id("options-close")
-                    .px_2()
-                    .rounded_sm()
+                buttons::link("options-close", "✕  Esc")
                     .text_sm()
-                    .text_color(p().muted)
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover).text_color(p().text))
-                    .child("✕  Esc")
                     .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
             );
         let content = div()
@@ -2349,17 +2343,10 @@ impl Shell {
             let on = self.remote_layer == layer;
             let label: SharedString = layer.clone().unwrap_or_else(|| "Global".into()).into();
             layers = layers.child(
-                div()
-                    .id(SharedString::from(format!("options-layer-{label}")))
+                buttons::chip(SharedString::from(format!("options-layer-{label}")), label)
                     .px_3()
                     .py_1()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(if on { p().accent } else { p().border })
-                    .cursor_pointer()
-                    .when(on, |d| d.bg(p().active))
-                    .hover(|d| d.bg(p().hover))
-                    .child(label)
+                    .chosen(on)
                     .on_click(cx.listener(move |shell, _, _, cx| shell.show_layer(layer.clone(), cx))),
             );
         }
@@ -2482,18 +2469,10 @@ impl Shell {
             .child(div().flex_1().min_w_0().child(text))
             .when(in_project, |d| {
                 d.child(
-                    div()
-                        .id("options-to-global")
-                        .flex_none()
-                        .px_2()
+                    buttons::chip("options-to-global", "Open Global")
                         .py_0p5()
-                        .rounded_md()
-                        .border_1()
                         .border_color(p().accent.opacity(0.6))
                         .text_color(p().accent)
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .child("Open Global")
                         .on_click(cx.listener(|shell, _, _, cx| {
                             shell.options_scroll.set_offset(point(px(0.), px(0.)));
                             shell.show_layer(None, cx)
@@ -2591,18 +2570,10 @@ impl Shell {
                     let on = entry.value.as_str() == Some(option.as_str());
                     let name = entry.key.clone();
                     choices = choices.child(
-                        div()
-                            .id(SharedString::from(format!("options-{name}-{option}")))
-                            .px_2()
+                        buttons::chip(SharedString::from(format!("options-{name}-{option}")), option.clone())
                             .py_0p5()
-                            .rounded_md()
                             .text_sm()
-                            .border_1()
-                            .border_color(if on { p().accent } else { p().border })
-                            .cursor_pointer()
-                            .when(on, |d| d.bg(p().active))
-                            .hover(|d| d.bg(p().hover))
-                            .child(option.clone())
+                            .chosen(on)
                             .on_click(cx.listener(move |shell, _, _, cx| shell.remote_write(name.clone(), Some(Json::String(option.clone())), cx))),
                     );
                 }
@@ -2967,18 +2938,7 @@ impl Shell {
         let listening = |command: &str, key: Option<&keymap::Key>| {
             self.capture.as_ref().is_some_and(|c| c.command == command && c.replacing.as_ref() == key)
         };
-        let small = |id: SharedString, label: &'static str| {
-            div()
-                .id(id)
-                .px_2()
-                .rounded_sm()
-                .text_xs()
-                .border_1()
-                .border_color(p().border)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(label)
-        };
+        let small = |id: SharedString, label: &'static str| buttons::chip(id, label).text_xs();
         let listening_chip = |id: SharedString| {
             div()
                 .id(id)
@@ -3051,13 +3011,8 @@ impl Shell {
                                     .on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, Some(again.clone()), cx))),
                             )
                             .child(
-                                div()
-                                    .id(SharedString::from(format!("{id}-x")))
-                                    .px_1()
-                                    .text_color(p().muted)
-                                    .cursor_pointer()
-                                    .hover(|d| d.bg(p().hover).text_color(p().danger))
-                                    .child("×")
+                                buttons::remove(SharedString::from(format!("{id}-x")), "×", "remove this key")
+                                    .min_w(px(0.))
                                     .on_click(cx.listener(move |shell, _, _, cx| {
                                         shell.change_keys(cx, |map| map.unbind(context, &gone))
                                     })),
@@ -3544,16 +3499,8 @@ impl Shell {
             // The order: as ctrl+tab goes, or alphabetical.
             .child({
                 let recent = self.applied.sessions.recent_first;
-                div()
-                    .id("sessions-order")
-                    .mr_2()
-                    .px_1p5()
-                    .rounded_sm()
+                buttons::link("sessions-order", if recent { "⇅ recent" } else { "⇅ a–z" })
                     .text_xs()
-                    .text_color(p().muted)
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover).text_color(p().text))
-                    .child(if recent { "⇅ recent" } else { "⇅ a–z" })
                     .tip(if recent {
                         "the project used last first, as ctrl+tab goes; a click: alphabetical"
                     } else {
@@ -3565,25 +3512,15 @@ impl Shell {
             })
             // A shell the daemon holds: it outlives tvty.
             .child(
-                div()
-                    .id("new-terminal")
-                    .mr_2()
-                    .px_1p5()
-                    .rounded_sm()
+                buttons::link("new-terminal", "+ terminal")
+                    .ml_1()
                     .text_xs()
-                    .text_color(p().accent)
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child("+ terminal")
+                    .tip("a terminal of its own, which outlives tvty")
                     .on_click(cx.listener(|shell, _, _, cx| shell.new_terminal(cx))),
             )
+            .child(buttons::separator())
             .child(
-                div()
-                    .id("sidebar-collapse")
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(p().accent)
-                    .child("‹")
+                buttons::icon("sidebar-collapse", "‹", buttons::hint(cx, "Fold the sessions' list", "sidebar.toggle"))
                     .on_click(cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx))),
             );
         div()
@@ -3644,15 +3581,8 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            div()
-                                .id(SharedString::from(format!("new-session-{name}")))
-                                .px_1()
-                                .rounded_sm()
+                            buttons::link(SharedString::from(format!("new-session-{name}")), "+ session")
                                 .text_xs()
-                                .text_color(p().accent)
-                                .cursor_pointer()
-                                .hover(|d| d.bg(p().hover))
-                                .child("+ session")
                                 .on_click(cx.listener(move |shell, _, window, cx| {
                                     shell.ask_new_session(name.clone(), window, cx)
                                 })),
@@ -3662,15 +3592,8 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            div()
-                                .id(SharedString::from(format!("new-shell-{name}")))
-                                .px_1()
-                                .rounded_sm()
+                            buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
                                 .text_xs()
-                                .text_color(p().accent)
-                                .cursor_pointer()
-                                .hover(|d| d.bg(p().hover))
-                                .child(">_")
                                 .tip("a terminal in the project's folder, listed with it")
                                 .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
                         )
@@ -4201,31 +4124,15 @@ impl Render for Shell {
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
-                        div()
-                            .id("theme-button")
-                            .flex_none()
+                        buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
                             .mr_2()
-                            .px_2()
-                            .rounded_sm()
                             .text_xs()
-                            .text_color(p().muted)
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover).text_color(p().text))
-                            .child(format!("◐ {theme_name}"))
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
                     )
                     .child(
-                        div()
-                            .id("options-button")
-                            .flex_none()
+                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
                             .mr_2()
-                            .px_2()
-                            .rounded_sm()
                             .text_sm()
-                            .text_color(p().muted)
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover).text_color(p().text))
-                            .child("⚙")
                             .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
                     ),
             )
@@ -4314,17 +4221,9 @@ fn option_row(
         )
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         .child(
-            div()
-                .id(SharedString::from(format!("options-action-{name}")))
-                .flex_none()
+            buttons::chip(SharedString::from(format!("options-action-{name}")), action)
                 .px_3()
                 .py_1()
-                .rounded_md()
-                .border_1()
-                .border_color(p().border)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(action)
                 .on_click(on_click),
         )
 }
@@ -4355,17 +4254,7 @@ fn option_stepper(
     reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     let button = |id: &str, label: &'static str| {
-        div()
-            .id(SharedString::from(format!("options-{id}-{key}")))
-            .flex_none()
-            .px_3()
-            .py_1()
-            .rounded_md()
-            .border_1()
-            .border_color(p().border)
-            .cursor_pointer()
-            .hover(|d| d.bg(p().hover))
-            .child(label)
+        buttons::chip(SharedString::from(format!("options-{id}-{key}")), label).px_3().py_1()
     };
     let (minus, plus) = (button("minus", "−").on_click(minus), button("plus", "+").on_click(plus));
     let id = key.clone();
@@ -4421,19 +4310,12 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
     let slot = div().flex_none().w(px(104.)).flex().justify_end();
     let Some(away) = away else { return slot };
     slot.child(
-        div()
-            .id(SharedString::from(format!("options-reset-{key}")))
-            .px_2()
+        buttons::chip(SharedString::from(format!("options-reset-{key}")), format!("↺ {}", away.back))
             .py_0p5()
-            .rounded_md()
-            .border_1()
             .border_color(p().accent.opacity(0.6))
             .text_sm()
             .whitespace_nowrap()
             .text_color(p().accent)
-            .cursor_pointer()
-            .hover(|d| d.bg(p().hover))
-            .child(format!("↺ {}", away.back))
             .tip(format!("back to {}", away.value))
             .on_click(reset),
     )

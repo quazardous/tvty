@@ -14,6 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
+use crate::ui::buttons::{self, Look as _};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
@@ -935,31 +936,15 @@ impl TicketPanel {
             .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 20.)))
             .child(div().flex_1().min_w_0().child(format!("#{} {}", ticket.id, ticket.title)))
             .child(
-                div()
-                    .id("thread-order")
-                    .flex_none()
-                    .px_1()
-                    .rounded_sm()
+                buttons::link("thread-order", if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
                     .text_xs()
                     .font_weight(FontWeight::NORMAL)
-                    .text_color(p().accent)
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child(if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
                     .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
             )
             .child(
-                div()
-                    .id("thread-full")
-                    .flex_none()
-                    .px_1()
-                    .rounded_sm()
+                buttons::link("thread-full", if self.full { "✕  Esc" } else { "⤢ more" })
                     .text_xs()
                     .font_weight(FontWeight::NORMAL)
-                    .text_color(if self.full { p().muted } else { p().accent })
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child(if self.full { "✕  Esc" } else { "⤢ more" })
                     .on_click(cx.listener(|panel, _, _, cx| {
                         let full = !panel.full;
                         panel.set_full(full, cx)
@@ -999,13 +984,8 @@ impl TicketPanel {
                 None => div().child(priority.clone()),
             };
             chips.push(
-                div()
-                    .id("priority-chip")
-                    .px_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child(label)
+                buttons::chip("priority-chip", label)
+                    .tip("the priority: a click changes it")
                     .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Priority, cx)))
                     .into_any_element(),
             );
@@ -1216,19 +1196,7 @@ impl TicketPanel {
                 panel.complete_mention(name, window, cx)
             })
         });
-        let chip = |id: &'static str, label: &'static str| {
-            div()
-                .id(id)
-                .px_2()
-                .py_0p5()
-                .rounded_md()
-                .text_xs()
-                .border_1()
-                .border_color(p().border)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(label)
-        };
+        let chip = |id: &'static str, label: &'static str| buttons::chip(id, label).py_0p5().text_xs();
         let menu = detail.menu.map(|menu| {
             let row = div().flex().flex_wrap().items_center().gap_1();
             match menu {
@@ -1313,17 +1281,11 @@ impl TicketPanel {
                     })
                     .child(div().flex_1())
                     .child(
-                        div()
-                            .id("quiet")
-                            .px_2()
+                        buttons::chip("quiet", "without notifying")
                             .py_0p5()
-                            .rounded_md()
                             .text_xs()
-                            .border_1()
-                            .border_color(if quiet { p().accent } else { p().border })
-                            .text_color(if quiet { p().text } else { p().muted })
-                            .cursor_pointer()
-                            .child("without notifying")
+                            .when(!quiet, |d| d.text_color(p().muted))
+                            .chosen(quiet)
                             .on_click(cx.listener(|panel, _, _, cx| {
                                 if let Some(detail) = panel.detail.as_mut() {
                                     detail.quiet = !detail.quiet;
@@ -1395,15 +1357,8 @@ impl TicketPanel {
             .text_xs()
             .text_color(colour)
         });
-        let fold = div()
-            .id("fold-all")
-            .px_2()
-            .rounded_sm()
+        let fold = buttons::link("fold-all", if self.full_folded { "unfold all" } else { "fold before the summary" })
             .text_xs()
-            .text_color(p().accent)
-            .cursor_pointer()
-            .hover(|d| d.bg(p().hover))
-            .child(if self.full_folded { "unfold all" } else { "fold before the summary" })
             .on_click(cx.listener(|panel, _, _, cx| {
                 panel.full_folded = !panel.full_folded;
                 cx.notify();
@@ -1498,18 +1453,11 @@ impl TicketPanel {
                 .child(div().flex_1().min_w_0().child(value))
         };
         let choice = |id: SharedString, text: String, on: bool, cx: &mut Context<Self>, set: Box<dyn Fn(&mut Self, &mut Window, &mut Context<Self>)>| {
-            div()
-                .id(id)
-                .px_1p5()
+            buttons::chip(id, text)
                 .py_0p5()
-                .rounded_sm()
                 .text_xs()
-                .border_1()
-                .border_color(if on { p().accent } else { p().border })
-                .text_color(if on { p().text } else { p().muted })
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(text)
+                .when(!on, |d| d.text_color(p().muted))
+                .chosen(on)
                 .on_click(cx.listener(move |panel, _, window, cx| {
                     if !busy {
                         set(panel, window, cx)
@@ -1784,14 +1732,8 @@ impl TicketPanel {
             let stage = relation.target_stage.clone().map(|s| format!(" ({s})")).unwrap_or_default();
             // Only a relation made on this ticket can be undone from here.
             let remove = (!relation.reciprocal).then(|| {
-                div()
-                    .id(SharedString::from(format!("unrelate-{target}")))
-                    .px_1()
+                buttons::remove(SharedString::from(format!("unrelate-{target}")), "✕", "remove this relation")
                     .text_xs()
-                    .text_color(p().muted)
-                    .cursor_pointer()
-                    .hover(|d| d.text_color(p().danger))
-                    .child("✕")
                     .on_click(cx.listener(move |panel, _, window, cx| {
                         panel.change(format!("relation to #{target} removed"), move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
                     }))
@@ -1918,20 +1860,14 @@ impl TicketPanel {
             let queued = detail.answers.iter().any(|(m, q)| *m == comment.id && *q == question.id);
             let (message, pick) = (comment.id, question.clone());
             questions_row = questions_row.child(
-                div()
-                    .id(SharedString::from(format!("question-{}-{}", comment.id, question.id)))
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .px_2()
-                    .py_0p5()
-                    .rounded_md()
-                    .text_xs()
-                    .border_1()
-                    .border_color(if queued { p().accent } else { p().border })
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
-                    .child(div().flex_none().text_color(p().accent).child(if queued { "✓ in the reply" } else { "Answer" }))
+                buttons::chip(
+                    SharedString::from(format!("question-{}-{}", comment.id, question.id)),
+                    div().flex_none().text_color(p().accent).child(if queued { "✓ in the reply" } else { "Answer" }),
+                )
+                .gap_2()
+                .py_0p5()
+                .text_xs()
+                .chosen(queued)
                     .child(div().flex_1().min_w_0().truncate().child(question.text.clone()))
                     .on_click(cx.listener(move |panel, _, window, cx| panel.answer(message, pick.clone(), window, cx))),
             );
@@ -2017,13 +1953,7 @@ impl TicketPanel {
             .when(votes.up > 0, |d| d.child(format!("+{}", votes.up)))
             .when(votes.down > 0, |d| d.child(format!("−{}", votes.down)))
             .child(
-                div()
-                    .id(("comment-menu", id))
-                    .px_1()
-                    .rounded_sm()
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover).text_color(p().text))
-                    .child("⋯")
+                buttons::icon(("comment-menu", id), "⋯", "the comment's actions")
                     .on_click(cx.listener(move |panel, _, _, cx| {
                         panel.comment_menu = if panel.comment_menu == Some(id) { None } else { Some(id) };
                         panel.confirm_delete = None;
@@ -2038,18 +1968,10 @@ impl TicketPanel {
         let id = comment.id;
         let busy = self.detail.as_ref().is_some_and(|d| d.busy);
         let item = |key: &str, label: String, colour: Hsla| {
-            div()
-                .id(SharedString::from(format!("{key}-{id}")))
-                .px_1p5()
+            buttons::chip(SharedString::from(format!("{key}-{id}")), label)
                 .py_0p5()
-                .rounded_sm()
                 .text_xs()
-                .border_1()
-                .border_color(p().border)
                 .text_color(colour)
-                .cursor_pointer()
-                .hover(|d| d.bg(p().hover))
-                .child(label)
         };
         let mut row = div().flex().flex_wrap().gap_1().pb_1();
         if let Some(body) = comment.body.clone() {
@@ -2180,11 +2102,7 @@ impl TicketPanel {
                                         .gap_1()
                                         .child(if short.is_some() { "or on" } else { "on" })
                                         .child(
-                                            div()
-                                                .id(("resume-ticket", id))
-                                                .cursor_pointer()
-                                                .underline()
-                                                .child(format!("#{n}"))
+                                            buttons::link(("resume-ticket", id), format!("#{n}"))
                                                 .on_click(cx.listener(move |panel, _, _, cx| panel.open(n, cx))),
                                         )
                                 }))
@@ -2215,25 +2133,15 @@ impl Render for TicketPanel {
             .border_color(p().border)
             // First, the chevron that folds the panel towards the window's edge.
             .child(
-                div()
-                    .id("collapse")
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(p().accent)
-                    .child("›")
+                buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
             .when(self.detail.is_some(), |d| {
                 d.child(
-                    div()
-                        .id("back")
-                        .cursor_pointer()
-                        .text_color(p().accent)
-                        .child("← Tickets")
-                        .on_click(cx.listener(|panel, _, _, cx| {
-                            panel.detail = None;
-                            cx.notify();
-                        })),
+                    buttons::link("back", "← Tickets").on_click(cx.listener(|panel, _, _, cx| {
+                        panel.detail = None;
+                        cx.notify();
+                    })),
                 )
             })
             .when(self.detail.is_none(), |d| {
@@ -2260,29 +2168,18 @@ impl Render for TicketPanel {
                     .child(format!("as {}", self.aiball.user)),
             )
             .child(
-                div()
-                    .id("new-ticket")
-                    .px_1p5()
-                    .rounded_sm()
-                    .border_1()
-                    .border_color(p().border)
+                buttons::chip("new-ticket", "+ New")
                     .text_xs()
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
                     .text_color(p().accent)
-                    .child("+ New")
+                    .tip(buttons::hint(cx, "A new ticket", "ticket.new"))
                     .on_click(cx.listener(|panel, _, _, cx| {
                         let project = panel.scope.as_ref().map(|s| s.project.clone());
                         crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
                     })),
             )
+            .child(buttons::separator())
             .child(
-                div()
-                    .id("full-list")
-                    .px_1()
-                    .cursor_pointer()
-                    .text_color(p().accent)
-                    .child("⤢")
+                buttons::icon("full-list", "⤢", buttons::hint(cx, "The ticket list, full screen", "list.full"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenFullList))),
             );
         let content = match &self.detail {

@@ -13,6 +13,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
+use crate::ui::buttons;
 use crate::aiball::{AgentBacklog, AgentBar};
 use crate::status::{ago, now, parse_time};
 use crate::theme::p;
@@ -168,15 +169,7 @@ impl Shell {
             for (action, label) in AFK_ACTIONS {
                 let (action, target) = (*action, agent.clone());
                 row = row.child(
-                    div()
-                        .id(SharedString::from(format!("agent-afk-{action}")))
-                        .px_1p5()
-                        .rounded_sm()
-                        .border_1()
-                        .border_color(p().border)
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .child(*label)
+                    buttons::chip(SharedString::from(format!("agent-afk-{action}")), *label)
                         .on_click(cx.listener(move |shell, _, _, cx| shell.set_afk(target.clone(), action, cx))),
                 );
             }
@@ -235,21 +228,14 @@ impl Shell {
                 (_, true) => ("restart pending", "a restart is asked: its Claude restarts as soon as it is idle, resuming its conversation"),
                 _ => ("update", "its Claude Code installed an update: a click restarts it (at once if idle, otherwise as soon as it is idle), resuming its conversation"),
             };
-            item()
-                .id("agent-restart")
-                .px_1p5()
-                .rounded_sm()
-                .border_1()
+            buttons::chip_if("agent-restart", "⟳", !restarting && !armed)
+                .child(word)
                 .border_color(p().warning)
                 .text_color(p().warning)
                 .when(armed, |d| d.bg(p().active))
                 .when(!restarting && !armed, |d| {
-                    d.cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .on_click(cx.listener(move |shell, _, _, cx| shell.restart_claude(target.clone(), cx)))
+                    d.on_click(cx.listener(move |shell, _, _, cx| shell.restart_claude(target.clone(), cx)))
                 })
-                .child("⟳")
-                .child(word)
                 .tip(tip)
         });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
@@ -274,24 +260,23 @@ impl Shell {
             let known = self.board.known.iter().find(|l| l.session() == session).map(|l| l.name.clone());
             let moving = self.moves.contains_key(&agent);
             let asked = self.move_asked.as_deref() == Some(session.as_str());
-            let chip = item()
-                .id("agent-mode")
-                .px_1()
-                .rounded_sm()
-                .border_1()
-                .border_color(ink(if asked { p().warning } else { p().border }))
-                .text_color(ink(p().muted))
-                .child(match (moving, hosted) {
+            // Moving, or run from another machine: nothing to click here.
+            let chip = buttons::chip_if(
+                "agent-mode",
+                match (moving, hosted) {
                     (true, _) => "moving…",
                     (_, true) => "host",
                     _ => "tmux",
-                });
+                },
+                known.is_some() && !moving,
+            )
+            .px_1()
+            .border_color(ink(if asked { p().warning } else { p().border }))
+            .text_color(ink(p().muted));
             let place = if hosted { "on aiball's session host" } else { "in tmux (claude-loop)" };
             let other = if hosted { "into tmux" } else { "to aiball's host" };
             let chip = match (&known, moving) {
                 (Some(_), false) => chip
-                    .cursor_pointer()
-                    .hover(|d| d.bg(p().hover))
                     .on_click(cx.listener({
                         let session = session.clone();
                         move |shell, _, _, cx| {
@@ -327,25 +312,13 @@ impl Shell {
                     .child(format!("Move {agent} {other}? Its Claude restarts, resuming its conversation."))
                     .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the move interrupts it.")))
                     .child(
-                        item()
-                            .id("agent-move-go")
-                            .px_1p5()
-                            .rounded_sm()
-                            .border_1()
+                        buttons::chip("agent-move-go", "Move")
                             .border_color(ink(p().warning))
                             .text_color(ink(p().warning))
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover))
-                            .child("Move")
                             .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
                     )
                     .child(
-                        item()
-                            .id("agent-move-cancel")
-                            .px_1p5()
-                            .cursor_pointer()
-                            .hover(|d| d.bg(p().hover))
-                            .child("Cancel")
+                        buttons::link("agent-move-cancel", "Cancel")
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 shell.move_asked = None;
                                 cx.notify();
@@ -473,16 +446,10 @@ impl Shell {
                     let session = terminal.session.clone();
                     let copy = self.copies.contains(&session);
                     let tone = if copy { p().warning } else { p().muted };
-                    item()
-                        .id("agent-controls")
+                    buttons::chip("agent-controls", if copy { "copy" } else { "controls" })
                         .px_1()
-                        .rounded_sm()
-                        .border_1()
                         .border_color(ink(if copy { p().warning } else { p().border }))
                         .text_color(ink(tone))
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p().hover))
-                        .child(if copy { "copy" } else { "controls" })
                         .on_click(cx.listener(move |shell, _, window, cx| shell.set_copy(session.clone(), !copy, window, cx)))
                         .tip(if copy {
                             "a copy: you watch; nothing you type reaches its Claude, and the session keeps its size. A click takes the controls"
