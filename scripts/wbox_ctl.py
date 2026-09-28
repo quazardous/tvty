@@ -224,6 +224,34 @@ def main():
                 client.roundtrip()
             clock.sleep(0.08)
         result = {"ok": True}
+    elif command == "modclick":
+        # A left click at X Y with MODIFIER held (ctrl, shift…): a
+        # ctrl+click, a shift+click. The modifier is released after it.
+        if len(args) != 3:
+            sys.exit("modclick needs MODIFIER X Y")
+        modifier, x, y = args[0], int(args[1]), int(args[2])
+        _warm_up(comp, x, y)
+        import time as clock
+        from wbox import pointer as wp
+        client = comp._vptr_client()
+        client._ensure_vkbd()
+        vp = client._ensure_vptr()
+        mask, mod_code = wp._MODIFIERS[modifier.lower()]
+        client._kbd_key(mod_code, wp.PRESSED)
+        client._kbd_mods(mask)
+        client.roundtrip()
+        try:
+            client._motion(vp, x, y)
+            for state in (wp.PRESSED, wp.RELEASED):
+                client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(state))
+                client._send(vp, 4)
+                client.roundtrip()
+            clock.sleep(0.1)
+        finally:
+            client._kbd_mods(0)
+            client._kbd_key(mod_code, wp.RELEASED)
+            client.roundtrip()
+        result = {"ok": True}
     elif command == "move":
         # Glide the pointer from X1 Y1 to X2 Y2 in STEPS over SECONDS, no
         # button pressed: what a hand does passing over a list.

@@ -1752,8 +1752,19 @@ impl Shell {
             self.close_new_ticket(window, cx);
         } else if key == "escape" && self.panel.read(cx).is_full() {
             self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
+        } else if key == "escape" && self.full_list_shown && self.full_list.as_ref().is_some_and(|l| l.read(cx).selecting()) {
+            // Rows chosen: Esc lets them go before it closes the list.
+            if let Some(list) = self.full_list.clone() {
+                list.update(cx, |list, cx| list.clear_selection(cx));
+            }
         } else if key == "escape" && self.full_list_shown {
             self.toggle_full_list(window, cx);
+        } else if key == "a" && m.control && !m.shift && self.full_list_shown
+            && self.full_list.as_ref().is_some_and(|l| !l.read(cx).search_focused(window, cx))
+        {
+            if let Some(list) = self.full_list.clone() {
+                list.update(cx, |list, cx| list.select_all(cx));
+            }
         } else if key == "escape" && self.theme_menu {
             self.theme_menu = false;
             cx.notify();

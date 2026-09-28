@@ -679,6 +679,15 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
+    pub fn mark_unread(&self, ticket: u64) -> anyhow::Result<()> {
+        self.rpc_do("ticket.mark_unread", json!({ "id": ticket }))
+    }
+
+    /// Marks a ticket's last word (an agent's) as a step.
+    pub fn step_ticket(&self, ticket: u64) -> anyhow::Result<()> {
+        self.rpc_do("ticket.step", json!({ "id": ticket }))
+    }
+
     /// Posts a comment; `quiet`: without notifying anyone (scope
     /// internal). Answers the comment's id.
     pub fn reply(&self, project: &str, ticket: u64, body: &str, quiet: bool) -> anyhow::Result<u64> {

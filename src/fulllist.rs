@@ -82,6 +82,17 @@ pub struct FullList {
     tags: BTreeSet<String>,
     search: Entity<InputState>,
     error: Option<String>,
+    /// Rows chosen for a bulk action (ctrl+click, shift+click), in order;
+    /// shift+click extends from the anchor.
+    selected: Vec<(String, u64)>,
+    anchor: Option<(String, u64)>,
+    /// The rows shown, in order, as last drawn: what shift+click and
+    /// ctrl+a range over.
+    shown: Vec<(String, u64)>,
+    /// A bulk action asked, waiting for its confirmation.
+    confirm: Option<crate::bulk::Action>,
+    /// A bulk action on its way.
+    working: bool,
 }
 
 impl EventEmitter<CloseFullList> for FullList {}
@@ -121,6 +132,11 @@ impl FullList {
             tags: BTreeSet::new(),
             search,
             error: None,
+            selected: Vec::new(),
+            anchor: None,
+            shown: Vec::new(),
+            confirm: None,
+            working: false,
         }
     }
 
@@ -150,6 +166,179 @@ impl FullList {
             Some(project) => vec![project.clone()],
             None => self.projects.clone(),
         }
+    }
+
+    // ── Selection and bulk actions ─────────────────────────────────────
+
+    pub fn selecting(&self) -> bool {
+        !self.selected.is_empty()
+    }
+
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        self.selected.clear();
+        self.anchor = None;
+        self.confirm = None;
+        cx.notify();
+    }
+
+    /// Every row shown (its filters applied).
+    pub fn select_all(&mut self, cx: &mut Context<Self>) {
+        self.selected = self.shown.clone();
+        cx.notify();
+    }
+
+    pub fn search_focused(&self, window: &Window, cx: &App) -> bool {
+        self.search.read(cx).focus_handle(cx).is_focused(window)
+    }
+
+    fn toggle_selected(&mut self, key: (String, u64), cx: &mut Context<Self>) {
+        match self.selected.iter().position(|k| *k == key) {
+            Some(at) => {
+                self.selected.remove(at);
+            }
+            None => self.selected.push(key.clone()),
+        }
+        self.anchor = Some(key);
+        self.confirm = None;
+        cx.notify();
+    }
+
+    /// From the anchor to `key`, as the rows are shown.
+    fn select_to(&mut self, key: (String, u64), cx: &mut Context<Self>) {
+        let at = |k: &(String, u64)| self.shown.iter().position(|s| s == k);
+        let (Some(from), Some(to)) = (self.anchor.as_ref().and_then(at), at(&key)) else {
+            return self.toggle_selected(key, cx);
+        };
+        let (low, high) = (from.min(to), from.max(to));
+        for k in &self.shown[low..=high] {
+            if !self.selected.contains(k) {
+                self.selected.push(k.clone());
+            }
+        }
+        self.confirm = None;
+        cx.notify();
+    }
+
+    /// The selected rows, as last read.
+    fn selected_rows(&self) -> Vec<TicketRow> {
+        let source = if self.with_closed { &self.all } else { &self.open };
+        self.selected
+            .iter()
+            .filter_map(|(project, id)| source.get(project)?.iter().find(|t| t.id == *id).cloned())
+            .collect()
+    }
+
+    /// Does `action` on the selection, off the UI thread; one notification
+    /// says how it went.
+    fn run_bulk(&mut self, action: crate::bulk::Action, cx: &mut Context<Self>) {
+        let rows = self.selected_rows();
+        let aiball = self.aiball.clone();
+        self.confirm = None;
+        self.working = true;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let (line, failed) = cx.background_executor().spawn(async move { crate::bulk::run(&aiball, action, &rows) }).await;
+            let _ = this.update(cx, |list, cx| {
+                list.working = false;
+                list.selected.clear();
+                list.anchor = None;
+                let activity = if failed {
+                    crate::activity::Activity::failed(None, action.label(), line)
+                } else {
+                    crate::activity::Activity::done(None, line)
+                };
+                crate::activity::publish(cx, activity);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The left column while rows are selected: what can be done to them.
+    fn bulk_side(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        use crate::bulk::Action;
+        let rows = self.selected_rows();
+        let refs: Vec<&TicketRow> = rows.iter().collect();
+        let link = |id: &'static str, label: &'static str| {
+            div().id(id).px_1p5().rounded_sm().text_xs().text_color(p().accent).cursor_pointer().hover(|d| d.bg(p().hover)).child(label)
+        };
+        let mut side = div()
+            .id("bulk-side")
+            .flex()
+            .flex_col()
+            .gap_1()
+            .p_4()
+            .child(div().text_lg().font_weight(FontWeight::BOLD).child(format!("{} selected", self.selected.len())))
+            .child(
+                div()
+                    .flex()
+                    .gap_2()
+                    .pb_2()
+                    .child(link("bulk-all", "Select all shown").on_click(cx.listener(|list, _, _, cx| list.select_all(cx))))
+                    .child(link("bulk-clear", "Clear · Esc").on_click(cx.listener(|list, _, _, cx| list.clear_selection(cx)))),
+            )
+            .child(group("Actions"));
+        if self.working {
+            return side.child(div().text_color(p().muted).child("Working…"));
+        }
+        for action in Action::ALL {
+            let count = action.count(&refs);
+            let asked = self.confirm == Some(action);
+            let row = div()
+                .id(SharedString::from(format!("bulk-{}", action.label())))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_2()
+                .py_1()
+                .rounded_md()
+                .tip(action.about())
+                .child(div().flex_1().child(action.label()))
+                .child(div().text_xs().text_color(p().muted).child(count.to_string()));
+            let row = if count == 0 {
+                row.text_color(p().muted.opacity(0.6))
+            } else {
+                row.text_color(p().text).cursor_pointer().hover(|d| d.bg(p().hover)).on_click(cx.listener(move |list, _, _, cx| {
+                    if action.confirmed() {
+                        list.confirm = Some(action);
+                        cx.notify();
+                    } else {
+                        list.run_bulk(action, cx);
+                    }
+                }))
+            };
+            side = side.child(row);
+            if asked {
+                side = side.child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .px_2()
+                        .pb_2()
+                        .text_sm()
+                        .child(format!("{} {count} ticket{}?", action.label(), if count == 1 { "" } else { "s" }))
+                        .child(
+                            div()
+                                .id("bulk-confirm")
+                                .px_2()
+                                .rounded_sm()
+                                .border_1()
+                                .border_color(p().warning)
+                                .text_color(p().warning)
+                                .cursor_pointer()
+                                .hover(|d| d.bg(p().hover))
+                                .child(action.label())
+                                .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, cx))),
+                        )
+                        .child(link("bulk-cancel", "Cancel").on_click(cx.listener(|list, _, _, cx| {
+                            list.confirm = None;
+                            cx.notify();
+                        }))),
+                );
+            }
+        }
+        side
     }
 
     /// Shows only what has something new for the user (or everything).
@@ -514,6 +703,7 @@ impl FullList {
 
         let (project, id) = (ticket.project.clone(), ticket.id);
         let lit = crate::notify::lit(cx, id);
+        let chosen = self.selected.iter().any(|(p, i)| *p == project && *i == id);
         div()
             .id(SharedString::from(format!("full-{}-{}", ticket.project, ticket.id)))
             // A notification about it is up: it shines.
@@ -526,6 +716,7 @@ impl FullList {
             .border_color(p().border.opacity(0.5))
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
+            .when(chosen, |d| d.bg(p().active).border_l_2().border_color(p().accent))
             .child(crate::panel::row_edge(&state))
             .child(
                 div()
@@ -549,8 +740,17 @@ impl FullList {
                     })
                     .child(meta),
             )
-            .on_click(cx.listener(move |_, _, _, cx| {
-                crate::bus::emit(cx, crate::bus::Signal::OpenTicket { project: project.clone(), ticket: id })
+            // ctrl+click chooses it for a bulk action, shift+click the rows
+            // up to it; a click opens it.
+            .on_click(cx.listener(move |list, event: &ClickEvent, _, cx| {
+                let m = event.modifiers();
+                if m.control || m.platform {
+                    list.toggle_selected((project.clone(), id), cx);
+                } else if m.shift {
+                    list.select_to((project.clone(), id), cx);
+                } else {
+                    crate::bus::emit(cx, crate::bus::Signal::OpenTicket { project: project.clone(), ticket: id })
+                }
             }))
     }
 }
@@ -560,12 +760,14 @@ impl Render for FullList {
         let _timing = crate::stats::Timing::new("fulllist");
         let query = self.search.read(cx).value().trim().to_lowercase();
         let rows = self.rows();
-        let side = self.side(&rows, &query, cx);
 
         let shown: Vec<&(RowState, &TicketRow)> = rows
             .iter()
             .filter(|(s, t)| self.band.is_none_or(|b| s.band == b) && (!self.unread_only || t.unread) && self.matches(t, &query))
             .collect();
+        let order: Vec<(String, u64)> = shown.iter().map(|(_, t)| (t.project.clone(), t.id)).collect();
+        // Rows chosen, the left column says what can be done to them.
+        let side = if self.selected.is_empty() { self.side(&rows, &query, cx) } else { self.bulk_side(cx) };
         let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
         for (state, ticket) in &shown {
             list = list.child(self.row(ticket, *state, cx));
@@ -591,7 +793,7 @@ impl Render for FullList {
                 all
             }
         };
-        div()
+        let view = div()
             .id("full-list")
             .absolute()
             .inset_0()
@@ -646,7 +848,9 @@ impl Render for FullList {
                     .child(crate::sidecol::column(cx).bg(p().surface).child(side.overflow_y_scrollbar()))
                     .child(crate::sidecol::edge("full-list-edge"))
                     .child(div().flex_1().min_w_0().h_full().child(list.overflow_y_scrollbar())),
-            )
+            );
+        self.shown = order;
+        view
     }
 }
 

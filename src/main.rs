@@ -5,6 +5,7 @@ mod accordion;
 mod activity;
 mod attach;
 mod aiball;
+mod bulk;
 mod bus;
 mod daemon;
 mod emoji;

@@ -199,6 +199,14 @@ over the window, is to look over the board (`src/fulllist.rs`):
 - **One list, sorted**: by last activity (the default), whose turn (the
   bands' order), priority, creation or number; a second click on the sort
   reverses it. The bands are a filter here, not sections.
+- **Several tickets at once**: ctrl+click adds a row to the selection (or
+  takes it out), shift+click takes the rows between the last one and this
+  one, ctrl+a every row shown (outside the search box). With rows chosen,
+  the left third becomes their actions, each with the number of chosen
+  tickets it applies to (greyed at none): approve, reject, close, reopen,
+  mark read or unread, snooze three days, unsnooze, mark as step, link
+  (the newest relates to the others). Close and reject ask first. Esc
+  clears the selection, then closes the list (`src/bulk.rs`).
 - Opening a ticket shows it in the panel; the list, hidden, keeps its scope
   and filters for the next time. Esc closes it.
 
