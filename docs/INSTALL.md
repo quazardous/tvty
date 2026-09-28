@@ -1,8 +1,9 @@
 # Installing Terminal Velocity
 
-> **Beta.** tvty is for people who work with
-> [aiball](https://github.com/quazardous/aiball) and its claude-loop agents:
-> it is aiball's desktop client, not a standalone terminal. Linux only for
+> **Beta.** Terminal Velocity runs on
+> [aiball](https://github.com/quazardous/aiball), the engine that keeps your
+> Claude agents going (their loops, board and tickets): it is aiball's
+> desktop client, not a standalone terminal. Linux for
 > now (Wayland or X11, GNOME and KDE; x86_64). Expect rough edges, and tell
 > us (the menu under the app's icon > Report an issue).
 

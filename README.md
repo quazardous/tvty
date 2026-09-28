@@ -2,13 +2,14 @@
 
 **Twenty AI agents. One window. No tab hunting.**
 
-*Beta — for [aiball](https://github.com/quazardous/aiball) users; Linux.*
+*Beta · Linux for now.*
 
 ![Terminal Velocity at work: an agent answers live beside its ticket; the slider, the gallery, a notification, a ticket full screen](docs/images/tvty.gif)
 
-`tvty` is a native terminal for working with many AI coding agents at once:
-their terminals grouped by project, and each project's tickets right beside —
-the agent asks, you decide, it carries on.
+`tvty` is for everyone who wants to develop at full speed with Claude: a
+native terminal for running many Claude Code agents at once, their terminals
+grouped by project and each project's tickets right beside — the agent asks,
+you decide, it carries on.
 
 ## Why
 
@@ -29,8 +30,10 @@ curl --proto '=https' --tlsv1.2 -LsSf \
 ~/.local/bin/tvty-updater
 ```
 
-Terminal Velocity Updater installs aiball when it is missing, then Terminal
-Velocity, puts both in your desktop's applications, and keeps them up to
+Terminal Velocity runs on [aiball](https://github.com/quazardous/aiball),
+the engine that keeps your agents going: their loops, their board, their
+tickets. Terminal Velocity Updater installs aiball when it is missing, then
+Terminal Velocity, puts both in your desktop's applications, and keeps them up to
 date. Press **Launch Terminal Velocity**: it finds aiball on its own, and the
 menu under its icon (F1) makes a new project.
 
