@@ -29,9 +29,9 @@ ROW = {1: (1450, 375), 4: (1450, 318)}
 SUPERLASER_TAB = (300, 56)
 MORE = (1884, 100)
 BACK_TO_LIST = (1358, 58)
-MENU = (1776, 20)
-NEW_PROJECT = (1583, 88)
-WIZARD_NEXT = (1237, 879)
+MENU = (28, 20)
+NEW_PROJECT = (100, 99)
+WIZARD_NEXT = (1237, 919)
 # A folder the wizard is shown making a project of (left as it is: the
 # wizard stops before setting it up).
 FOLDER = "/tmp/tvty-demo/escape-pod"
@@ -164,8 +164,8 @@ def main():
     # The parts that tell: the projects' list, the menu, the wizard, the notice.
     from PIL import Image
     Image.open(sessions).crop((0, 0, 700, 640)).save(OUT / "sessions.png")
-    Image.open(menu).crop((1200, 0, 1920, 380)).save(OUT / "menu.png")
-    Image.open(wizard).crop((600, 310, 1320, 930)).save(OUT / "newproject.png")
+    Image.open(menu).crop((0, 0, 720, 440)).save(OUT / "menu.png")
+    Image.open(wizard).crop((600, 265, 1320, 935)).save(OUT / "newproject.png")
     Image.open(notice).crop((560, 40, 1440, 330)).save(OUT / "notice.png")
     gif(frames, OUT / "tour.gif")
     wbox("down")
