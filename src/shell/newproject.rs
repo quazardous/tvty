@@ -14,6 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
+use crate::aiball::{InitAsk, InitDone};
 use crate::loops::Start;
 use crate::theme::p;
 use crate::ui::buttons;
@@ -53,8 +54,12 @@ pub(super) struct NewProject {
     private: bool,
     no_claim: bool,
     running: bool,
-    /// What `aiball init` said: its output, or its error.
-    outcome: Option<Result<String, String>>,
+    /// What aiball would do with the choices as they stand (a dry run),
+    /// for the `asked`-th of them: or why it would not.
+    preview: Option<Result<InitDone, String>>,
+    asked: u64,
+    /// What aiball did: or why it did not.
+    outcome: Option<Result<InitDone, String>>,
 }
 
 /// What the folder typed is, for aiball.
@@ -105,9 +110,9 @@ fn project_in(yaml: &str) -> Option<String> {
 }
 
 /// A project's or an agent's name as aiball takes it: letters, digits,
-/// `-` and `_`.
+/// `-`, `_` and `.`.
 fn name_ok(name: &str) -> bool {
-    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+    !name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
 }
 
 /// A name for the folder's project: its own name, made acceptable.
@@ -118,19 +123,17 @@ fn name_from(folder: &Path) -> String {
         .unwrap_or_default()
 }
 
-/// `aiball init`'s arguments.
-fn init_args(name: &str, agent: &str, crew: bool, private: bool, no_claim: bool) -> Vec<String> {
-    let mut args = vec!["init".into(), "--project".into(), name.into(), "--agent".into(), agent.into()];
-    if crew {
-        args.extend(["--role".into(), "crew".into()]);
+/// What aiball's dry run says it did to a file, as what it will do.
+fn will(action: &str) -> &str {
+    match action {
+        "created" => "creates",
+        "added" => "adds its entry to",
+        "rewritten" => "rewrites its entry in",
+        "patched" => "updates",
+        "overwrote" => "overwrites",
+        "kept" => "keeps",
+        other => other,
     }
-    if private {
-        args.push("--private".into());
-    }
-    if no_claim {
-        args.push("--no-claim".into());
-    }
-    args
 }
 
 impl Shell {
@@ -140,10 +143,14 @@ impl Shell {
         let folder = cx.new(|cx| InputState::new(window, cx).placeholder("the project's folder, e.g. ~/dev/app"));
         let name = cx.new(|cx| InputState::new(window, cx).placeholder("project"));
         let agent = cx.new(|cx| InputState::new(window, cx).placeholder("agent"));
-        // What the folder is, said as it is typed.
+        // What the folder is, said as it is typed; the names, aiball
+        // asked again what it would do with them.
         for input in [&folder, &name, &agent] {
-            cx.subscribe(input, |_, _, event: &InputEvent, cx| {
+            cx.subscribe(input, |shell, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
+                    if shell.new_project.as_ref().is_some_and(|w| w.step == Step::Identity) {
+                        shell.preview_init(cx);
+                    }
                     cx.notify();
                 }
             })
@@ -160,6 +167,8 @@ impl Shell {
             private: false,
             no_claim: false,
             running: false,
+            preview: None,
+            asked: 0,
             outcome: None,
         });
         cx.notify();
@@ -212,40 +221,58 @@ impl Shell {
             wizard.agent.update(cx, |a, cx| a.set_value(format!("{proposed}-claude"), window, cx));
         }
         wizard.step = Step::Identity;
+        self.preview_init(cx);
         cx.notify();
     }
 
-    /// A project of the board by that name, other than the folder's own.
-    fn name_taken(&self, name: &str, folder: &Folder) -> bool {
-        let on_board = self.board.projects.iter().any(|p| p.name == name) || self.live.tickets().contains_key(name);
-        on_board && *folder != Folder::Configured(Some(name.to_string()))
+    /// The choices as they stand, for aiball.
+    fn init_ask(wizard: &NewProject, cx: &App) -> InitAsk {
+        InitAsk {
+            cwd: expand(wizard.folder.read(cx).value().trim()).display().to_string(),
+            project: wizard.name.read(cx).value().trim().to_string(),
+            agent: wizard.agent.read(cx).value().trim().to_string(),
+            crew: wizard.crew,
+            private: wizard.private,
+            no_claim: wizard.no_claim,
+        }
     }
 
-    /// Runs `aiball init` in the folder, with the choices made.
+    /// Asks aiball what it would do with the choices (a dry run: nothing
+    /// written); the latest ask's answer only is kept.
+    fn preview_init(&mut self, cx: &mut Context<Self>) {
+        let Some(wizard) = self.new_project.as_mut() else { return };
+        let ask = Self::init_ask(wizard, cx);
+        wizard.asked += 1;
+        let asked = wizard.asked;
+        if !name_ok(&ask.project) || !name_ok(&ask.agent) {
+            wizard.preview = None;
+            return;
+        }
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let said = cx.background_executor().spawn(async move { aiball.project_init(&ask, true).map_err(|e| format!("{e:#}")) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                if let Some(wizard) = shell.new_project.as_mut().filter(|w| w.asked == asked) {
+                    wizard.preview = Some(said);
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
+    /// Has aiball set the folder up, with the choices made.
     fn set_it_up(&mut self, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_mut() else { return };
         if wizard.running {
             return;
         }
-        let folder = expand(wizard.folder.read(cx).value().trim());
-        let (name, agent) = (wizard.name.read(cx).value().trim().to_string(), wizard.agent.read(cx).value().trim().to_string());
-        let args = init_args(&name, &agent, wizard.crew, wizard.private, wizard.no_claim);
+        let ask = Self::init_ask(wizard, cx);
         wizard.running = true;
         cx.notify();
+        let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
-            let said = cx
-                .background_executor()
-                .spawn(async move {
-                    let output = std::process::Command::new("aiball")
-                        .args(&args)
-                        .current_dir(&folder)
-                        .env_remove("TMUX")
-                        .output()
-                        .map_err(|e| format!("aiball: {e}"))?;
-                    let text = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
-                    if output.status.success() { Ok(text.trim().to_string()) } else { Err(text.trim().to_string()) }
-                })
-                .await;
+            let said = cx.background_executor().spawn(async move { aiball.project_init(&ask, false).map_err(|e| format!("{e:#}")) }).await;
             let _ = this.update(cx, |shell, cx| {
                 if let Some(wizard) = shell.new_project.as_mut() {
                     wizard.running = false;
@@ -274,7 +301,7 @@ impl Shell {
     }
 
     /// Back to an earlier step (the stepper's), never forward past what
-    /// was done, never while aiball init runs.
+    /// was done, never while aiball sets it up.
     fn wizard_back_to(&mut self, step: usize, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_mut() else { return };
         if wizard.running || step >= wizard.step.index() {
@@ -310,7 +337,7 @@ impl Shell {
             .id("new-project")
             .occlude()
             .w(px(680.))
-            .h(px(580.))
+            .h(px(660.))
             .max_w(relative(0.92))
             .max_h(relative(0.9))
             .flex()
@@ -411,17 +438,18 @@ impl Shell {
 
     fn identity_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let typed = wizard.folder.read(cx).value().to_string();
-        let folder = folder_of(&typed);
         let name = wizard.name.read(cx).value().trim().to_string();
         let agent = wizard.agent.read(cx).value().trim().to_string();
+        // Said at once for a name, else what aiball answered to the dry run.
         let problem = if !name_ok(&name) {
-            Some("The project's name: letters, digits, - and _.")
+            Some("The project's name: letters, digits, -, _ and .".to_string())
         } else if !name_ok(&agent) {
-            Some("The agent's name: letters, digits, - and _.")
-        } else if self.name_taken(&name, &folder) {
-            Some("A project of the board has that name already.")
+            Some("The agent's name: letters, digits, -, _ and .".to_string())
         } else {
-            None
+            match &wizard.preview {
+                Some(Err(error)) => Some(error.clone()),
+                _ => None,
+            }
         };
         let field = |label: &'static str, input: &Entity<InputState>| {
             div().flex().items_center().gap_3().child(div().w(px(90.)).flex_none().text_sm().text_color(p().muted).child(label)).child(div().flex_1().child(Input::new(input)))
@@ -438,14 +466,20 @@ impl Shell {
                             if let Some(wizard) = shell.new_project.as_mut() {
                                 flip(wizard);
                             }
+                            shell.preview_init(cx);
                             cx.notify();
                         })),
                 )
                 .child(div().pl_6().text_xs().text_color(p().muted).child(about))
         };
-        let command = format!("aiball {}", init_args(&name, &agent, wizard.crew, wizard.private, wizard.no_claim).join(" "));
+        // What aiball would do: each file, and whether the project is new.
+        let plan = match &wizard.preview {
+            Some(Ok(done)) => done.steps.iter().map(|step| format!("{} {}", will(&step.action), step.file)).collect::<Vec<_>>().join(" · "),
+            _ => "…".to_string(),
+        };
+        let joins = matches!(&wizard.preview, Some(Ok(done)) if done.project_exists);
         let running = wizard.running;
-        let go = problem.is_none() && !running;
+        let go = problem.is_none() && !running && matches!(wizard.preview, Some(Ok(_)));
         let page = div()
             .flex()
             .flex_col()
@@ -465,11 +499,17 @@ impl Shell {
                     .bg(p().bg)
                     .text_xs()
                     .text_color(p().muted)
-                    .child(format!("In {}:", expand(typed.trim()).display()))
-                    .child(div().text_color(p().text).child(command))
-                    .child("writes .mcp.json (aiball's MCP server, for Claude Code) and .aiball.yaml (the project, the agent, its role)."),
-            )
-            .children(problem.map(|p_| div().text_sm().text_color(p().danger).child(p_)));
+                    .child(div().truncate().child(format!("In {}, aiball:", expand(typed.trim()).display())))
+                    // What aiball will do, or why it will not.
+                    .child(match &problem {
+                        Some(problem) => div().text_color(p().danger).child(problem.clone()),
+                        None => div().text_color(p().text).child(plan),
+                    })
+                    .when(joins && problem.is_none(), |d| {
+                        d.child(div().text_color(p().info).child(format!("{name} is on the board already: this folder joins it (another folder, or a crew agent).")))
+                    })
+                    .child(".mcp.json: aiball's MCP server for Claude Code · .aiball.yaml: project, agent, role."),
+            );
         let footer = div()
             .flex()
             .gap_3()
@@ -480,8 +520,8 @@ impl Shell {
 
     fn done_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let (ok, said) = match &wizard.outcome {
-            Some(Ok(text)) => (true, text.clone()),
-            Some(Err(text)) => (false, text.clone()),
+            Some(Ok(done)) => (true, done.steps.iter().map(|step| step.message.clone()).collect::<Vec<_>>().join("\n")),
+            Some(Err(error)) => (false, error.clone()),
             None => (false, String::new()),
         };
         let name = wizard.name.read(cx).value().trim().to_string();
@@ -490,9 +530,9 @@ impl Shell {
             .flex_col()
             .gap_3()
             .child(div().text_color(if ok { p().success } else { p().danger }).child(if ok {
-                format!("{name} is set up. aiball init said:")
+                format!("{name} is set up. aiball said:")
             } else {
-                "aiball init did not go through:".to_string()
+                "aiball could not set it up:".to_string()
             }))
             .child(
                 div()
@@ -537,6 +577,15 @@ impl Shell {
                 "Accept aiball's MCP server".into(),
                 "At its first start in this folder, Claude Code asks whether to use the MCP server that .mcp.json declares (aiball): accept it. Without it the agent can neither read the board nor answer its tickets. Refused by mistake? /mcp in Claude Code turns it on.".into(),
             ))
+            // aiball's skill (its good gestures, for Claude Code) lives outside
+            // the folder: aiball says whether this machine has it.
+            .when(matches!(&wizard.outcome, Some(Ok(done)) if done.skill == "missing"), |d| {
+                d.child(item(
+                    "·",
+                    "Install aiball's skill".into(),
+                    "Claude Code has no aiball skill on this machine yet: `aiball init skill`, once, installs it — the agent then knows the board's good gestures.".into(),
+                ))
+            })
             .child(item(
                 "3",
                 "Give it work".into(),
@@ -554,7 +603,7 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use super::{Folder, folder_of, init_args, name_from, name_ok, project_in};
+    use super::{Folder, folder_of, name_from, name_ok, project_in};
     use std::path::Path;
 
     #[test]
@@ -570,11 +619,10 @@ mod tests {
     }
 
     #[test]
-    fn names_and_the_command() {
+    fn names_and_the_folder() {
         assert_eq!(project_in("project: demo\n"), Some("demo".into()));
         assert_eq!(project_in("consumer:\n  agent: x\n"), None);
-        assert!(name_ok("my-app_2") && !name_ok("my app") && !name_ok(""));
+        assert!(name_ok("my-app_2.x") && !name_ok("my app") && !name_ok(""));
         assert_eq!(name_from(Path::new("/tmp/My App")), "My-App");
-        assert_eq!(init_args("app", "app-claude", true, false, true).join(" "), "init --project app --agent app-claude --role crew --no-claim");
     }
 }

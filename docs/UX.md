@@ -46,14 +46,19 @@ right (`src/shell/newproject.rs`):
    project (its `.aiball.yaml`) — then "Open it" shows that project.
 2. **Who works in it**: the project's and the agent's names, proposed from
    the folder (`app`, `app-claude`), a crew agent or the lead, a private
-   project, no claiming — each with what it means. A name the board has
-   already is refused. The command is shown as it will run.
-3. **Set it up**: tvty runs `aiball init` there — aiball's own
-   command, not a copy of it — and shows what it said, or its error.
+   project, no claiming — each with what it means. aiball says, as they are
+   chosen, what it will do (a dry run of its `project.init`: creates, keeps
+   or updates `.mcp.json` and `.aiball.yaml`), why it would not (a folder it
+   cannot write, a name it refuses), and whether the project is on the board
+   already — then the folder joins it.
+3. **Set it up**: aiball does it, through its API (`project.init`, what
+   `aiball init` does; no command run, whatever the OS), and tvty shows what
+   it said, or its error.
 4. **What next**: start the agent ("Start its first session", on aiball's
    host: the project shows in the list, its tickets beside); accept
    aiball's MCP server when Claude Code asks at its first start in the
-   folder (`/mcp` if refused); give it work with "+ New".
+   folder (`/mcp` if refused); install aiball's skill when this machine has
+   none (`aiball init skill`); give it work with "+ New".
 
 Nothing is written before "Set it up"; Esc leaves a box, then closes it.
 

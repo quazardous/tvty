@@ -679,6 +679,24 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
+    /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
+    /// `aiball init` would; `dry_run`: says what it would do, writes nothing.
+    pub fn project_init(&self, ask: &InitAsk, dry_run: bool) -> anyhow::Result<InitDone> {
+        // The choices left out unless made, as the command's flags: a
+        // lead's .aiball.yaml says no role.
+        let mut params = json!({ "cwd": ask.cwd, "project": ask.project, "agent": ask.agent, "dry_run": dry_run });
+        if ask.crew {
+            params["role"] = json!("crew");
+        }
+        if ask.private {
+            params["private"] = json!(true);
+        }
+        if ask.no_claim {
+            params["no_claim"] = json!(true);
+        }
+        self.rpc("project.init", params)
+    }
+
     /// What a message (a ticket, a comment) says: its body, if any.
     pub fn message_body(&self, id: u64) -> anyhow::Result<Option<String>> {
         let message: Value = self.rpc("message.get", json!({ "id": id }))?;
@@ -1129,6 +1147,39 @@ pub fn new_ticket_message(ticket: &NewTicket) -> Value {
         message["level"] = json!(ticket.level);
     }
     message
+}
+
+/// A folder to make an aiball project of, and how.
+#[derive(Clone, Debug, PartialEq)]
+pub struct InitAsk {
+    pub cwd: String,
+    pub project: String,
+    pub agent: String,
+    pub crew: bool,
+    pub private: bool,
+    pub no_claim: bool,
+}
+
+/// What `project.init` did to a folder (or would do).
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct InitDone {
+    #[serde(default)]
+    pub steps: Vec<InitStep>,
+    /// The project was on the board already: the folder joins it.
+    #[serde(default)]
+    pub project_exists: bool,
+    /// aiball's skill for Claude Code: "installed" or "missing".
+    #[serde(default)]
+    pub skill: String,
+}
+
+/// One file of it: what became of it, in aiball's words.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct InitStep {
+    pub file: String,
+    pub action: String,
+    #[serde(default)]
+    pub message: String,
 }
 
 #[cfg(test)]

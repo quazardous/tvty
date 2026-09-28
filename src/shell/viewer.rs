@@ -129,9 +129,8 @@ impl Shell {
             .when_some(path, |d, path| {
                 d.child(
                     buttons::link("viewer-open", "open")
-                        .on_click(move |_, _, _| {
-                            let _ = std::process::Command::new("xdg-open").arg(&path).spawn();
-                        }),
+                        // The system's viewer, whatever the OS.
+                        .on_click(move |_, _, cx| cx.open_with_system(std::path::Path::new(&path))),
                 )
             });
         Some(

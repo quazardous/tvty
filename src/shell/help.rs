@@ -101,9 +101,9 @@ impl Shell {
         self.help_menu = false;
         cx.notify();
         if let Some(url) = entry.url() {
-            if let Err(error) = std::process::Command::new("xdg-open").arg(&url).spawn() {
-                crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("open {url}"), error));
-            }
+            // The browser, whatever the OS.
+            log::info!("help: opens {url}");
+            cx.open_url(&url);
             return;
         }
         match entry {
