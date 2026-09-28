@@ -29,6 +29,10 @@ backup=$(mktemp)
 cp "$SETTINGS" "$backup" 2>/dev/null || : > "$backup"
 restore() { cp "$backup" "$SETTINGS" 2>/dev/null; rm -f "$backup"; ctl down >/dev/null 2>&1; }
 trap restore EXIT
+# tvty watches its settings from the start: a fresh checkout (the CI's) has
+# none yet, so one is there before it starts.
+mkdir -p "$(dirname "$SETTINGS")"
+touch "$SETTINGS"
 
 ctl down >/dev/null 2>&1
 ctl up >/dev/null || { say FAIL "wbox did not start"; exit 1; }
@@ -37,15 +41,15 @@ for _ in $(seq 1 30); do grep -q "window: decorations" "$LOG" 2>/dev/null && bre
 active() { ctl windows | python3 -c 'import json,sys; w=[w for w in json.load(sys.stdin)["windows"] if w["app_id"]=="tvty"]; sys.exit(0 if w and w[0].get("activated") else 1)'; }
 
 check "tvty draws its own frame (client decorations)" 'grep -q "window: decorations client" "$LOG"'
+# Activation may come a little after the first frame.
+for _ in $(seq 1 10); do active && break; sleep 0.5; done
 check "its window is the active one" 'active'
 
 # See-through terminals, blurred: settings.toml is read again once saved.
 python3 - "$SETTINGS" <<'PY'
-import os, re, sys
+import re, sys
 path = sys.argv[1]
-# A fresh checkout (the CI's) has no test settings yet.
-os.makedirs(os.path.dirname(path), exist_ok=True)
-text = open(path).read() if os.path.exists(path) else ""
+text = open(path).read()
 text = re.sub(r"^(terminal_opacity|terminal_blur) = .*\n", "", text, flags=re.M)
 if "[appearance]" in text:
     text = text.replace("[appearance]\n", "[appearance]\nterminal_opacity = 70.0\nterminal_blur = true\n", 1)
