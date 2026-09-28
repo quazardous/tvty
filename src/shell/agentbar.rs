@@ -145,7 +145,7 @@ impl Shell {
             .cursor_pointer()
             .hover(|d| d.bg(p().hover))
             .when(self.afk_menu, |d| d.bg(p().active))
-            .children(marks.in_force.map(|(glyph, t)| div().text_color(tone(t)).child(glyph)))
+            .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
             .when(marks.typing, |d| d.child(div().text_color(p().danger).child("⌨")))
             .children(marks.armed.map(|(man, t)| {
                 div()

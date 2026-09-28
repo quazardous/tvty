@@ -84,6 +84,17 @@ pub fn plain(icon: Icon, size: f32) -> Svg {
     svg().path(SharedString::from(format!("{PREFIX}{}", icon.file()))).size(px(size)).flex_none()
 }
 
+/// A loop's glyph (▶ ‖ ■ …) in `colour`: the pause drawn as two bars
+/// filling a square `size` pixels wide — the font's ‖ is a thin, tall pair
+/// beside ▶ and ■ — any other as text.
+pub fn loop_glyph(glyph: &str, colour: Hsla, size: f32) -> AnyElement {
+    if glyph == "‖" {
+        let bar = || div().h_full().w(px((size * 0.34).round().max(2.))).rounded(px(1.)).bg(colour);
+        return div().flex_none().size(px(size)).flex().justify_between().child(bar()).child(bar()).into_any_element();
+    }
+    div().text_color(colour).child(glyph.to_string()).into_any_element()
+}
+
 /// A row's state glyph, drawn.
 pub fn of_glyph(glyph: Glyph) -> Icon {
     match glyph {

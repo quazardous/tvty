@@ -67,7 +67,7 @@ impl Status {
             .gap_1()
             .text_size(px(11.))
             .tip(format!("{doing}; {who}"))
-            .child(div().text_color(glyph_colour).child(glyph))
+            .child(crate::icons::loop_glyph(glyph, glyph_colour, 7.))
             .child(
                 div()
                     .text_color(match self.state.as_str() {

@@ -3615,7 +3615,7 @@ impl Shell {
             .hover(|d| d.bg(p().surface.blend(p().active)))
             .children(marks.into_iter().enumerate().map(|(i, mark)| {
                 let shape = match mark.glyph {
-                    Some(glyph) => div().flex_none().text_size(px(9.)).line_height(px(10.)).text_color(mark.colour).child(glyph),
+                    Some(glyph) => div().flex_none().text_size(px(9.)).line_height(px(10.)).child(crate::icons::loop_glyph(glyph, mark.colour, 7.)),
                     None => div().flex_none().size(px(6.)).rounded_full().bg(mark.colour),
                 };
                 let one = div().id(("folded-mark", i)).flex().justify_center().w_full().child(shape);
