@@ -730,6 +730,16 @@ impl Aiball {
             .collect())
     }
 
+    /// The ticket a reference names — a ticket's number, or a comment's
+    /// hashid (its thread) — and its project.
+    pub fn resolve_ticket(&self, reference: &str) -> anyhow::Result<(u64, String)> {
+        let answer: Value = self.rpc("ticket.get", json!({ "id": reference }))?;
+        let ticket = answer.get("ticket").unwrap_or(&answer);
+        let id = ticket.get("id").and_then(Value::as_u64).context("ticket.get: no id")?;
+        let project = ticket.get("project").and_then(Value::as_str).unwrap_or_default().to_string();
+        Ok((id, project))
+    }
+
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {

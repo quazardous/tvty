@@ -36,6 +36,7 @@ actions!(
         TogglePanel,
         ToggleSidebar,
         FilterSessions,
+        GotoTicket,
         AfkCycle,
         ToggleOptions,
         FontBigger,
@@ -88,6 +89,7 @@ commands! {
     "sidebar.toggle", WINDOW, ["ctrl-shift-b"], "Fold or unfold the projects' list", ToggleSidebar;
     "afk.cycle", WINDOW, ["f9"], "The shown agent's AFK mode: auto → hold 10 min → hold, in force 3 s after the last press (a terminal without an agent gets F9)", AfkCycle;
     "sessions.filter", WINDOW, ["ctrl-shift-f"], "Filter the sessions: type, Enter opens, arrows move, Esc clears", FilterSessions;
+    "ticket.goto", WINDOW, ["ctrl-shift-g"], "Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)", GotoTicket;
     "options.toggle", WINDOW, ["ctrl-,"], "Options", ToggleOptions;
     "font.bigger", WINDOW, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
     "font.smaller", WINDOW, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;

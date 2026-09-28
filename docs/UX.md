@@ -471,6 +471,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+= / − / 0 | terminal font bigger / smaller / default |
 | ctrl+shift+b | fold / unfold the projects' list |
 | ctrl+shift+f | filter the sessions |
+| ctrl+shift+g | go to a ticket: the title bar's "#…" (a number or a comment's #C. link, Enter opens it in the panel, whatever its project; Esc lets it go) |
 | F9 | the shown agent's AFK mode, one step |
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |

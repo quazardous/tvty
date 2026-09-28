@@ -121,6 +121,8 @@ pub struct Shell {
     /// The sessions' filter, and which of the live sessions it found the
     /// arrows are on.
     sessions_filter: Entity<InputState>,
+    /// The title bar's "#…": a ticket to go to.
+    goto: Entity<InputState>,
     filter_cursor: usize,
     /// Whose pings that came while tvty was closed were looked for: the
     /// bus opens as the local owner, then as the user once known.
@@ -510,6 +512,14 @@ impl Shell {
         // The sessions' filter: each keystroke filters the list again, from
         // its first session found.
         let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
+        let goto = cx.new(|cx| InputState::new(window, cx).placeholder("#…"));
+        // Enter: the input says it before any key handler would see it.
+        cx.subscribe_in(&goto, window, |shell: &mut Self, _, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { .. }) {
+                shell.go_to_ticket(window, cx);
+            }
+        })
+        .detach();
         cx.subscribe_in(&sessions_filter, window, |shell: &mut Self, _, event: &InputEvent, _, cx| {
             if matches!(event, InputEvent::Change) {
                 shell.filter_cursor = 0;
@@ -616,6 +626,7 @@ impl Shell {
             options_scroll: ScrollHandle::new(),
             options_jump: std::cell::Cell::new(None),
             sessions_filter,
+            goto,
             filter_cursor: 0,
             missed_checked: None,
             remote: None,
@@ -1213,6 +1224,40 @@ impl Shell {
         })
     }
 
+    /// The title bar's "#…", Enter: its ticket opens in the panel, whatever
+    /// its project; an unknown one is said, the text kept to correct it.
+    fn go_to_ticket(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let typed = self.goto.read(cx).value().to_string();
+        let Some(reference) = ticket_reference(&typed) else {
+            if !typed.trim().is_empty() {
+                crate::activity::publish(cx, crate::activity::Activity::failed(None, "go to", format!("{:?} is not a ticket: a number, or a comment's #C. link", typed.trim())));
+            }
+            return;
+        };
+        let aiball = self.aiball.clone();
+        let window_handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            let asked = reference.clone();
+            let found = cx.background_executor().spawn(async move { aiball.resolve_ticket(&asked) }).await;
+            let _ = cx.update_window(window_handle, |_, window, cx| {
+                let _ = this.update(cx, |shell, cx| match found {
+                    Ok((ticket, project)) => {
+                        shell.goto.update(cx, |g, cx| g.set_value("", window, cx));
+                        if !shell.settings.layout.panel_open {
+                            shell.toggle_panel(cx);
+                        }
+                        let project = (!project.is_empty()).then_some(project);
+                        shell.panel.update(cx, |panel, cx| panel.open_in(project, ticket, cx));
+                        shell.focus_terminal(window, cx);
+                        cx.notify();
+                    }
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("go to {}", typed.trim()), format!("{error:#}"))),
+                });
+            });
+        })
+        .detach();
+    }
+
     /// Text went to the clipboard: "Copied to clipboard", 1.5 s, the latest
     /// copy's.
     fn show_copied(&mut self, cx: &mut Context<Self>) {
@@ -1656,6 +1701,12 @@ impl Shell {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
+        if key == "escape" && self.goto.read(cx).focus_handle(cx).is_focused(window) {
+            self.goto.update(cx, |g, cx| g.set_value("", window, cx));
+            self.focus_terminal(window, cx);
+            cx.stop_propagation();
+            return;
+        }
         if key == "escape" && self.escape_ask(cx) {
             cx.stop_propagation();
             return;
@@ -4038,6 +4089,10 @@ impl Render for Shell {
             .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
             .on_action(cx.listener(|shell, _: &keymap::FilterSessions, window, cx| shell.focus_filter(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::GotoTicket, window, cx| {
+                let focus = shell.goto.read(cx).focus_handle(cx);
+                window.focus(&focus, cx);
+            }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
@@ -4123,6 +4178,16 @@ impl Render for Shell {
                             .text_color(p().muted)
                             .truncate()
                             .child(title),
+                    )
+                    // A ticket to go to, discreet: no button, Enter goes.
+                    .child(
+                        div()
+                            .id("goto")
+                            .flex_none()
+                            .w(px(96.))
+                            .mr_2()
+                            .tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g")
+                            .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
                         div()
@@ -4523,8 +4588,31 @@ fn options_ticket_list() -> impl IntoElement {
     page
 }
 
+/// What the "#…" names, as `ticket.get` takes it: a ticket's number
+/// (`42`, `#42`), or a comment's hashid (its `#C.` link, or `C.` and the hashid).
+fn ticket_reference(typed: &str) -> Option<String> {
+    let text = typed.trim().trim_start_matches('#');
+    if !text.is_empty() && text.chars().all(|c| c.is_ascii_digit()) {
+        return Some(text.to_string());
+    }
+    let hash = text.strip_prefix("C.").or_else(|| text.strip_prefix("c."))?;
+    (!hash.is_empty() && hash.chars().all(|c| c.is_ascii_alphanumeric())).then(|| hash.to_string())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_ticket_is_named_by_its_number_or_a_comments_link() {
+        use super::ticket_reference;
+        assert_eq!(ticket_reference("42").as_deref(), Some("42"));
+        assert_eq!(ticket_reference(" #42 ").as_deref(), Some("42"));
+        assert_eq!(ticket_reference(&format!("#{}", "C.abc123")).as_deref(), Some("abc123"));
+        assert_eq!(ticket_reference("C.abc123").as_deref(), Some("abc123"));
+        assert_eq!(ticket_reference("hello"), None);
+        assert_eq!(ticket_reference("#"), None);
+        assert_eq!(ticket_reference("#C."), None);
+    }
+
     use std::collections::HashMap;
 
     use gpui_kit::{point, px};

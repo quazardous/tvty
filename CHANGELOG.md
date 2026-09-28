@@ -39,6 +39,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "#…" in the title bar goes to a ticket: its number or a comment's #C.
+  link, Enter opens it in the panel (ctrl+shift+g to get there).
 - A brief "Copied to clipboard" confirms a copy (a terminal's selection, a
   comment's #C. link); Options > Appearance can hide it.
 - Launching tvty again brings the running one forward (on the session
