@@ -659,20 +659,19 @@ impl TicketPanel {
         }
         detail.answers.push((message, question.id));
         let text = self.reply.read(cx).value().to_string();
-        let quoted = format!("{text}{}> {}\n\n", if text.is_empty() || text.ends_with('\n') { "" } else { "\n\n" }, question.text);
-        self.reply.update(cx, |reply, cx| reply.set_value(quoted, window, cx));
+        crate::field::append(&self.reply, &composer::quote_block(&text, &question.text), window, cx);
         cx.notify();
     }
 
     /// The `@name` being typed at the end of the reply, if any.
     fn mention_typed(&self, cx: &App) -> Option<String> {
-        composer::typed_mention(&self.reply.read(cx).value())
+        composer::typed_mention(&crate::field::around_cursor(&self.reply, cx).0)
     }
 
     fn complete_mention(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.reply.read(cx).value().to_string();
-        let Some(completed) = composer::complete_mention(&text, &name) else { return };
-        self.reply.update(cx, |reply, cx| reply.set_value(completed, window, cx));
+        let (before, _) = crate::field::around_cursor(&self.reply, cx);
+        let Some(start) = composer::mention_start(&before) else { return };
+        crate::field::replace_range(&self.reply, start..before.len(), &format!("@{name} "), window, cx);
         cx.notify();
     }
 
@@ -698,8 +697,8 @@ impl TicketPanel {
                         detail.busy = false;
                         match uploaded {
                             Ok(url) => {
-                                let with_image = composer::with_image(&panel.reply.read(cx).value(), &url);
-                                panel.reply.update(cx, |reply, cx| reply.set_value(with_image, window, cx));
+                                let (before, after) = crate::field::around_cursor(&panel.reply, cx);
+                                crate::field::insert_at_cursor(&panel.reply, &composer::image_snippet(&before, &after, &url), window, cx);
                             }
                             Err(error) => detail.error = Some(format!("{error:#}")),
                         }

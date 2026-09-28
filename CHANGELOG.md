@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A pasted image, an @-mention and a quoted question go in where the
+  cursor is, the cursor after them — no more cursor sent back to the start;
+  a mention is suggested in the middle of a text too.
 - A loop in tmux is shown under its own agent, also when a lead and its
   crew share one folder.
 

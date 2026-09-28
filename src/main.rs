@@ -8,6 +8,7 @@ mod aiball;
 mod bus;
 mod daemon;
 mod emoji;
+mod field;
 mod fonts;
 mod composer;
 mod config;

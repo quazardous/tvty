@@ -16,7 +16,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, NewTicket};
-use crate::composer;
+use crate::{composer, field};
 use crate::theme::p;
 
 /// The form puts itself away (Esc, ✕); the draft stays.
@@ -322,9 +322,9 @@ impl NewTicketForm {
     }
 
     fn complete_mention(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
-        let text = self.body.read(cx).value().to_string();
-        let Some(completed) = composer::complete_mention(&text, &name) else { return };
-        self.body.update(cx, |body, cx| body.set_value(completed, window, cx));
+        let (before, _) = field::around_cursor(&self.body, cx);
+        let Some(start) = composer::mention_start(&before) else { return };
+        field::replace_range(&self.body, start..before.len(), &format!("@{name} "), window, cx);
         cx.notify();
     }
 
@@ -346,8 +346,8 @@ impl NewTicketForm {
                     form.busy = false;
                     match uploaded {
                         Ok(url) => {
-                            let text = composer::with_image(&form.body.read(cx).value(), &url);
-                            form.body.update(cx, |body, cx| body.set_value(text, window, cx));
+                            let (before, after) = field::around_cursor(&form.body, cx);
+                            field::insert_at_cursor(&form.body, &composer::image_snippet(&before, &after, &url), window, cx);
                         }
                         Err(error) => form.error = Some(format!("{error:#}")),
                     }
@@ -634,7 +634,7 @@ impl NewTicketForm {
 impl Render for NewTicketForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let busy = self.busy;
-        let mentions = composer::typed_mention(&self.body.read(cx).value()).map(|typed| {
+        let mentions = composer::typed_mention(&field::around_cursor(&self.body, cx).0).map(|typed| {
             composer::mention_chips(&self.mentions, &typed, "new-mention", cx, |form: &mut Self, name, window, cx| {
                 form.complete_mention(name, window, cx)
             })

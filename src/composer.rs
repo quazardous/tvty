@@ -15,16 +15,25 @@ pub fn typed_mention(text: &str) -> Option<String> {
         .then(|| name.to_lowercase())
 }
 
-/// `text` with the `@…` it ends with completed to `@name `.
-pub fn complete_mention(text: &str, name: &str) -> Option<String> {
-    let at = text.rfind('@')?;
-    Some(format!("{}@{name} ", &text[..at]))
+/// Where the `@name` being typed at the end of `before` (the text before
+/// the cursor) starts: what its completion replaces.
+pub fn mention_start(before: &str) -> Option<usize> {
+    typed_mention(before)?;
+    before.rfind('@')
 }
 
-/// `text` with an uploaded image's link after it, on its own line.
-pub fn with_image(text: &str, url: &str) -> String {
-    let sep = if text.is_empty() || text.ends_with('\n') { "" } else { "\n" };
-    format!("{text}{sep}![pasted]({url})\n")
+/// What a pasted image puts at the cursor, between `before` and `after`:
+/// its link, on a line of its own.
+pub fn image_snippet(before: &str, after: &str, url: &str) -> String {
+    let lead = if before.is_empty() || before.ends_with('\n') { "" } else { "\n" };
+    let tail = if after.starts_with('\n') { "" } else { "\n" };
+    format!("{lead}![pasted]({url}){tail}")
+}
+
+/// What a quoted question adds at the end of `text`.
+pub fn quote_block(text: &str, question: &str) -> String {
+    let lead = if text.is_empty() || text.ends_with('\n') { "" } else { "\n\n" };
+    format!("{lead}> {question}\n\n")
 }
 
 /// An image on the clipboard: its bytes, its content type, a file name.
@@ -68,20 +77,30 @@ pub fn mention_chips<V: 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::{complete_mention, typed_mention, with_image};
+    use super::{image_snippet, mention_start, quote_block, typed_mention};
 
     #[test]
-    fn a_mention_is_the_last_word() {
+    fn a_mention_is_the_word_before_the_cursor() {
         assert_eq!(typed_mention("hello @Dav").as_deref(), Some("dav"));
         assert_eq!(typed_mention("hello @").as_deref(), Some(""));
         assert_eq!(typed_mention("hello @dav "), None);
         assert_eq!(typed_mention("mail a@b.c"), None);
-        assert_eq!(complete_mention("hi @da", "david").as_deref(), Some("hi @david "));
+        assert_eq!(mention_start("hi @da"), Some(3));
+        assert_eq!(mention_start("hi @da there"), None);
     }
 
     #[test]
-    fn an_image_goes_on_its_own_line() {
-        assert_eq!(with_image("", "/u/a.png"), "![pasted](/u/a.png)\n");
-        assert_eq!(with_image("look", "/u/a.png"), "look\n![pasted](/u/a.png)\n");
+    fn an_image_goes_on_its_own_line_where_the_cursor_is() {
+        assert_eq!(image_snippet("", "", "/u/a.png"), "![pasted](/u/a.png)\n");
+        assert_eq!(image_snippet("look", "", "/u/a.png"), "\n![pasted](/u/a.png)\n");
+        // Between two lines: nothing doubled.
+        assert_eq!(image_snippet("look\n", "\nthen", "/u/a.png"), "![pasted](/u/a.png)");
+        assert_eq!(image_snippet("look", " more", "/u/a.png"), "\n![pasted](/u/a.png)\n");
+    }
+
+    #[test]
+    fn a_quote_starts_a_paragraph() {
+        assert_eq!(quote_block("", "Why?"), "> Why?\n\n");
+        assert_eq!(quote_block("Sure", "Why?"), "\n\n> Why?\n\n");
     }
 }
