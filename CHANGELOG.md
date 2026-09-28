@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A ticket waiting for moderation shows its proposal but no Accept or
+  Reject: it is decided once the ticket is approved.
 - Every button shows it is clickable the same way: a background under the
   pointer, the hand, and a tooltip with its shortcut on the icons (the
   chevrons, ⤢, ⚙); links, icons, chips and main buttons each look alike.

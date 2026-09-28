@@ -1111,6 +1111,9 @@ impl TicketPanel {
 
         // ── The gestures, in one place ──────────────────────────────────
         let typed = !self.reply.read(cx).value().trim().is_empty();
+        // A ticket waiting for moderation is not let through yet: its
+        // proposal is read, commented, but decided only once it is.
+        let unmoderated = ticket.status == "pending";
         let decision = read.active.clone().filter(|a| a.by != user).map(|active| {
             let message = active.message;
             let accept = match active.kind.as_str() {
@@ -1143,7 +1146,10 @@ impl TicketPanel {
                                     },
                                 )),
                         )
-                        .child(
+                        .when(unmoderated, |d| {
+                            d.child(div().flex_none().text_xs().text_color(p().muted).child("decided once the ticket is approved"))
+                        })
+                        .when(!unmoderated, |d| d.child(
                             Button::new("reject")
                                 .danger()
                                 .small()
@@ -1158,13 +1164,13 @@ impl TicketPanel {
                                 .label(accept)
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, window, cx))),
-                        ),
+                        )),
                 )
-                .when(!typed, |d| {
+                .when(!typed && !unmoderated, |d| {
                     d.child(div().text_xs().text_color(p().muted).child("To reject, say why below first."))
                 })
         });
-        let moderation = (ticket.status == "pending").then(|| {
+        let moderation = unmoderated.then(|| {
             let id = ticket.id;
             div()
                 .flex()
