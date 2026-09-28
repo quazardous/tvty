@@ -40,6 +40,7 @@ actions!(
         AfkCycle,
         ToggleOptions,
         HelpMenu,
+        FullScreen,
         FontBigger,
         FontSmaller,
         FontReset,
@@ -93,6 +94,7 @@ commands! {
     "ticket.goto", WINDOW, ["ctrl-shift-g"], "Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)", GotoTicket;
     "options.toggle", WINDOW, ["ctrl-,"], "Options", ToggleOptions;
     "help.menu", WINDOW, ["f1"], "Help: about tvty, its documentation, what's new, a restart", HelpMenu;
+    "window.fullscreen", WINDOW, ["f11"], "The window full screen, or back", FullScreen;
     "font.bigger", WINDOW, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
     "font.smaller", WINDOW, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
     "font.reset", WINDOW, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;

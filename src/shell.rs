@@ -3227,6 +3227,15 @@ impl Shell {
         });
     }
 
+    /// A number preference set on its finest steps (a slider moved with
+    /// Shift held), not on its declared ones.
+    fn set_pref_fine(&mut self, key: &str, value: Value, cx: &mut Context<Self>) {
+        crate::config::update::<Preferences>(cx, |prefs| match SCHEMA.with_fine(prefs, key, value) {
+            Ok(changed) => *prefs = changed,
+            Err(error) => log::warn!("settings: {error}"),
+        });
+    }
+
     /// A number preference moved by `steps` steps, within its bounds.
     fn step_pref(&mut self, key: &str, steps: i32, cx: &mut Context<Self>) {
         crate::config::update::<Preferences>(cx, |prefs| match SCHEMA.stepped(prefs, key, steps) {
@@ -4167,6 +4176,7 @@ impl Render for Shell {
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
+            .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.reset_pref(TERMINAL_FONT, cx)))
@@ -4284,8 +4294,16 @@ impl Render for Shell {
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
                     )
                     .child(
-                        buttons::icon("help-button", "?", buttons::hint(cx, "Help, about, restart", "help.menu"))
-                            .text_sm()
+                        // An SVG takes no colour from around it: muted, the
+                        // text's under the pointer, as the other icons.
+                        buttons::icon(
+                            "help-button",
+                            crate::icons::plain(crate::icons::Icon::Menu, 16.)
+                                .text_color(p().muted)
+                                .group_hover("help-button", |s| s.text_color(p().text)),
+                            buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                        )
+                        .group("help-button")
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
                     )
                     .child(
@@ -4451,18 +4469,29 @@ fn option_sliders(window: &mut Window, cx: &mut Context<Shell>) -> HashMap<&'sta
     let prefs = crate::config::get::<Preferences>(cx).clone();
     let mut sliders = HashMap::new();
     for setting in SCHEMA.0 {
-        let SettingKind::Number { min, max, step, slider: true, .. } = setting.kind else { continue };
+        let SettingKind::Number { min, max, step, integer, slider: true, .. } = setting.kind else { continue };
         let key = setting.key;
         let value = match SCHEMA.value(&prefs, key) {
             Some(Value::Number(n)) => n,
             _ => max,
         };
-        let state = cx.new(|_| SliderState::new().min(min as f32).max(max as f32).step(step as f32).default_value(value as f32));
-        cx.subscribe_in(&state, window, move |shell: &mut Shell, _, event: &SliderEvent, _, cx| {
+        // The slider moves freely; the value lands on the declared steps,
+        // or on the finest ones with Shift held.
+        let fine = if integer { 1. } else { step / 10. };
+        let state = cx.new(|_| SliderState::new().min(min as f32).max(max as f32).step(fine as f32).default_value(value as f32));
+        cx.subscribe_in(&state, window, move |shell: &mut Shell, slider, event: &SliderEvent, window, cx| {
             let (SliderEvent::Change(value) | SliderEvent::Release(value)) = event;
-            let n = f64::from(value.start());
-            if SCHEMA.value(&shell.applied, key) != Some(Value::Number(n)) {
-                shell.set_pref(key, Value::Number(n), cx);
+            let n = Value::Number(f64::from(value.start()));
+            if window.modifiers().shift {
+                shell.set_pref_fine(key, n, cx);
+            } else {
+                shell.set_pref(key, n, cx);
+            }
+            // The thumb where the value landed, on its step.
+            if let Some(Value::Number(kept)) = SCHEMA.value(crate::config::get::<Preferences>(cx), key)
+                && kept as f32 != value.start()
+            {
+                slider.update(cx, |state, cx| state.set_value(kept as f32, window, cx));
             }
         })
         .detach();

@@ -166,9 +166,24 @@ impl Schema {
     /// `set` with `key` at `value` — out of the file when it is the default.
     /// A number is kept within its bounds, on its steps.
     pub fn with<T: Serialize + DeserializeOwned>(&self, set: &T, key: &str, value: Value) -> Result<T, String> {
+        self.with_steps(set, key, value, false)
+    }
+
+    /// As [`Self::with`], a number on its finest steps: 1 for an integer,
+    /// else a tenth of its step — a slider moved with Shift held.
+    pub fn with_fine<T: Serialize + DeserializeOwned>(&self, set: &T, key: &str, value: Value) -> Result<T, String> {
+        self.with_steps(set, key, value, true)
+    }
+
+    fn with_steps<T: Serialize + DeserializeOwned>(&self, set: &T, key: &str, value: Value, fine: bool) -> Result<T, String> {
         let setting = self.get(key).ok_or_else(|| format!("no setting {key}"))?;
         let written = match (setting.kind, value) {
             (Kind::Number { min, max, step, default, integer, .. }, Value::Number(n)) => {
+                let step = match (fine, integer) {
+                    (false, _) => step,
+                    (true, true) => 1.,
+                    (true, false) => step / 10.,
+                };
                 // On a step, and free of float noise (1.2, not 1.2000000000000002).
                 let n = (((n - min) / step).round() * step + min).clamp(min, max);
                 let n = (n * 1e6).round() / 1e6;
@@ -284,6 +299,22 @@ mod tests {
         assert_eq!(prefs.alerts.max, 7);
         let prefs = SCHEMA.with(&prefs, "look.theme", Value::Choice(Some("Dusk".into()))).unwrap();
         assert_eq!(prefs.look.theme.as_deref(), Some("Dusk"));
+    }
+
+    #[test]
+    fn fine_leaves_the_steps_for_the_finest() {
+        const STEPPED: Schema = Schema(&[Setting {
+            key: "alerts.max",
+            page: "",
+            group: "",
+            label: "",
+            about: "",
+            kind: Kind::Number { min: 0., max: 10., step: 5., default: 5., unit: "", integer: true, slider: true },
+        }]);
+        // On its steps: 7 goes to 5.
+        assert_eq!(STEPPED.with(&Prefs::default(), "alerts.max", Value::Number(7.)).unwrap().alerts.max, 5);
+        // Fine, an integer's: 7 stays, 7.4 goes to 7.
+        assert_eq!(STEPPED.with_fine(&Prefs::default(), "alerts.max", Value::Number(7.4)).unwrap().alerts.max, 7);
     }
 
     #[test]

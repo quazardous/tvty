@@ -43,7 +43,7 @@ replayed by [`demo/run`](demo/run), agents included.*
 > [aiball](https://github.com/quazardous/aiball) and its claude-loop agents:
 > it is aiball's desktop client, not a standalone terminal. Linux only for
 > now (Wayland or X11, GNOME and KDE). Expect rough edges, and tell us
-> (the ? menu > Report an issue).
+> (the ☰ menu > Report an issue).
 
 **You need** aiball 0.49 or later, running (its daemon, `claude-loop`
 with it), tmux 3.x, and Rust (stable, 1.85 or later) to build tvty.
@@ -87,7 +87,7 @@ One tvty runs per state directory (`~/.local/state/tvty`): launching it again
 brings the running one forward, on the session asked for, and the second
 launch ends there. A tvty with another state directory (`XDG_STATE_HOME`, as
 the test environment sets it) stays apart; `TVTY_NEW_INSTANCE=1` opens one
-more anyway. The ? menu's **Restart tvty** starts it afresh — after an update,
+more anyway. The ☰ menu's **Restart tvty** starts it afresh — after an update,
 say — and the agents' sessions keep running.
 
 ## Tested headless

@@ -24,6 +24,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- F11 puts the window full screen, and back.
+
+### Changed
+
+- The title bar's menu (about, documentation, restart…) is a ☰, no longer
+  a ?; the theme menu has the terminals' opacity slider.
+- A slider moves by its steps (5 % for the opacity), and to the finest
+  (1 %) with Shift held.
+
+### Fixed
+
+- With see-through terminals, the side strips stay opaque under the
+  pointer, and an empty terminal place is as see-through as a terminal.
+- Pasting an image into a terminal (Ctrl+Shift+V, the menu's Paste) hands
+  the program Ctrl+V, on which Claude Code reads the image itself.
+
 ## [0.4.0-beta.1] - 2026-09-28
 
 The first public beta, for aiball users.
@@ -59,9 +77,9 @@ The first public beta, for aiball users.
 - A ? in the title bar (F1): about tvty, its documentation, what's new, GitHub,
   report an issue, and Restart tvty — the Claude Code sessions keep running
   and the terminals come back.
-- Terminal opacity (the title bar's theme menu, or Options > Appearance >
-  Colours): below 100 %, the desktop shows through the terminals, live;
-  blurred on KDE if asked. Range settings like it are set with a slider.
+- Terminal opacity (Options > Appearance > Colours): below 100 %, the desktop
+  shows through the terminals, live; blurred on KDE if asked. Range settings
+  like it are set with a slider.
 - The full ticket list acts on several tickets at once: ctrl+click, shift+click
   or ctrl+a chooses them, and the left side offers what applies (approve,
   close, mark read, snooze, link…).

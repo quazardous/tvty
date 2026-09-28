@@ -1,4 +1,4 @@
-//! The title bar's ? (F1): where to learn about tvty and to reach its
+//! The title bar's ☰ menu (F1): where to learn about tvty and to reach its
 //! people — the version and the build, the documentation, the shortcuts,
 //! what changed, the repository, a bug to report — and a restart.
 
@@ -99,7 +99,7 @@ impl Shell {
         }
     }
 
-    /// The menu, under the title bar's ?; a click outside closes it.
+    /// The menu, under the title bar's ☰; a click outside closes it.
     pub(super) fn help_menu_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.help_menu {
             return None;

@@ -52,6 +52,8 @@ icons! {
     // The same bubble mirrored: its point on the right, the user's word.
     CommentsMine => "chat_bubble_mine.svg",
     PendingComments => "schedule.svg",
+    // The title bar's menu (about, help, restart).
+    Menu => "menu.svg",
 }
 
 impl AssetSource for Assets {
@@ -74,6 +76,12 @@ pub fn icon(icon: Icon, colour: Hsla, size: f32) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(colour)
+}
+
+/// An icon `size` pixels square, its colour the caller's to give (a
+/// button's changes under the pointer).
+pub fn plain(icon: Icon, size: f32) -> Svg {
+    svg().path(SharedString::from(format!("{PREFIX}{}", icon.file()))).size(px(size)).flex_none()
 }
 
 /// A row's state glyph, drawn.

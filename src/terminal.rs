@@ -477,10 +477,16 @@ impl TerminalView {
         }
     }
 
-    /// The terminal's paste (`terminal.paste`, ctrl+shift+v).
+    /// The terminal's paste (`terminal.paste`, ctrl+shift+v, the menu's
+    /// Paste): the clipboard's text. An image and no text: the program is
+    /// handed Ctrl+V, the key on which it reads an image itself (Claude
+    /// Code does) — a terminal only ever pastes text.
     fn paste_clipboard(&mut self, _: &keymap::TerminalPaste, _: &mut Window, cx: &mut Context<Self>) {
-        if let Some(text) = cx.read_from_clipboard().and_then(|item| item.text()) {
+        let Some(item) = cx.read_from_clipboard() else { return };
+        if let Some(text) = item.text() {
             self.paste(&text);
+        } else if item.entries().iter().any(|entry| matches!(entry, ClipboardEntry::Image(_))) {
+            self.write(b"\x16".to_vec());
         }
     }
 
