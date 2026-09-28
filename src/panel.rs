@@ -122,6 +122,8 @@ pub struct TicketPanel {
     full: bool,
     /// Full screen, the talk shows whole unless folded on demand.
     full_folded: bool,
+    /// Full screen, the reply shown as it will read (the Preview tab).
+    reply_preview: bool,
     editing: Option<Editing>,
     catalog: Option<Catalog>,
     edit_title: Entity<InputState>,
@@ -203,6 +205,7 @@ impl TicketPanel {
             mentions: Vec::new(),
             full: false,
             full_folded: false,
+            reply_preview: false,
             editing: None,
             catalog: None,
             edit_title,
@@ -633,6 +636,7 @@ impl TicketPanel {
                 panel
                     .reply
                     .update(cx, |reply, cx| reply.set_value("", window, cx));
+                panel.reply_preview = false;
                 if let Some(detail) = panel.detail.as_mut() {
                     detail.answers.clear();
                     detail.quiet = false;
@@ -1257,7 +1261,30 @@ impl TicketPanel {
 
             .children(moderation)
             .children(decision)
-            .child(Textarea::new(&self.reply))
+            // Full screen, Write and Preview above the reply.
+            .when(self.full, |d| {
+                d.child(crate::composer::write_tabs("reply", self.reply_preview, cx, |panel: &mut Self, on, cx| {
+                    panel.reply_preview = on;
+                    cx.notify();
+                }))
+            })
+            .child(if self.full && self.reply_preview {
+                let text = self.reply.read(cx).value().to_string();
+                div()
+                    .min_h(px(96.))
+                    .p_3()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(p().border)
+                    .child(if text.trim().is_empty() {
+                        div().text_color(p().muted).child("Nothing to preview yet.")
+                    } else {
+                        self.rich_text("reply-preview".into(), &text, cx)
+                    })
+                    .into_any_element()
+            } else {
+                Textarea::new(&self.reply).into_any_element()
+            })
             .children(mentions)
             .when(!detail.answers.is_empty(), |d| {
                 d.child(div().text_xs().text_color(p().muted).child(format!(

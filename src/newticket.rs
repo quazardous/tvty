@@ -10,6 +10,7 @@
 
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
+use gpui_kit::component::text::TextView;
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
@@ -95,6 +96,8 @@ pub struct NewTicketForm {
     busy: bool,
     error: Option<String>,
     mentions: Vec<String>,
+    /// The body shown as it will read (the Preview tab).
+    preview: bool,
 }
 
 impl EventEmitter<CloseNewTicket> for NewTicketForm {}
@@ -187,6 +190,7 @@ impl NewTicketForm {
             busy: false,
             error: None,
             mentions: Vec::new(),
+            preview: false,
         };
         form.set_project(project, cx);
         form
@@ -431,6 +435,7 @@ impl NewTicketForm {
             input.update(cx, |input, cx| input.set_value("", window, cx));
         }
         self.body.update(cx, |body, cx| body.set_value("", window, cx));
+        self.preview = false;
         (self.intent, self.priority, self.level, self.scope) = ("request", "normal", "task", "default");
         self.typed_parent = None;
         self.parent_input.update(cx, |input, cx| input.set_value("", window, cx));
@@ -632,9 +637,33 @@ impl Render for NewTicketForm {
                 }
             }))
             .child(Input::new(&self.title))
-            .child(Input::new(&self.summary))
-            // The names that fit an `@` right under the words.
-            .child(div().flex_1().min_h_0().flex().flex_col().gap_1().child(Textarea::new(&self.body)).children(mentions))
+            // The body, written or previewed; the names that fit an `@`
+            // right under the words. (No summary: aiball's agents write
+            // one; a person's title says enough.)
+            .child(composer::write_tabs("new-body", self.preview, cx, |form: &mut Self, on, cx| {
+                form.preview = on;
+                cx.notify();
+            }))
+            .child(if self.preview {
+                let text = self.body.read(cx).value().to_string();
+                div()
+                    .id("new-body-preview")
+                    .flex_1()
+                    .min_h_0()
+                    .overflow_y_scroll()
+                    .p_3()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(p().border)
+                    .child(if text.trim().is_empty() {
+                        div().text_color(p().muted).child("Nothing to preview yet.").into_any_element()
+                    } else {
+                        TextView::markdown("new-body-preview-text", composer::images_said(&text)).into_any_element()
+                    })
+                    .into_any_element()
+            } else {
+                div().flex_1().min_h_0().flex().flex_col().gap_1().child(Textarea::new(&self.body)).children(mentions).into_any_element()
+            })
             .when_some(self.error.clone(), |d, error| d.child(div().text_color(p().danger).child(error)))
             .child(
                 div()

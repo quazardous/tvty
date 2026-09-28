@@ -1,10 +1,51 @@
 //! What the boxes one writes to aiball in share — a thread's reply, a new
-//! ticket's body: @-mentions completed as they are typed, and an image
-//! pasted from the clipboard, uploaded, its link put in the text.
+//! ticket's body: @-mentions completed as they are typed, an image pasted
+//! from the clipboard, uploaded, its link put in the text, and Write /
+//! Preview tabs above the box.
 
 use gpui_kit::*;
 
+use crate::theme::p;
 use crate::ui::buttons;
+
+/// Above a box to write in: Write and Preview, as tabs; `set` turns the
+/// preview on or off.
+pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set: fn(&mut V, bool, &mut Context<V>)) -> Div {
+    let mut tabs = div().flex().gap_1().border_b_1().border_color(p().border);
+    for (key, label, to) in [("write", "Write", false), ("preview", "Preview", true)] {
+        let on = preview == to;
+        tabs = tabs.child(
+            div()
+                .id(SharedString::from(format!("{id}-{key}")))
+                .px_3()
+                .py_1()
+                .text_sm()
+                .cursor_pointer()
+                .border_b_2()
+                .border_color(if on { p().accent } else { transparent_black() })
+                .text_color(if on { p().text } else { p().muted })
+                .hover(|d| d.text_color(p().text))
+                .child(label)
+                .on_click(cx.listener(move |view, _, _, cx| set(view, to, cx))),
+        );
+    }
+    tabs
+}
+
+/// Markdown with its images said, not drawn ("🖼 image"): a preview where
+/// the pictures are not at hand.
+pub fn images_said(markdown: &str) -> String {
+    let mut out = String::new();
+    let mut rest = markdown;
+    while let Some(at) = rest.find("![") {
+        let Some(close) = rest[at..].find("](").and_then(|b| rest[at + b..].find(')').map(|c| at + b + c)) else { break };
+        out.push_str(&rest[..at]);
+        out.push_str("🖼 image");
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    out
+}
 
 /// The `@name` being typed at the end of `text`, lowercase.
 pub fn typed_mention(text: &str) -> Option<String> {
@@ -65,6 +106,16 @@ pub fn mention_chips<V: 'static>(
         );
     }
     row
+}
+
+#[cfg(test)]
+mod preview_tests {
+    #[test]
+    fn a_preview_says_its_images() {
+        assert_eq!(super::images_said("see ![shot](/uploads/a.png) here"), "see 🖼 image here");
+        assert_eq!(super::images_said("no picture"), "no picture");
+        assert_eq!(super::images_said("broken ![x](y"), "broken ![x](y");
+    }
 }
 
 #[cfg(test)]

@@ -245,7 +245,10 @@ list that opens), then every other field with all its choices in sight,
 the chosen one lit: intent, priority, level, scope (and who it notifies),
 tags, milestone, assignee (the project's agents first), and a parent to
 type as `#ticket` — and its words on the
-rest: title, a one-line summary, the body with @-mentions and pasted images.
+rest: title, and the body with @-mentions and pasted images, under
+**Write / Preview** tabs — Preview shows it as it will read (its images
+said). No summary: aiball's agents write one, a person's title says
+enough. Full screen, a ticket's reply has the same tabs.
 
 Ctrl+enter files it. One call creates it (with the machine's platform tag,
 as every aiball client does); tags, assignee and milestone follow, as
