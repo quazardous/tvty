@@ -10,6 +10,8 @@ use crate::theme::p;
 
 /// The repository, as Cargo.toml declares it.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
+/// aiball's, the engine tvty runs on.
+const AIBALL: &str = "https://github.com/quazardous/aiball";
 
 /// What the menu offers.
 #[derive(Clone, Copy)]
@@ -22,11 +24,12 @@ enum Entry {
     WhatsNew,
     Repository,
     Issue,
+    Aiball,
     Restart,
 }
 
 impl Entry {
-    const ALL: [Entry; 9] = [
+    const ALL: [Entry; 10] = [
         Entry::About,
         Entry::NewProject,
         Entry::FullScreen,
@@ -35,6 +38,7 @@ impl Entry {
         Entry::WhatsNew,
         Entry::Repository,
         Entry::Issue,
+        Entry::Aiball,
         Entry::Restart,
     ];
 
@@ -48,6 +52,7 @@ impl Entry {
             Entry::WhatsNew => "What's new",
             Entry::Repository => "GitHub",
             Entry::Issue => "Report an issue",
+            Entry::Aiball => "aiball",
             Entry::Restart => "Restart tvty",
         }
     }
@@ -59,6 +64,7 @@ impl Entry {
             Entry::FullScreen => crate::keymap::current(cx).keys_of("window.fullscreen").first().map(|k| k.pretty()).unwrap_or_default(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
+            Entry::Aiball => "the engine ↗".into(),
             Entry::Shortcuts | Entry::NewProject => String::new(),
             Entry::Restart => "sessions kept".into(),
         }
@@ -71,6 +77,7 @@ impl Entry {
             Entry::WhatsNew => Some(format!("{REPOSITORY}/blob/main/CHANGELOG.md")),
             Entry::Repository => Some(REPOSITORY.to_string()),
             Entry::Issue => Some(format!("{REPOSITORY}/issues/new")),
+            Entry::Aiball => Some(AIBALL.to_string()),
             _ => None,
         }
     }

@@ -39,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The folded sessions list shows each running Claude: grey idle, blue working,
   yellow booting; ▶ on its own, ‖ held for a while, ■ held until let go.
 - The title bar's menu (about, documentation, restart…) is a ☰, no longer
-  a ?; the theme menu has the terminals' opacity slider.
+  a ?, and links to aiball's page; the theme menu has the terminals' opacity slider.
 - A slider moves by its steps (5 % for the opacity), and to the finest
   (1 %) with Shift held.
 
