@@ -65,6 +65,15 @@ typed. A copy only watches: nothing typed reaches Claude, and it never
 resizes the session — it is drawn at the session's size. Either leaves
 without stopping Claude.
 
+**Quitting tvty** with Claude Code loops of this machine running asks
+whether to stop them too (`claude-loop stop`: they stay restartable) or
+keep them running — or cancel; "Remember this choice" keeps the answer
+(Options > Layout > Sessions > On quit). The loops tvty stopped are kept
+in its workspace: at the next start it asks whether to restart them
+(`claude-loop restart --resume`, each where it ran, its conversation
+resumed), with its own remembered choice (On start). tvty quits once they
+stopped, 15 s at most. Loops of another machine are never touched.
+
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
 **Restart** (Enter: its loop starts again there, and opens once it runs)

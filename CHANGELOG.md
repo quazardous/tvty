@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Quitting asks whether to stop the Claude Code loops too; the ones
+  stopped are offered to restart at the next start. Both choices can be
+  remembered (Options > Layout > Sessions).
 - A click on a project's name in the sessions list shows its tickets,
   without opening a session; the stopped and shut agents are grouped by
   project too.

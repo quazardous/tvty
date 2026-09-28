@@ -35,11 +35,19 @@ pub struct Sessions {
     /// The groups in the order they were used, the latest first (the
     /// slider's, ctrl+tab), rather than alphabetical.
     pub recent_first: bool,
+    /// When tvty quits with loops of this machine running: `stop` them,
+    /// `keep` them running; none: ask.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_quit: Option<String>,
+    /// At start, the loops stopped when tvty quit: `restart` them, `leave`
+    /// them; none: ask.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub on_start: Option<String>,
 }
 
 impl Default for Sessions {
     fn default() -> Self {
-        Self { recent_first: true }
+        Self { recent_first: true, on_quit: None, on_start: None }
     }
 }
 
@@ -176,6 +184,22 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: true, on: "most recent first", off: "alphabetical" },
     },
     Setting {
+        key: "sessions.on_quit",
+        page: "Layout",
+        group: "Sessions",
+        label: "On quit",
+        about: "When tvty quits with Claude Code loops of this machine running: ask, stop them (claude-loop stop: they stay restartable), or keep them running.",
+        kind: Kind::Choice,
+    },
+    Setting {
+        key: "sessions.on_start",
+        page: "Layout",
+        group: "Sessions",
+        label: "On start",
+        about: "The loops tvty stopped when it quit: ask whether to restart them, restart them (resuming their conversation), or leave them stopped.",
+        kind: Kind::Choice,
+    },
+    Setting {
         key: "tickets.newest_first",
         page: "Ticket list",
         group: "Thread",
@@ -286,6 +310,9 @@ pub struct Workspace {
     /// When the newest ping tvty knew of came: those after it, at the next
     /// start, came while tvty was closed.
     pub pings_seen: Option<String>,
+    /// The loops tvty stopped when it quit: offered to restart at start.
+    #[serde(default)]
+    pub stopped_on_quit: Vec<String>,
 }
 
 impl Stored for Workspace {
@@ -299,6 +326,7 @@ impl Stored for Workspace {
             shown_terminal: old.get("shown_terminal").and_then(Value::as_str).map(String::from),
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
             pings_seen: None,
+            stopped_on_quit: Vec::new(),
         })
     }
 }

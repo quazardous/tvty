@@ -143,6 +143,26 @@ pub fn move_to(name: &str, to_host: bool) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Stops a loop, keeping its state: it stays restartable. Blocking.
+pub fn stop(name: &str) -> anyhow::Result<()> {
+    run(&["stop", name], "stop")
+}
+
+/// Starts a stopped loop again where it ran, resuming its conversation.
+/// Blocking.
+pub fn restart(name: &str) -> anyhow::Result<()> {
+    run(&["restart", "--resume", name], "restart")
+}
+
+fn run(args: &[&str], verb: &str) -> anyhow::Result<()> {
+    let output = Command::new("claude-loop").args(args).env_remove("TMUX").output().context("claude-loop")?;
+    if !output.status.success() {
+        let said = String::from_utf8_lossy(&output.stdout).to_string() + &String::from_utf8_lossy(&output.stderr);
+        bail!("claude-loop {verb}: {}", last_line(&said));
+    }
+    Ok(())
+}
+
 fn move_args(name: &str, to_host: bool) -> Vec<String> {
     let place = if to_host { "--host" } else { "--tmux" };
     vec!["restart".into(), "--resume".into(), place.into(), name.into()]

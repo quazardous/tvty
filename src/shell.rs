@@ -30,6 +30,7 @@ mod agentbar;
 mod ended;
 mod frame;
 mod loopstabs;
+mod quit;
 mod stacks;
 mod tabs;
 use tabs::Restoring;
@@ -170,6 +171,16 @@ pub struct Shell {
     /// A project shown in the panel from the projects' list, with none of
     /// its sessions open; until a terminal is chosen.
     pub(super) project_shown: Option<String>,
+    /// What the quit dialog asks (stop the loops? restart them?), and its
+    /// "remember" box.
+    ask: Option<quit::Ask>,
+    remember: bool,
+    /// The loops are being stopped before tvty quits.
+    stopping_all: bool,
+    /// Quitting: the window may close.
+    quitting: bool,
+    /// The loops stopped at the last quit were offered (once, at start).
+    restart_offered: bool,
     /// Sessions open as a copy: watched, never typed into nor resized.
     /// The others have the controls (shared with any other client).
     pub(super) copies: HashSet<String>,
@@ -555,6 +566,13 @@ impl Shell {
         })
         .detach();
 
+        // Closing the window (its × or the window manager's) goes through
+        // the quit dialog: the loops may be stopped first.
+        let this = cx.entity().downgrade();
+        window.on_window_should_close(cx, move |window, cx| {
+            this.update(cx, |shell, cx| shell.close_asked(window, cx)).unwrap_or(true)
+        });
+
         Self::tick_clock(cx);
         let (refresh_now, wake) = futures::channel::mpsc::unbounded::<()>();
         Self::local_loop(wake, cx);
@@ -599,6 +617,11 @@ impl Shell {
             restarts_asked: HashMap::new(),
             copies: HashSet::new(),
             project_shown: None,
+            ask: None,
+            remember: false,
+            stopping_all: false,
+            quitting: false,
+            restart_offered: false,
             ended: None,
             viewer: None,
             wire: None,
@@ -738,6 +761,7 @@ impl Shell {
         }
         self.sync_panel(cx);
         self.sync_full_list(cx);
+        self.offer_restart(cx);
     }
 
     /// The board moved on the bus: built again shortly, once for a burst.
@@ -1552,6 +1576,10 @@ impl Shell {
         let keystroke = &event.keystroke;
         let m = &keystroke.modifiers;
         let key = keystroke.key.as_str();
+        if key == "escape" && self.escape_ask(cx) {
+            cx.stop_propagation();
+            return;
+        }
         if self.viewer.is_some() {
             if self.viewer_key(key, window, cx) {
                 cx.stop_propagation();
@@ -2541,8 +2569,16 @@ impl Shell {
         let key = setting.key;
         // The window's theme is always one; the terminals' may be the
         // window's own (none).
+        // A short list of its own (what to do with the loops), else themes.
+        let fixed: Option<&[(&str, &str)]> = match key {
+            "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
+            "sessions.on_start" => Some(&[("restart", "Restart them"), ("leave", "Leave them stopped")]),
+            _ => None,
+        };
         let (chosen, default) = match key {
             "appearance.theme" => (Some(theme::current(cx)), None),
+            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask")),
+            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask")),
             _ => (theme::current_terminal(), Some("Same as the window")),
         };
         let away = SCHEMA.is_modified(&self.applied, key).then(|| {
@@ -2590,6 +2626,13 @@ impl Shell {
         let mut column = column;
         if let Some(label) = default {
             column = column.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
+        }
+        if let Some(fixed) = fixed {
+            for (name, label) in fixed {
+                let on = chosen.as_deref() == Some(*name);
+                column = column.child(choice((*name).into(), (*label).into(), Some((*name).into()), on, cx));
+            }
+            return column;
         }
         let mut last_dark = None;
         for (name, dark) in theme::names(cx) {
@@ -3991,6 +4034,7 @@ impl Render for Shell {
                 // A fifth taller than the kit's (34 px): easier to grab.
                 TitleBar::new()
                     .h(px(TITLE_BAR_HEIGHT))
+                    .on_close_window(cx.listener(|shell, _, window, cx| shell.ask_quit(window, cx)))
                     .child(
                         div()
                             .flex_1()
@@ -4034,6 +4078,7 @@ impl Render for Shell {
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))
+            .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }
