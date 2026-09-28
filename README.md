@@ -2,6 +2,8 @@
 
 **Twenty AI agents. One window. No tab hunting.**
 
+*Beta — for [aiball](https://github.com/quazardous/aiball) users; Linux.*
+
 ![An agent's terminal and the critical ticket it escalated, side by side](docs/images/hero.png)
 
 `tvty` is a native terminal for working with many AI coding agents at once:
@@ -35,30 +37,58 @@ the agent asks, you decide, it carries on.
 *The station, the sphere and the time machine are fictional: a demo world
 replayed by [`demo/run`](demo/run), agents included.*
 
-## Quick start
+## Install
+
+> **Beta.** tvty is for people who already run
+> [aiball](https://github.com/quazardous/aiball) and its claude-loop agents:
+> it is aiball's desktop client, not a standalone terminal. Linux only for
+> now (Wayland or X11, GNOME and KDE). Expect rough edges, and tell us
+> (the ? menu > Report an issue).
+
+**You need** aiball 0.49 or later, running (its daemon, `claude-loop`
+with it), tmux 3.x, and Rust (stable, 1.85 or later) to build tvty.
+
+**GPUI's system libraries**, to build:
 
 ```bash
-cargo run --release              # needs a running aiball daemon
-cargo run --release -- SESSION   # open that tmux session at start
-make install-desktop             # Terminal Velocity in your desktop's launcher
+# Fedora
+sudo dnf install gcc pkgconf-pkg-config libxkbcommon-devel libxkbcommon-x11-devel \
+  libxcb-devel wayland-devel vulkan-loader-devel fontconfig-devel freetype-devel alsa-lib-devel
+# Debian, Ubuntu
+sudo apt install build-essential pkg-config libxkbcommon-dev libxkbcommon-x11-dev \
+  libxcb1-dev libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev libasound2-dev
+# Arch
+sudo pacman -S base-devel libxkbcommon libxkbcommon-x11 libxcb wayland \
+  vulkan-icd-loader fontconfig freetype2 alsa-lib
 ```
 
-`tvty` is a client of [aiball](https://github.com/quazardous/aiball), the
-engine behind the agents (tickets, loops, wakes): it reaches it over its local
-socket (`$AIBALL_SOCK`, else aiball's default) and acts as its human user
-(`$TVTY_USER`, else the human aiball saw last). aiball's web UI stays for
-everything else — remote, phone, another OS.
+**Build and install** — a launcher in `~/.local/bin/tvty`, Terminal Velocity
+in your desktop's applications:
+
+```bash
+git clone https://github.com/quazardous/tvty && cd tvty
+cargo build --release
+make install-desktop BIN=$PWD/target/release/tvty
+```
+
+Each [release](https://github.com/quazardous/tvty/releases) also has a
+built binary for x86_64 Linux (the libraries above still needed, without
+`-dev`): put it anywhere and point `make install-desktop BIN=…` at it, or run
+it as it is.
+
+**First start.** `tvty` finds aiball over its local socket (`$AIBALL_SOCK`,
+else aiball's default) and acts as its human user (`$TVTY_USER`, else the
+human aiball saw last); Options > About says which socket and which user,
+and whether the bus answered. `tvty SESSION` opens that tmux session at
+start. aiball's web UI stays for everything else — remote, phone, another
+OS.
 
 One tvty runs per state directory (`~/.local/state/tvty`): launching it again
 brings the running one forward, on the session asked for, and the second
 launch ends there. A tvty with another state directory (`XDG_STATE_HOME`, as
 the test environment sets it) stays apart; `TVTY_NEW_INSTANCE=1` opens one
-more anyway.
-
-On Linux, GPUI needs the development packages of xcb, xkbcommon, vulkan,
-fontconfig, freetype and alsa. `make install-desktop` puts a launcher in
-`~/.local/bin/tvty` running `target/debug/tvty`
-(`BIN=target/release/tvty` for another build).
+more anyway. The ? menu's **Restart tvty** starts it afresh — after an update,
+say — and the agents' sessions keep running.
 
 ## Tested headless
 

@@ -1,0 +1,54 @@
+# A tag vX.Y.Z (vX.Y.Z-beta.N: a pre-release) builds tvty in release mode
+# and publishes it with its launcher, its desktop file and its icon, and
+# that version's notes from CHANGELOG.md.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: GPUI's system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
+            libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev \
+            libasound2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Tests
+        run: cargo test --locked --workspace
+      - name: Build
+        run: cargo build --locked --release
+      - name: Package
+        run: |
+          name="tvty-${GITHUB_REF_NAME}-linux-x86_64"
+          mkdir -p "$name"
+          cp target/release/tvty README.md LICENSE CHANGELOG.md "$name/"
+          cp -r packaging/linux "$name/packaging"
+          cp assets/tvty.svg "$name/"
+          tar czf "$name.tar.gz" "$name"
+          sha256sum "$name.tar.gz" > "$name.tar.gz.sha256"
+      - name: This version's notes
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { on = 1; next }
+            on && /^## \[/ { exit }
+            on { print }
+          ' CHANGELOG.md > notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: notes.md
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            tvty-*.tar.gz
+            tvty-*.tar.gz.sha256

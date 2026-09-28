@@ -1,0 +1,32 @@
+# Every push and pull request: tvty builds, its tests pass, and nothing a
+# stranger could not follow went in (a path of a dev machine, an internal
+# ticket id), in the files or in the history.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # the whole history, for the public check
+      - name: GPUI's system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
+            libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev \
+            libasound2-dev
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Public check
+        run: scripts/check-public && scripts/check-public --history
+      - name: Build
+        run: cargo build --locked --workspace
+      - name: Tests
+        run: cargo test --locked --workspace

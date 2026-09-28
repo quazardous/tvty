@@ -1,5 +1,9 @@
 # tvty — agent guide
 
+*tvty is developed by an AI agent (Claude Code), wired to its maintainer
+through [aiball](https://github.com/quazardous/aiball): this is the
+agent's guide — and, for anyone else, how the project is worked on.*
+
 **Terminal Velocity** (`tvty`): a native terminal for working with many AI
 agents — their terminals grouped by project, each project's tickets in a panel
 beside. Read [`README.md`](./README.md) (what and why), [`docs/UX.md`](./docs/UX.md)
@@ -9,7 +13,7 @@ touching code.
 ## You work alone
 
 You develop **and test** tvty without a human in the loop: build, launch, look,
-fix, again. Never ask david to "try it" — show him a screenshot you took.
+fix, again. Never ask the maintainer to "try it" — show them a screenshot you took.
 
 - Stack (decided): Rust, **GPUI** (Zed's UI toolkit) + gpui-kit widgets,
   `alacritty_terminal` for emulation. Each terminal runs `tmux attach` (Linux)
@@ -23,7 +27,7 @@ fix, again. Never ask david to "try it" — show him a screenshot you took.
 ## The test loop — wbox
 
 tvty runs inside **wbox**, a nested compositor that is **headless by default**:
-nothing appears on david's desktop. Two ways to drive it, same instance:
+nothing appears on the maintainer's desktop. Two ways to drive it, same instance:
 
 | MCP tools (this session) | make | |
 |---|---|---|
@@ -51,12 +55,12 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   (`scripts/fake-loop`, tmux sessions `tvty-fake`, `tvty-sim`, `tvty-flood`).
   tvty lists them under "tmux".
 - **fake aiball** (`make aiball-up`): a throwaway daemon with a `demo`
-  project, for the ticket panel. Its gestures act as david: never try them
-  on the real board.
+  project, for the ticket panel. Its gestures act as the maintainer: never
+  try them on the real board.
 - **A test tvty lives apart** (`scripts/test-env`, `scripts/test-tvty`,
   wbox's command): its own tmux server (`dev/tmux`), its own settings, the
-  fake aiball. Nothing of it shows in david's tvty, and it cannot see his
-  loops. To show david something, post a screenshot on the ticket.
+  fake aiball. Nothing of it shows in the maintainer's tvty, and it cannot
+  see their loops. To show them something, post a screenshot on the ticket.
 
 ## Conventions
 
@@ -66,12 +70,12 @@ A reply saying "ok" proves nothing about a GUI: **the screenshot is the proof.**
   link. `make public-check` scans (also a local pre-commit hook). Each
   user-visible change gets a line in `CHANGELOG.md`.
 
-- Code, comments, commits and docs in **English**; talk to david in
-  **French** (chat and ticket threads).
-- Commit locally as you go; **never push** (no remote yet) or publish without
-  david's go.
-- **One version per day of work delivered**: at the day's end (or when david
-  asks), `[Unreleased]` becomes a dated version in `CHANGELOG.md` (SemVer:
+- Code, comments, commits and docs in **English**; talk to the
+  maintainer in **French** (chat and ticket threads).
+- Commit locally as you go; **never push** or publish without the
+  maintainer's go.
+- **One version per day of work delivered**: at the day's end (or when the
+  maintainer asks), `[Unreleased]` becomes a dated version in `CHANGELOG.md` (SemVer:
   anything Added → minor, Fixed alone → patch), `Cargo.toml` follows, and a
   local tag `vX.Y.Z` marks it. Options > About shows the version and commit.
 - Tickets live on the `tvty` project of aiball — use the aiball skill.
