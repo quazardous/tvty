@@ -27,7 +27,7 @@ check() { if eval "$2"; then say PASS "$1"; else say FAIL "$1"; failed=1; fi; }
 # The test settings as they are, given back whatever happens.
 backup=$(mktemp)
 cp "$SETTINGS" "$backup" 2>/dev/null || : > "$backup"
-restore() { cp "$backup" "$SETTINGS"; rm -f "$backup"; ctl down >/dev/null 2>&1; }
+restore() { cp "$backup" "$SETTINGS" 2>/dev/null; rm -f "$backup"; ctl down >/dev/null 2>&1; }
 trap restore EXIT
 
 ctl down >/dev/null 2>&1
@@ -41,9 +41,11 @@ check "its window is the active one" 'active'
 
 # See-through terminals, blurred: settings.toml is read again once saved.
 python3 - "$SETTINGS" <<'PY'
-import sys, re
+import os, re, sys
 path = sys.argv[1]
-text = open(path).read() if open(path).read().strip() else ""
+# A fresh checkout (the CI's) has no test settings yet.
+os.makedirs(os.path.dirname(path), exist_ok=True)
+text = open(path).read() if os.path.exists(path) else ""
 text = re.sub(r"^(terminal_opacity|terminal_blur) = .*\n", "", text, flags=re.M)
 if "[appearance]" in text:
     text = text.replace("[appearance]\n", "[appearance]\nterminal_opacity = 70.0\nterminal_blur = true\n", 1)
