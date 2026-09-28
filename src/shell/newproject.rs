@@ -1,11 +1,14 @@
 //! "New project": a folder made an aiball project, the way `claude-loop
 //! init` does it — tvty runs that command, it does not copy what it does —
-//! then its first session started. Three steps: the folder, who works in
-//! it, the outcome. Nothing is written before "Set it up".
+//! then its first session started. Four steps in one frame of one size:
+//! the folder, who works in it, the outcome, what is left to do (accept
+//! aiball's MCP server in Claude Code). Nothing is written before "Set it
+//! up".
 
 use std::path::{Path, PathBuf};
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::stepper::{Stepper, StepperItem};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -19,6 +22,24 @@ enum Step {
     Folder,
     Identity,
     Done,
+    Next,
+}
+
+impl Step {
+    const ALL: [Step; 4] = [Step::Folder, Step::Identity, Step::Done, Step::Next];
+
+    fn index(self) -> usize {
+        Step::ALL.iter().position(|s| *s == self).unwrap_or(0)
+    }
+
+    fn title(self) -> &'static str {
+        match self {
+            Step::Folder => "Folder",
+            Step::Identity => "Who works in it",
+            Step::Done => "Set up",
+            Step::Next => "What next",
+        }
+    }
 }
 
 /// The wizard, while it is open.
@@ -251,32 +272,48 @@ impl Shell {
         self.start_on_host(start, cx);
     }
 
-    /// The wizard over the window, or nothing.
+    /// Back to an earlier step (the stepper's), never forward past what
+    /// was done, never while claude-loop runs.
+    fn wizard_back_to(&mut self, step: usize, cx: &mut Context<Self>) {
+        let Some(wizard) = self.new_project.as_mut() else { return };
+        if wizard.running || step >= wizard.step.index() {
+            return;
+        }
+        wizard.step = Step::ALL[step];
+        cx.notify();
+    }
+
+    fn wizard_to(&mut self, step: Step, cx: &mut Context<Self>) {
+        if let Some(wizard) = self.new_project.as_mut() {
+            wizard.step = step;
+        }
+        cx.notify();
+    }
+
+    /// The wizard over the window, or nothing: one frame for every step —
+    /// the same size, the steps on top, the page in the middle, its
+    /// buttons at the bottom right.
     pub(super) fn new_project_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let wizard = self.new_project.as_ref()?;
-        let body = match wizard.step {
+        let (page, footer) = match wizard.step {
             Step::Folder => self.folder_step(wizard, cx),
             Step::Identity => self.identity_step(wizard, cx),
             Step::Done => self.done_step(wizard, cx),
+            Step::Next => self.next_step(wizard, cx),
         };
-        let steps = ["Folder", "Who works in it", "Done"];
-        let at = match wizard.step {
-            Step::Folder => 0,
-            Step::Identity => 1,
-            Step::Done => 2,
-        };
-        let trail = div().flex().gap_3().text_xs().children(steps.iter().enumerate().map(|(i, s)| {
-            div().text_color(if i == at { p().accent } else { p().muted }).child(format!("{} {s}", i + 1))
-        }));
+        let steps = Stepper::new("new-project-steps")
+            .selected_index(wizard.step.index())
+            .items(Step::ALL.iter().map(|s| StepperItem::new().child(s.title())))
+            .on_click(cx.listener(|shell, step: &usize, _, cx| shell.wizard_back_to(*step, cx)));
         let card = div()
             .id("new-project")
             .occlude()
-            .w(px(640.))
+            .w(px(680.))
+            .h(px(580.))
             .max_w(relative(0.92))
-            .p_5()
+            .max_h(relative(0.9))
             .flex()
             .flex_col()
-            .gap_4()
             .rounded_lg()
             .border_1()
             .border_color(p().border)
@@ -285,12 +322,28 @@ impl Shell {
             .child(
                 div()
                     .flex()
+                    .flex_none()
                     .items_center()
+                    .px_5()
+                    .pt_4()
                     .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child("New project"))
                     .child(buttons::link("new-project-close", "✕  Esc").text_sm().on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx)))),
             )
-            .child(trail)
-            .child(body);
+            .child(div().flex_none().px_5().py_3().child(steps))
+            .child(div().id("new-project-page").flex_1().min_h_0().overflow_y_scroll().px_5().py_2().child(page))
+            .child(
+                div()
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .justify_end()
+                    .gap_3()
+                    .px_5()
+                    .py_3()
+                    .border_t_1()
+                    .border_color(p().border)
+                    .child(footer),
+            );
         Some(
             div()
                 .id("new-project-veil")
@@ -306,11 +359,16 @@ impl Shell {
         )
     }
 
-    fn folder_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> Div {
+    /// The main button of a step: the accent when it can go.
+    fn wizard_go(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
+        buttons::chip_if(id, label, enabled).px_3().py_1().when(enabled, |d| d.border_color(p().accent).text_color(p().accent))
+    }
+
+    fn folder_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let typed = wizard.folder.read(cx).value().to_string();
         let folder = folder_of(&typed);
         let (said, colour) = match &folder {
-            Folder::Empty => ("Where the agent will work: the project's root.".to_string(), p().muted),
+            Folder::Empty => ("The folder the agent will work in: the project's root.".to_string(), p().muted),
             Folder::Missing => ("No such folder.".to_string(), p().danger),
             Folder::NotADirectory => ("This is a file, not a folder.".to_string(), p().danger),
             Folder::Configured(Some(name)) => (format!("Already an aiball project: {name}. Next sets it up again."), p().warning),
@@ -324,10 +382,11 @@ impl Shell {
             Folder::Configured(Some(name)) if self.board.projects.iter().any(|p| p.name == *name) => Some(name.clone()),
             _ => None,
         };
-        div()
+        let page = div()
             .flex()
             .flex_col()
             .gap_2()
+            .child(div().text_sm().text_color(p().muted).child("Which folder becomes the project?"))
             .child(
                 div()
                     .flex()
@@ -335,29 +394,21 @@ impl Shell {
                     .child(div().flex_1().child(Input::new(&wizard.folder)))
                     .child(buttons::chip("new-project-browse", "Browse…").px_3().on_click(cx.listener(|shell, _, window, cx| shell.browse_folder(window, cx)))),
             )
-            .child(div().text_sm().text_color(colour).child(said))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .justify_end()
-                    .pt_2()
-                    .children(open.map(|name| {
-                        buttons::chip("new-project-open", format!("Open {name}")).px_3().on_click(cx.listener(move |shell, _, window, cx| {
-                            shell.close_new_project(window, cx);
-                            shell.show_project(name.clone(), cx);
-                        }))
-                    }))
-                    .child(
-                        buttons::chip_if("new-project-next", "Next →", ready)
-                            .px_3()
-                            .when(ready, |d| d.border_color(p().accent).text_color(p().accent))
-                            .when(ready, |d| d.on_click(cx.listener(|shell, _, window, cx| shell.to_identity(window, cx)))),
-                    ),
-            )
+            .child(div().text_sm().text_color(colour).child(said));
+        let footer = div()
+            .flex()
+            .gap_3()
+            .children(open.map(|name| {
+                buttons::chip("new-project-open", format!("Open {name}")).px_3().py_1().on_click(cx.listener(move |shell, _, window, cx| {
+                    shell.close_new_project(window, cx);
+                    shell.show_project(name.clone(), cx);
+                }))
+            }))
+            .child(Self::wizard_go("new-project-next", "Next →", ready).when(ready, |d| d.on_click(cx.listener(|shell, _, window, cx| shell.to_identity(window, cx)))));
+        (page, footer)
     }
 
-    fn identity_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> Div {
+    fn identity_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let typed = wizard.folder.read(cx).value().to_string();
         let folder = folder_of(&typed);
         let name = wizard.name.read(cx).value().trim().to_string();
@@ -394,7 +445,7 @@ impl Shell {
         let command = format!("claude-loop {}", init_args(&name, &agent, wizard.crew, wizard.private, wizard.no_claim).join(" "));
         let running = wizard.running;
         let go = problem.is_none() && !running;
-        div()
+        let page = div()
             .flex()
             .flex_col()
             .gap_3()
@@ -417,48 +468,33 @@ impl Shell {
                     .child(div().text_color(p().text).child(command))
                     .child("writes .mcp.json (aiball's MCP server, for Claude Code) and .aiball.yaml (the project, the agent, its role)."),
             )
-            .children(problem.map(|p_| div().text_sm().text_color(p().danger).child(p_)))
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .justify_end()
-                    .child(buttons::link("new-project-back", "← Back").on_click(cx.listener(|shell, _, _, cx| {
-                        if let Some(wizard) = shell.new_project.as_mut() {
-                            wizard.step = Step::Folder;
-                        }
-                        cx.notify();
-                    })))
-                    .child(
-                        buttons::chip_if("new-project-go", if running { "Setting it up…" } else { "Set it up" }, go)
-                            .px_3()
-                            .when(go, |d| d.border_color(p().accent).text_color(p().accent))
-                            .when(go, |d| d.on_click(cx.listener(|shell, _, _, cx| shell.set_it_up(cx)))),
-                    ),
-            )
+            .children(problem.map(|p_| div().text_sm().text_color(p().danger).child(p_)));
+        let footer = div()
+            .flex()
+            .gap_3()
+            .child(buttons::link("new-project-back", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Folder, cx))))
+            .child(Self::wizard_go("new-project-go", if running { "Setting it up…" } else { "Set it up" }, go).when(go, |d| d.on_click(cx.listener(|shell, _, _, cx| shell.set_it_up(cx)))));
+        (page, footer)
     }
 
-    fn done_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> Div {
+    fn done_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let (ok, said) = match &wizard.outcome {
             Some(Ok(text)) => (true, text.clone()),
             Some(Err(text)) => (false, text.clone()),
             None => (false, String::new()),
         };
         let name = wizard.name.read(cx).value().trim().to_string();
-        div()
+        let page = div()
             .flex()
             .flex_col()
             .gap_3()
             .child(div().text_color(if ok { p().success } else { p().danger }).child(if ok {
-                format!("{name} is set up.")
+                format!("{name} is set up. claude-loop init said:")
             } else {
-                "claude-loop init did not go through.".to_string()
+                "claude-loop init did not go through:".to_string()
             }))
             .child(
                 div()
-                    .id("new-project-said")
-                    .max_h(px(220.))
-                    .overflow_y_scroll()
                     .p_2()
                     .rounded_md()
                     .bg(p().bg)
@@ -466,31 +502,52 @@ impl Shell {
                     .font_family("monospace")
                     .text_color(p().muted)
                     .child(if said.is_empty() { "(nothing said)".to_string() } else { said }),
-            )
-            .child(
-                div()
-                    .flex()
-                    .gap_2()
-                    .justify_end()
-                    .when(!ok, |d| {
-                        d.child(buttons::link("new-project-retry", "← Back").on_click(cx.listener(|shell, _, _, cx| {
-                            if let Some(wizard) = shell.new_project.as_mut() {
-                                wizard.step = Step::Identity;
-                            }
-                            cx.notify();
-                        })))
-                    })
-                    .child(buttons::link("new-project-done", "Close").on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
-                    .when(ok, |d| {
-                        d.child(
-                            buttons::chip("new-project-start", "Start its first session")
-                                .px_3()
-                                .border_color(p().accent)
-                                .text_color(p().accent)
-                                .on_click(cx.listener(|shell, _, window, cx| shell.start_first_session(window, cx))),
-                        )
-                    }),
-            )
+            );
+        let footer = if ok {
+            div().child(Self::wizard_go("new-project-whatnext", "Next →", true).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Next, cx))))
+        } else {
+            div().flex().gap_3().child(buttons::link("new-project-retry", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Identity, cx))))
+        };
+        (page, footer)
+    }
+
+    /// What is left to the user, once the folder is set up.
+    fn next_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
+        let name = wizard.name.read(cx).value().trim().to_string();
+        let agent = wizard.agent.read(cx).value().trim().to_string();
+        let item = |n: &'static str, title: String, text: String| {
+            div()
+                .flex()
+                .gap_3()
+                .child(div().flex_none().w(px(22.)).h(px(22.)).rounded_full().flex().items_center().justify_center().text_xs().bg(p().active).text_color(p().accent).child(n))
+                .child(div().flex_1().min_w_0().flex().flex_col().gap_0p5().child(div().font_weight(FontWeight::MEDIUM).child(title)).child(div().text_sm().text_color(p().muted).child(text)))
+        };
+        let page = div()
+            .flex()
+            .flex_col()
+            .gap_4()
+            .child(item(
+                "1",
+                "Start the agent".into(),
+                format!("\"Start its first session\" starts {agent}'s Claude Code on aiball's host, in the project's folder; its terminal opens here, its tickets beside."),
+            ))
+            .child(item(
+                "2",
+                "Accept aiball's MCP server".into(),
+                "At its first start in this folder, Claude Code asks whether to use the MCP server that .mcp.json declares (aiball): accept it. Without it the agent can neither read the board nor answer its tickets. Refused by mistake? /mcp in Claude Code turns it on.".into(),
+            ))
+            .child(item(
+                "3",
+                "Give it work".into(),
+                format!("\"+ New\" in the ticket panel files a ticket on {name}; the agent picks it up at its next wake, and its plans and questions come back as notifications."),
+            ));
+        let footer = div()
+            .flex()
+            .items_center()
+            .gap_3()
+            .child(buttons::link("new-project-done", "Close").on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
+            .child(Self::wizard_go("new-project-start", "Start its first session", true).on_click(cx.listener(|shell, _, window, cx| shell.start_first_session(window, cx))));
+        (page, footer)
     }
 }
 

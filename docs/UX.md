@@ -36,8 +36,10 @@ A new one gets its tooltip with it.
 ## A new project
 
 **+ project** in the sessions list's header (also the ☰ menu, and "Set up
-your first project" while aiball has none) opens a wizard over the window,
-in three steps (`src/shell/newproject.rs`):
+your first project" while aiball has none) opens a wizard over the window:
+one frame of one size, the steps on top (the kit's stepper; a click goes
+back to a step done), the page in the middle, its buttons at the bottom
+right (`src/shell/newproject.rs`):
 
 1. **The folder**: typed, or chosen with the system's picker (Browse…). It
    says what it is: missing, a file, a git repository, or already an aiball
@@ -47,9 +49,11 @@ in three steps (`src/shell/newproject.rs`):
    project, no claiming — each with what it means. A name the board has
    already is refused. The command is shown as it will run.
 3. **Set it up**: tvty runs `claude-loop init` there — aiball's own
-   command, not a copy of it — and shows what it said, or its error. Then
-   "Start its first session" starts the agent on aiball's host, and the
-   project shows in the list, its tickets beside.
+   command, not a copy of it — and shows what it said, or its error.
+4. **What next**: start the agent ("Start its first session", on aiball's
+   host: the project shows in the list, its tickets beside); accept
+   aiball's MCP server when Claude Code asks at its first start in the
+   folder (`/mcp` if refused); give it work with "+ New".
 
 Nothing is written before "Set it up"; Esc leaves a box, then closes it.
 
