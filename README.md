@@ -83,6 +83,11 @@ and whether the bus answered. `tvty SESSION` opens that tmux session at
 start. aiball's web UI stays for everything else — remote, phone, another
 OS.
 
+**A new project.** The ☰ menu's **New project** (or **+ project** atop the
+sessions list) walks through it: pick a folder, name the project and its
+agent, and tvty sets it up with `aiball init`, then says what comes next
+(accepting aiball's MCP server in Claude) and starts its first session.
+
 One tvty runs per state directory (`~/.local/state/tvty`): launching it again
 brings the running one forward, on the session asked for, and the second
 launch ends there. A tvty with another state directory (`XDG_STATE_HOME`, as
@@ -108,7 +113,7 @@ See [`docs/TESTING.md`](docs/TESTING.md).
 |---|---|
 | UI | [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui) (Zed's toolkit) and gpui-kit's widgets — the UI draws itself, GNOME and KDE alike |
 | Terminals | [`alacritty_terminal`](https://crates.io/crates/alacritty_terminal), the pairing of Zed's terminal, with a view of its own |
-| Sessions | each terminal runs `tmux attach` on the agent's claude-loop session: tmux keeps the agent alive, `tvty` only shows it |
+| Sessions | each terminal attaches to the agent's session — on aiball's session host, or in tmux: the session keeps the agent alive, `tvty` only shows it |
 | Settings, shortcuts | [`crates/tvty-config`](crates/tvty-config) and [`crates/tvty-keys`](crates/tvty-keys): settings declared once, shortcuts as data — both free of the UI |
 
 Linux for now; Windows and macOS are planned. The interface, decided, is in
@@ -121,7 +126,7 @@ their usual defaults):
 
 | File | What |
 |---|---|
-| `~/.config/tvty/settings.toml` | your preferences: theme, sizes, notifications, scroll speed… — Options writes it, you may edit it; read again once saved |
+| `~/.config/tvty/settings.toml` | your preferences: theme, sizes, the terminals' transparency, notifications, scroll speed… — Options writes it, you may edit it; read again once saved |
 | `~/.config/tvty/keymap.toml` | your shortcuts, over the defaults — or edit them in Options > Keyboard shortcuts |
 | `~/.config/tvty/themes/` | colour themes of your own |
 | `~/.local/state/tvty/layout.json` | the window's layout: its state (windowed and its size, maximized, full screen), panel and list widths, folded sections |
