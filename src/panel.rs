@@ -1086,13 +1086,13 @@ impl TicketPanel {
                 read.ticket_decision.clone(),
                 None,
                 false,
-                has_talk,
+                has_talk.then_some(body_open),
                 &user,
                 cx,
             ))
             .map(|d| match (&ticket.body, body_open) {
                 (Some(text), true) => d.child(self.rich_text(format!("body-{}", ticket.id), text, cx)),
-                (Some(text), false) => d.child(folded_line(reading::first_line(Some(text)))),
+                (Some(text), false) => d.child(folded_line(ticket.id, reading::first_line(Some(text)), cx)),
                 (None, _) => d,
             });
         talk.push(opening.into_any_element());
@@ -1897,7 +1897,7 @@ impl TicketPanel {
                         entry.decision.clone(),
                         entry.step.map(|latest| (latest, comment.step_resume())),
                         entry.pending,
-                        foldable,
+                        foldable.then_some(open),
                         user,
                         cx,
                     )))
@@ -1933,7 +1933,7 @@ impl TicketPanel {
                                 }),
                         ),
                 ),
-                (Shape::Folded(line), false, _) => d.child(folded_line(line.clone())),
+                (Shape::Folded(line), false, _) => d.child(folded_line(entry.id, line.clone(), cx)),
                 (_, _, Some(text)) => d.child(self.rich_text(format!("comment-{}", comment.id), text, cx)),
                 _ => d,
             })
@@ -2051,7 +2051,9 @@ impl TicketPanel {
         row
     }
 
-    /// Who, when, and the chips of an entry; a click folds or unfolds it.
+    /// Who, when, and the chips of an entry; `fold`, when it folds: whether
+    /// it is open — then ▾ or ▸ leads, as the accordions' sections, and a
+    /// click on the head folds or unfolds it.
     #[allow(clippy::too_many_arguments)]
     fn entry_head(
         &self,
@@ -2061,7 +2063,7 @@ impl TicketPanel {
         decision: Option<(String, DecisionState)>,
         step: Option<(bool, (Option<String>, Option<u64>))>,
         pending: bool,
-        foldable: bool,
+        fold: Option<bool>,
         user: &str,
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
@@ -2073,6 +2075,7 @@ impl TicketPanel {
             .gap_2()
             .text_xs()
             .text_color(p().muted)
+            .when_some(fold, |d, open| d.child(chevron(open)))
             .child(who(by, user))
             .when_some(ago(when), |d, when| d.child(when))
             .when_some(decision, |d, (kind, state)| d.child(decision_chip(&kind, state)))
@@ -2118,9 +2121,11 @@ impl TicketPanel {
                 )
             })
             .when(pending, |d| d.child(pill("to moderate", p().warning)))
-            .when(foldable, |d| {
-                d.cursor_pointer()
-                    .hover(|d| d.text_color(p().text))
+            .when(fold.is_some(), |d| {
+                d.rounded_sm()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .tip(if fold == Some(true) { "fold" } else { "unfold" })
                     .on_click(cx.listener(move |panel, _, _, cx| panel.toggle_fold(id, cx)))
             })
     }
@@ -2213,9 +2218,24 @@ fn who(name: &str, user: &str) -> String {
     if name == user { "you".into() } else { name.to_string() }
 }
 
-/// A folded comment's one line; its head unfolds it.
-fn folded_line(text: String) -> impl IntoElement {
-    div().text_color(p().muted).truncate().child(text)
+/// A folded comment's one line; a click unfolds it, as its head does.
+fn folded_line(id: u64, text: String, cx: &mut Context<TicketPanel>) -> impl IntoElement {
+    div()
+        .id(("folded", id))
+        .rounded_sm()
+        .text_color(p().muted)
+        .truncate()
+        .cursor_pointer()
+        .hover(|d| d.bg(p().hover))
+        .tip("unfold")
+        .child(text)
+        .on_click(cx.listener(move |panel, _, _, cx| panel.toggle_fold(id, cx)))
+}
+
+/// What folds leads with ▾ (open) or ▸ (folded), in the accordions'
+/// style: the same glyphs, colour and width.
+fn chevron(open: bool) -> impl IntoElement {
+    div().w(px(10.)).flex_none().text_color(p().accent).child(if open { "▾" } else { "▸" })
 }
 
 /// Coloured when it waits on you, muted otherwise; a step always coloured.

@@ -468,6 +468,11 @@ brightens), pressed a stronger one, and the hand pointer; one with
 nothing to do now is greyed, with neither. In a bar, groups of actions are
 set apart by a thin vertical line; inside a group, a plain gap.
 
+What folds leads with ▾ (open) or ▸ (folded), in the accordions' style —
+the same glyphs, colour and width: the list's sections, a thread's folded
+comments and the ticket's body. The whole head, and a folded line, fold or
+unfold it on a click, with a background under the pointer.
+
 ## Keys
 
 Every shortcut is a **command**, bound to keys in a **context** that

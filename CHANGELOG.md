@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A folded comment, or a ticket's folded body, leads with ▸ (▾ once open),
+  as the lists' sections do; its head and its grey line both unfold it.
 - Notifications are wider and quote the start of what was written: the
   comment, or the new ticket's body, under its title. A click on one goes
   to its project too, even when its agent has no terminal here.
