@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The folded sessions list's marks come in the list's order.
 - Selecting text in the ticket panel no longer makes it blink.
 - A relation made from the other ticket reads the right way round ("blocks",
   not "depends on").

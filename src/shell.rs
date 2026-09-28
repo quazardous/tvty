@@ -3630,10 +3630,10 @@ impl Shell {
     /// working, yellow booting; ▶ on its own, ‖ held for a while, ■ held
     /// until let go, a dot otherwise.
     fn loop_marks(&self) -> Vec<Mark> {
-        self.board
-            .projects
-            .iter()
-            .flat_map(|p| &p.terminals)
+        // The list's order, as it shows unfolded (no filter).
+        self.live_found(&[])
+            .into_iter()
+            .flat_map(|(_, terminals)| terminals)
             .filter_map(|t| {
                 let agent = t.agent.as_ref()?;
                 let status = t.status.as_ref()?;
