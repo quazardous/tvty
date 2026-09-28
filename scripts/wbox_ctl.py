@@ -314,6 +314,9 @@ def main():
         client._kbd_mods(0)
         client._kbd_key(mod_code, wp.RELEASED)
         client.roundtrip()
+    elif command == "windows":
+        # The compositor's windows: app, title, and whether it is active.
+        result = comp.list_windows()
     elif command == "status":
         result = {"running": comp.is_running(), "headless": cfg["headless"]}
     else:
