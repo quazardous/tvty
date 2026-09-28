@@ -1260,6 +1260,18 @@ impl Shell {
         }
     }
 
+    /// Out of the field being typed in: to the page it sits on (options,
+    /// new ticket, full list, a ticket full screen), else to the terminal.
+    fn leave_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let page = self.options.is_some() || self.new_ticket_shown || self.full_list_shown || self.panel.read(cx).is_full();
+        if page {
+            window.focus(&self.focus.clone(), cx);
+        } else {
+            self.focus_terminal(window, cx);
+        }
+        cx.notify();
+    }
+
     fn terminal_of(&self, session: &str) -> Option<(&str, &Terminal)> {
         self.board.projects.iter().find_map(|p| {
             p.terminals
@@ -1782,14 +1794,8 @@ impl Shell {
         // In a field (a search, a reply, a form's box), Esc only leaves it:
         // the page it sits on stays, and the next Esc closes that. With no
         // page up, the keys go back to the terminal.
-        if key == "escape" && window.context_stack().iter().any(|c| c.contains("Input")) {
-            let page = self.options.is_some() || self.new_ticket_shown || self.full_list_shown || self.panel.read(cx).is_full();
-            if page {
-                window.focus(&self.focus.clone(), cx);
-            } else {
-                self.focus_terminal(window, cx);
-            }
-            cx.notify();
+        if key == "escape" && in_field(window) {
+            self.leave_field(window, cx);
             cx.stop_propagation();
             return;
         }
@@ -4156,11 +4162,21 @@ impl Render for Shell {
             div().absolute().inset_0().child(self.theme_menu_backdrop(cx)).child(self.theme_menu_view(cx))
         });
         div()
+            .id("window")
             .relative()
             .flex()
             .flex_col()
             .size_full()
             .bg(p().bg)
+            // A click leaves the field being typed in, wherever it lands —
+            // a button, a menu, a list: only a field takes the focus on a
+            // click, the rest never did. A click on a field (the same or
+            // another) gives it back at once.
+            .capture_any_mouse_down(cx.listener(|shell, _, window, cx| {
+                if in_field(window) {
+                    shell.leave_field(window, cx);
+                }
+            }))
             .child(
                 // A fifth taller than the kit's (34 px): easier to grab.
                 TitleBar::new()
@@ -4548,6 +4564,11 @@ fn options_ticket_list() -> impl IntoElement {
 
 /// What the "#…" names, as `ticket.get` takes it: a ticket's number
 /// (`42`, `#42`), or a comment's hashid (its `#C.` link, or `C.` and the hashid).
+/// Whether a text field (a search, the reply, a form's box) has the focus.
+fn in_field(window: &Window) -> bool {
+    window.context_stack().iter().any(|c| c.contains("Input"))
+}
+
 fn ticket_reference(typed: &str) -> Option<String> {
     let text = typed.trim().trim_start_matches('#');
     if !text.is_empty() && text.chars().all(|c| c.is_ascii_digit()) {

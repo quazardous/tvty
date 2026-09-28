@@ -516,7 +516,9 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | right click | a menu: Copy, Paste (Esc closes it) |
 
 Esc in a text field (a search, the reply, a form's box) only leaves the
-field; the next Esc closes the page it sits on.
+field; the next Esc closes the page it sits on. A click anywhere else — a
+button, a menu, a list — leaves the field too; picking a mention gives it
+back, to go on typing.
 
 Everything else goes to the terminal.
 

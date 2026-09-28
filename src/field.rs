@@ -57,16 +57,20 @@ pub fn insert_at_cursor<T: Editable>(input: &Entity<T>, text: &str, window: &mut
     input.update(cx, |state, cx| state.put(text.to_string(), window, cx));
 }
 
-/// Replaces `range` (byte offsets) with `text`; the cursor goes after it.
-pub fn replace_range<T: Editable>(input: &Entity<T>, range: Range<usize>, text: &str, window: &mut Window, cx: &mut App) {
+/// Replaces `range` (byte offsets) with `text`; the cursor goes after it,
+/// and the focus comes back to the box: a gesture made from outside it (a
+/// mention picked, a quote) goes on with typing.
+pub fn replace_range<T: Editable + Focusable>(input: &Entity<T>, range: Range<usize>, text: &str, window: &mut Window, cx: &mut App) {
     input.update(cx, |state, cx| {
         state.select(range, cx);
         state.put(text.to_string(), window, cx);
     });
+    let focus = input.read(cx).focus_handle(cx);
+    window.focus(&focus, cx);
 }
 
 /// Adds `text` at the end; the cursor goes after it.
-pub fn append<T: Editable>(input: &Entity<T>, text: &str, window: &mut Window, cx: &mut App) {
+pub fn append<T: Editable + Focusable>(input: &Entity<T>, text: &str, window: &mut Window, cx: &mut App) {
     let end = input.read(cx).text().len();
     replace_range(input, end..end, text, window, cx);
 }

@@ -32,7 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   comment, or the new ticket's body, under its title. A click on one goes
   to its project too, even when its agent has no terminal here.
 - Esc in a text field only leaves the field; the next Esc closes the page
-  it sits on (options, new ticket, full list, a ticket full screen).
+  it sits on (options, new ticket, full list, a ticket full screen). A
+  click anywhere else (a button, a menu) leaves the field too.
 - A ticket waiting for moderation shows its proposal but no Accept or
   Reject: it is decided once the ticket is approved.
 - Every button shows it is clickable the same way: a background under the
