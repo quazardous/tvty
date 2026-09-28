@@ -1248,7 +1248,11 @@ impl Shell {
                             shell.toggle_panel(cx);
                         }
                         let project = (!project.is_empty()).then_some(project);
-                        shell.panel.update(cx, |panel, cx| panel.open_in(project, ticket, cx));
+                        // Gone to on purpose: it is read full screen.
+                        shell.panel.update(cx, |panel, cx| {
+                            panel.open_in(project, ticket, cx);
+                            panel.set_full(true, cx);
+                        });
                         shell.focus_terminal(window, cx);
                         cx.notify();
                     }
@@ -4134,6 +4138,9 @@ impl Render for Shell {
                             .flex_none()
                             .w(px(96.))
                             .mr_2()
+                            // A light background: a box to type in, even at rest.
+                            .rounded_md()
+                            .bg(p().hover)
                             .tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g")
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
