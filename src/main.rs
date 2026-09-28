@@ -47,6 +47,11 @@ fn main() {
     // sessions of their own, which tmux refuses while $TMUX is set.
     // SAFETY: no other thread exists yet.
     unsafe { std::env::remove_var("TMUX") };
+    // `tvty --version`: said and done — for the updater, and for a human.
+    if std::env::args().nth(1).as_deref().is_some_and(|a| a == "--version" || a == "-V") {
+        println!("tvty {}", env!("CARGO_PKG_VERSION"));
+        return;
+    }
     // `tvty [SESSION]`: open that tmux session at start.
     let selected = std::env::args().nth(1);
     // One tvty per state directory: a later launch brings the running one
