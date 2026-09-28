@@ -37,6 +37,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every ticket reference is a link — in a thread's words and events, the
   relations, the step it waits on —, and another project's ticket takes
   the panel to its project.
+- The critical tickets, what holds the most back first, head the full
+  list; a project's red ! opens its critical ticket, which says how long it
+  went quiet.
 
 ### Changed
 

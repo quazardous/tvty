@@ -388,7 +388,8 @@ fn unread() -> Hsla {
 pub(crate) struct Alerts {
     decisions: usize,
     unread: usize,
-    pub(crate) critical: bool,
+    /// The critical ticket, when it is among them: its badge opens it.
+    pub(crate) critical: Option<u64>,
 }
 
 impl Alerts {
@@ -397,7 +398,9 @@ impl Alerts {
         for ticket in tickets {
             alerts.decisions += ticket.pending_decision() as usize;
             alerts.unread += ticket.unread as usize;
-            alerts.critical |= critical == Some(ticket.id);
+            if critical == Some(ticket.id) {
+                alerts.critical = critical;
+            }
         }
         alerts
     }
@@ -405,7 +408,7 @@ impl Alerts {
     /// One dot per kind of thing waiting, most pressing first.
     fn colors(&self) -> Vec<Hsla> {
         let mut colors = Vec::new();
-        if self.critical {
+        if self.critical.is_some() {
             colors.push(critical());
         }
         if self.decisions > 0 {
@@ -429,8 +432,16 @@ impl Alerts {
             .flex()
             .items_center()
             .gap_1()
-            .when(self.critical, |d| {
-                d.child(badge("critical", "!".into(), critical(), "the critical ticket is here: it holds the most open tickets".into()))
+            .when_some(self.critical, |d, ticket| {
+                d.child(
+                    badge("critical", "!".into(), critical(), format!("the critical ticket, #{ticket}, is here: it holds the most open tickets — a click opens it"))
+                        .cursor_pointer()
+                        // Its own gesture, not the row's it sits on.
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            crate::ui::ticketref::follow(cx, ticket.to_string(), None);
+                        }),
+                )
             })
             .when(self.decisions > 0, |d| {
                 let tip = format!("{} waiting for your decision", plural(self.decisions, "ticket", "tickets"));

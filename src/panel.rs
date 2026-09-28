@@ -1011,7 +1011,7 @@ impl TicketPanel {
             chips.push(div().child(format!("snoozed until {}", until.get(..16).unwrap_or(until).replace('T', " "))).into_any_element());
         }
         if let Some(critical) = &ticket.critical {
-            chips.push(icons::pill(Icon::Critical, format!("holds {}", critical.holds), p().danger).into_any_element());
+            chips.push(icons::pill(Icon::Critical, critical.said(), p().danger).into_any_element());
         }
         if let Some(usage) = &ticket.token_usage {
             let total = usage.tokens_in + usage.tokens_out + usage.cache_w;
@@ -2528,11 +2528,17 @@ pub(crate) fn holder_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
 
 /// The project's critical ticket: how many open tickets it holds.
 pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
-    let holds = ticket.critical.as_ref()?.holds;
+    let critical = ticket.critical.as_ref()?;
+    let holds = critical.holds;
+    let quiet = critical.quiet();
     Some(
-        icons::pill(Icon::Critical, holds.to_string(), p().danger)
+        icons::pill(Icon::Critical, quiet.map_or(holds.to_string(), |q| format!("{holds} · {q}")), p().danger)
             .id("critical")
-            .tip(format!("the project's critical ticket: it holds {holds} open ticket{}", if holds == 1 { "" } else { "s" })),
+            .tip(format!(
+                "the project's critical ticket: it holds {holds} open ticket{}{}",
+                if holds == 1 { "" } else { "s" },
+                quiet.map(|q| format!(", quiet for {q}")).unwrap_or_default()
+            )),
     )
 }
 

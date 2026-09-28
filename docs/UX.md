@@ -20,7 +20,8 @@ A new one gets its tooltip with it.
   "terminals".
 - The projects carry the counters: the critical ticket, the decisions
   waiting for you, the unread — so a collapsed project still says it needs
-  you.
+  you. The critical ticket's red **!** opens it (the project's first, when
+  another one is shown): the ticket that holds the most open tickets back.
 - A Claude session carries its agent's own, as claude-loop's line has them,
   in light badges with their letter: **b** its backlog (tickets for it to
   look at; `-` until its loop says), **e** its events not seen yet — on
@@ -198,7 +199,8 @@ the reader (`/api/inbox?view=turn`); tvty draws them (`src/rowstate.rs`):
 - Then who spoke last and aiball's **comment count** (a bubble and the
   number; a clock while comments wait for
   moderation), the agent holding it (🔥 when active), ⚠N on the critical
-  ticket, a high priority, the time. A thread full screen is headed by the
+  ticket (and how long it went quiet: "⚠2 · 9 d"; its header says "holds 2
+  · quiet 9 d"), a high priority, the time. A thread full screen is headed by the
   same count and who spoke last; its fields column (a third of the window,
   460 px at most, by default) is resized by dragging its border, and a
   double click on the border gives the default back. The full list's side
@@ -209,7 +211,10 @@ The legend is in the options page, under "Ticket list".
 
 ## The ticket list, full screen
 
-The panel is the compact list, beside the terminal: enough to steer. ⤢ in
+The panel is the compact list, beside the terminal: enough to steer. The
+full list is headed, when nothing filters it, by **Critical**: each
+project's critical ticket, what holds the most back first, then what went
+quiet the longest — the tickets to move first, whatever their project. ⤢ in
 its header, or ctrl+shift+l, goes full screen on what the panel shows: its
 list opens the list full screen, on the same project; its open ticket opens
 that ticket full screen. Coming back (Esc, ✕, ctrl+shift+l again) finds the

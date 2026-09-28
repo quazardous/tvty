@@ -365,6 +365,37 @@ pub struct Milestone {
 pub struct Critical {
     #[serde(default)]
     pub holds: u32,
+    /// How long nothing moved on it ("9 d"), when it went quiet.
+    #[serde(default)]
+    pub quiet: Option<String>,
+}
+
+impl Critical {
+    /// How long it went quiet, when it did (aiball says "" when it did not).
+    pub fn quiet(&self) -> Option<&str> {
+        self.quiet.as_deref().map(str::trim).filter(|q| !q.is_empty())
+    }
+
+    /// Its quiet span in minutes, to rank by ("45 m", "3 h", "9 d", "2 w").
+    pub fn quiet_minutes(&self) -> u64 {
+        let Some(quiet) = self.quiet() else { return 0 };
+        let (number, unit) = quiet.split_once(' ').unwrap_or((quiet, "m"));
+        let n: u64 = number.parse().unwrap_or(0);
+        n * match unit.chars().next() {
+            Some('h') => 60,
+            Some('d') => 60 * 24,
+            Some('w') => 60 * 24 * 7,
+            _ => 1,
+        }
+    }
+
+    /// What it holds back, and for how long: "holds 2 · quiet 9 d".
+    pub fn said(&self) -> String {
+        match self.quiet() {
+            Some(quiet) => format!("holds {} · quiet {quiet}", self.holds),
+            None => format!("holds {}", self.holds),
+        }
+    }
 }
 
 /// Who holds a ticket now, as aiball says it on rows and headers alike.
@@ -1263,5 +1294,22 @@ mod bar_tests {
         updated["alerts"]["restart_needed"] = json!(true);
         let updated: AgentBar = serde_json::from_value(updated).unwrap();
         assert!(updated.alerts.restart_needed);
+    }
+}
+
+#[cfg(test)]
+mod critical_tests {
+    use super::Critical;
+
+    #[test]
+    fn a_critical_ticket_says_how_long_it_went_quiet() {
+        let quiet = |q: Option<&str>| Critical { holds: 2, quiet: q.map(str::to_string) };
+        assert_eq!(quiet(Some("9 d")).said(), "holds 2 · quiet 9 d");
+        assert_eq!(quiet(None).said(), "holds 2");
+        assert_eq!(quiet(Some("9 d")).quiet_minutes(), 9 * 24 * 60);
+        assert_eq!(quiet(Some("3 h")).quiet_minutes(), 180);
+        assert!(quiet(Some("2 w")).quiet_minutes() > quiet(Some("9 d")).quiet_minutes());
+        assert_eq!(quiet(None).quiet_minutes(), 0);
+        assert_eq!(quiet(Some("")).said(), "holds 2");
     }
 }

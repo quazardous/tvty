@@ -422,6 +422,21 @@ impl FullList {
         rows
     }
 
+    /// The critical ticket of each of `projects`, what holds back the most
+    /// first, then what has been quiet the longest.
+    fn criticals(&self, projects: &[String]) -> Vec<&TicketRow> {
+        let mut found: Vec<&TicketRow> = projects
+            .iter()
+            .filter_map(|project| {
+                let id = *self.critical.get(project)?;
+                self.open.get(project)?.iter().find(|t| t.id == id)
+            })
+            .collect();
+        let rank = |t: &TicketRow| t.critical.as_ref().map_or((0, 0), |c| (c.holds, c.quiet_minutes()));
+        found.sort_by(|a, b| rank(b).cmp(&rank(a)));
+        found
+    }
+
     fn matches(&self, ticket: &TicketRow, query: &str) -> bool {
         (query.is_empty() || ticket.title.to_lowercase().contains(query))
             && self.tags.iter().all(|tag| ticket.tags.iter().any(|t| &t.name == tag))
@@ -442,7 +457,7 @@ impl FullList {
             self.projects.iter().filter_map(|p| self.open.get(p)).flatten(),
             None,
         );
-        all_alerts.critical = !self.critical.is_empty();
+        all_alerts.critical = self.criticals(&self.projects).first().map(|t| t.id);
         side = side.child(self.choice(
             "scope-all",
             "All projects".into(),
@@ -756,6 +771,17 @@ impl Render for FullList {
         // Rows chosen, the left column says what can be done to them.
         let side = if self.selected.is_empty() { self.side(&rows, &query, cx) } else { self.bulk_side(cx) };
         let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
+        // What holds the most back, project by project, heads the whole list
+        // (no band, no filter): the tickets to move first.
+        let criticals = self.criticals(&self.scoped());
+        if self.band.is_none() && !self.unread_only && query.is_empty() && !criticals.is_empty() {
+            let user = self.aiball.user.clone();
+            list = list.child(div().px_4().child(group("Critical — what holds the most back")));
+            for ticket in criticals {
+                list = list.child(self.row(ticket, rowstate::of(ticket, &user), cx));
+            }
+            list = list.child(div().px_4().child(group("All")));
+        }
         for (state, ticket) in &shown {
             list = list.child(self.row(ticket, *state, cx));
         }
@@ -776,7 +802,7 @@ impl Render for FullList {
             Some(project) => Alerts::of(self.open.get(project).into_iter().flatten(), self.critical.get(project).copied()),
             None => {
                 let mut all = Alerts::of(self.projects.iter().filter_map(|p| self.open.get(p)).flatten(), None);
-                all.critical = !self.critical.is_empty();
+                all.critical = self.criticals(&self.projects).first().map(|t| t.id);
                 all
             }
         };
