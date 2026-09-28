@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0-beta.1] - 2026-09-28
+
+The first public beta, for aiball users.
+
 ### Changed
 
 - A folded comment, or a ticket's folded body, leads with ▸ (▾ once open),
