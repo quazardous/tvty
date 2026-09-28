@@ -66,8 +66,12 @@ pub fn inline(thread: &mut Thread, aiball: &Aiball, cache: &Cache) {
             return known;
         }
         let read = read(reference, attachments.iter().find(|a| a.reference == reference), aiball);
-        if let Ok(mut cache) = cache.lock() {
-            cache.insert(reference.to_string(), read.clone());
+        // A failed read (the bus busy, the file not written yet) is not
+        // kept: the next read of the thread tries again.
+        if !matches!(read, Entry::Missing) {
+            if let Ok(mut cache) = cache.lock() {
+                cache.insert(reference.to_string(), read.clone());
+            }
         }
         read
     };
@@ -101,7 +105,7 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> En
         None => match aiball.upload_bytes(&api_ref(reference)) {
             Ok(bytes) => bytes,
             Err(error) => {
-                log::debug!("image {reference}: {error:#}");
+                log::info!("image {reference}: {error:#}");
                 return Entry::Missing;
             }
         },
@@ -113,6 +117,7 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> En
         .and_then(|a| a.content_type.clone())
         .unwrap_or_else(|| content_type_of(reference).to_string());
     let Some(format) = ImageFormat::from_mime_type(&content_type) else {
+        log::info!("image {reference}: {content_type} is not an image tvty draws");
         return Entry::Missing;
     };
     let Ok((width, height)) = image::ImageReader::new(std::io::Cursor::new(&bytes))
@@ -120,6 +125,7 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> En
         .map_err(anyhow::Error::from)
         .and_then(|r| r.into_dimensions().map_err(anyhow::Error::from))
     else {
+        log::info!("image {reference}: its size cannot be read");
         return Entry::Missing;
     };
     let data_url = format!("data:{content_type};base64,{}", base64::engine::general_purpose::STANDARD.encode(&bytes));
@@ -213,8 +219,9 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
     for line in text.lines() {
         match trailing_images(line) {
             Some((words, images)) => {
-                // The words stay text; the images go under them.
-                if !words.is_empty() {
+                // The words stay text; the images go under them. A quote's
+                // mark alone (`> ![…](…)`) is no words: no empty quote.
+                if !words.trim_start_matches('>').trim().is_empty() {
                     prose.push_str(&words);
                     prose.push('\n');
                 }
@@ -370,5 +377,26 @@ mod tests {
             rewrite(text, &link),
             "the [log](/uploads/log.txt) and ![a](data:image/png;base64,AAA) in a sentence"
         );
+    }
+
+    #[test]
+    fn an_image_in_a_quote_is_drawn_with_no_empty_quote() {
+        use super::{Entry, Picture, Segment, segments};
+        use std::sync::{Arc, Mutex};
+        let picture = Picture {
+            reference: "/uploads/a.png".into(),
+            alt: String::new(),
+            image: Arc::new(gpui_kit::Image::from_bytes(gpui_kit::ImageFormat::Png, vec![])),
+            width: 1,
+            height: 1,
+            path: None,
+            data_url: String::new(),
+        };
+        let cache = Arc::new(Mutex::new(std::collections::HashMap::from([("/uploads/a.png".to_string(), Entry::Loaded(picture))])));
+        let parts = segments("> ![shot](/uploads/a.png)", &cache);
+        assert!(matches!(&parts[..], [Segment::Pictures(p)] if p.len() == 1), "{}", parts.len());
+        // Words before it stay, quoted.
+        let parts = segments("> Look: ![shot](/uploads/a.png)", &cache);
+        assert!(matches!(&parts[..], [Segment::Text(t), Segment::Pictures(_)] if t.trim() == "> Look:"));
     }
 }

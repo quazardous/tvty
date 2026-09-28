@@ -132,7 +132,12 @@ pub fn read(thread: &Thread) -> Reading {
         last_event = None;
         let folded = pivot.is_some_and(|pivot| at < pivot);
         let shape = if folded {
-            Shape::Folded(comment.summary_until().unwrap_or_else(|| first_line(comment.body.as_deref())))
+            Shape::Folded(
+                comment
+                    .summary_until()
+                    .map(|s| s.lines().map(plain_line).filter(|l| !l.is_empty()).collect::<Vec<_>>().join(" "))
+                    .unwrap_or_else(|| first_line(comment.body.as_deref())),
+            )
         } else {
             Shape::Full
         };
@@ -174,19 +179,58 @@ pub fn questions(body: Option<&str>) -> Vec<Question> {
         .collect()
 }
 
-/// The first line of a body, cut short.
+/// The first line of a body, cut short, as plain text: what a folded
+/// body or comment shows.
 pub fn first_line(body: Option<&str>) -> String {
     let line = body
         .unwrap_or_default()
         .lines()
-        .map(|l| l.trim().trim_start_matches('#').trim())
+        .map(plain_line)
         .find(|l| !l.is_empty())
         .unwrap_or_default();
     if line.chars().count() > 140 {
         format!("{}…", line.chars().take(140).collect::<String>())
     } else {
-        line.to_string()
+        line
     }
+}
+
+/// A markdown line as plain words: a heading's or a quote's mark gone, an
+/// image said as "🖼 image" (never its markdown), a link as its text.
+pub fn plain_line(line: &str) -> String {
+    let line = line.trim().trim_start_matches(['#', '>']).trim();
+    let mut out = String::new();
+    let mut images = 0;
+    let mut rest = line;
+    while let Some(open) = rest.find('[') {
+        let image = open > 0 && rest[..open].ends_with('!');
+        let Some((text, after)) = rest[open + 1..].split_once("](") else { break };
+        let Some((_, tail)) = after.split_once(')') else { break };
+        if text.contains(['[', ']']) {
+            out.push_str(&rest[..=open]);
+            rest = &rest[open + 1..];
+            continue;
+        }
+        if image {
+            out.push_str(&rest[..open - 1]);
+            images += 1;
+            // Images side by side are said once, counted.
+            if !tail.trim_start().starts_with("![") {
+                if !out.is_empty() && !out.ends_with(' ') {
+                    out.push(' ');
+                }
+                out.push_str(&if images == 1 { "🖼 image".to_string() } else { format!("🖼 {images} images") });
+                images = 0;
+            }
+            rest = tail.trim_start_matches(|c: char| c == ' ' && tail.trim_start().starts_with("!["));
+        } else {
+            out.push_str(&rest[..open]);
+            out.push_str(text);
+            rest = tail;
+        }
+    }
+    out.push_str(rest);
+    out.trim().to_string()
 }
 
 fn verb(event: &Comment) -> String {
@@ -429,5 +473,16 @@ mod tests {
         let r = read(&t);
         assert_eq!(sentence(&t, &r, None, false, "david", 0), "demo-claude is on a step · waits on #9");
         assert_eq!(sentence(&t, &r, None, true, "david", 0), "demo-claude's step went quiet");
+    }
+
+    #[test]
+    fn a_folded_line_says_images_never_their_markdown() {
+        use super::{first_line, plain_line};
+        assert_eq!(first_line(Some("![pasted](/uploads/751f.png)")), "🖼 image");
+        assert_eq!(first_line(Some("\n\n![a](/uploads/a.png) ![b](/uploads/b.png)\n\nthen")), "🖼 2 images");
+        assert_eq!(plain_line("> Look: ![shot](/uploads/a.png)"), "Look: 🖼 image");
+        assert_eq!(plain_line("see the [log](/uploads/log.txt) here"), "see the log here");
+        assert_eq!(plain_line("## A title"), "A title");
+        assert_eq!(plain_line("an [odd] bracket"), "an [odd] bracket");
     }
 }
