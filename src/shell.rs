@@ -1190,9 +1190,14 @@ impl Shell {
     }
 
     fn focus_terminal(&self, window: &mut Window, cx: &mut Context<Self>) {
-        if let Some(terminal) = self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
-            let focus = terminal.read(cx).focus_handle().clone();
-            window.focus(&focus, cx);
+        match self.selected.as_ref().and_then(|s| self.terminals.get(s)) {
+            Some(terminal) => {
+                let focus = terminal.read(cx).focus_handle().clone();
+                window.focus(&focus, cx);
+            }
+            // No terminal shown: the window's own, so that a box let go
+            // (Esc, a click) does not keep the keys.
+            None => window.focus(&self.focus.clone(), cx),
         }
     }
 
@@ -4198,39 +4203,6 @@ impl Render for Shell {
         let body = div()
             .id("shell")
             .track_focus(&self.focus)
-            .key_context(crate::keymap::WINDOW)
-            .capture_key_down(cx.listener(Self::on_key))
-            .on_action(cx.listener(|shell, _: &keymap::OpenNotice, window, cx| match notify::newest(cx) {
-                Some(notice) => {
-                    notify::dismiss(cx, notice.id);
-                    shell.open_notice(notice, window, cx);
-                }
-                // No notification: the key goes on (a terminal's program, a field).
-                None => cx.propagate(),
-            }))
-            .on_action(cx.listener(|shell, _: &keymap::SliderNext, _, cx| shell.step_slider(1, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::SliderBack, _, cx| shell.step_slider(-1, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::TabNext, window, cx| shell.step_tab(1, window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::TabBack, window, cx| shell.step_tab(-1, window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::Gallery, window, cx| shell.toggle_gallery(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
-            .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FilterSessions, window, cx| shell.focus_filter(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::GotoTicket, window, cx| {
-                let focus = shell.goto.read(cx).focus_handle(cx);
-                window.focus(&focus, cx);
-            }))
-            .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
-            .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
-            .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
-            .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.reset_pref(TERMINAL_FONT, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::NewTicket, window, cx| shell.open_new_ticket(None, None, window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::FullList, window, cx| shell.go_full(window, cx)))
-            .on_action(cx.listener(|shell, _: &keymap::NextTheme, _, cx| shell.next_theme(cx)))
-            .on_modifiers_changed(cx.listener(Self::on_modifiers))
             .on_drag_move(cx.listener(Self::on_drag_move))
             // A section's title dragged, in the sessions list or the panel.
             .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
@@ -4294,6 +4266,41 @@ impl Render for Shell {
         });
         div()
             .id("window")
+            // The window's keys and commands, for the whole of it: the title
+            // bar's boxes (the goto) hear Esc and the shortcuts too.
+            .key_context(crate::keymap::WINDOW)
+            .capture_key_down(cx.listener(Self::on_key))
+            .on_action(cx.listener(|shell, _: &keymap::OpenNotice, window, cx| match notify::newest(cx) {
+                Some(notice) => {
+                    notify::dismiss(cx, notice.id);
+                    shell.open_notice(notice, window, cx);
+                }
+                // No notification: the key goes on (a terminal's program, a field).
+                None => cx.propagate(),
+            }))
+            .on_action(cx.listener(|shell, _: &keymap::SliderNext, _, cx| shell.step_slider(1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::SliderBack, _, cx| shell.step_slider(-1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TabNext, window, cx| shell.step_tab(1, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TabBack, window, cx| shell.step_tab(-1, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::Gallery, window, cx| shell.toggle_gallery(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::TogglePanel, _, cx| shell.toggle_panel(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::ToggleSidebar, _, cx| shell.toggle_sidebar(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FilterSessions, window, cx| shell.focus_filter(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::GotoTicket, window, cx| {
+                let focus = shell.goto.read(cx).focus_handle(cx);
+                window.focus(&focus, cx);
+            }))
+            .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
+            .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
+            .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FontReset, _, cx| shell.reset_pref(TERMINAL_FONT, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::NewTicket, window, cx| shell.open_new_ticket(None, None, window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::FullList, window, cx| shell.go_full(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::NextTheme, _, cx| shell.next_theme(cx)))
+            .on_modifiers_changed(cx.listener(Self::on_modifiers))
             .relative()
             .flex()
             .flex_col()

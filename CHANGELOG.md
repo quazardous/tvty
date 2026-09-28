@@ -40,6 +40,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Esc in the title bar's "#…" empties it and lets it go, and the window's
+  shortcuts work from it too.
 - A notification keeps its quote when another word on the same ticket replaces
   it, and a new ticket's notification quotes its body too.
 - With see-through terminals, the side strips stay opaque under the
