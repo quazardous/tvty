@@ -299,6 +299,18 @@ pub struct Layout {
     /// drags its border.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fields_width: Option<f32>,
+    /// The window as it was left, opened so again; none: the default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window: Option<WindowState>,
+}
+
+/// A window's state: windowed, maximized or full screen, and its size
+/// when windowed (the size it goes back to).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct WindowState {
+    pub state: String,
+    pub width: f32,
+    pub height: f32,
 }
 
 impl Default for Layout {
@@ -311,6 +323,7 @@ impl Default for Layout {
             sessions_folded: vec!["idle".into(), "shut".into()],
             section_heights: HashMap::new(),
             fields_width: None,
+            window: None,
         }
     }
 }
@@ -330,6 +343,7 @@ impl Stored for Layout {
             sessions_folded: old.get("sessions_folded").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or(default.sessions_folded),
             section_heights: old.get("section_heights").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
             fields_width: None,
+            window: None,
         })
     }
 }

@@ -124,7 +124,7 @@ their usual defaults):
 | `~/.config/tvty/settings.toml` | your preferences: theme, sizes, notifications, scroll speed… — Options writes it, you may edit it; read again once saved |
 | `~/.config/tvty/keymap.toml` | your shortcuts, over the defaults — or edit them in Options > Keyboard shortcuts |
 | `~/.config/tvty/themes/` | colour themes of your own |
-| `~/.local/state/tvty/layout.json` | the window's layout: panel and list widths, folded sections |
+| `~/.local/state/tvty/layout.json` | the window's layout: its state (windowed and its size, maximized, full screen), panel and list widths, folded sections |
 | `~/.local/state/tvty/workspace.json` | the terminals left open, opened again at start |
 | `~/.local/state/tvty/tvty.log` | the log (the previous run's in `tvty.log.1`) |
 | `~/.local/share/tvty/fonts/` | fonts of your own (`make emoji-font` fetches a colour emoji font) |

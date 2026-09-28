@@ -40,6 +40,7 @@ impl Shell {
     /// The window is asked to close: tvty quits at once, or asks first.
     /// Answers whether it may close now.
     pub(super) fn close_asked(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
+        self.remember_window(window);
         if self.quitting {
             return true;
         }
@@ -71,8 +72,9 @@ impl Shell {
     /// terminals' tmux sessions run on, and the new tvty opens the same
     /// terminals again. Its binary is the one on disk now (a new build
     /// included).
-    pub(super) fn restart_tvty(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn restart_tvty(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.help_menu = false;
+        self.remember_window(window);
         let exe = match own_binary() {
             Ok(exe) => exe,
             Err(error) => {
@@ -94,6 +96,21 @@ impl Shell {
                 crate::activity::publish(cx, crate::activity::Activity::failed(None, "restart tvty", format!("{}: {error}", exe.display())));
             }
         }
+    }
+
+    /// The window's state, kept with the layout: the next start opens it
+    /// so (maximized, full screen, or windowed at its size).
+    fn remember_window(&mut self, window: &Window) {
+        let (state, bounds) = match window.window_bounds() {
+            WindowBounds::Windowed(b) => ("windowed", b),
+            WindowBounds::Maximized(b) => ("maximized", b),
+            WindowBounds::Fullscreen(b) => ("fullscreen", b),
+        };
+        self.settings.layout.window = Some(crate::settings::WindowState {
+            state: state.into(),
+            width: f32::from(bounds.size.width),
+            height: f32::from(bounds.size.height),
+        });
     }
 
     fn quit_now(&mut self, cx: &mut Context<Self>) {

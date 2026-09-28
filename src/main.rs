@@ -93,6 +93,16 @@ fn main() {
         keymap::init(cx);
         terminal::set_font_size(prefs.appearance.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
         terminal::set_opacity(prefs.appearance.terminal_opacity);
+        // The window as it was left: maximized, full screen, or windowed at
+        // its size (a compositor places it).
+        let bounds = config::get::<settings::Layout>(cx).window.clone().map(|w| {
+            let at = Bounds::centered(None, size(px(w.width.max(480.)), px(w.height.max(320.))), cx);
+            match w.state.as_str() {
+                "maximized" => WindowBounds::Maximized(at),
+                "fullscreen" => WindowBounds::Fullscreen(at),
+                _ => WindowBounds::Windowed(at),
+            }
+        });
         cx.spawn(async move |cx| {
             cx.open_window(
                 WindowOptions {
@@ -106,6 +116,7 @@ fn main() {
                     // What ties the window to its launcher (tvty.desktop), and
                     // so to its icon in the dock.
                     app_id: Some("tvty".into()),
+                    window_bounds: bounds,
                     ..gpui_kit::component::TitleBar::window_options()
                 },
                 |window, cx| {

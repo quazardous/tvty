@@ -41,6 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- tvty opens as it was left — windowed at its size, maximized or full screen —
+  after a quit as after Restart.
 - Esc in the title bar's "#…" empties it and lets it go, and the window's
   shortcuts work from it too.
 - A notification keeps its quote when another word on the same ticket replaces

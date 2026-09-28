@@ -102,7 +102,7 @@ impl Shell {
         match entry {
             Entry::About => self.open_options_page(Section::About, None, window, cx),
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
-            Entry::Restart => self.restart_tvty(cx),
+            Entry::Restart => self.restart_tvty(window, cx),
             Entry::NewProject => self.open_new_project(window, cx),
             Entry::FullScreen => window.toggle_fullscreen(),
             _ => {}
