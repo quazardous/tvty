@@ -584,7 +584,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | F11 | the window full screen, or back |
-| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (the engine's page) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
+| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (its web UI, where aiball says it serves it: its public address, else the local one) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |

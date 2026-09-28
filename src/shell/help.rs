@@ -10,8 +10,6 @@ use crate::theme::p;
 
 /// The repository, as Cargo.toml declares it.
 const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
-/// aiball's, the engine tvty runs on.
-const AIBALL: &str = "https://github.com/quazardous/aiball";
 
 /// What the menu offers.
 #[derive(Clone, Copy)]
@@ -64,7 +62,7 @@ impl Entry {
             Entry::FullScreen => crate::keymap::current(cx).keys_of("window.fullscreen").first().map(|k| k.pretty()).unwrap_or_default(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
-            Entry::Aiball => "the engine ↗".into(),
+            Entry::Aiball => "the board ↗".into(),
             Entry::Shortcuts | Entry::NewProject => String::new(),
             Entry::Restart => "sessions kept".into(),
         }
@@ -77,7 +75,6 @@ impl Entry {
             Entry::WhatsNew => Some(format!("{REPOSITORY}/blob/main/CHANGELOG.md")),
             Entry::Repository => Some(REPOSITORY.to_string()),
             Entry::Issue => Some(format!("{REPOSITORY}/issues/new")),
-            Entry::Aiball => Some(AIBALL.to_string()),
             _ => None,
         }
     }
@@ -107,6 +104,21 @@ impl Shell {
             return;
         }
         match entry {
+            // aiball's web UI, where aiball says it serves it.
+            Entry::Aiball => {
+                let aiball = self.aiball.clone();
+                cx.spawn(async move |_, cx| {
+                    let url = cx.background_executor().spawn(async move { aiball.web_ui() }).await;
+                    let _ = cx.update(|cx| match url {
+                        Ok(url) => {
+                            log::info!("help: opens {url}");
+                            cx.open_url(&url);
+                        }
+                        Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, "open aiball's board", format!("{error:#}"))),
+                    });
+                })
+                .detach();
+            }
             Entry::About => self.open_options_page(Section::About, None, window, cx),
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(window, cx),
