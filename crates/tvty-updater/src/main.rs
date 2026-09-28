@@ -372,7 +372,8 @@ fn link(id: &'static str, label: &'static str, url: &str, theme: &gpui_kit::comp
 }
 
 fn main() {
-    gpui_kit::application().run(|cx| {
+    // The kit's icons: the title bar's window buttons are drawn with them.
+    gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(|cx| {
         gpui_kit::init(cx);
         // Dark, as Terminal Velocity opens by default.
         gpui_kit::component::Theme::change(gpui_kit::component::ThemeMode::Dark, None, cx);
