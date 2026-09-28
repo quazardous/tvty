@@ -3499,8 +3499,10 @@ impl Shell {
             .h_full()
             .bg(p().bg)
             .cursor(CursorStyle::ResizeColumn)
-            .when(resizing, |d| d.bg(p().active))
-            .hover(|d| d.bg(p().active))
+            // Lit the theme's way, but opaque: the theme's colour may be
+            // see-through, and see-through terminals leave nothing under.
+            .when(resizing, |d| d.bg(p().bg.blend(p().active)))
+            .hover(|d| d.bg(p().bg.blend(p().active)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |shell, _, _, cx| {
@@ -3553,7 +3555,7 @@ impl Shell {
             })
             .border_color(p().border)
             .cursor_pointer()
-            .hover(|d| d.bg(p().active))
+            .hover(|d| d.bg(p().surface.blend(p().active)))
             .children(
                 dots.into_iter()
                     .map(|color| div().flex_none().size(px(6.)).rounded_full().bg(color)),
@@ -4024,11 +4026,13 @@ impl Render for Shell {
                 .children(bar)
                 .into_any_element(),
             None if ended.is_some() => ended.unwrap_or_else(|| div().into_any_element()),
+            // Where a terminal would be: as see-through as one.
             None => div()
                 .size_full()
                 .flex()
                 .items_center()
                 .justify_center()
+                .bg(p().bg.opacity(crate::terminal::opacity()))
                 .text_color(p().muted)
                 .child("Pick a terminal on the left · ctrl+shift+space shows them all")
                 .into_any_element(),

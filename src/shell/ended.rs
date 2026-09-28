@@ -159,6 +159,8 @@ impl Shell {
             .items_center()
             .justify_center()
             .gap_4()
+            // Where the terminal was: as see-through as one.
+            .bg(p().bg.opacity(crate::terminal::opacity()))
             .child(
                 div()
                     .flex()
