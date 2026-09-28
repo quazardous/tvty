@@ -9,6 +9,13 @@
 # - the throwaway aiball (AIBALL_SOCK): never the user's board.
 # TVTY_ROOT is the repository; set it before sourcing, or it is found here.
 : "${TVTY_ROOT:=$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")/.." && pwd)}"
+# Nothing of the caller's own loop: a shell that runs inside an agent's loop
+# carries its variables (its state directory, its session host's control
+# socket, its agent), and a loop a test starts would take them for its own —
+# typing into that agent's Claude, or sweeping its processes.
+for var in $(env | sed -n 's/^\(CL_[A-Z_]*\|AIBALL_[A-Z_]*\|CLAUDE_LOOP_[A-Z_]*\|TMUX_PANE\)=.*/\1/p'); do
+    unset "$var"
+done
 export TMUX_TMPDIR="$TVTY_ROOT/dev/tmux"
 export XDG_CONFIG_HOME="$TVTY_ROOT/dev/tvty-wbox/config"
 export XDG_STATE_HOME="$TVTY_ROOT/dev/tvty-wbox/state"
