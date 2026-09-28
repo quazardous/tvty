@@ -15,6 +15,7 @@ const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 #[derive(Clone, Copy)]
 enum Entry {
     About,
+    NewProject,
     Documentation,
     Shortcuts,
     WhatsNew,
@@ -24,8 +25,9 @@ enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 7] = [
+    const ALL: [Entry; 8] = [
         Entry::About,
+        Entry::NewProject,
         Entry::Documentation,
         Entry::Shortcuts,
         Entry::WhatsNew,
@@ -37,6 +39,7 @@ impl Entry {
     fn label(self) -> &'static str {
         match self {
             Entry::About => "About tvty",
+            Entry::NewProject => "New project…",
             Entry::Documentation => "Documentation",
             Entry::Shortcuts => "Keyboard shortcuts",
             Entry::WhatsNew => "What's new",
@@ -51,7 +54,7 @@ impl Entry {
         match self {
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
-            Entry::Shortcuts => String::new(),
+            Entry::Shortcuts | Entry::NewProject => String::new(),
             Entry::Restart => "sessions kept".into(),
         }
     }
@@ -95,6 +98,7 @@ impl Shell {
             Entry::About => self.open_options_page(Section::About, None, window, cx),
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(cx),
+            Entry::NewProject => self.open_new_project(window, cx),
             _ => {}
         }
     }

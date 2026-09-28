@@ -33,6 +33,26 @@ A new one gets its tooltip with it.
   and a line under it: who drives (▶ the loop on its own, ‖ held, ✎ a human
   typing), the state, for how long. The same line is on its cards.
 
+## A new project
+
+**+ project** in the sessions list's header (also the ☰ menu, and "Set up
+your first project" while aiball has none) opens a wizard over the window,
+in three steps (`src/shell/newproject.rs`):
+
+1. **The folder**: typed, or chosen with the system's picker (Browse…). It
+   says what it is: missing, a file, a git repository, or already an aiball
+   project (its `.aiball.yaml`) — then "Open it" shows that project.
+2. **Who works in it**: the project's and the agent's names, proposed from
+   the folder (`app`, `app-claude`), a crew agent or the lead, a private
+   project, no claiming — each with what it means. A name the board has
+   already is refused. The command is shown as it will run.
+3. **Set it up**: tvty runs `claude-loop init` there — aiball's own
+   command, not a copy of it — and shows what it said, or its error. Then
+   "Start its first session" starts the agent on aiball's host, and the
+   project shows in the list, its tickets beside.
+
+Nothing is written before "Set it up"; Esc leaves a box, then closes it.
+
 ## Opening a session
 
 The sessions list ("Sessions", ‹ folds it) has three foldable sections,

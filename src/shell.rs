@@ -31,6 +31,7 @@ mod agentbar;
 mod ended;
 mod frame;
 mod help;
+mod newproject;
 mod loopstabs;
 mod quit;
 mod stacks;
@@ -251,6 +252,8 @@ pub struct Shell {
     theme_menu: bool,
     /// The title bar's ? menu is open.
     help_menu: bool,
+    /// The "New project" wizard, while open.
+    new_project: Option<newproject::NewProject>,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -693,6 +696,7 @@ impl Shell {
             switches: 0,
             theme_menu: false,
             help_menu: false,
+            new_project: None,
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -1274,7 +1278,11 @@ impl Shell {
     /// Out of the field being typed in: to the page it sits on (options,
     /// new ticket, full list, a ticket full screen), else to the terminal.
     fn leave_field(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let page = self.options.is_some() || self.new_ticket_shown || self.full_list_shown || self.panel.read(cx).is_full();
+        let page = self.options.is_some()
+            || self.new_ticket_shown
+            || self.full_list_shown
+            || self.new_project.is_some()
+            || self.panel.read(cx).is_full();
         if page {
             window.focus(&self.focus.clone(), cx);
         } else {
@@ -1845,6 +1853,8 @@ impl Shell {
             if let Some(list) = self.full_list.clone() {
                 list.update(cx, |list, cx| list.select_all(cx));
             }
+        } else if key == "escape" && self.new_project.is_some() {
+            self.close_new_project(window, cx);
         } else if key == "escape" && self.help_menu {
             self.help_menu = false;
             cx.notify();
@@ -3654,9 +3664,16 @@ impl Shell {
                         shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx)
                     }))
             })
+            // A folder made an aiball project, its first session started.
+            .child(
+                buttons::link("new-project", "+ project")
+                    .text_xs()
+                    .tip("a folder made an aiball project (claude-loop init), then its first session")
+                    .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
+            )
             // A shell the daemon holds: it outlives tvty.
             .child(
-                buttons::link("new-terminal", "+ terminal")
+                buttons::link("new-terminal", ">_")
                     .ml_1()
                     .text_xs()
                     .tip("a terminal of its own, which outlives tvty")
@@ -3701,6 +3718,19 @@ impl Shell {
         let target = self.filter_target(&words);
         if found.is_empty() {
             list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No session" } else { "No session found" }));
+            // No project on the board yet: where to begin.
+            if words.is_empty() && !self.board.projects.iter().any(|p| p.on_board) {
+                list = list.child(
+                    div().px_3().pt_2().child(
+                        buttons::chip("first-project", "Set up your first project")
+                            .px_3()
+                            .py_1()
+                            .border_color(p().accent)
+                            .text_color(p().accent)
+                            .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
+                    ),
+                );
+            }
         }
         for (project, shown) in found {
             let tickets = self.board.tickets.get(&project.name);
@@ -4233,7 +4263,10 @@ impl Render for Shell {
                 d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone().cached(StyleRefinement::default().size_full())))
             })
             .children(new_ticket)
-            .children(options);
+            .children(options)
+            // Inside the shell, which hears the keys (Esc) and keeps the
+            // focus when a click leaves one of its boxes.
+            .children(self.new_project_view(cx));
 
         // The window draws its own title bar: GNOME leaves decorations to the
         // application (as with VS Code or Zed). It moves the window and
