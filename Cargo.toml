@@ -16,6 +16,8 @@ members = ["crates/*"]
 [dependencies]
 tvty-config = { path = "crates/tvty-config" }
 tvty-keys = { path = "crates/tvty-keys" }
+# The updater's engine: the versions, the latest release (not its window).
+tvty-updater = { path = "crates/tvty-updater" }
 alacritty_terminal = "0.26"
 anyhow = "1.0.104"
 base64 = "0.22"

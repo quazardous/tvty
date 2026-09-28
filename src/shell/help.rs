@@ -25,11 +25,12 @@ enum Entry {
     Repository,
     Issue,
     Aiball,
+    Updates,
     Restart,
 }
 
 impl Entry {
-    const ALL: [Entry; 10] = [
+    const ALL: [Entry; 11] = [
         Entry::About,
         Entry::NewProject,
         Entry::FullScreen,
@@ -39,6 +40,7 @@ impl Entry {
         Entry::Repository,
         Entry::Issue,
         Entry::Aiball,
+        Entry::Updates,
         Entry::Restart,
     ];
 
@@ -53,6 +55,7 @@ impl Entry {
             Entry::Repository => "GitHub",
             Entry::Issue => "Report an issue",
             Entry::Aiball => "aiball",
+            Entry::Updates => "Updates…",
             Entry::Restart => "Restart tvty",
         }
     }
@@ -65,6 +68,8 @@ impl Entry {
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
             Entry::Aiball => "the board ↗".into(),
+            // A newer release, when one is known.
+            Entry::Updates => crate::updates::newer(cx).map(|v| format!("{v} is out ↑")).unwrap_or_default(),
             Entry::Shortcuts | Entry::NewProject => String::new(),
             Entry::Restart => "sessions kept".into(),
         }
@@ -126,6 +131,14 @@ impl Shell {
             Entry::Restart => self.restart_tvty(window, cx),
             Entry::NewProject => self.open_new_project(window, cx),
             Entry::FullScreen => window.toggle_fullscreen(),
+            Entry::Updates => {
+                if !crate::updates::open_updater() {
+                    crate::activity::publish(
+                        cx,
+                        crate::activity::Activity::failed(None, "open the updater", "tvty-updater is not installed: see the README's Install"),
+                    );
+                }
+            }
             _ => {}
         }
     }

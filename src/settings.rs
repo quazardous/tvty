@@ -27,6 +27,21 @@ pub struct Preferences {
     pub scroll: Scroll,
     pub tickets: Tickets,
     pub sessions: Sessions,
+    pub updates: Updates,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Updates {
+    /// Asks GitHub, at start and once a day, whether a newer Terminal
+    /// Velocity is out.
+    pub check: bool,
+}
+
+impl Default for Updates {
+    fn default() -> Self {
+        Self { check: true }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -210,6 +225,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: false, on: "blurred", off: "sharp" },
     },
     Setting {
+        key: "updates.check",
+        page: "Layout",
+        group: "Updates",
+        label: "Check for updates",
+        about: "At start and once a day, asks GitHub whether a newer Terminal Velocity is out, and says so once (nothing else is sent). The updater (the menu's Updates…) installs it.",
+        kind: Kind::Toggle { default: true, on: "check", off: "never" },
+    },
+    Setting {
         key: "sessions.recent_first",
         page: "Layout",
         group: "Sessions",
@@ -273,6 +296,7 @@ impl Stored for Preferences {
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
             sessions: Sessions::default(),
+            updates: Updates::default(),
         })
     }
 }

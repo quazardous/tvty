@@ -810,6 +810,12 @@ impl Aiball {
         Ok((id, project))
     }
 
+    /// The version of the daemon tvty speaks to.
+    pub fn daemon_version(&self) -> anyhow::Result<String> {
+        let info: Value = self.rpc("daemon.info", json!({}))?;
+        info.get("version").and_then(Value::as_str).map(str::to_string).context("daemon.info: no version")
+    }
+
     /// Where aiball's web UI is served, as its GNOME extension opens it:
     /// the local address (tvty speaks to a daemon of this machine), else
     /// its public one.

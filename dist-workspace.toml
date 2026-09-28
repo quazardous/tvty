@@ -24,6 +24,9 @@ install-updater = false
 include = ["packaging/linux", "assets/tvty.svg"]
 # The pull requests build the release too, to catch a broken one early
 pr-run-mode = "plan"
+# A beta is the release to install: marked latest, so that
+# releases/latest/download/… (the README's one line) finds it.
+force-latest = true
 
 # GPUI's system libraries, to build on the CI's Ubuntu
 [dist.dependencies.apt]

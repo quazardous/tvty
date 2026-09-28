@@ -37,6 +37,7 @@ mod thread;
 mod theme;
 mod tip;
 mod ui;
+mod updates;
 mod wheel;
 mod wire;
 
@@ -92,6 +93,8 @@ fn main() {
             prefs.notifications.seconds.unwrap_or(notify::SECONDS_DEFAULT),
         );
         activity::init(cx, prefs.notifications.own);
+        // Whether a newer tvty is out, aiball recent enough: said once.
+        updates::init(|cx| config::get::<settings::Preferences>(cx).updates.check, cx);
         wheel::set_speed(prefs.scroll.speed);
         theme::init(prefs.appearance.theme.as_deref(), prefs.appearance.terminal_theme.as_deref(), cx);
         theme::set_window_font(prefs.appearance.window_font_size, cx);
