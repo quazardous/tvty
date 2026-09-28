@@ -28,7 +28,10 @@ impl Status {
 
     /// One small line: the driver's glyph, the state, for how long — and
     /// under the pointer, what they mean.
-    pub fn line(&self) -> impl IntoElement + use<> {
+    /// `armed`: the loop's AFK mode, as its bar says it — held until let go
+    /// (`wait_inf`) shows ■, as the folded list and the agent's bar do.
+    pub fn line(&self, armed: Option<&str>) -> impl IntoElement + use<> {
+        let for_good = self.driver == "wait" && armed == Some("wait_inf");
         if !self.online {
             return div()
                 .id("status")
@@ -39,7 +42,8 @@ impl Status {
         }
         let who = match self.driver.as_str() {
             "stop" => "a human is typing in it: the loop waits",
-            "wait" => "held: the loop does not wake it",
+            "wait" if for_good => "held until let go: the loop does not wake it",
+            "wait" => "held a while: the loop does not wake it",
             "boot" => "starting",
             _ => "the loop drives it on its own",
         };
@@ -50,6 +54,7 @@ impl Status {
         };
         let (glyph, glyph_colour) = match self.driver.as_str() {
             "stop" => ("✎", p().danger),
+            "wait" if for_good => ("■", p().danger),
             "wait" => ("‖", p().warning),
             "boot" => ("…", p().warning),
             _ => ("▶", p().success),

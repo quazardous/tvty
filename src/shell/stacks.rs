@@ -196,7 +196,7 @@ impl Shell {
                     .when(more > 0, |d| d.child(div().text_xs().text_color(p().muted).child(format!("+{more}"))))
                     .child(alerts.badges(format!("stack-{}", group.name))),
             )
-            .when_some(top.status.as_ref(), |d, status| d.child(div().px_2().pb_1().bg(p().surface).child(status.line())))
+            .when_some(top.status.as_ref(), |d, status| d.child(div().px_2().pb_1().bg(p().surface).child(status.line(self.armed_of(top).as_deref()))))
             .child(
                 div()
                     .h(px(height))

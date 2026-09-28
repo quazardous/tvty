@@ -3739,6 +3739,12 @@ impl Shell {
     /// Each running Claude, as the folded list shows it: grey idle, blue
     /// working, yellow booting; ▶ on its own, ‖ held for a while, ■ held
     /// until let go, a dot otherwise.
+    /// A terminal's loop's AFK mode, as its bar (when live) says it.
+    pub(crate) fn armed_of(&self, terminal: &Terminal) -> Option<String> {
+        let agent = terminal.agent.as_ref()?;
+        self.board.bars.get(agent).filter(|b| !b.stale).map(|b| b.bar.afk.mode.clone())
+    }
+
     fn loop_marks(&self) -> Vec<Mark> {
         // The list's order, as it shows unfolded (no filter).
         self.live_found(&[])
@@ -4076,7 +4082,7 @@ impl Shell {
                                         })
                                         .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
                                 )
-                                .when_some(terminal.status.as_ref(), |d, status| d.child(status.line())),
+                                .when_some(terminal.status.as_ref(), |d, status| d.child(status.line(self.armed_of(terminal).as_deref()))),
                         )
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.select(session.clone(), window, cx)
@@ -4138,7 +4144,7 @@ impl Shell {
                     .children(counts.map(|c| c.badges(format!("card-{}", terminal.session)))),
             )
             .when_some(terminal.status.as_ref(), |d, status| {
-                d.child(div().px_2().pb_1().bg(p().surface).child(status.line()))
+                d.child(div().px_2().pb_1().bg(p().surface).child(status.line(self.armed_of(terminal).as_deref())))
             })
             .child(
                 div()
