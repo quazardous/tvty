@@ -850,6 +850,8 @@ impl Shell {
         self.keep_sidebar_order(&board);
         if self.board != board {
             self.board = board;
+            // The board's tickets title their references at once.
+            crate::ui::ticketref::learn(cx, self.board.tickets.values().flatten());
             self.update_needs(cx);
             cx.notify();
         }

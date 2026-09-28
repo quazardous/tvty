@@ -810,6 +810,15 @@ impl Aiball {
         Ok((id, project))
     }
 
+    /// A ticket's title, project and whether it is closed: its header alone
+    /// (`ticket.get` without the thread), for a reference's tooltip.
+    pub fn ticket_brief(&self, ticket: u64) -> anyhow::Result<(String, String, bool)> {
+        let answer: Value = self.rpc("ticket.get", json!({ "id": ticket }))?;
+        let t = answer.get("ticket").unwrap_or(&answer);
+        let text = |key: &str| t.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+        Ok((text("title"), text("project"), t.get("closed").and_then(Value::as_bool).unwrap_or(false)))
+    }
+
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {

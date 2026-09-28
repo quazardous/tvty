@@ -35,8 +35,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   first session.
 - F11 puts the window full screen, and back; the menu has it too.
 - Every ticket reference is a link — in a thread's words and events, the
-  relations, the step it waits on —, and another project's ticket takes
-  the panel to its project.
+  relations, the step it waits on —, another project's ticket takes the
+  panel to its project, and under the pointer it says the ticket's title.
 - The critical tickets, what holds the most back first, head the full
   list; a project's red ! opens its critical ticket, which says how long it
   went quiet.

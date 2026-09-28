@@ -7,10 +7,102 @@
 //! - [`inline`]: a line of plain text whose references are links.
 //! - [`linkify`] and [`on_link`]: a markdown text whose references are
 //!   links, and the handler its view calls on a click.
+//!
+//! Under the pointer, a reference says its ticket: "#12 — its title", its
+//! project and whether it is closed — from the board tvty holds when the
+//! ticket is on it ([`learn`]), else asked of aiball at the first hover and
+//! kept a while.
 
+use std::collections::{HashMap, HashSet};
+use std::time::{Duration, Instant};
+
+use gpui_kit::component::tooltip::Tooltip;
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::aiball::TicketRow;
 use crate::ui::buttons;
+
+/// How long a title asked of aiball is trusted.
+const KEPT: Duration = Duration::from_secs(600);
+
+/// What tvty knows of a ticket, for its references' tooltips.
+#[derive(Clone, Debug, PartialEq)]
+struct Known {
+    title: String,
+    project: String,
+    closed: bool,
+    at: Instant,
+}
+
+/// The titles known, and the ones being asked.
+#[derive(Default)]
+struct Titles {
+    known: HashMap<u64, Known>,
+    asked: HashSet<u64>,
+}
+
+impl Global for Titles {}
+
+impl Titles {
+    /// A ticket's, when known and not too old.
+    fn fresh(&self, ticket: u64, now: Instant) -> Option<&Known> {
+        self.known.get(&ticket).filter(|k| now.duration_since(k.at) < KEPT)
+    }
+}
+
+/// The board's tickets, as tvty holds them: their titles, known at once and
+/// fresh — a title edited there shows at the next hover.
+pub fn learn<'a>(cx: &mut App, rows: impl Iterator<Item = &'a TicketRow>) {
+    let now = Instant::now();
+    let titles = cx.default_global::<Titles>();
+    for row in rows {
+        titles.known.insert(row.id, Known { title: row.title.clone(), project: row.project.clone(), closed: row.closed, at: now });
+    }
+}
+
+/// Asks aiball for a ticket not on the board, once at a time; the windows
+/// draw again when it answers.
+fn ask(ticket: u64, cx: &mut App) {
+    if !cx.default_global::<Titles>().asked.insert(ticket) {
+        return;
+    }
+    cx.spawn(async move |cx| {
+        let brief = cx.background_executor().spawn(async move { crate::aiball::Aiball::from_env().ticket_brief(ticket) }).await;
+        let _ = cx.update(|cx| {
+            let titles = cx.default_global::<Titles>();
+            titles.asked.remove(&ticket);
+            match brief {
+                Ok((title, project, closed)) => {
+                    titles.known.insert(ticket, Known { title, project, closed, at: Instant::now() });
+                }
+                Err(error) => log::debug!("ticket #{ticket}'s title: {error:#}"),
+            }
+            cx.refresh_windows();
+        });
+    })
+    .detach();
+}
+
+/// The tooltip of a reference to `ticket`: its title (asked for when not
+/// known), its project and state.
+fn tip(ticket: u64, window: &mut Window, cx: &mut App) -> AnyView {
+    Tooltip::element(move |_, cx: &mut App| {
+        let known = cx.default_global::<Titles>().fresh(ticket, Instant::now()).cloned();
+        if known.is_none() {
+            ask(ticket, cx);
+        }
+        match known {
+            Some(k) => div()
+                .flex()
+                .flex_col()
+                .child(format!("#{ticket} — {}", k.title))
+                .child(div().text_xs().opacity(0.7).child(format!("{} · {}", k.project, if k.closed { "closed" } else { "open" }))),
+            None => div().child(format!("#{ticket} — …")),
+        }
+    })
+    .build(window, cx)
+}
 
 /// The scheme of a reference made a link in markdown.
 const SCHEME: &str = "tvty-ticket:";
@@ -25,6 +117,7 @@ pub fn follow(cx: &mut App, reference: String, project: Option<String>) {
 pub fn link(id: impl Into<ElementId>, ticket: u64, project: Option<String>) -> Stateful<Div> {
     buttons::link(id, format!("#{ticket}"))
         .px_0()
+        .tooltip(move |window, cx| tip(ticket, window, cx))
         .on_click(move |_, _, cx| follow(cx, ticket.to_string(), project.clone()))
 }
 
@@ -35,11 +128,16 @@ pub fn inline(id: impl Into<SharedString>, text: &str) -> Div {
     for (i, piece) in pieces(text).into_iter().enumerate() {
         line = match piece {
             Piece::Text(text) => line.child(div().whitespace_nowrap().child(text.to_string())),
-            Piece::Ref { said, reference } => line.child(
-                buttons::link(SharedString::from(format!("{id}-{i}")), said.to_string())
-                    .px_0()
-                    .on_click(move |_, _, cx| follow(cx, reference.clone(), None)),
-            ),
+            Piece::Ref { said, reference } => {
+                let ticket = reference.parse::<u64>().ok();
+                line.child(
+                    buttons::link(SharedString::from(format!("{id}-{i}")), said.to_string())
+                        .px_0()
+                        // A comment's reference ("#C.…") names no ticket to title.
+                        .when_some(ticket, |d, ticket| d.tooltip(move |window, cx| tip(ticket, window, cx)))
+                        .on_click(move |_, _, cx| follow(cx, reference.clone(), None)),
+                )
+            }
         };
     }
     line
@@ -161,7 +259,20 @@ fn pieces(text: &str) -> Vec<Piece<'_>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Piece, linkify, pieces};
+    use super::{KEPT, Known, Piece, Titles, linkify, pieces};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn a_title_is_trusted_a_while() {
+        let now = Instant::now();
+        let mut titles = Titles::default();
+        let known = |at| Known { title: "t".into(), project: "p".into(), closed: false, at };
+        titles.known.insert(1, known(now - Duration::from_secs(60)));
+        titles.known.insert(2, known(now - KEPT - Duration::from_secs(1)));
+        assert!(titles.fresh(1, now).is_some());
+        assert!(titles.fresh(2, now).is_none(), "too old: asked again");
+        assert!(titles.fresh(3, now).is_none());
+    }
 
     #[test]
     fn a_reference_is_a_hash_and_digits_or_a_comment() {
