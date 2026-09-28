@@ -327,6 +327,72 @@ impl Shell {
             });
             (chip, confirm)
         };
+
+        // Remote Control: whether its Claude can be taken up from claude.ai;
+        // a click turns it on or off for its folder, the loop restarting.
+        let (rc_chip, rc_confirm) = {
+            let session = terminal.session.clone();
+            let known = self.board.known.iter().find(|l| l.session() == session).cloned();
+            let on = known.as_ref().and_then(|l| l.remote_control());
+            let asked = self.rc_asked.as_deref() == Some(session.as_str());
+            let chip = buttons::chip_if("agent-rc", "RC", known.is_some())
+                .px_1()
+                .border_color(ink(if asked { p().warning } else if on.is_some() { p().accent } else { p().border }))
+                .text_color(ink(if on.is_some() { p().accent } else { p().muted }))
+                .tip(match (&on, &known) {
+                    (Some(name), _) => format!("Remote Control is on: its Claude is \"{name}\" on claude.ai and in the mobile app. A click offers to turn it off"),
+                    (None, Some(_)) => "Remote Control is off. A click offers to turn it on, to take its Claude up from claude.ai or the mobile app".to_string(),
+                    (None, None) => "Remote Control: its loop runs on another machine".to_string(),
+                });
+            let chip = if known.is_some() {
+                chip.on_click(cx.listener({
+                    let session = session.clone();
+                    move |shell, _, _, cx| {
+                        shell.rc_asked = (shell.rc_asked.as_deref() != Some(session.as_str())).then(|| session.clone());
+                        cx.notify();
+                    }
+                }))
+            } else {
+                chip
+            };
+            let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
+            let confirm = known.filter(|_| asked).map(|known| {
+                let (agent, turn_on) = (agent.clone(), on.is_none());
+                div()
+                    .id("agent-rc-ask")
+                    .occlude()
+                    .absolute()
+                    .left_0()
+                    .right_0()
+                    .bottom(px(BAR_HEIGHT))
+                    .flex()
+                    .flex_wrap()
+                    .items_center()
+                    .gap_2()
+                    .px_2()
+                    .py_1p5()
+                    .bg(p().surface)
+                    .border_t_1()
+                    .border_color(p().warning)
+                    .text_color(p().text)
+                    .child(format!(
+                        "Turn Remote Control {} for {agent}? Its folder keeps it; its Claude restarts, resuming its conversation.",
+                        if turn_on { "on" } else { "off" }
+                    ))
+                    .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the restart interrupts it.")))
+                    .child(
+                        buttons::chip("agent-rc-go", if turn_on { "Turn on" } else { "Turn off" })
+                            .border_color(ink(p().warning))
+                            .text_color(ink(p().warning))
+                            .on_click(cx.listener(move |shell, _, _, cx| shell.set_remote_control(agent.clone(), known.clone(), turn_on, cx))),
+                    )
+                    .child(buttons::link("agent-rc-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                        shell.rc_asked = None;
+                        cx.notify();
+                    })))
+            });
+            (chip, confirm)
+        };
         Some(
             div()
                 .id("agent-bar")
@@ -441,6 +507,7 @@ impl Shell {
                 .child(div().flex_1())
                 // Where its loop runs: on aiball's host, or in tmux.
                 .child(mode_chip)
+                .child(rc_chip)
                 // Copy or controls: whether this terminal types into it.
                 .child({
                     let session = terminal.session.clone();
@@ -461,6 +528,7 @@ impl Shell {
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .children(move_confirm)
+                .children(rc_confirm)
                 .into_any_element(),
         )
     }
@@ -632,6 +700,31 @@ impl Shell {
                         crate::activity::Activity::done(None, format!("{agent}'s Claude restarts once idle, resuming its conversation"))
                     }
                     Err(error) => crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), short_error(&format!("{error:#}"))),
+                };
+                crate::activity::publish(cx, activity);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Turns `agent`'s Claude's Remote Control on or off, off the UI thread:
+    /// its folder keeps the choice, its loop restarts with it and opens again.
+    fn set_remote_control(&mut self, agent: String, known: crate::loops::KnownLoop, on: bool, cx: &mut Context<Self>) {
+        self.rc_asked = None;
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { return };
+            let done = cx.background_executor().spawn(async move { crate::loops::set_remote_control(&aiball, &known, on) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                let state = if on { "on" } else { "off" };
+                let activity = match done {
+                    Ok(session) => {
+                        shell.open_when_running = Some(session);
+                        let _ = shell.refresh_now.unbounded_send(());
+                        crate::activity::Activity::done(None, format!("Remote Control {state} for {agent}, its conversation resumed"))
+                    }
+                    Err(error) => crate::activity::Activity::failed(None, &format!("Remote Control {state} for {agent}"), short_error(&format!("{error:#}"))),
                 };
                 crate::activity::publish(cx, activity);
                 cx.notify();

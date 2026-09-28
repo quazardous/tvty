@@ -40,6 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The critical tickets, what holds the most back first, head the full
   list; a project's red ! opens its critical ticket, which says how long it
   went quiet.
+- Remote Control from the agent's bar: "RC" says whether its Claude can be
+  taken up from claude.ai or the mobile app, and turns it on or off for its
+  folder, the loop restarting with it.
 
 ### Changed
 

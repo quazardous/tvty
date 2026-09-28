@@ -356,7 +356,12 @@ where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
 tmux) — for a loop of this machine, a click offers to **move** it to the
 other (a confirmation over the bar, which says when Claude works; aiball
 restarts it there — `loop.restart` —, resuming its conversation, and the terminal comes back
-on the new session, "moving…" meanwhile); whether this terminal has the **controls** or is a **copy** (a
+on the new session, "moving…" meanwhile); **RC**, its Claude's Remote
+Control (lit when it runs with it, named as its agent on claude.ai and the
+mobile app): a click offers to turn it on or off — its folder keeps the
+choice (aiball's `claude.remote_control`, set through `project.settings_set`:
+the loops started there follow it) and its loop restarts with it, resuming
+its conversation; whether this terminal has the **controls** or is a **copy** (a
 click switches: the terminal leaves and comes back in the other mode, its
 Claude goes on); its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.

@@ -34,6 +34,10 @@ pub struct KnownLoop {
     /// In tmux, the session to attach to.
     #[serde(default)]
     pub tmux: Option<String>,
+    /// Its Claude's Remote Control: `false`, `true` (named as its agent) or
+    /// the name it is found by on claude.ai.
+    #[serde(default)]
+    pub remote_control: Value,
 }
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew
@@ -51,6 +55,15 @@ pub struct Start {
 impl KnownLoop {
     pub fn agent(&self) -> Option<&str> {
         self.agent.as_deref()
+    }
+
+    /// The name its Claude is found by with Remote Control, when it runs so.
+    pub fn remote_control(&self) -> Option<String> {
+        match &self.remote_control {
+            Value::Bool(true) => Some(self.agent.clone().unwrap_or_else(|| self.name.clone())),
+            Value::String(name) if !name.is_empty() => Some(name.clone()),
+            _ => None,
+        }
     }
 
     /// It runs (or ran) on aiball's session host, not in tmux.
@@ -133,6 +146,16 @@ pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
     Ok(view.session())
 }
 
+/// Turns its Claude's Remote Control on or off: the folder keeps the choice
+/// (its `.aiball.yaml`, through aiball: the loops started there follow it),
+/// then the loop starts again with it, its conversation resumed. Answers the
+/// session to open.
+pub fn set_remote_control(aiball: &Aiball, known: &KnownLoop, on: bool) -> anyhow::Result<String> {
+    aiball.call::<Value>("project.settings_set", json!({ "cwd": known.cwd, "remote_control": on }))?;
+    let view: KnownLoop = aiball.call("loop.restart", json!({ "name": known.name, "remote_control": on, "force": true })).map_err(said)?;
+    Ok(view.session())
+}
+
 /// aiball's refusal said for the user: a Claude at work is not moved.
 fn said(error: anyhow::Error) -> anyhow::Error {
     if format!("{error:#}").contains("NOT_IDLE") {
@@ -162,6 +185,15 @@ mod tests {
         assert_eq!(session_of(&json!({ "agent": "a", "host": "tmux", "tmux": "cl-a" })).as_deref(), Some("cl-a"));
         assert_eq!(session_of(&json!({ "agent": "a" })), Some(format!("{}a", crate::sessions::HOSTED_PREFIX)));
         assert_eq!(session_of(&json!({})), None);
+    }
+
+    #[test]
+    fn remote_control_is_named_as_the_agent_or_as_said() {
+        let l = |rc: serde_json::Value| KnownLoop { name: "cl-w".into(), agent: Some("w-claude".into()), remote_control: rc, ..Default::default() };
+        assert_eq!(l(json!(true)).remote_control().as_deref(), Some("w-claude"));
+        assert_eq!(l(json!("desk")).remote_control().as_deref(), Some("desk"));
+        assert_eq!(l(json!(false)).remote_control(), None);
+        assert_eq!(l(serde_json::Value::Null).remote_control(), None);
     }
 
     #[test]
