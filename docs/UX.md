@@ -356,8 +356,9 @@ never a notification themselves.
 bus (`user.<me>.pings`, over the socket), with the board itself. Each ping
 — an agent answered, mentioned you, proposes a plan or to close, a new
 ticket — is a notification (red for a panic, yellow for a decision to
-take); a click opens its ticket
-(and the agent's terminal, when it has one here), which marks it read in
+take), quoting the start of what was written; a click opens its ticket
+and goes to its project — the agent's terminal when it has one here, else
+the project's terminal used last, else its tickets alone —, which marks it read in
 aiball, so its web UI agrees. At start, one notification sums up the pings
 waiting unread; a click opens the full list filtered to the unread. A ticket
 has one notification at a time, the newest.

@@ -27,7 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - Notifications are wider and quote the start of what was written: the
-  comment, or the new ticket's body, under its title.
+  comment, or the new ticket's body, under its title. A click on one goes
+  to its project too, even when its agent has no terminal here.
 - Esc in a text field only leaves the field; the next Esc closes the page
   it sits on (options, new ticket, full list, a ticket full screen).
 - A ticket waiting for moderation shows its proposal but no Accept or

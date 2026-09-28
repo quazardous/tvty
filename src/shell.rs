@@ -1224,6 +1224,8 @@ impl Shell {
     fn open_notice(&mut self, notice: Notice, window: &mut Window, cx: &mut Context<Self>) {
         if let Some(session) = notice.session.clone() {
             self.select(session, window, cx);
+        } else if let Some((project, _)) = notice.ticket.as_ref() {
+            self.go_to_project(project, window, cx);
         }
         if let Some((project, ticket)) = notice.ticket {
             if !self.settings.layout.panel_open {
@@ -1232,6 +1234,30 @@ impl Shell {
             self.panel.update(cx, |panel, cx| panel.open_in(Some(project), ticket, cx));
         }
         cx.notify();
+    }
+
+    /// Shows `project`: already there, nothing moves; else its terminal
+    /// used last (or its first), or — none here — its tickets alone.
+    fn go_to_project(&mut self, project: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let here = self.selected.as_deref().and_then(|s| self.terminal_of(s)).is_some_and(|(p, _)| p == project);
+        if here {
+            return;
+        }
+        let terminals: Vec<String> = self
+            .board
+            .projects
+            .iter()
+            .filter(|p| p.name == project)
+            .flat_map(|p| p.terminals.iter().map(|t| t.session.clone()))
+            .collect();
+        let last = terminals
+            .iter()
+            .min_by_key(|s| self.recent.iter().position(|r| r == *s).unwrap_or(usize::MAX))
+            .cloned();
+        match last {
+            Some(session) => self.select(session, window, cx),
+            None => self.show_project(project.to_string(), cx),
+        }
     }
 
     fn terminal_of(&self, session: &str) -> Option<(&str, &Terminal)> {
