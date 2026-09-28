@@ -9,6 +9,9 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 
+/// How much of a comment a notification quotes.
+pub const EXCERPT: usize = 240;
+
 use serde_json::{Value, json};
 
 use crate::aiball::{BarRead, Consumer, TicketRow};
@@ -435,6 +438,8 @@ impl Live {
             project: text("project"),
             title,
             from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
+            message: message.get("id").and_then(Value::as_u64),
+            excerpt: crate::thread::excerpt(message.get("body").and_then(Value::as_str), EXCERPT),
             what: if pending { "a new ticket to moderate".into() } else { crate::pings::what_it_is(&kind, decision.clone()) },
             urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
             pending,

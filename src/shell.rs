@@ -968,7 +968,25 @@ impl Shell {
             .map(|t| t.session.clone());
         let text = if ping.title.is_empty() { ping.what.clone() } else { format!("{} — {}", ping.title, ping.what) };
         let about = (!ping.project.is_empty()).then(|| (ping.project.clone(), ping.ticket));
-        activity::publish(cx, Activity::news(ping.from.clone(), kind, about, text).on(session));
+        let news = Activity::news(ping.from.clone(), kind, about, text).on(session);
+        // The ping says what, not what was written: its start is read from
+        // aiball first (a single message; said without it if that fails).
+        let Some(message) = ping.message.filter(|_| ping.excerpt.is_empty()) else {
+            return activity::publish(cx, news.quoting(ping.excerpt));
+        };
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |_, cx| {
+            let body = cx.background_executor().spawn(async move { aiball.message_body(message) }).await;
+            let excerpt = match body {
+                Ok(body) => crate::thread::excerpt(body.as_deref(), crate::live::EXCERPT),
+                Err(error) => {
+                    log::warn!("the pinged message #{message}: {error:#}");
+                    String::new()
+                }
+            };
+            let _ = cx.update(|cx| activity::publish(cx, news.quoting(excerpt)));
+        })
+        .detach();
     }
 
     // ── The ticket list, full screen ────────────────────────────────────

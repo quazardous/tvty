@@ -679,6 +679,12 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
+    /// What a message (a ticket, a comment) says: its body, if any.
+    pub fn message_body(&self, id: u64) -> anyhow::Result<Option<String>> {
+        let message: Value = self.rpc("message.get", json!({ "id": id }))?;
+        Ok(message.get("body").and_then(Value::as_str).map(str::to_string))
+    }
+
     pub fn mark_unread(&self, ticket: u64) -> anyhow::Result<()> {
         self.rpc_do("ticket.mark_unread", json!({ "id": ticket }))
     }

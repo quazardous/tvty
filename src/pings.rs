@@ -12,6 +12,11 @@ pub struct PingInfo {
     /// Who wrote what pinged, and what it is ("a plan", "a comment"…).
     pub from: String,
     pub what: String,
+    /// The message that pinged (the comment, the new ticket).
+    pub message: Option<u64>,
+    /// The start of what was written (the comment, the new ticket's body),
+    /// when the ping carries it.
+    pub excerpt: String,
     /// The ticket's intent is `panic`.
     pub urgent: bool,
     /// The ticket waits for moderation.
@@ -68,6 +73,8 @@ mod tests {
             title: format!("t{ticket}"),
             from: "demo-crew".into(),
             what: "proposes to close".into(),
+            message: None,
+            excerpt: String::new(),
             urgent: false,
             pending: false,
             proposal: true,

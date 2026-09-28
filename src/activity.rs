@@ -22,23 +22,31 @@ pub struct Activity {
     /// The terminal it concerns, when one runs here.
     pub session: Option<String>,
     pub text: String,
+    /// What was written, quoted under the text.
+    pub detail: Option<String>,
 }
 
 impl Activity {
     /// A gesture of the user that went through: "closed", "plan accepted"…
     pub fn done(about: Option<(String, u64)>, what: impl Into<String>) -> Self {
-        Self { by: "you".into(), own: true, kind: Kind::Done, about, session: None, text: what.into() }
+        Self { by: "you".into(), own: true, kind: Kind::Done, about, session: None, text: what.into(), detail: None }
     }
 
     /// A gesture of the user that aiball refused: always shown.
     pub fn failed(about: Option<(String, u64)>, what: &str, error: impl std::fmt::Display) -> Self {
         let text = if what.is_empty() { error.to_string() } else { format!("{what}: {error}") };
-        Self { by: "you".into(), own: false, kind: Kind::Error, about, session: None, text }
+        Self { by: "you".into(), own: false, kind: Kind::Error, about, session: None, text, detail: None }
     }
 
     /// Something an agent or aiball did.
     pub fn news(by: impl Into<String>, kind: Kind, about: Option<(String, u64)>, text: impl Into<String>) -> Self {
-        Self { by: by.into(), own: false, kind, about, session: None, text: text.into() }
+        Self { by: by.into(), own: false, kind, about, session: None, text: text.into(), detail: None }
+    }
+
+    /// Quoting what was written.
+    pub fn quoting(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into()).filter(|d| !d.is_empty());
+        self
     }
 
     /// On this terminal.
@@ -88,5 +96,6 @@ fn report(cx: &mut App, activity: Activity) {
     if let Some(session) = activity.session {
         notice = notice.on(session);
     }
+    notice.detail = activity.detail;
     notify::push(cx, notice);
 }

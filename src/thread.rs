@@ -195,6 +195,24 @@ pub fn first_line(body: Option<&str>) -> String {
     }
 }
 
+/// The start of a body as plain words, its lines run together, cut at
+/// `max` characters: what a notification quotes. Its emphasis marks and
+/// code quotes go too.
+pub fn excerpt(body: Option<&str>, max: usize) -> String {
+    let words = body
+        .unwrap_or_default()
+        .lines()
+        .map(|l| plain_line(l).replace("**", "").replace("__", "").replace('`', ""))
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(" ");
+    if words.chars().count() > max {
+        format!("{}…", words.chars().take(max).collect::<String>().trim_end())
+    } else {
+        words
+    }
+}
+
 /// A markdown line as plain words: a heading's or a quote's mark gone, an
 /// image said as "🖼 image" (never its markdown), a link as its text.
 pub fn plain_line(line: &str) -> String {
@@ -473,6 +491,14 @@ mod tests {
         let r = read(&t);
         assert_eq!(sentence(&t, &r, None, false, "david", 0), "demo-claude is on a step · waits on #9");
         assert_eq!(sentence(&t, &r, None, true, "david", 0), "demo-claude's step went quiet");
+    }
+
+    #[test]
+    fn an_excerpt_runs_the_lines_together_and_cuts() {
+        let body = "## Plan\n\nRead **the** `load`.\n> quoted\n![shot](/uploads/x.png)";
+        assert_eq!(super::excerpt(Some(body), 200), "Plan Read the load. quoted 🖼 image");
+        assert_eq!(super::excerpt(Some("one two three"), 7), "one two…");
+        assert_eq!(super::excerpt(None, 10), "");
     }
 
     #[test]

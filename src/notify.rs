@@ -16,6 +16,8 @@ use crate::theme::p;
 
 pub const MAX_DEFAULT: usize = 5;
 pub const SECONDS_DEFAULT: u64 = 6;
+/// Wide enough for a title and the start of a comment.
+const NOTICE_WIDTH: f32 = 520.;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Kind {
@@ -38,6 +40,8 @@ pub struct Notice {
     /// Who or what: an agent, "tvty".
     pub from: String,
     pub text: String,
+    /// What was written (a comment's start), quoted under the text.
+    pub detail: Option<String>,
     /// The ticket it is about (its project, its id), if any.
     pub ticket: Option<(String, u64)>,
     /// The terminal it is about, if any.
@@ -53,6 +57,7 @@ impl Notice {
             kind,
             from: from.into(),
             text: text.into(),
+            detail: None,
             ticket: None,
             session: None,
             born: Instant::now(),
@@ -215,7 +220,7 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
     if shown.is_empty() {
         return None;
     }
-    let column = div().id("notices").absolute().w(px(380.)).flex().flex_col().gap_2();
+    let column = div().id("notices").absolute().w(px(NOTICE_WIDTH)).flex().flex_col().gap_2();
     let (mut column, newest_last) = match corner {
         Corner::TopRight { top, right } => (column.top(px(top)).right(px(right)), false),
         Corner::BottomLeft { bottom, left } => (column.bottom(px(bottom)).left(px(left)), true),
@@ -258,15 +263,13 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
                         .flex()
                         .flex_col()
                         .child(div().text_xs().text_color(p().muted).child(notice.from.clone()))
-                        .child(div().child(what)),
+                        .child(div().child(what))
+                        .children(notice.detail.clone().map(|detail| {
+                            div().pt_0p5().text_xs().text_color(p().muted).line_clamp(3).child(detail)
+                        })),
                 )
                 .child(
-                    div()
-                        .id(SharedString::from(format!("notice-close-{id}")))
-                        .px_1()
-                        .text_color(p().muted)
-                        .hover(|d| d.text_color(p().text))
-                        .child("×")
+                    crate::ui::buttons::icon(SharedString::from(format!("notice-close-{id}")), "×", "dismiss")
                         .on_click(move |_, _, cx| {
                             cx.stop_propagation();
                             dismiss(cx, id);
