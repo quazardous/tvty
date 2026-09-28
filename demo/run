@@ -74,7 +74,7 @@ down() {
 }
 
 tvty() {
-    export AIBALL_SOCK="$SOCK" TVTY_USER=director
+    export AIBALL_SOCK="$SOCK" TVTY_USER=anakin
     export XDG_CONFIG_HOME="$DIR/tvty/config" XDG_STATE_HOME="$DIR/tvty/state"
     # The colour emoji font the tests fetched, if any.
     export XDG_DATA_HOME="$ROOT/dev/tvty-wbox/data"

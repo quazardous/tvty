@@ -5,7 +5,7 @@ Usage: seed.py SOCKET WORK_DIR IMAGES_DIR
 
 Three projects, each with its agents (who work in WORK_DIR/<project>/<agent>)
 and tickets in every state tvty shows: a plan and a resolution waiting for
-the director, an escalation, a critical ticket others depend on, an agent
+Anakin, an escalation, a critical ticket others depend on, an agent
 on a step, one waiting for moderation, pictures in threads.
 """
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 from aiballbus import Board  # noqa: E402
 
 SOCK, WORK, IMAGES = sys.argv[1], Path(sys.argv[2]), Path(sys.argv[3])
-HUMAN = "director"
+HUMAN = "anakin"
 
 # project → its agents, the first one busy.
 PROJECTS = {
@@ -109,7 +109,7 @@ comment(P, port, "One proton torpedo down that shaft and the whole station goes.
                  "not cover it and the particle shield is off.\n\nI need a human: the grate needs a "
                  "budget line, and the plans have already left the building. Sheet 7:\n\n"
                  + picture("exhaust-port.png"), "exhaust-port", decision="escalation",
-        summary="Critical: the port leads straight to the reactor. A grate needs the director's budget.")
+        summary="Critical: the port leads straight to the reactor. A grate needs Anakin's budget.")
 inspection = ticket(P, "Final inspection before the grand opening", "Walk every trench, sign every sheet.", intent="request")
 opening = ticket(P, "Open the station to visitors", "Guided tours of the superlaser, weekends only.", intent="feature")
 depends(inspection, port)
@@ -121,7 +121,7 @@ assign(laser, "superlaser")
 comment(P, laser, "Plan:\n\n1. tap the hypermatter reactor directly instead of the secondary bus\n"
                   "2. pre-charge the eight tributary beams in parallel\n3. keep the focus lens cold between shots\n\n"
                   + picture("superlaser.png"), "superlaser", decision="plan",
-        summary="Three changes should bring a charge to 23 h; waiting for the director's go.")
+        summary="Three changes should bring a charge to 23 h; waiting for Anakin's go.")
 
 compactor = ticket(P, "Waste compactor: stop when something is alive inside",
                    "Detention level reports people in the compactor, again.", intent="request")
@@ -129,7 +129,7 @@ assign(compactor, "tractor-beam")
 comment(P, compactor, "Added a life sensor on the floor: the walls stop as soon as it reads anything "
                       "breathing. Tested with a very patient droid. Fixed in 7a3f9c1.\n\n" + picture("compactor.png"),
         "tractor-beam", decision="resolution",
-        summary="Life sensor in, fixed in 7a3f9c1; waiting for the director to accept.")
+        summary="Life sensor in, fixed in 7a3f9c1; waiting for Anakin to accept.")
 
 moon = ticket(P, "Visitors keep saying \"that's no moon\"", "Should we paint it grey?", intent="question")
 comment(P, moon, "It is, however, the size of one. I would lean into it: a small sign, \"Not a moon.\"", "exhaust-port")
