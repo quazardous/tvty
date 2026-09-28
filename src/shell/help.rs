@@ -16,6 +16,7 @@ const REPOSITORY: &str = env!("CARGO_PKG_REPOSITORY");
 enum Entry {
     About,
     NewProject,
+    FullScreen,
     Documentation,
     Shortcuts,
     WhatsNew,
@@ -25,9 +26,10 @@ enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 8] = [
+    const ALL: [Entry; 9] = [
         Entry::About,
         Entry::NewProject,
+        Entry::FullScreen,
         Entry::Documentation,
         Entry::Shortcuts,
         Entry::WhatsNew,
@@ -40,6 +42,7 @@ impl Entry {
         match self {
             Entry::About => "About tvty",
             Entry::NewProject => "New project…",
+            Entry::FullScreen => "Full screen",
             Entry::Documentation => "Documentation",
             Entry::Shortcuts => "Keyboard shortcuts",
             Entry::WhatsNew => "What's new",
@@ -50,8 +53,10 @@ impl Entry {
     }
 
     /// What it says beside its label.
-    fn note(self) -> String {
+    fn note(self, cx: &App) -> String {
         match self {
+            // Its key, as the keymap in force has it.
+            Entry::FullScreen => crate::keymap::current(cx).keys_of("window.fullscreen").first().map(|k| k.pretty()).unwrap_or_default(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
             Entry::Shortcuts | Entry::NewProject => String::new(),
@@ -99,6 +104,7 @@ impl Shell {
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(cx),
             Entry::NewProject => self.open_new_project(window, cx),
+            Entry::FullScreen => window.toggle_fullscreen(),
             _ => {}
         }
     }
@@ -124,7 +130,7 @@ impl Shell {
                     .cursor_pointer()
                     .hover(|d| d.bg(p().hover))
                     .child(div().flex_1().child(entry.label()))
-                    .child(div().text_xs().text_color(p().muted).child(entry.note()))
+                    .child(div().text_xs().text_color(p().muted).child(entry.note(cx)))
                     .on_click(cx.listener(move |shell, _, window, cx| shell.help_entry(entry, window, cx))),
             );
         }
