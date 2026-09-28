@@ -23,16 +23,20 @@ the agent asks, you decide, it carries on.
 
 ## See it
 
-![A tour: the terminal and its ticket, the ticket full screen, the slider, the gallery](docs/images/tour.gif)
+![A tour: the terminal and its ticket, the ticket full screen, the slider, the gallery, the menu, a new project, a notification](docs/images/tour.gif)
 
 | | |
 |---|---|
 | ![Projects and agents, with what waits for you](docs/images/sessions.png) | ![Every terminal, live, in one gallery](docs/images/gallery.png) |
-| **Projects and agents**, each with what waits for you — working or idle, since when. | **The gallery** (ctrl+shift+space): every terminal live; type to filter. |
+| **Projects and agents**, each with what waits for you — working or idle, since when; ▶ runs on its own, ‖ held. | **The gallery** (ctrl+shift+space): every terminal live; type to filter. |
 | ![The slider, a stack per project](docs/images/slider.png) | ![A plan waiting for a go, beside the agent that wrote it](docs/images/plan.png) |
 | **The slider** (ctrl+tab): a stack per project, most recent first. | **A plan** waiting for your go, beside the agent that wrote it. |
+| ![An agent's answer, quoted in a notification](docs/images/notice.png) | ![The ☰ menu](docs/images/menu.png) |
+| **A notification** quotes what the agent said; a click opens its project. | **The ☰ menu** (F1): a new project, full screen (F11), the docs, restart. |
 
 ![A ticket full screen, its blueprint inline](docs/images/ticket.png)
+
+![New project: a folder, who works in it, set up, what next](docs/images/newproject.png)
 
 *The station, the sphere and the time machine are fictional: a demo world
 replayed by [`demo/run`](demo/run), agents included.*

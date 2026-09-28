@@ -3,7 +3,7 @@
 wbox of its own, driven step by step; the pictures land in docs/images/.
 
 Run through `demo/run shots`. The clicks are where tvty draws things on a
-1600×1000 screen: a change of layout may move them — look at the pictures.
+1920×1200 screen: a change of layout may move them — look at the pictures.
 """
 
 import json
@@ -21,13 +21,22 @@ SHOTS = DEMO / "screenshots"
 OUT = ROOT / "docs" / "images"
 PYTHON = os.environ.get("WBOX_PYTHON", str(ROOT.parent / "wbox-mcp" / ".venv" / "bin" / "python3"))
 
-# Where things are, on a 1600×1000 screen (the window maximized).
-TITLE_BAR = (800, 20)
-ROW = {1: (1230, 375), 4: (1230, 318)}
-SUPERLASER_TAB = (275, 56)
-MORE = (1562, 100)
-BACK_TO_LIST = (1135, 58)
-
+SCREEN = (1920, 1200)
+# Where things are, on that screen: the window first as it opens, then
+# maximized.
+TITLE_BAR = (800, 72)
+ROW = {1: (1450, 375), 4: (1450, 318)}
+SUPERLASER_TAB = (300, 56)
+MORE = (1884, 100)
+BACK_TO_LIST = (1358, 58)
+MENU = (1776, 20)
+NEW_PROJECT = (1583, 88)
+WIZARD_NEXT = (1237, 879)
+# A folder the wizard is shown making a project of (left as it is: the
+# wizard stops before setting it up).
+FOLDER = "/tmp/tvty-demo/escape-pod"
+# The id of "Negotiate with the star" in demo/seed.py.
+STAR_TICKET = 11
 
 def wbox(*args, env=None):
     subprocess.run([PYTHON, str(ROOT / "scripts" / "wbox_ctl.py"), args[0], str(CONFIG), *map(str, args[1:])],
@@ -71,7 +80,7 @@ def wbox_config():
         if line.startswith("name:"):
             line = "name: tvty-readme"
         elif line.startswith("screen:"):
-            line = "screen: 1600x1000"
+            line = f"screen: {SCREEN[0]}x{SCREEN[1]}"
         elif line.strip().startswith("command:"):
             line = "  command: sh -c 'r=$(git rev-parse --show-toplevel) && exec $r/demo/run tvty'"
         lines.append(line)
@@ -122,12 +131,42 @@ def main():
     click(ROW[4])
     frames.append(shot("plan"))
 
+    click(MENU)
+    menu = shot("menu")
+    frames.append(menu)
+    click(NEW_PROJECT)
+    Path(FOLDER).mkdir(parents=True, exist_ok=True)
+    wbox("type", FOLDER)
+    click(WIZARD_NEXT)
+    wizard = shot("newproject")
+    frames.append(wizard)
+    # Once out of the field, once out of the wizard.
+    key("Escape")
+    key("Escape")
+
+    # An agent answers: its words come as a notification.
+    sys.path.insert(0, str(ROOT / "scripts"))
+    from aiballbus import Board
+    board = Board(str(DEMO / "home" / "sock"))
+    board.call("star-diplomat", "message.post", {
+        "project": "dyson-sphere", "kind": "comment_added", "ticket_id": STAR_TICKET, "parent_id": STAR_TICKET,
+        "body": "The star accepts the window, on one condition: it faces the galaxy's good side. "
+                "It also asks who will clean it.",
+        "summary_until": "The star agrees to the window if it faces the galaxy's good side; asks who cleans it.",
+        "commits": None, "handback": True})
+    board.close()
+    notice = shot("notice", wait=2.5)
+    frames.append(notice)
+
     OUT.mkdir(parents=True, exist_ok=True)
     for name in ("hero", "ticket", "slider", "gallery", "plan"):
         shutil.copy(SHOTS / f"{name}.png", OUT / f"{name}.png")
-    # The projects' list alone: the left of the window.
+    # The parts that tell: the projects' list, the menu, the wizard, the notice.
     from PIL import Image
     Image.open(sessions).crop((0, 0, 700, 640)).save(OUT / "sessions.png")
+    Image.open(menu).crop((1200, 0, 1920, 380)).save(OUT / "menu.png")
+    Image.open(wizard).crop((600, 310, 1320, 930)).save(OUT / "newproject.png")
+    Image.open(notice).crop((560, 40, 1440, 330)).save(OUT / "notice.png")
     gif(frames, OUT / "tour.gif")
     wbox("down")
     print("\n".join(sorted(str(p.relative_to(ROOT)) for p in OUT.iterdir())))
