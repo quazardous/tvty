@@ -136,8 +136,8 @@ impl Shell {
                     .py_1()
                     .cursor_pointer()
                     .hover(|d| d.bg(p().hover))
-                    .child(div().flex_1().child(entry.label()))
-                    .child(div().text_xs().text_color(p().muted).child(entry.note(cx)))
+                    .child(div().flex_1().whitespace_nowrap().child(entry.label()))
+                    .child(div().flex_none().whitespace_nowrap().text_xs().text_color(p().muted).child(entry.note(cx)))
                     .on_click(cx.listener(move |shell, _, window, cx| shell.help_entry(entry, window, cx))),
             );
         }
@@ -154,7 +154,8 @@ impl Shell {
             // Under the app's icon, at the title bar's left.
             .top(px(36.))
             .left(px(6.))
-            .w(px(300.))
+            // As wide as its longest line (the version and its commit), 300 px at least.
+            .min_w(px(300.))
             .rounded_md()
             .bg(p().surface)
             .border_1()
