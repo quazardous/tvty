@@ -1,4 +1,4 @@
-//! The title bar's ☰ menu (F1): where to learn about tvty and to reach its
+//! The title bar's menu, under the app's icon (F1): where to learn about tvty and to reach its
 //! people — the version and the build, the documentation, the shortcuts,
 //! what changed, the repository, a bug to report — and a restart.
 
@@ -44,7 +44,7 @@ impl Entry {
 
     fn label(self) -> &'static str {
         match self {
-            Entry::About => "About tvty",
+            Entry::About => "About Terminal Velocity",
             Entry::NewProject => "New project…",
             Entry::FullScreen => "Full screen",
             Entry::Documentation => "Documentation",
@@ -116,7 +116,7 @@ impl Shell {
         }
     }
 
-    /// The menu, under the title bar's ☰; a click outside closes it.
+    /// The menu, under the app's icon; a click outside closes it.
     pub(super) fn help_menu_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if !self.help_menu {
             return None;
@@ -151,8 +151,9 @@ impl Shell {
         let card = div()
             .absolute()
             .occlude()
+            // Under the app's icon, at the title bar's left.
             .top(px(36.))
-            .right(px(96.))
+            .left(px(6.))
             .w(px(300.))
             .rounded_md()
             .bg(p().surface)

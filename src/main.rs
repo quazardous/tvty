@@ -107,7 +107,7 @@ fn main() {
             cx.open_window(
                 WindowOptions {
                     titlebar: Some(TitlebarOptions {
-                        title: Some("tvty".into()),
+                        title: Some(shell::NAME.into()),
                         ..gpui_kit::component::TitleBar::title_bar_options()
                     }),
                     // Draw our own frame everywhere: GNOME would draw none, and

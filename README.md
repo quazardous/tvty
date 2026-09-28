@@ -31,8 +31,8 @@ the agent asks, you decide, it carries on.
 | **Projects and agents**, each with what waits for you — working or idle, since when; ▶ runs on its own, ‖ held. | **The gallery** (ctrl+shift+space): every terminal live; type to filter. |
 | ![The slider, a stack per project](docs/images/slider.png) | ![A plan waiting for a go, beside the agent that wrote it](docs/images/plan.png) |
 | **The slider** (ctrl+tab): a stack per project, most recent first. | **A plan** waiting for your go, beside the agent that wrote it. |
-| ![An agent's answer, quoted in a notification](docs/images/notice.png) | ![The ☰ menu](docs/images/menu.png) |
-| **A notification** quotes what the agent said; a click opens its project. | **The ☰ menu** (F1): a new project, full screen (F11), the docs, restart. |
+| ![An agent's answer, quoted in a notification](docs/images/notice.png) | ![The menu, under the app's icon](docs/images/menu.png) |
+| **A notification** quotes what the agent said; a click opens its project. | **The menu**, under the app's icon (F1): a new project, full screen (F11), the docs, restart. |
 
 ![A ticket full screen, its blueprint inline](docs/images/ticket.png)
 
@@ -47,7 +47,7 @@ replayed by [`demo/run`](demo/run), agents included.*
 > [aiball](https://github.com/quazardous/aiball) and its claude-loop agents:
 > it is aiball's desktop client, not a standalone terminal. Linux only for
 > now (Wayland or X11, GNOME and KDE). Expect rough edges, and tell us
-> (the ☰ menu > Report an issue).
+> (the menu under the app's icon > Report an issue).
 
 **You need** aiball 0.49 or later, running (its daemon, `claude-loop`
 with it), tmux 3.x, and Rust (stable, 1.85 or later) to build tvty.
@@ -87,7 +87,7 @@ and whether the bus answered. `tvty SESSION` opens that tmux session at
 start. aiball's web UI stays for everything else — remote, phone, another
 OS.
 
-**A new project.** The ☰ menu's **New project** (or **+ project** atop the
+**A new project.** The menu's **New project** (under the app's icon, top left) (or **+ project** atop the
 sessions list) walks through it: pick a folder, name the project and its
 agent, and tvty sets it up with `aiball init`, then says what comes next
 (accepting aiball's MCP server in Claude) and starts its first session.
@@ -96,7 +96,7 @@ One tvty runs per state directory (`~/.local/state/tvty`): launching it again
 brings the running one forward, on the session asked for, and the second
 launch ends there. A tvty with another state directory (`XDG_STATE_HOME`, as
 the test environment sets it) stays apart; `TVTY_NEW_INSTANCE=1` opens one
-more anyway. The ☰ menu's **Restart tvty** starts it afresh — after an update,
+more anyway. The menu's **Restart tvty** starts it afresh — after an update,
 say — and the agents' sessions keep running.
 
 ## Tested headless

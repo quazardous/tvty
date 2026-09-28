@@ -35,7 +35,7 @@ A new one gets its tooltip with it.
 
 ## A new project
 
-**+ project** in the sessions list's header (also the ☰ menu, and "Set up
+**+ project** in the sessions list's header (also the menu under the app's icon, and "Set up
 your first project" while aiball has none) opens a wizard over the window:
 one frame of one size, the steps on top (the kit's stepper; a click goes
 back to a step done), the page in the middle, its buttons at the bottom
@@ -562,7 +562,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | F11 | the window full screen, or back |
-| F1 | the title bar's ☰ menu: about tvty (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (the engine's page) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
+| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (the engine's page) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |

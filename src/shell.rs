@@ -78,6 +78,9 @@ const SLIDER_CARD: (f32, f32) = (230., 138.);
 const SLIDER_CHOSEN: (f32, f32) = (340., 205.);
 
 const TITLE_BAR_HEIGHT: f32 = 41.;
+
+/// The app's name, in full: the window's title, About.
+pub const NAME: &str = "Terminal Velocity";
 /// The projects' list, its tabs' rail (44 px) included.
 const SIDEBAR_WIDTH: f32 = 290.;
 const SIDEBAR_MIN: f32 = 230.;
@@ -257,6 +260,8 @@ pub struct Shell {
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
     decorations_said: Option<String>,
+    /// The window's title as last given to the system.
+    os_title: String,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -697,6 +702,7 @@ impl Shell {
             help_menu: false,
             new_project: None,
             decorations_said: None,
+            os_title: String::new(),
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -3013,7 +3019,21 @@ impl Shell {
             ("Layout and workspace", shown(Place::State)),
             ("Fonts", shown(Place::Data)),
         ];
-        let mut table = div().flex().flex_col().gap_1().max_w(px(720.));
+        let mut table = div().flex().flex_col().gap_1().max_w(px(720.)).child(
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .pb_3()
+                .child(img(crate::icons::APP).size(px(40.)).flex_none())
+                .child(
+                    div()
+                        .flex()
+                        .flex_col()
+                        .child(div().text_xl().font_weight(FontWeight::BOLD).child(NAME))
+                        .child(div().text_sm().text_color(p().muted).child("tvty")),
+                ),
+        );
         for (label, value) in rows {
             table = table.child(
                 div()
@@ -3027,7 +3047,7 @@ impl Shell {
             );
         }
         table.child(option_note(
-            "tvty — Terminal Velocity. MIT licence. Bundled themes: see themes/README.md.",
+            "Terminal Velocity (tvty). MIT licence. Bundled themes: see themes/README.md.",
         ))
     }
 
@@ -4281,9 +4301,14 @@ impl Render for Shell {
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
         let title = match self.selected.as_deref().and_then(|s| self.terminal_of(s)) {
-            Some((project, terminal)) => format!("tvty — {project} · {}", terminal.label),
-            None => "tvty".to_string(),
+            Some((project, terminal)) => format!("{NAME} — {project} · {}", terminal.label),
+            None => NAME.to_string(),
         };
+        // The system's too (task bar, Alt+Tab), said when it changes.
+        if self.os_title != title {
+            window.set_window_title(&title);
+            self.os_title = title.clone();
+        }
         let body = div()
             .id("shell")
             .track_focus(&self.focus)
@@ -4406,6 +4431,17 @@ impl Render for Shell {
                 TitleBar::new()
                     .h(px(TITLE_BAR_HEIGHT))
                     .on_close_window(cx.listener(|shell, _, window, cx| shell.ask_quit(window, cx)))
+                    // The app's icon, first: its menu (about, help, restart),
+                    // as a desktop's application menu.
+                    .child(
+                        buttons::icon(
+                            "help-button",
+                            img(crate::icons::APP).size(px(20.)).flex_none(),
+                            buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                        )
+                        .mr_1()
+                        .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                    )
                     .child(
                         div()
                             .flex_1()
@@ -4433,19 +4469,6 @@ impl Render for Shell {
                             .mr_2()
                             .text_xs()
                             .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
-                    )
-                    .child(
-                        // An SVG takes no colour from around it: muted, the
-                        // text's under the pointer, as the other icons.
-                        buttons::icon(
-                            "help-button",
-                            crate::icons::plain(crate::icons::Icon::Menu, 16.)
-                                .text_color(p().muted)
-                                .group_hover("help-button", |s| s.text_color(p().text)),
-                            buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
-                        )
-                        .group("help-button")
-                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
                     )
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))

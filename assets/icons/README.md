@@ -8,7 +8,7 @@ taken unchanged from
 They are licensed under the **Apache License 2.0**
 (<https://www.apache.org/licenses/LICENSE-2.0>), © Google.
 
-`menu.svg` is `menu` (the title bar's ☰). `chat_bubble_mine.svg` is
+`chat_bubble_mine.svg` is
 `chat_bubble.svg` mirrored (its point on the
 right).
 

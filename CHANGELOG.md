@@ -28,12 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Write / Preview tabs above a new ticket's body and a full-screen reply;
   the new ticket form has no summary field any more.
-- A new project in a few clicks: "+ project" (or the ☰ menu) picks a folder,
+- A new project in a few clicks: "+ project" (or the menu) picks a folder,
   names the project and its agent — aiball saying what it will do, and
   whether the project exists already —, has aiball set it up, says what is
   left to do (accept aiball's MCP server in Claude Code), and starts the
   first session.
-- F11 puts the window full screen, and back; the ☰ menu has it too.
+- F11 puts the window full screen, and back; the menu has it too.
 - Every ticket reference is a link — in a thread's words and events, the
   relations, the step it waits on —, and another project's ticket takes
   the panel to its project.
@@ -45,8 +45,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   claude-loop itself.
 - The folded sessions list shows each running Claude: grey idle, blue working,
   yellow booting; ▶ on its own, ‖ held for a while, ■ held until let go.
-- The title bar's menu (about, documentation, restart…) is a ☰, no longer
-  a ?, and links to aiball's page; the theme menu has the terminals' opacity slider.
+- The title bar's menu (about, documentation, restart…) opens from the app's
+  icon, at its left, and links to aiball's page; the window and About say
+  Terminal Velocity in full; the theme menu has the terminals' opacity slider.
 - A slider moves by its steps (5 % for the opacity), and to the finest
   (1 %) with Shift held.
 

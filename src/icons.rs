@@ -16,6 +16,10 @@ pub struct Assets;
 
 const PREFIX: &str = "tvty/icons/";
 
+/// The app's own icon, drawn in its colours (an image, not a tinted glyph).
+pub const APP: &str = "tvty/app.svg";
+const APP_SVG: &[u8] = include_bytes!("../assets/tvty.svg");
+
 macro_rules! icons {
     ($($variant:ident => $file:literal),* $(,)?) => {
         #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -52,12 +56,13 @@ icons! {
     // The same bubble mirrored: its point on the right, the user's word.
     CommentsMine => "chat_bubble_mine.svg",
     PendingComments => "schedule.svg",
-    // The title bar's menu (about, help, restart).
-    Menu => "menu.svg",
 }
 
 impl AssetSource for Assets {
     fn load(&self, path: &str) -> anyhow::Result<Option<Cow<'static, [u8]>>> {
+        if path == APP {
+            return Ok(Some(Cow::Borrowed(APP_SVG)));
+        }
         if let Some(file) = path.strip_prefix(PREFIX) {
             return Ok(FILES.iter().find(|(f, _)| *f == file).map(|(_, bytes)| Cow::Borrowed(*bytes)));
         }
@@ -76,12 +81,6 @@ pub fn icon(icon: Icon, colour: Hsla, size: f32) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(colour)
-}
-
-/// An icon `size` pixels square, its colour the caller's to give (a
-/// button's changes under the pointer).
-pub fn plain(icon: Icon, size: f32) -> Svg {
-    svg().path(SharedString::from(format!("{PREFIX}{}", icon.file()))).size(px(size)).flex_none()
 }
 
 /// A loop's glyph (▶ ‖ ■ …) in `colour`: the pause drawn as two bars
