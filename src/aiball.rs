@@ -810,12 +810,13 @@ impl Aiball {
         Ok((id, project))
     }
 
-    /// Where aiball's web UI is served: its public address when it has one
-    /// (a tailnet, a proxy), else the local one.
+    /// Where aiball's web UI is served, as its GNOME extension opens it:
+    /// the local address (tvty speaks to a daemon of this machine), else
+    /// its public one.
     pub fn web_ui(&self) -> anyhow::Result<String> {
         let info: Value = self.rpc("daemon.info", json!({}))?;
         let url = |key: &str| info.get(key).and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
-        url("public_url").or_else(|| url("web_url")).context("daemon.info: no web address")
+        url("web_url").or_else(|| url("public_url")).context("daemon.info: no web address")
     }
 
     /// A ticket's title, project and whether it is closed: its header alone
