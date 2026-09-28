@@ -4136,7 +4136,10 @@ impl Render for Shell {
                 .w(px(self.panel_width(window) + EDGE_WIDTH))
                 .h_full()
                 .child(self.edge(Side::Right, cx))
-                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone().cached(StyleRefinement::default().size_full())))
+                // Drawn with the shell, not cached: a cached view's text
+                // selection is not painted on the frames that reuse it,
+                // and it blinks (the panel costs under a millisecond).
+                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
                 .into_any_element()
         } else {
             let alerts = self
@@ -4250,7 +4253,7 @@ impl Render for Shell {
             .child(keep_focus)
             .children(full_list)
             .when(panel_full, |d| {
-                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone().cached(StyleRefinement::default().size_full())))
+                d.child(div().absolute().inset_0().occlude().bg(p().bg).child(self.panel.clone()))
             })
             .children(new_ticket)
             .children(options)

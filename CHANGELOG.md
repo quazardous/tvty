@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Selecting text in the ticket panel no longer makes it blink.
 - tvty opens as it was left — windowed at its size, maximized or full screen —
   after a quit as after Restart.
 - Esc in the title bar's "#…" empties it and lets it go, and the window's
