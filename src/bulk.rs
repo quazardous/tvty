@@ -67,15 +67,16 @@ impl Action {
 
     pub fn about(self) -> &'static str {
         match self {
-            Action::Approve | Action::Reject => "tickets waiting for moderation",
-            Action::Close => "open tickets",
-            Action::Reopen => "closed tickets",
-            Action::MarkRead => "tickets with something new",
-            Action::MarkUnread => "tickets read",
-            Action::Snooze => "open tickets not snoozed; back in 3 days",
-            Action::Unsnooze => "snoozed tickets",
-            Action::Step => "open tickets whose last word is not a step already",
-            Action::Link => "the newest gets a relates_to link to each of the others",
+            Action::Approve => "Lets through the chosen tickets that wait for moderation",
+            Action::Reject => "Turns down the chosen tickets that wait for moderation",
+            Action::Close => "Closes the chosen tickets that are open (asks first)",
+            Action::Reopen => "Opens again the chosen tickets that are closed",
+            Action::MarkRead => "Marks read the chosen tickets that have something new",
+            Action::MarkUnread => "Marks unread the chosen tickets already read",
+            Action::Snooze => "Puts the chosen open tickets away for 3 days: they come back then",
+            Action::Unsnooze => "Brings back now the chosen tickets that are snoozed",
+            Action::Step => "Marks the last word of the chosen open tickets as a step: the agent carries on, nothing to decide",
+            Action::Link => "Links the chosen tickets: the newest relates to each of the others",
         }
     }
 

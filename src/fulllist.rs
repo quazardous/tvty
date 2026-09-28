@@ -276,7 +276,14 @@ impl FullList {
                     .child(link("bulk-all", "Select all shown").on_click(cx.listener(|list, _, _, cx| list.select_all(cx))))
                     .child(link("bulk-clear", "Clear · Esc").on_click(cx.listener(|list, _, _, cx| list.clear_selection(cx)))),
             )
-            .child(group("Actions"));
+            .child(group("Actions"))
+            .child(
+                div()
+                    .pb_1()
+                    .text_xs()
+                    .text_color(p().muted)
+                    .child("Each acts on the chosen tickets it fits: how many, on the right."),
+            );
         if self.working {
             return side.child(div().text_color(p().muted).child("Working…"));
         }
@@ -293,7 +300,7 @@ impl FullList {
                 .rounded_md()
                 .tip(action.about())
                 .child(div().flex_1().child(action.label()))
-                .child(div().text_xs().text_color(p().muted).child(count.to_string()));
+                .child(div().text_xs().text_color(p().muted).child(format!("{count} of {}", refs.len())));
             let row = if count == 0 {
                 row.text_color(p().muted.opacity(0.6))
             } else {
