@@ -49,6 +49,12 @@ socket (`$AIBALL_SOCK`, else aiball's default) and acts as its human user
 (`$TVTY_USER`, else the human aiball saw last). aiball's web UI stays for
 everything else — remote, phone, another OS.
 
+One tvty runs per state directory (`~/.local/state/tvty`): launching it again
+brings the running one forward, on the session asked for, and the second
+launch ends there. A tvty with another state directory (`XDG_STATE_HOME`, as
+the test environment sets it) stays apart; `TVTY_NEW_INSTANCE=1` opens one
+more anyway.
+
 On Linux, GPUI needs the development packages of xcb, xkbcommon, vulkan,
 fontconfig, freetype and alsa. `make install-desktop` puts a launcher in
 `~/.local/bin/tvty` running `target/debug/tvty`

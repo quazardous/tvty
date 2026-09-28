@@ -566,6 +566,24 @@ impl Shell {
         })
         .detach();
 
+        // A later launch of tvty: this window comes forward, on the session
+        // it asked for.
+        if let Some(mut raises) = cx.try_global::<crate::instance::Raises>().is_some().then(|| cx.global_mut::<crate::instance::Raises>().0.take()).flatten() {
+            cx.spawn_in(window, async move |this, cx| {
+                use futures::StreamExt as _;
+                while let Some(raise) = raises.next().await {
+                    let _ = this.update_in(cx, |shell, window, cx| {
+                        window.activate_window();
+                        if let Some(session) = raise.session {
+                            shell.select(session, window, cx);
+                        }
+                        cx.notify();
+                    });
+                }
+            })
+            .detach();
+        }
+
         // Closing the window (its × or the window manager's) goes through
         // the quit dialog: the loops may be stopped first.
         let this = cx.entity().downgrade();

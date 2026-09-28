@@ -39,6 +39,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Launching tvty again brings the running one forward (on the session
+  asked for, `tvty SESSION`) instead of opening a second window. A test
+  tvty, with a state directory of its own, stays apart;
+  `TVTY_NEW_INSTANCE=1` opens one more anyway.
 - Quitting asks whether to stop the Claude Code loops too; the ones
   stopped are offered to restart at the next start. Both choices can be
   remembered (Options > Layout > Sessions).

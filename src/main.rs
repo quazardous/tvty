@@ -15,6 +15,7 @@ mod config;
 mod fulllist;
 mod icons;
 mod images;
+mod instance;
 mod keymap;
 mod loops;
 mod newticket;
@@ -40,6 +41,20 @@ mod wire;
 use gpui_kit::*;
 
 fn main() {
+    // tvty may be started from inside tmux; its terminals attach to tmux
+    // sessions of their own, which tmux refuses while $TMUX is set.
+    // SAFETY: no other thread exists yet.
+    unsafe { std::env::remove_var("TMUX") };
+    // `tvty [SESSION]`: open that tmux session at start.
+    let selected = std::env::args().nth(1);
+    // One tvty per state directory: a later launch brings the running one
+    // forward (with the session asked for), and ends here — before its log
+    // is opened, which would set the running one's aside.
+    let raises = match instance::claim(selected.as_deref()) {
+        instance::Claim::Handed => return,
+        instance::Claim::First(raises) => Some(raises),
+        instance::Claim::Alone => None,
+    };
     // Quiet by default: Vulkan's loader warns about every driver it probes
     // and skips (other vendors' GPUs), which is not tvty's business. tvty's
     // own lines at info: the bus's connections, the pings, the
@@ -51,16 +66,11 @@ fn main() {
     ))
     .target(env_logger::Target::Pipe(Box::new(config::log())))
     .init();
-    // tvty may be started from inside tmux; its terminals attach to tmux
-    // sessions of their own, which tmux refuses while $TMUX is set.
-    // SAFETY: no other thread exists yet.
-    unsafe { std::env::remove_var("TMUX") };
-    // `tvty [SESSION]`: open that tmux session at start.
-    let selected = std::env::args().nth(1);
 
     // The kit's icons (the title bar's buttons among them) come from its assets.
     gpui_kit::application().with_assets(icons::Assets).run(move |cx| {
         gpui_kit::init(cx);
+        cx.set_global(instance::Raises(raises));
         // The user's own fonts (a colour emoji font), before any text is laid out.
         fonts::load(cx);
         // The sets of settings (settings.toml, the layout, the workspace).
