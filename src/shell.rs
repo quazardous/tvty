@@ -4727,6 +4727,12 @@ impl Render for Shell {
                         .flex_none()
                         .mr_2(),
                     )
+                    // A message to every running agent: the whole board's.
+                    .child(
+                        buttons::icon("message-all", crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.), "A message to every running agent: send, send & hold, release holds")
+                            .mr_1()
+                            .on_click(cx.listener(|shell, _, window, cx| shell.open_message_all(window, cx))),
+                    )
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
                             .mr_2()
@@ -4748,7 +4754,7 @@ impl Render for Shell {
             .child(body)
             .children(menu)
             .children(self.help_menu_view(cx))
-            .children(self.megaphone_view(cx))
+            .children(self.megaphone_view(window, cx))
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))

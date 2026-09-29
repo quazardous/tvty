@@ -49,6 +49,7 @@ icons! {
     Closed => "lock.svg",
     Hot => "local_fire_department.svg",
     Megaphone => "megaphone.svg",
+    MessageAgents => "bot-message-square.svg",
     Critical => "warning.svg",
     PriorityHigh => "arrow_shape_up.svg",
     PriorityUrgent => "arrow_shape_up_stack.svg",

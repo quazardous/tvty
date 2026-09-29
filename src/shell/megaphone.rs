@@ -37,6 +37,8 @@ impl Global for Steered {}
 
 /// The popover, while it is open.
 pub(super) struct Megaphone {
+    /// A project's standing (its 📢), or none: the message to every agent,
+    /// which is the whole board's.
     project: Option<String>,
     prompt: Entity<InputState>,
     tickets: Entity<InputState>,
@@ -134,9 +136,23 @@ impl Shell {
     }
 
     /// Opens the 📢 on the ticket panel's project (none: only the message).
+    /// The 📢 of the ticket panel's project: its standing instruction and
+    /// wake focus. No project shown: said, nothing opens.
     pub(super) fn open_megaphone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(project) = self.panel_scope().map(|s| s.project) else {
+            activity::publish(cx, Activity::news("tvty", Kind::Info, None, "A standing instruction and a wake focus are a project's: show one first"));
+            return;
+        };
+        self.open_popover(Some(project), window, cx);
+    }
+
+    /// The message to every running agent loop: the whole board's.
+    pub(super) fn open_message_all(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.open_popover(None, window, cx);
+    }
+
+    fn open_popover(&mut self, project: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         self.help_menu = false;
-        let project = self.panel_scope().map(|s| s.project);
         let standing = project.as_ref().and_then(|p| self.standing.get(p)).cloned().unwrap_or_default();
         let field = |value: Option<String>, placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| {
@@ -151,8 +167,8 @@ impl Shell {
         let tickets = field(standing.focus_tickets.clone(), "e.g. 2518, 2523++   or   !2180", window, cx);
         let until = field(standing.focus_until.as_deref().map(until_local), "until (optional): 2026-09-30 18:00", window, cx);
         let message = cx.new(|cx| TextareaState::new(window, cx).placeholder(DEFAULT_MESSAGE).auto_grow(3, 8));
-        // The first box shown takes the keys: the instruction, or with no
-        // project the message.
+        // The first box shown takes the keys: the instruction, or the
+        // message.
         let focus = if project.is_some() { prompt.read(cx).focus_handle(cx) } else { message.read(cx).focus_handle(cx) };
         window.focus(&focus, cx);
         self.megaphone = Some(Megaphone { project, prompt, tickets, until, message, busy: false, error: None, said: None });
@@ -267,12 +283,12 @@ impl Shell {
     }
 
     /// The popover, under the title bar at the ticket panel's side.
-    pub(super) fn megaphone_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn megaphone_view(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let m = self.megaphone.as_ref()?;
         let head = |text: String| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
         let hint = |text: &'static str| div().text_xs().text_color(p().muted).child(text);
         let standing = m.project.as_ref().and_then(|p| self.standing.get(p));
-        let mut card = div().flex().flex_col().gap_1p5().p_3().w(px(480.)).max_w(relative(0.95)).text_sm();
+        let mut card = div().flex().flex_col().gap_1p5().p_3().w(px(480.)).text_sm();
         match &m.project {
             Some(project) => {
                 let history = &self.settings.workspace.standing_history;
@@ -317,14 +333,44 @@ impl Shell {
                             .child(buttons::primary("standing-save", "Save").on_click(cx.listener(|shell, _, window, cx| shell.save_standing(false, window, cx)))),
                     );
             }
-            None => card = card.child(hint("A standing instruction and a wake focus are a project's: open one first.")),
+            None => card = self.message_section(m, card, cx),
         }
-        let running: Vec<String> = self.board.bars.iter().filter(|(_, b)| !b.stale).map(|(a, _)| a.clone()).collect();
-        let mut running = running;
+        let card = card
+            .children(m.error.clone().map(|error| div().text_xs().text_color(p().danger).child(error)))
+            .when(m.busy, |d| d.child(div().text_xs().text_color(p().muted).child("…")));
+        let backdrop = div().id("megaphone-backdrop").absolute().inset_0().occlude().on_mouse_down(
+            MouseButton::Left,
+            cx.listener(|shell, _, window, cx| shell.close_megaphone(window, cx)),
+        );
+        // A project's under the ticket panel's header; the board's under the
+        // title bar, by its button.
+        let top = if m.project.is_some() { 80. } else { 40. };
+        let card = div()
+            .id("megaphone")
+            .absolute()
+            .occlude()
+            .top(px(top))
+            .right(px(8.))
+            // As tall as it needs, the window's height at most: it scrolls then.
+            .max_h(window.viewport_size().height - px(top + 16.))
+            .overflow_y_scroll()
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().border)
+            .shadow_lg()
+            .child(card);
+        // Over everything, the panel's deferred layers too.
+        Some(deferred(div().absolute().inset_0().child(backdrop).child(card)).with_priority(3).into_any_element())
+    }
+
+    /// The message to every running agent loop, and what became of it.
+    fn message_section(&self, m: &Megaphone, card: Div, cx: &mut Context<Self>) -> Div {
+        let head = |text: &'static str| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
+        let hint = |text: &'static str| div().text_xs().text_color(p().muted).child(text);
+        let mut running: Vec<String> = self.board.bars.iter().filter(|(_, b)| !b.stale).map(|(a, _)| a.clone()).collect();
         running.sort();
-        card = card
-            .child(div().my_1().h(px(1.)).bg(p().border))
-            .child(head("Message to every agent".into()))
+        card.child(head("Message to every agent"))
             .child(hint(
                 "Typed into each running agent session now, whatever it is doing. Send & hold also holds every loop (not AFK ∞): \
                  no wake starts new work until you release them. Left empty, the text shown is sent.",
@@ -345,28 +391,6 @@ impl Shell {
                     .child(buttons::answer("loops-hold", "Send & hold").danger().on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(true), cx)))),
             )
             .children(m.said.clone().map(|said| div().text_xs().text_color(p().success).child(said)))
-            .children(m.error.clone().map(|error| div().text_xs().text_color(p().danger).child(error)))
-            .when(m.busy, |d| d.child(div().text_xs().text_color(p().muted).child("…")));
-        let backdrop = div().id("megaphone-backdrop").absolute().inset_0().occlude().on_mouse_down(
-            MouseButton::Left,
-            cx.listener(|shell, _, window, cx| shell.close_megaphone(window, cx)),
-        );
-        let card = div()
-            .id("megaphone")
-            .absolute()
-            .occlude()
-
-            .top(px(80.))
-            .right(px(8.))
-            .max_h(relative(0.85))
-            .overflow_y_scroll()
-            .rounded_md()
-            .bg(p().surface)
-            .border_1()
-            .border_color(p().border)
-            .shadow_lg()
-            .child(card);
-        Some(div().absolute().inset_0().child(backdrop).child(card).into_any_element())
     }
 
     /// The mark of a steered project in the sessions list: 📢, what steers

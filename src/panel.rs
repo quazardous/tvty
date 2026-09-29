@@ -2377,7 +2377,7 @@ impl Render for TicketPanel {
                     .scope
                     .as_ref()
                     .is_some_and(|s| cx.try_global::<crate::shell::Steered>().is_some_and(|g| g.0.contains(&s.project)));
-                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, "Standing instruction, wake focus, a message to every agent", "project.megaphone"))
+                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, "The project's standing instruction and wake focus", "project.megaphone"))
                     // Lit while something steers them (not dimmed otherwise: an
                     // emoji does not fade).
                     .when(steered, |d| d.bg(p().active).border_1().border_color(p().accent).rounded_sm())
