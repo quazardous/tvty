@@ -459,6 +459,8 @@ impl TicketPanel {
         }
         self.scope = scope;
         self.load_sunk(cx);
+        // Read ahead: Assign ▾ lists the project's agents at once.
+        self.read_catalog(cx);
         cx.notify();
     }
 
@@ -554,6 +556,8 @@ impl TicketPanel {
             menu: None,
         });
         self.load(ticket, true, cx);
+        // A ticket of another project: its agents, read ahead too.
+        self.read_catalog(cx);
         cx.notify();
     }
 
