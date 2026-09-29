@@ -51,7 +51,10 @@ enum Tone {
 /// while they differ, it is arming.
 #[derive(Debug, PartialEq)]
 struct AfkMarks {
+    /// A glyph alone: it is drawn in a glyph's box.
     in_force: Option<(&'static str, Tone)>,
+    /// A word instead, while the loop boots: text at the bar's size.
+    word: Option<(&'static str, Tone)>,
     typing: bool,
     armed: Option<(String, Tone)>,
     arming: bool,
@@ -59,7 +62,7 @@ struct AfkMarks {
 
 fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typing: bool) -> AfkMarks {
     if presence == Some("boot") {
-        return AfkMarks { in_force: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
+        return AfkMarks { in_force: None, word: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
     }
     let in_force = match (presence, armed) {
         (Some("loop"), _) => Some(("▶", Tone::Green)),
@@ -80,7 +83,7 @@ fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typ
         Some("wait_10m") | Some("wait_inf") => presence == Some("loop"),
         _ => false,
     };
-    AfkMarks { in_force, typing: typing || presence == Some("stop"), armed: man, arming }
+    AfkMarks { in_force, word: None, typing: typing || presence == Some("stop"), armed: man, arming }
 }
 
 /// Seconds from now to an ISO time: `None` when past or unreadable.
@@ -150,6 +153,7 @@ impl Shell {
             .hover(|d| d.bg(p().hover))
             .when(self.afk_menu, |d| d.bg(p().active))
             .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
+            .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(word)))
             .when(marks.typing, |d| d.child(div().text_color(p().danger).child("⌨")))
             .children(marks.armed.map(|(man, t)| {
                 div()
@@ -849,7 +853,7 @@ mod tests {
     fn f9_arms_a_mode_before_it_is_in_force() {
         // Auto, and nothing armed: ▶ and a grey little man.
         let auto = afk_marks(Some("loop"), Some("off"), None, false);
-        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), typing: false, armed: Some(("웃".into(), Tone::Grey)), arming: false });
+        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), word: None, typing: false, armed: Some(("웃".into(), Tone::Grey)), arming: false });
         // F9 once: 10 min armed, still ▶ in force — arming.
         let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599), false);
         assert_eq!((armed.armed, armed.arming), (Some(("웃599s".into(), Tone::Orange)), true));
@@ -865,8 +869,17 @@ mod tests {
         // Typing holds, marks ⌨, arms nothing.
         let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600), true);
         assert_eq!((typing.in_force, typing.typing, typing.arming), (Some(("‖", Tone::Orange)), true, false));
-        // Booting: the boot alone.
-        assert_eq!(afk_marks(Some("boot"), Some("off"), None, false).in_force, Some(("… boot", Tone::Boot)));
+        // Booting: the boot alone, as a word — never in a glyph's box.
+        let boot = afk_marks(Some("boot"), Some("off"), None, false);
+        assert_eq!((boot.in_force, boot.word), (None, Some(("… boot", Tone::Boot))));
+        // Whatever the state, the glyph's box gets a glyph alone.
+        for presence in [None, Some("boot"), Some("loop"), Some("wait"), Some("stop")] {
+            for armed in [None, Some("off"), Some("wait_10m"), Some("wait_inf")] {
+                if let Some((glyph, _)) = afk_marks(presence, armed, Some(30), false).in_force {
+                    assert_eq!(glyph.chars().count(), 1, "{glyph:?} is not a glyph alone");
+                }
+            }
+        }
     }
     use super::{short_error, tier};
 
