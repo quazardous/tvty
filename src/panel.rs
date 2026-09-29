@@ -1094,8 +1094,8 @@ impl TicketPanel {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let label = match icons::priority(&priority) {
-                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone()),
-                None => div().child(priority.clone()),
+                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., format!("{priority} ▾")),
+                None => div().child(format!("{priority} ▾")),
             };
             chips.push(
                 buttons::chip("priority-chip", label)
@@ -1160,6 +1160,22 @@ impl TicketPanel {
                         .on_link_click(crate::ui::ticketref::on_link),
                 )
         });
+        // Under the priority's chip, where its ▾ points.
+        let priority_menu = (detail.menu == Some(Menu::Priority)).then(|| {
+            let current = ticket.priority.clone().unwrap_or_else(|| "normal".into());
+            let mut row = div().flex().flex_wrap().items_center().gap_1().child(div().text_xs().text_color(p().muted).child("Priority"));
+            for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
+                let on = current == priority;
+                row = row.child(
+                    buttons::chip(id, priority)
+                        .py_0p5()
+                        .text_xs()
+                        .chosen(on)
+                        .when(!on, |d| d.on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx)))),
+                );
+            }
+            row
+        });
         // Full screen, the title spans the top, the state and chips go to
         // the left column, the summary heads the talk; in the panel they
         // all make the head.
@@ -1175,7 +1191,7 @@ impl TicketPanel {
                 .children(chips)
         };
         let (head, full_parts) = if self.full {
-            (None, Some((title, turn, chips, summary)))
+            (None, Some((title, turn, chips, summary, priority_menu)))
         } else {
             let head = div()
                 .flex()
@@ -1199,6 +1215,7 @@ impl TicketPanel {
                 .child(title)
                 .children(turn)
                 .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
+                .children(priority_menu)
                 .children(summary);
             (Some(head), None)
         };
@@ -1327,23 +1344,16 @@ impl TicketPanel {
             })
         });
         let chip = |id: &'static str, label: &'static str| buttons::chip(id, label).py_0p5().text_xs();
-        let menu = detail.menu.map(|menu| {
+        // The priority's choices open under its chip, in the head.
+        let menu = detail.menu.filter(|menu| *menu != Menu::Priority).map(|menu| {
             let row = div().flex().flex_wrap().items_center().gap_1();
             match menu {
+                Menu::Priority => row,
                 Menu::Snooze => row
                     .child(div().text_xs().text_color(p().muted).child("Snooze for"))
                     .child(chip("snooze-1h", "1 hour").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
                     .child(chip("snooze-1d", "a day").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
                     .child(chip("snooze-1w", "a week").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
-                Menu::Priority => {
-                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Priority"));
-                    for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
-                        row = row.child(
-                            chip(id, priority).on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx))),
-                        );
-                    }
-                    row
-                }
                 Menu::Assignee => {
                     let mut row = row.child(div().text_xs().text_color(p().muted).child("Assign to"));
                     let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
@@ -1529,7 +1539,7 @@ impl TicketPanel {
         } else {
             (thread_view.into_any_element(), actions.into_any_element())
         };
-        let Some((title, turn_line, chips, summary_full)) = full_parts else {
+        let Some((title, turn_line, chips, summary_full, priority_menu)) = full_parts else {
             return div()
                 .flex()
                 .flex_col()
@@ -1542,7 +1552,7 @@ impl TicketPanel {
         };
 
         // ── Full screen: the invariants on the left third ───────────────
-        let left = self.invariants(ticket, turn_line, chips_row(chips), &user, cx);
+        let left = self.invariants(ticket, turn_line, div().flex().flex_col().gap_1().child(chips_row(chips)).children(priority_menu), &user, cx);
         // How much was said, and whose word is the last: the list's count.
         let said: Vec<&Comment> = thread.comments.iter().filter(|c| c.kind == "comment_added").collect();
         let count = said.last().map(|last| {
