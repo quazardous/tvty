@@ -19,6 +19,7 @@ mod icons;
 mod images;
 mod instance;
 mod keymap;
+mod links;
 mod loops;
 mod newticket;
 mod notify;

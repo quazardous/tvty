@@ -47,7 +47,8 @@ pub const FIXED_KEYS: &[(&str, &str)] = &[
     ("Arrows", "In the slider and the gallery: move to the card seen there"),
     ("Drag · double click · triple click", "In a terminal: select text · a word · a line — copied to the primary selection"),
     ("Middle click", "In a terminal: paste the primary selection"),
-    ("Right click", "In a terminal: Copy, Paste"),
+    ("Right click", "In a terminal: Copy, Paste — on a link, Open link, Copy link"),
+    ("Ctrl+click", "In a terminal, on a link: open it"),
     ("Mouse wheel", "Scroll the history"),
 ];
 

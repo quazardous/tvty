@@ -133,6 +133,20 @@ pub struct TerminalView {
     /// its screen again (Claude Code) clears the selection it writes over,
     /// and what was selected must still be copied.
     selected_text: Option<String>,
+    /// The link under the pointer, underlined; Ctrl+click opens it.
+    hover_link: Option<Link>,
+    /// The link the right click's menu was opened on.
+    menu_link: Option<Link>,
+}
+
+/// A link in the terminal: where it goes, and the cells it spans — (grid
+/// line, first column, column after the last), one piece per row.
+#[derive(Clone, Debug, PartialEq)]
+struct Link {
+    uri: String,
+    cells: Vec<(i32, usize, usize)>,
+    /// Its text as shown differs from where it goes (a program's OSC 8 link).
+    named: bool,
 }
 
 impl Drop for TerminalView {
@@ -314,6 +328,8 @@ impl TerminalView {
             dragging: None,
             kept: None,
             selected_text: None,
+            hover_link: None,
+            menu_link: None,
         }
     }
 
@@ -561,9 +577,84 @@ impl TerminalView {
         (GridPoint::new(Line(line), Column(column)), side)
     }
 
+    /// The link under `position`: one the program declared (OSC 8), else an
+    /// address in the text — the line the program wrapped joined up.
+    fn link_at(&self, position: Point<Pixels>) -> Option<Link> {
+        let (point, _) = self.grid_point(position);
+        let term = self.term.lock();
+        let grid = term.grid();
+        let columns = term.columns();
+        let (top, bottom) = (-(grid.history_size() as i32), term.screen_lines() as i32 - 1);
+        let wraps = |line: i32| grid[Line(line)][Column(columns - 1)].flags.contains(Flags::WRAPLINE);
+        // The logical line: the rows the program wrapped into one.
+        let mut first = point.line.0;
+        while first > top && wraps(first - 1) {
+            first -= 1;
+        }
+        let mut last = point.line.0;
+        while last < bottom && wraps(last) {
+            last += 1;
+        }
+        // Its text, each char's cell.
+        let mut text = String::new();
+        let mut at: Vec<(i32, usize)> = Vec::new();
+        let mut uris: Vec<Option<String>> = Vec::new();
+        for line in first..=last {
+            for column in 0..columns {
+                let cell = &grid[Line(line)][Column(column)];
+                if cell.flags.intersects(Flags::WIDE_CHAR_SPACER | Flags::LEADING_WIDE_CHAR_SPACER) {
+                    continue;
+                }
+                text.push(if cell.c == '\0' { ' ' } else { cell.c });
+                at.push((line, column));
+                uris.push(cell.hyperlink().map(|h| h.uri().to_string()));
+            }
+        }
+        let here = at.iter().position(|&(l, c)| l == point.line.0 && c == point.column.0)?;
+        // The chars from `start` to `end`, as cell pieces row by row.
+        let cells = |start: usize, end: usize| {
+            let mut pieces: Vec<(i32, usize, usize)> = Vec::new();
+            for &(line, column) in &at[start..end] {
+                match pieces.last_mut() {
+                    Some(last) if last.0 == line && last.2 == column => last.2 = column + 1,
+                    _ => pieces.push((line, column, column + 1)),
+                }
+            }
+            pieces
+        };
+        if let Some(uri) = uris[here].clone() {
+            let mut start = here;
+            while start > 0 && uris[start - 1].as_deref() == Some(uri.as_str()) {
+                start -= 1;
+            }
+            let mut end = here + 1;
+            while end < uris.len() && uris[end].as_deref() == Some(uri.as_str()) {
+                end += 1;
+            }
+            let shown: String = text.chars().skip(start).take(end - start).collect();
+            return Some(Link { named: shown.trim() != uri, uri, cells: cells(start, end) });
+        }
+        let (start, end) = crate::links::find(&text).into_iter().find(|&(a, b)| a <= here && here < b)?;
+        let uri: String = text.chars().skip(start).take(end - start).collect();
+        Some(Link { uri, cells: cells(start, end), named: false })
+    }
+
+    fn open_link(&self, link: &Link, cx: &mut Context<Self>) {
+        log::info!("terminal: opens {}", link.uri);
+        cx.open_url(&link.uri);
+    }
+
     fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
         self.menu = None;
+        // Ctrl+click on a link opens it (a plain click selects, as ever).
+        if event.modifiers.control
+            && let Some(link) = self.link_at(event.position)
+        {
+            self.open_link(&link, cx);
+            cx.stop_propagation();
+            return;
+        }
         // A drag selects, whatever the program: one that takes the mouse
         // (tmux with its mouse on) got the clicks without the drag, and
         // nothing could be selected at all.
@@ -587,6 +678,14 @@ impl TerminalView {
         // held, not in a selection or a drag.
         if event.pressed_button.is_none() && !self.focus.is_focused(window) && crate::focusmode::hover(cx) {
             window.focus(&self.focus, cx);
+        }
+        // The link under the pointer, underlined.
+        if event.pressed_button.is_none() {
+            let link = self.link_at(event.position);
+            if link != self.hover_link {
+                self.hover_link = link;
+                cx.notify();
+            }
         }
         if !self.selecting || event.pressed_button != Some(MouseButton::Left) {
             return;
@@ -649,6 +748,7 @@ impl TerminalView {
     /// The right click opens the menu (Copy, Paste) under the pointer.
     fn on_right_click(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
+        self.menu_link = self.link_at(event.position);
         self.menu = Some(event.position);
         cx.stop_propagation();
         cx.notify();
@@ -689,6 +789,21 @@ impl TerminalView {
                         view.menu = None;
                         cx.notify();
                     }))
+                    // On a link: open it, copy where it goes.
+                    .when_some(self.menu_link.clone(), |d, link| {
+                        let copied = link.uri.clone();
+                        d.child(item("terminal-menu-open-link", "Open link", "Ctrl+click", true).on_click(cx.listener(move |view, _, _, cx| {
+                            view.menu = None;
+                            view.open_link(&link, cx);
+                            cx.notify();
+                        })))
+                        .child(item("terminal-menu-copy-link", "Copy link", "", true).on_click(cx.listener(move |view, _, _, cx| {
+                            view.menu = None;
+                            cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
+                            cx.notify();
+                        })))
+                        .child(div().my_1().h(px(1.)).bg(crate::theme::p().border))
+                    })
                     .child(item("terminal-menu-copy", "Copy", "Ctrl+Shift+C", selected).when(selected, |d| {
                         d.on_click(cx.listener(|view, _, window, cx| {
                             view.menu = None;
@@ -783,7 +898,7 @@ impl Focusable for TerminalView {
 }
 
 impl Render for TerminalView {
-    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = crate::stats::Timing::new("terminal");
         div()
             .id("terminal")
@@ -800,7 +915,13 @@ impl Render for TerminalView {
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
             .on_mouse_down(MouseButton::Middle, cx.listener(Self::on_middle_click))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::on_right_click))
-            .cursor(CursorStyle::IBeam)
+            // Ctrl held over a link: a hand, it opens.
+            .on_modifiers_changed(cx.listener(|view, _: &ModifiersChangedEvent, _, cx| {
+                if view.hover_link.is_some() {
+                    cx.notify();
+                }
+            }))
+            .cursor(if self.hover_link.is_some() && window.modifiers().control { CursorStyle::PointingHand } else { CursorStyle::IBeam })
             .relative()
             .size_full()
             .bg(to_hsla(default_rgb(NamedColor::Background as usize)).opacity(opacity()))
@@ -811,6 +932,28 @@ impl Render for TerminalView {
                 status_line: false,
             })
             .children(self.menu.map(|at| self.menu_view(at, cx)))
+            // A link whose text is not its address (a program's OSC 8 link):
+            // the address, just above it.
+            .children(self.hover_link.as_ref().filter(|l| l.named).and_then(|link| {
+                let (_, cell) = self.layout;
+                let offset = self.term.lock().grid().display_offset() as i32;
+                let &(line, column, _) = link.cells.first()?;
+                let row = (line + offset).max(1);
+                Some(
+                    div()
+                        .absolute()
+                        .left(cell.width * column as f32)
+                        .top(cell.height * (row - 1) as f32 - px(4.))
+                        .px_1p5()
+                        .rounded_sm()
+                        .bg(crate::theme::p().surface)
+                        .border_1()
+                        .border_color(crate::theme::p().border)
+                        .text_xs()
+                        .text_color(crate::theme::p().text)
+                        .child(format!("→ {}", link.uri)),
+                )
+            }))
             .when(self.exited, |d| {
                 d.child(
                     div()
@@ -958,10 +1101,11 @@ impl Element for TerminalElement {
             Some(view) => view.update(cx, |view, cx| {
                 view.resize(columns, lines, cell, cx);
                 view.layout = (bounds.origin, cell);
-                view.focus.is_focused(window)
+                (view.focus.is_focused(window), view.hover_link.as_ref().map(|l| l.cells.clone()))
             }),
-            None => false,
+            None => (false, None),
         };
+        let (focused, hover_cells) = focused;
 
         let term = term.lock();
         let content = term.renderable_content();
@@ -1151,6 +1295,22 @@ impl Element for TerminalElement {
             stats::card(started);
         }
         backgrounds.extend(rules);
+        // The link under the pointer: a line under its cells.
+        if let Some(cells) = hover_cells {
+            let offset = term.grid().display_offset() as i32;
+            let screen = term.screen_lines() as i32;
+            let colour = to_hsla(default_rgb(NamedColor::Foreground as usize));
+            for (line, from, to) in cells {
+                let row = line + offset;
+                if (0..screen).contains(&row) {
+                    let at = point(
+                        bounds.origin.x + cell.width * from as f32,
+                        bounds.origin.y + cell.height * (row + 1) as f32 - px(2.),
+                    );
+                    backgrounds.push(fill(Bounds::new(at, size(cell.width * (to - from) as f32, px(1.))), colour));
+                }
+            }
+        }
         Frame {
             cell,
             backgrounds,

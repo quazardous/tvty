@@ -662,7 +662,8 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |
 | middle click | paste the primary selection |
-| right click | a menu: Copy, Paste (Esc closes it) |
+| right click | a menu: Copy, Paste — on a link, Open link and Copy link too (Esc closes it) |
+| ctrl+click on a link | opens it (the pointer over a link underlines it; a program's OSC 8 link shows where it goes) |
 
 Esc in a text field (a search, the reply, a form's box) only leaves the
 field; the next Esc closes the page it sits on. A click anywhere else — a
