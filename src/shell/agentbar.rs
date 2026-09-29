@@ -462,7 +462,7 @@ impl Shell {
                     item()
                         .id("agent-holds")
                         .when(holds > 0, |d| d.text_color(ink(p().text)))
-                        .child(format!("holds {holds}"))
+                        .child(format!("holds:{holds}"))
                         .tip("the tickets it holds"),
                 )
                 .when(pending || wake.is_some(), |d| {
