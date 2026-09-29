@@ -1444,7 +1444,6 @@ impl TicketPanel {
                     if detail.answers.len() > 1 { "s" } else { "" }
                 )))
             })
-            .children(menu)
             .child(
                 div()
                     .flex()
@@ -1465,7 +1464,7 @@ impl TicketPanel {
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
-                        // Who it is assigned to, as Snooze: the project's agents above.
+                        // Who it is assigned to, as Snooze: the project's agents below.
                         .child(
                             buttons::secondary("assign", match ticket.assignee.as_deref() {
                                 Some(assignee) => format!("→ {assignee} ▾"),
@@ -1501,7 +1500,9 @@ impl TicketPanel {
                         )
                         .flex_none(),
                     ),
-            );
+            )
+            // Under the buttons, where their ▾ points.
+            .children(menu);
 
         let thread_view = div()
             .relative()
