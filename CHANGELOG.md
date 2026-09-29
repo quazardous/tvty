@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The 📢 (ticket panel, ctrl+shift+m, the menu): a project's standing instruction and wake focus, and a message to every running agent (send, send & hold, release holds), as aiball's own page; a steered project wears a 📢 in the sessions list.
 - The pointer can give the keyboard: over the terminal or a box to write in, as the system's focus follows the mouse (GNOME, KDE), or as chosen in Options > Appearance > Mouse > Focus.
 - In the ticket list, the tickets sunk in the shown agent's backlog (its loop won't bring them up for a while) step back, a ⤓ saying until when.
-- The agent bar shows the model its Claude runs (its price in the tip), in yellow with ↑ when a newer one of its family is out.
+- The agent bar and the sessions list show the model each Claude runs (its price in the tip), in yellow with ↑ when a newer one of its family is out.
 
 ### Fixed
 

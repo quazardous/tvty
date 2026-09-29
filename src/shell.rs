@@ -4170,7 +4170,26 @@ impl Shell {
                                         })
                                         .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
                                 )
-                                .when_some(terminal.status.as_ref(), |d, status| d.child(status.line(self.armed_of(terminal).as_deref()))),
+                                .when_some(terminal.status.as_ref(), |d, status| {
+                                    // Its model beside its state: yellow, ↑, when a newer one of its family is out.
+                                    let model = terminal
+                                        .agent
+                                        .as_ref()
+                                        .and_then(|a| self.board.bars.get(a))
+                                        .filter(|b| !b.stale)
+                                        .and_then(|b| b.bar.model.clone())
+                                        .map(|model| {
+                                            let newer = model.newer.is_some();
+                                            div()
+                                                .id(SharedString::from(format!("row-model-{}", terminal.session)))
+                                                .flex_none()
+                                                .text_size(px(11.))
+                                                .text_color(if newer { p().warning } else { p().muted })
+                                                .child(if newer { format!("· {} ↑", model.name) } else { format!("· {}", model.name) })
+                                                .tip(model.said())
+                                        });
+                                    d.child(div().flex().items_center().gap_1().child(status.line(self.armed_of(terminal).as_deref())).children(model))
+                                }),
                         )
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.select(session.clone(), window, cx)
