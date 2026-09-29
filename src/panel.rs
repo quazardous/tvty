@@ -916,12 +916,14 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
-        // Sunk in the shown agent's backlog: steps back, a ⤓ says until when.
-        let sunk = self.sunk.get(&id).and_then(|until| crate::status::resume_short(until));
+        // Sunk in the shown agent's backlog: steps back, a ⤓ pill says how long yet.
+        let sunk = self.sunk.get(&id).and_then(|until| Some((crate::status::resume_short(until)?, left(until)?)));
         let group: SharedString = format!("ticket-row-{id}").into();
-        let sunk_tip = sunk.as_ref().map(|until| {
+        let sunk_mark = sunk.as_ref().map(|(until, left)| {
             let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
-            format!("sunk in {agent}'s backlog until {until}: its loop won't bring it up before, unless the thread moves")
+            icons::pill(Icon::Sunk, left.clone(), p().info).id(("sunk", id)).tip(format!(
+                "sunk in {agent}'s backlog until {until} (in {left}): its loop won't bring it up before, unless the thread moves"
+            ))
         });
         let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
@@ -947,7 +949,7 @@ impl TicketPanel {
             .children(critical_chip(ticket))
             .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
-            .when_some(sunk_tip, |d, tip| d.child(div().id(("sunk", id)).flex_none().child("⤓").tip(tip)))
+            .children(sunk_mark)
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
         // Stepped back while sunk; itself again under the pointer.
         let dim = sunk.is_some();
@@ -2771,13 +2773,27 @@ pub(crate) fn ago(when: &str) -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_secs();
-    let seconds = now.saturating_sub(then);
-    Some(match seconds {
+    Some(span(now.saturating_sub(then)))
+}
+
+/// How long until `when`, as short: `12m`, `3h`, `2d` (`now` when passed).
+pub(crate) fn left(when: &str) -> Option<String> {
+    let at = crate::status::parse_time(when)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(span(at.saturating_sub(now)))
+}
+
+/// A duration, as short: under a minute is `now`, then minutes, hours, days.
+fn span(seconds: u64) -> String {
+    match seconds {
         0..60 => "now".into(),
         60..3600 => format!("{}m", seconds / 60),
         3600..86400 => format!("{}h", seconds / 3600),
         _ => format!("{}d", seconds / 86400),
-    })
+    }
 }
 
 /// The tickets sunk in an agent's backlog at `now` (seconds since the

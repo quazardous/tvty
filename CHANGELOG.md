@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- A ticket sunk in the agent's backlog shows a ⤓ pill with the time left before its loop brings it up again ("⤓ 1h").
 - A ticket's assignee is an "Assign ▾" button beside Snooze (it names the assignee), its list of the project's agents right above it, as Snooze's.
 
 ### Fixed
