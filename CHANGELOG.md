@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0-beta.1] - 2026-09-30
+
 ### Added
 
 - A Windows build in each release, with a PowerShell installer; the updater
@@ -44,10 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- The agent bar's choices (take or leave the controls, move the loop; auto / hold 10 min / hold) open right above their chip, as wide as what they say, and close on a click elsewhere; "⟳ update" asks before restarting Claude; auto / hold 10 min / hold carry the bar's ▶ ‖ ■ in their colours, the mode armed marked.
+- The agent bar has one chip for where a loop runs and who types into it ("tmux · controls +1"), with "⟳ update" beside it. A chip's choices open right above it, sized to what they say, and close on a click elsewhere: take or leave the controls (taking them makes claude-loop's terminal a copy) or move the loop; auto / hold 10 min / hold, with the bar's ▶ ‖ ■ and the armed mode marked; and "⟳ update" asks before restarting Claude.
 - A full-screen ticket's title and body are edited in their place ("✎ edit" beside the title), with the new ticket's editor: Write / Preview, @-mentions, pasted images. The left column's "Content" row is gone.
-- The agent bar's "⟳ update" (Claude Code updated: a click restarts it) sits on the right, beside the loop's "tmux · controls".
-- The agent bar has one chip for where a loop runs and who types into it ("tmux · controls +1"); a click opens one line to take or leave the controls — taking them makes claude-loop's terminal a copy — or to move the loop.
 - A tmux loop another terminal types into (claude-loop's) opens as a copy; the agent bar's chip and the session's row say who else is attached ("copy · +1").
 - Every field of a ticket (project, intent, priority, level, scope, tags, milestone, assignee, reporter) is a dropdown searched as it is typed, laid out the same in a new ticket and a full-screen ticket, where each is always in sight and applies at once; moving a ticket to another project asks "Move to …" first.
 - The app menu opens the settings ("Settings…", Ctrl+,), and Options is now called Settings.
