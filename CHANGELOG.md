@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A ticket's assignee is an "Assign ▾" button beside Snooze (it names the assignee), its list of the project's agents right above it, as Snooze's.
+
+### Fixed
+
+- A project's 📢 changed elsewhere (aiball's page, another tvty) shows at once, and a wake focus ending at its date lets go by itself.
+
 ## [0.5.0-beta.1] - 2026-09-29
 
 ### Added

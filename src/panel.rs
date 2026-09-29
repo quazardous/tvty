@@ -1089,23 +1089,6 @@ impl TicketPanel {
             });
         }
         {
-            // Who it is assigned to, a click away from changing (the project's
-            // agents).
-            let (label, tip) = match ticket.assignee.as_deref() {
-                Some(assignee) => (format!("→ {assignee}"), format!("assigned to {assignee}: a click changes it")),
-                None => ("assign…".to_string(), "assigned to nobody: a click assigns it to one of the project's agents".to_string()),
-            };
-            chips.push(
-                buttons::chip("assignee-chip", label)
-                    .tip(tip)
-                    .on_click(cx.listener(|panel, _, _, cx| {
-                        panel.read_catalog(cx);
-                        panel.toggle_menu(Menu::Assignee, cx)
-                    }))
-                    .into_any_element(),
-            );
-        }
-        {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let label = match icons::priority(&priority) {
@@ -1480,6 +1463,18 @@ impl TicketPanel {
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
+                        // Who it is assigned to, as Snooze: the project's agents above.
+                        .child(
+                            buttons::secondary("assign", match ticket.assignee.as_deref() {
+                                Some(assignee) => format!("→ {assignee} ▾"),
+                                None => "Assign ▾".to_string(),
+                            })
+                            .disabled(detail.busy)
+                            .on_click(cx.listener(|panel, _, _, cx| {
+                                panel.read_catalog(cx);
+                                panel.toggle_menu(Menu::Assignee, cx)
+                            })),
+                        )
                     })
                     .child(div().flex_1())
                     .child(
