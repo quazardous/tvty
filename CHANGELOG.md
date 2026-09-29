@@ -32,11 +32,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The new-project wizard starts from what a folder already has (a subfolder of a project included): its project, agent, role, where its loops run and its Remote Control are filled in, in their own colour with where they come from; it also sets where the loops run and the Remote Control.
 - Options can be scoped to a project (a list top left, typed to find it, or ⚙ on the project in the sessions list): a Project page sets where its loops run and its Remote Control, folder by folder, and shows the board settings it overrides.
 - The options' left column is resized by dragging its border, as a full ticket's fields.
+- The agent bar shows the model its Claude runs (its price in the tip), in yellow with ↑ when a newer one of its family is out.
 
 ### Fixed
 
 - The updater shows its window buttons: close, minimize, maximize.
 - The answers of every dialog and form are buttons of one size.
+- The agent bar keeps its controls in sight when short: its folder, then its name, give way.
 - In the sessions list, a new session goes last in its project; the others keep their place, across restarts too.
 - A loop started from its folder (the sessions list, the end screen, a new project's first session) runs where its folder says — the session host or tmux — instead of always tmux.
 - Ctrl+Enter sends a reply or files a ticket without first putting a new line in the text.

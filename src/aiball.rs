@@ -189,6 +189,69 @@ pub struct AgentBar {
     /// folder's setting, or `/rc` typed): none from an older loop.
     #[serde(default)]
     pub remote_control: Option<BarRemoteControl>,
+    /// The model its Claude ran its last turn on, with its price and a
+    /// newer one of its family, as aiball's model list says: none before
+    /// the first turn ends, or from an older loop.
+    #[serde(default)]
+    pub model: Option<BarModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarModel {
+    /// `claude-opus-5-5`.
+    pub id: String,
+    /// `Opus 5.5`.
+    pub name: String,
+    /// USD per million tokens.
+    #[serde(default)]
+    pub cost: Option<ModelCost>,
+    #[serde(default)]
+    pub newer: Option<NewerModel>,
+    /// The list the price and the newer model come from.
+    #[serde(default)]
+    pub catalog: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct ModelCost {
+    pub input: f64,
+    pub output: f64,
+}
+
+impl ModelCost {
+    /// `$15 / $75 per M tokens`.
+    pub fn said(&self) -> String {
+        let usd = |n: f64| if n.fract() == 0. { format!("${n:.0}") } else { format!("${n}") };
+        format!("{} / {} per M tokens", usd(self.input), usd(self.output))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct NewerModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub cost: Option<ModelCost>,
+}
+
+impl BarModel {
+    /// What its tip says: its id, its price, a newer one of its family.
+    pub fn said(&self) -> String {
+        let mut said = self.id.clone();
+        if let Some(cost) = &self.cost {
+            said.push_str(&format!(" · {}", cost.said()));
+        }
+        if let Some(newer) = &self.newer {
+            said.push_str(&format!("\n{} is out", newer.name));
+            if let Some(cost) = &newer.cost {
+                said.push_str(&format!(" ({})", cost.said()));
+            }
+        }
+        if let Some(catalog) = &self.catalog {
+            said.push_str(&format!("\nprices from {catalog}"));
+        }
+        said
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -1425,6 +1488,22 @@ mod bar_tests {
         updated["alerts"]["restart_needed"] = json!(true);
         let updated: AgentBar = serde_json::from_value(updated).unwrap();
         assert!(updated.alerts.restart_needed);
+    }
+
+    #[test]
+    fn a_bar_says_its_model_its_price_and_a_newer_one() {
+        let plain: AgentBar = serde_json::from_value(bar()).unwrap();
+        assert!(plain.model.is_none());
+        let mut with = bar();
+        with["model"] = json!({ "id": "claude-opus-5-5", "name": "Opus 5.5", "cost": { "input": 15, "output": 75 },
+                                "newer": { "id": "claude-opus-5-6", "name": "Opus 5.6", "cost": { "input": 12.5, "output": 60 } },
+                                "catalog": "models.dev" });
+        let model = serde_json::from_value::<AgentBar>(with).unwrap().model.unwrap();
+        assert_eq!(model.said(), "claude-opus-5-5 · $15 / $75 per M tokens\nOpus 5.6 is out ($12.5 / $60 per M tokens)\nprices from models.dev");
+        // As a loop pushes it, before the daemon adds the price.
+        let mut bare = bar();
+        bare["model"] = json!({ "id": "claude-opus-5-5", "name": "Opus 5.5" });
+        assert_eq!(serde_json::from_value::<AgentBar>(bare).unwrap().model.unwrap().said(), "claude-opus-5-5");
     }
 }
 

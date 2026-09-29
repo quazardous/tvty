@@ -353,12 +353,25 @@ impl Shell {
                     "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's options"
                 })
         });
+        // The model its Claude ran its last turn on; a newer one of its
+        // family out: yellow, ↑.
+        let model_item = bar.as_ref().and_then(|b| b.model.as_ref()).map(|model| {
+            let newer = model.newer.is_some();
+            item()
+                .id("agent-model")
+                .text_color(ink(if newer { p().warning } else { p().muted }))
+                .child(if newer { format!("{} ↑", model.name) } else { model.name.clone() })
+                .tip(model.said())
+        });
         Some(
             div()
                 .id("agent-bar")
                 .relative()
                 .flex()
                 .flex_none()
+                // The column's width, never more: what is long gives way.
+                .w_full()
+                .min_w_0()
                 .items_center()
                 .gap_2()
                 .h(px(BAR_HEIGHT))
@@ -466,6 +479,7 @@ impl Shell {
                     )
                 })
                 .child(div().flex_1())
+                .children(model_item)
                 // Where its loop runs: on aiball's host, or in tmux.
                 .child(crate::tips::target("agent.place", mode_chip).flex_none())
                 .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
@@ -485,8 +499,10 @@ impl Shell {
                             "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
                         })
                 }).flex_none())
-                .child(item().text_color(ink(p().text)).child(agent.clone()))
-                .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
+                // Its folder, then its name, give way when the bar is short (the
+                // tab says its name too): the controls stay.
+                .child(item().flex_shrink(1.).min_w_0().overflow_hidden().text_color(ink(p().text)).child(div().min_w_0().truncate().child(agent.clone())))
+                .children(cwd.map(|cwd| item().flex_shrink(1000.).min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(cwd))))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .children(move_confirm)
                 .into_any_element(),
