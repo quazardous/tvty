@@ -274,10 +274,11 @@ ctrl+shift+n anywhere, and "+ a new one" under a ticket's links (full
 screen) for a sub-ticket. The form fills the window, laid out as a ticket's
 full detail: what the ticket is on the left third — project (the panel's,
 else the terminal's, else the last used; any project of the board, in a
-list that opens), then every other field with all its choices in sight,
-the chosen one lit: intent, priority, level, scope (and who it notifies),
-tags, milestone, assignee (the project's agents first), and a parent to
-type as `#ticket` — and its words on the
+list that opens), then every other field in a dropdown searched as it is
+typed (`ui::fields`, the full-screen ticket's too): intent, priority,
+level, scope (and who it notifies), tags, milestone, assignee (the
+project's agents first), and a parent to type as `#ticket` — and its
+words on the
 rest: title, and the body with @-mentions and pasted images, under
 **Write / Preview** tabs — Preview shows it as it will read (its images
 said). No summary: aiball's agents write one, a person's title says
@@ -324,10 +325,12 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   ticket as a whole — its state and chips, lifecycle and snooze, its fields
   (intent, priority, level, milestone, scope, tags), who is on it (reporter,
   a claim and until when — a lapsed one says so —, an assignment), what it
-  is linked to, its tokens — each changeable in place: a click on a row
-  offers its values (intent, priority, level, scope, milestone, tags, the
-  reporter, the assignee or release, a relation to add or undo, the
-  project to move to); no reply goes with these. "✎ edit" beside the title
+  is linked to, its tokens — the fields laid out and chosen as in a new
+  ticket, each dropdown always in sight (intent, priority, level, scope and
+  who it notifies, tags with their ✕, milestone, the reporter, the
+  assignee, the project — moved once "Move to …" confirms); a choice
+  applies at once, no reply goes with it; a relation is added from its row
+  ("+ a ticket") or undone by its ✕. "✎ edit" beside the title
   edits the title and body in its place, with the new ticket's editor
   (Write / Preview, @-mentions, Ctrl+V pastes an image): Ctrl+Enter saves,
   Esc puts them back; on the rest the talk at a readable width, whole — each

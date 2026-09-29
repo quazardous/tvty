@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use crate::aiball::{Aiball, NewTicket};
 use crate::theme::p;
-use crate::ui::buttons::{self, Look as _};
+use crate::ui::buttons;
 use crate::kernel::catalog::{self, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::ui::ticket_text::{TicketText, TicketTextEvent};
@@ -33,10 +33,7 @@ pub struct Created {
     pub body: String,
 }
 
-const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
-const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
-const SCOPES: &[&str] = &["internal", "default", "broadcast"];
-const LEVELS: &[&str] = &["task", "milestone", "roadmap"];
+use crate::ui::fields::{self, INTENTS, LEVELS, PRIORITIES, SCOPES};
 
 /// The field whose choices are open in the left column.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -44,6 +41,8 @@ enum Pick {
     Project,
     Intent,
     Priority,
+    Level,
+    Scope,
     Tag,
     Milestone,
     Assignee,
@@ -70,7 +69,7 @@ pub struct NewTicketForm {
     parent_input: Entity<InputState>,
     catalog: Catalog,
     /// Each long field's combo: a dropdown searched as it is typed.
-    combos: [(Pick, Entity<ComboState>); 6],
+    combos: [(Pick, Entity<ComboState>); 8],
     busy: bool,
     error: Option<String>,
 }
@@ -102,7 +101,7 @@ impl NewTicketForm {
         })
         .detach();
         let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
-        let combos = [Pick::Project, Pick::Intent, Pick::Priority, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
+        let combos = [Pick::Project, Pick::Intent, Pick::Priority, Pick::Level, Pick::Scope, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
             let state = combo::new(Vec::new(), None, window, cx);
             // A choice takes it; a milestone or an assignee cleared drops it.
             cx.subscribe_in(&state, window, move |form: &mut Self, _, event: &ComboEvent<combo::Choices>, window, cx| {
@@ -200,6 +199,8 @@ impl NewTicketForm {
             Pick::Project => catalog.projects.iter().map(Choice::plain).collect(),
             Pick::Intent => INTENTS.iter().map(|v| Choice::plain(*v)).collect(),
             Pick::Priority => PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(),
+            Pick::Level => LEVELS.iter().map(|v| Choice::plain(*v)).collect(),
+            Pick::Scope => SCOPES.iter().map(|v| Choice::plain(*v)).collect(),
             Pick::Tag => catalog.tags.iter().filter(|t| !self.tags.contains(t)).map(Choice::plain).collect(),
             Pick::Milestone => catalog.milestones.iter().map(|(id, title)| Choice::new(id.to_string(), title.clone())).collect(),
             Pick::Assignee => catalog
@@ -216,6 +217,8 @@ impl NewTicketForm {
             Pick::Project => (!self.project.is_empty()).then(|| self.project.clone()),
             Pick::Intent => Some(self.intent.to_string()),
             Pick::Priority => Some(self.priority.to_string()),
+            Pick::Level => Some(self.level.to_string()),
+            Pick::Scope => Some(self.scope.to_string()),
             Pick::Tag => None,
             Pick::Milestone => self.milestone.as_ref().map(|(id, _)| id.to_string()),
             Pick::Assignee => self.assignee.clone(),
@@ -235,6 +238,8 @@ impl NewTicketForm {
             Pick::Project => self.set_project(value, window, cx),
             Pick::Intent => self.intent = INTENTS.iter().copied().find(|v| *v == value).unwrap_or(self.intent),
             Pick::Priority => self.priority = PRIORITIES.iter().copied().find(|v| *v == value).unwrap_or(self.priority),
+            Pick::Level => self.level = LEVELS.iter().copied().find(|v| *v == value).unwrap_or(self.level),
+            Pick::Scope => self.scope = SCOPES.iter().copied().find(|v| *v == value).unwrap_or(self.scope),
             Pick::Tag => {
                 if !self.tags.contains(&value) {
                     self.tags.push(value);
@@ -342,7 +347,7 @@ impl NewTicketForm {
     /// A choice dropped: a tag, the milestone, the assignee.
     fn unpick(&mut self, pick: Pick, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         match pick {
-            Pick::Project | Pick::Intent | Pick::Priority => {}
+            Pick::Project | Pick::Intent | Pick::Priority | Pick::Level | Pick::Scope => {}
             Pick::Tag => self.tags.retain(|t| t != value),
             Pick::Milestone => self.milestone = None,
             Pick::Assignee => self.assignee = None,
@@ -359,107 +364,53 @@ impl NewTicketForm {
             Pick::Project => ("a project", "a project…"),
             Pick::Intent => ("intent", "an intent…"),
             Pick::Priority => ("priority", "a priority…"),
+            Pick::Level => ("level", "a level…"),
+            Pick::Scope => ("scope", "a scope…"),
             Pick::Tag => ("add a tag", "a tag…"),
             Pick::Milestone => ("none", "a milestone…"),
             Pick::Assignee => ("nobody", "an agent…"),
         };
-        let mut row = div().flex().flex_wrap().items_center().gap_1();
-        if pick == Pick::Tag {
-            for tag in self.tags.clone() {
-                row = row.child(
-                    div()
-                        .id(SharedString::from(format!("new-tag-chosen-{tag}")))
-                        .flex()
-                        .items_center()
-                        .gap_1()
-                        .px_1p5()
-                        .py_0p5()
-                        .rounded_sm()
-                        .text_xs()
-                        .border_1()
-                        .border_color(p().accent)
-                        .bg(p().accent.opacity(0.15))
-                        .child(tag.clone())
-                        .child(
-                            buttons::remove(SharedString::from(format!("new-tag-drop-{tag}")), "✕", "take it out")
-                                .min_w(px(0.))
-                                .on_click(cx.listener(move |form, _, window, cx| form.unpick(Pick::Tag, &tag, window, cx))),
-                        ),
-                );
-            }
-        }
         let clearable = matches!(pick, Pick::Milestone | Pick::Assignee);
-        row.child(
-            div()
-                .w(px(220.))
-                .child(combo::view(self.combo(pick), SharedString::from(format!("new-{id}")), placeholder, search).cleanable(clearable))
-                .children(crate::inspect::mark_if(format!("new-{id}"))),
-        )
+        let picker = fields::picker(self.combo(pick), format!("new-{id}"), placeholder, search, clearable);
+        if pick != Pick::Tag {
+            return picker;
+        }
+        let chips = self
+            .tags
+            .clone()
+            .into_iter()
+            .map(|tag| {
+                let drop = fields::tag_drop(format!("new-tag-drop-{tag}"))
+                    .on_click(cx.listener({
+                        let tag = tag.clone();
+                        move |form, _, window, cx| form.unpick(Pick::Tag, &tag, window, cx)
+                    }));
+                fields::tag(format!("new-tag-chosen-{tag}"), &tag, drop)
+            })
+            .collect();
+        fields::tags(chips, picker)
     }
 
     /// The left third: what the ticket is. The short fields show their
     /// choices at once, the chosen one lit; the long ones (project, tags,
     /// milestone, assignee) are searched as they are typed.
     fn fields(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let label = |text: &'static str| div().w(px(80.)).flex_none().pt_0p5().text_color(p().muted).child(text);
-        let choice = |id: String, text: String, on: bool, cx: &mut Context<Self>, set: Box<dyn Fn(&mut Self, &mut Context<Self>)>| {
-            buttons::chip(SharedString::from(id), text)
-                .py_0p5()
-                .text_xs()
-                .when(!on, |d| d.text_color(p().muted))
-                .chosen(on)
-                .on_click(cx.listener(move |form, _, _, cx| {
-                    set(form, cx);
-                    cx.notify();
-                }))
-        };
-        // A field: its name, and its choices beside it, wrapping.
-        let field = |text: &'static str, choices: Div| {
-            div().flex().gap_2().py_1().child(label(text)).child(choices.flex_1().min_w_0())
-        };
-        let chips = || div().flex().flex_wrap().gap_1();
-        let group = |title: &'static str| {
-            div()
-                .pt_3()
-                .pb_1()
-                .text_xs()
-                .font_weight(FontWeight::BOLD)
-                .text_color(p().muted)
-                .child(title.to_uppercase())
-        };
+        use fields::{field, group};
         let mut col = div().id("new-ticket-fields").flex().flex_col().pr_3().text_sm();
 
         // ── Where ──
         col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, cx)));
 
-        // ── Fields: every choice in sight ──
+        // ── Fields ──
         col = col
             .child(group("Fields"))
             .child(field("intent", self.picker_field(Pick::Intent, cx)))
-            .child(field("priority", self.picker_field(Pick::Priority, cx)));
-        let fixed: [(&'static str, &'static str, &'static [&'static str], fn(&mut Self, &'static str)); 2] = [
-            ("level", self.level, LEVELS, |f, v| f.level = v),
-            ("scope", self.scope, SCOPES, |f, v| f.scope = v),
-        ];
-        for (name, value, values, set) in fixed {
-            let mut list = chips();
-            for v in values {
-                let v: &'static str = v;
-                list = list.child(choice(format!("new-{name}-{v}"), v.into(), value == v, cx, Box::new(move |form, _| set(form, v))));
-            }
-            col = col.child(field(name, list));
-            if name == "scope" {
-                // Two lines kept whatever it says, the fields below not moving
-                // as it changes; more when the column is narrow: never over them.
-                col = col.child(div().pl(px(88.)).pb_1().min_h(px(36.)).text_xs().text_color(p().muted).child(match value {
-                    "internal" => "notifies nobody but who is mentioned",
-                    "broadcast" => "notifies the project's followers too",
-                    _ => "notifies the ticket's subscribers and the project's owners",
-                }));
-            }
-        }
-        col = col.child(field("tags", self.picker_field(Pick::Tag, cx)));
-        col = col.child(field("milestone", self.picker_field(Pick::Milestone, cx)));
+            .child(field("priority", self.picker_field(Pick::Priority, cx)))
+            .child(field("level", self.picker_field(Pick::Level, cx)))
+            .child(field("scope", self.picker_field(Pick::Scope, cx)))
+            .child(fields::scope_note(self.scope))
+            .child(field("tags", self.picker_field(Pick::Tag, cx)))
+            .child(field("milestone", self.picker_field(Pick::Milestone, cx)));
 
         // ── People: the project's agents first ──
         col = col.child(group("People")).child(field("assign to", self.picker_field(Pick::Assignee, cx)));
