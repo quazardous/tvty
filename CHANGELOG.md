@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The sessions list's IDLE no longer shows an agent that runs, nor the same agent twice: aiball keeps the loops it had before, under other names.
 - A project's 📢 changed elsewhere (aiball's page, another tvty) shows at once, and a wake focus ending at its date lets go by itself.
 
 ## [0.5.0-beta.1] - 2026-09-29
