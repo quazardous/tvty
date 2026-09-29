@@ -32,10 +32,10 @@ const EXITED: u8 = 0x0a;
 const CLOSED: u8 = 0x0b;
 const ERROR: u8 = 0x0c;
 
-#[cfg(unix)]
-type Stream = std::os::unix::net::UnixStream;
-#[cfg(not(unix))]
-type Stream = std::net::TcpStream;
+/// The connection to a session (docs/IPC.md): its `attach.sock` today, a
+/// Unix socket — aiball's session host is Unix only for now, and elsewhere
+/// connecting says `Unsupported` at once.
+type Stream = tvty_ipc::Conn;
 
 /// The history the snapshot brings above the screen.
 const SCROLLBACK: u32 = 2000;
@@ -157,7 +157,7 @@ impl Attach {
         self.closed.store(true, std::sync::atomic::Ordering::Relaxed);
         if let Ok(stream) = self.stream.lock() {
             if let Some(stream) = stream.as_ref() {
-                let _ = stream.shutdown(std::net::Shutdown::Both);
+                stream.shutdown();
             }
         }
     }
@@ -175,15 +175,9 @@ impl Attach {
     }
 }
 
-#[cfg(unix)]
+/// The session's `attach.sock`, a path (aiball's contract): a Unix socket.
 fn dial(socket: &Path) -> std::io::Result<Stream> {
-    Stream::connect(socket)
-}
-
-/// No session host off Unix yet: aiball's holds ConPTY there later.
-#[cfg(not(unix))]
-fn dial(_: &Path) -> std::io::Result<Stream> {
-    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no session host on this system yet"))
+    tvty_ipc::Endpoint::Unix(socket.to_path_buf()).connect()
 }
 
 /// The session's side, until it ends: frames to the terminal.

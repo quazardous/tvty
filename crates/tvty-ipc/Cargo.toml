@@ -1,0 +1,8 @@
+[package]
+name = "tvty-ipc"
+version = "0.1.0"
+edition = "2024"
+description = "How tvty talks to other processes: an address, credentials, a connection with the same guarantees on a Unix socket or TCP — and where aiball is (docs/IPC.md)"
+license = "MIT"
+
+[dependencies]

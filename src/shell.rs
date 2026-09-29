@@ -3064,7 +3064,7 @@ impl Shell {
         let rows = [
             // The version and the commit it was built from (`+`: with changes not committed).
             ("Version", help::version()),
-            ("aiball socket", crate::aiball::socket_path().display().to_string()),
+            ("aiball at", crate::aiball::location_said()),
             ("Acting as", self.aiball.user.clone()),
             (
                 "aiball bus",

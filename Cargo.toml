@@ -16,6 +16,8 @@ members = ["crates/*"]
 [dependencies]
 tvty-config = { path = "crates/tvty-config" }
 tvty-keys = { path = "crates/tvty-keys" }
+# How tvty talks to other processes: aiball, sessions, a second tvty (docs/IPC.md).
+tvty-ipc = { path = "crates/tvty-ipc" }
 # The updater's engine: the versions, the latest release (not its window).
 tvty-updater = { path = "crates/tvty-updater" }
 alacritty_terminal = "0.26"

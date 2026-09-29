@@ -7653,6 +7653,7 @@ dependencies = [
  "toml 0.8.23",
  "tungstenite",
  "tvty-config",
+ "tvty-ipc",
  "tvty-keys",
  "tvty-updater",
 ]
@@ -7665,6 +7666,10 @@ dependencies = [
  "serde_json",
  "toml 0.8.23",
 ]
+
+[[package]]
+name = "tvty-ipc"
+version = "0.1.0"
 
 [[package]]
 name = "tvty-keys"
