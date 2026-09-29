@@ -60,18 +60,23 @@ make install-desktop BIN=$PWD/target/release/tvty
 Terminal Velocity builds and starts on Windows 10 and 11 (x86_64), and its
 releases carry a Windows build. Expect gaps: it needs an aiball recent
 enough to write its machine secret (without it, tvty cannot list or start
-the agents' loops), and the agents' sessions run under psmux. The same
-updater installs it, from PowerShell:
+the agents' loops), and the agents' sessions run under psmux. One line in PowerShell
+installs everything:
 
 ```powershell
-irm https://github.com/quazardous/tvty/releases/latest/download/tvty-updater-installer.ps1 | iex
-~\.local\bin\tvty-updater.exe
+irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 ```
 
-It puts Terminal Velocity and its updater in the Start menu. aiball is
-installed through its own `install.ps1`, which needs PowerShell 7 (`pwsh`),
-Node.js and git. Settings live in `%APPDATA%\tvty`, the layout and the log in
-`%LOCALAPPDATA%\tvty`.
+It installs what is missing through winget (Git, Node.js LTS, PowerShell 7,
+psmux), then Terminal Velocity and its updater (into `~\.local\bin`, added
+to your PATH), then aiball through its own `install.ps1`, and puts both
+programs in the Start menu. It says what failed, if anything; run it again
+once that is fixed, it skips what is there. Without winget (Windows
+Sandbox, some LTSC editions) it names what to install by hand.
+
+`tvty-updater --install` does its last part alone: aiball when missing,
+Terminal Velocity, the shortcuts. Settings live in `%APPDATA%\tvty`, the
+layout and the log in `%LOCALAPPDATA%\tvty`.
 
 ## Updates
 

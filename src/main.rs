@@ -1,6 +1,10 @@
 //! tvty — Terminal Velocity: a native terminal for working with many AI
 //! agents, their terminals grouped by project and their tickets beside.
 
+// On Windows a window program: started from the Start menu, no console
+// window opens behind it (one started from a console still writes there).
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 mod accordion;
 mod activity;
 mod attach;
@@ -50,7 +54,17 @@ mod wire;
 
 use gpui_kit::*;
 
+/// A window program started from a console writes there, as a console one
+/// would (`tvty --version`, the log). Started otherwise, nothing to do.
+#[cfg(windows)]
+fn attach_console() {
+    // SAFETY: a plain Win32 call; it fails harmlessly without a parent console.
+    unsafe { windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS) };
+}
+
 fn main() {
+    #[cfg(windows)]
+    attach_console();
     // tvty may be started from inside tmux; its terminals attach to tmux
     // sessions of their own, which tmux refuses while $TMUX is set.
     // SAFETY: no other thread exists yet.

@@ -162,6 +162,42 @@ pub fn update_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Everything, without a window (`tvty-updater --install`, what the Windows
+/// setup script runs): aiball installed when missing and updated when older
+/// than Terminal Velocity needs, then Terminal Velocity installed or updated,
+/// its launchers in place either way.
+pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+    // Each part tried whatever the others did: what failed is said, and
+    // the rest is in place.
+    let mut failed = Vec::new();
+    let aiball = match aiball_status().state(Some(MIN_AIBALL)) {
+        State::Missing => install_aiball(say),
+        State::TooOld => update_aiball(say),
+        _ => {
+            say("aiball is installed".into());
+            Ok(())
+        }
+    };
+    if let Err(error) = aiball {
+        say(format!("✗ aiball: {error:#}"));
+        failed.push("aiball");
+    }
+    let tvty = match tvty_status().state(None) {
+        State::Missing | State::TooOld | State::UpdateAvailable => update_tvty(say),
+        // Installed, its latest release not asked or not known: kept.
+        State::UpToDate | State::Unknown => {
+            say("Terminal Velocity is installed".into());
+            install_launcher(say)
+        }
+    };
+    if let Err(error) = tvty {
+        say(format!("✗ Terminal Velocity: {error:#}"));
+        failed.push("Terminal Velocity");
+    }
+    anyhow::ensure!(failed.is_empty(), "not installed: {}", failed.join(", "));
+    Ok(())
+}
+
 /// Puts back the version kept by the last update.
 pub fn rollback_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let kept = previous_dir().join(exe("tvty"));
@@ -324,7 +360,10 @@ pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
 }
 
 fn latest_aiball_tag() -> anyhow::Result<String> {
-    let out = Command::new("git").args(["ls-remote", "--tags", "--refs", "--sort=-v:refname", AIBALL_REPO, "v*"]).output()?;
+    let out = Command::new("git")
+        .args(["ls-remote", "--tags", "--refs", "--sort=-v:refname", AIBALL_REPO, "v*"])
+        .output()
+        .context("git, to find aiball's releases")?;
     let said = String::from_utf8_lossy(&out.stdout);
     latest_tag(&said).context("no release tag of aiball found")
 }
