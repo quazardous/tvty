@@ -149,6 +149,27 @@ start:
 scripts/wbox_ctl.py up dev/tvty-wbox/config.yaml -s "app.command=$PWD/scripts/test-tvty cl-demo-lead"
 ```
 
+## Behind a proxy node
+
+aiball spans machines: a node in proxy mode relays `/api` and the bus to
+its hub. `scripts/proxy-stack up` (`make proxy-up`) runs two of them in
+containers (`dev/proxy-stack/compose.yaml`), built from the aiball
+checkout beside tvty with aiball's own test images:
+
+- **hub**, machine A: the core, with the demo board seeded (the same as
+  the throwaway aiball's), on 127.0.0.1:17797;
+- **node**, machine B: in proxy mode, its `config.yaml` naming the hub and
+  a node token the script issued on it, on 127.0.0.1:17798. Its socket is
+  `dev/proxy-stack/run/node/sock/sock`.
+
+The two talk only over the compose network, with the token, as two
+machines would. `TVTY_AIBALL=proxy make wbox-up` runs the test tvty on the
+node: what a tvty on machine B sees. `up --loop` adds a real claude-loop on
+fake-claude behind the node (the image of aiball's full-stack tests).
+`make proxy-logs` follows the daemons; `make proxy-down` stops it all and
+removes its data (`dev/proxy-stack/run`). The containers run as the user's
+uid, the source read-only.
+
 ## Gestures wbox has no tool for
 
 `scripts/wbox_ctl.py` adds them (`make help` for the make side):

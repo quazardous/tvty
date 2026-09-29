@@ -6,7 +6,6 @@
 //! (proposed, checked) and an agent. claude-loop starts it, detached, in
 //! that directory — never tvty's —, and tvty opens it once it runs.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::*;
@@ -183,6 +182,7 @@ impl Shell {
                         // through claude-loop's restart: its start is refused
                         // while its host is up, its program ended.
                         again: l.on_host().then(|| l.name.clone()),
+                        mode: None,
                     };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
                 }
@@ -201,7 +201,7 @@ impl Shell {
                         list = list.child(heading(heading_of.clone(), cx));
                         last = Some(heading_of);
                     }
-                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None };
+                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, cx, start));
                 }
             }
@@ -312,20 +312,14 @@ impl Shell {
                         .gap_2()
                         .justify_end()
                         .child(
-                            Button::new("new-session-cancel")
-                                .ghost()
-                                .xsmall()
-                                .label("Cancel")
+                            buttons::secondary("new-session-cancel", "Cancel")
                                 .on_click(cx.listener(|shell, _, _, cx| {
                                     shell.new_session = None;
                                     cx.notify();
                                 })),
                         )
                         .child(
-                            Button::new("new-session-start")
-                                .primary()
-                                .xsmall()
-                                .label("Start")
+                            buttons::primary("new-session-start", "Start")
                                 .loading(form.busy)
                                 .disabled(form.busy || !exists)
                                 .on_click(cx.listener(|shell, _, _, cx| {
@@ -338,6 +332,8 @@ impl Shell {
                                         agent: (!agent.is_empty()).then_some(agent),
                                         crew: form.crew,
                                         again: None,
+                                        // Unchecked "on aiball's host": tmux, asked.
+                                        mode: (!form.on_host).then_some("tmux"),
                                     };
                                     if form.on_host {
                                         shell.start_on_host(start, cx);

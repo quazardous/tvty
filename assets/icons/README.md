@@ -12,5 +12,8 @@ They are licensed under the **Apache License 2.0**
 `chat_bubble.svg` mirrored (its point on the
 right).
 
+`megaphone.svg` and `bot-message-square.svg` are [Lucide](https://lucide.dev)'s, unchanged,
+under the ISC License, © Lucide Contributors (as the GPUI kit ships it).
+
 tvty bundles only the few it draws (see `src/icons.rs`), in the theme's
 colours.

@@ -8,7 +8,6 @@
 //! The form lives on while hidden: Esc puts it away, the draft kept for the
 //! next time, until it is sent.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -72,6 +71,9 @@ impl Catalog {
     }
 }
 
+/// The tallest a picture of the preview is drawn.
+const PREVIEW_PICTURE_HEIGHT: f32 = 600.;
+
 pub struct NewTicketForm {
     aiball: Aiball,
     project: String,
@@ -98,12 +100,42 @@ pub struct NewTicketForm {
     mentions: Vec<String>,
     /// The body shown as it will read (the Preview tab).
     preview: bool,
+    /// The images of the body, read for its preview.
+    images: crate::images::Cache,
 }
 
 impl EventEmitter<CloseNewTicket> for NewTicketForm {}
 impl EventEmitter<Created> for NewTicketForm {}
 
 impl NewTicketForm {
+    /// The body as it will read: its words, and its pictures alone on their
+    /// line drawn at the column's width (never beyond their size), as the
+    /// thread draws them; those not read yet say so.
+    fn preview_view(&self, text: &str) -> Div {
+        use crate::images::Segment;
+        let text = crate::images::preview(text, &self.images, false);
+        let mut col = div().flex().flex_col().gap_2();
+        for (i, segment) in crate::images::segments(&text, &self.images).into_iter().enumerate() {
+            col = match segment {
+                Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("new-body-preview-{i}")), md).selectable(true)),
+                Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
+                Segment::Pictures(pictures) => col.children(pictures.into_iter().map(|picture| {
+                    let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
+                    div()
+                        .w_full()
+                        .max_w(px(width.min(PREVIEW_PICTURE_HEIGHT * width / height)))
+                        .aspect_ratio(width / height)
+                        .rounded_sm()
+                        .overflow_hidden()
+                        .border_1()
+                        .border_color(p().border)
+                        .child(img(ImageSource::Image(picture.image.clone())).size_full())
+                })),
+            };
+        }
+        col
+    }
+
     pub fn new(aiball: Aiball, project: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // The fields column's width, dragged here or on another full page.
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
@@ -191,6 +223,7 @@ impl NewTicketForm {
             error: None,
             mentions: Vec::new(),
             preview: false,
+            images: Default::default(),
         };
         form.set_project(project, cx);
         form
@@ -449,6 +482,7 @@ impl NewTicketForm {
         self.error = None;
     }
 
+    /// Ctrl+Enter files it, from the title too (the body is a composer).
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         if keystroke.modifiers.control && keystroke.key == "enter" {
@@ -499,7 +533,7 @@ impl NewTicketForm {
                     }),
             );
         }
-        row = row.child(div().w(px(160.)).child(Input::new(&input)));
+        row = row.child(crate::focusmode::on_hover(div().w(px(160.)).child(Input::new(&input)), input.read(cx).focus_handle(cx)));
         let mut suggested = div().flex().flex_wrap().gap_1().pt_1();
         let found = self.suggestions(pick, &query);
         let none = found.is_empty() && !query.trim().is_empty();
@@ -570,8 +604,9 @@ impl NewTicketForm {
             }
             col = col.child(field(name, list));
             if name == "scope" {
-                // Two lines kept whatever it says: the fields below do not move.
-                col = col.child(div().pl(px(88.)).pb_1().h(px(36.)).text_xs().text_color(p().muted).child(match value {
+                // Two lines kept whatever it says, the fields below not moving
+                // as it changes; more when the column is narrow: never over them.
+                col = col.child(div().pl(px(88.)).pb_1().min_h(px(36.)).text_xs().text_color(p().muted).child(match value {
                     "internal" => "notifies nobody but who is mentioned",
                     "broadcast" => "notifies the project's followers too",
                     _ => "notifies the ticket's subscribers and the project's owners",
@@ -602,7 +637,7 @@ impl NewTicketForm {
                             cx.notify();
                         })),
                 ),
-            None => div().w(px(120.)).child(Input::new(&self.parent_input)),
+            None => crate::focusmode::on_hover(div().w(px(120.)).child(Input::new(&self.parent_input)), self.parent_input.read(cx).focus_handle(cx)),
         };
         col = col.child(group("Links")).child(field("sub-ticket of", parent));
 
@@ -636,12 +671,24 @@ impl Render for NewTicketForm {
                     cx.stop_propagation();
                 }
             }))
-            .child(Input::new(&self.title))
+            .child(crate::focusmode::on_hover(div().child(Input::new(&self.title)), self.title.read(cx).focus_handle(cx)))
             // The body, written or previewed; the names that fit an `@`
             // right under the words. (No summary: aiball's agents write
             // one; a person's title says enough.)
             .child(composer::write_tabs("new-body", self.preview, cx, |form: &mut Self, on, cx| {
                 form.preview = on;
+                if on {
+                    // Its pictures, read once; the preview draws them when they came.
+                    let text = form.body.read(cx).value().to_string();
+                    let (aiball, images) = (form.aiball.clone(), form.images.clone());
+                    cx.spawn(async move |this, cx| {
+                        let came = cx.background_executor().spawn(async move { crate::images::load(&text, &aiball, &images) }).await;
+                        if came {
+                            let _ = this.update(cx, |_, cx| cx.notify());
+                        }
+                    })
+                    .detach();
+                }
                 cx.notify();
             }))
             .child(if self.preview {
@@ -658,11 +705,23 @@ impl Render for NewTicketForm {
                     .child(if text.trim().is_empty() {
                         div().text_color(p().muted).child("Nothing to preview yet.").into_any_element()
                     } else {
-                        TextView::markdown("new-body-preview-text", composer::images_said(&text)).into_any_element()
+                        self.preview_view(&text).into_any_element()
                     })
                     .into_any_element()
             } else {
-                div().flex_1().min_h_0().flex().flex_col().gap_1().child(Textarea::new(&self.body)).children(mentions).into_any_element()
+                // A composer: Ctrl+Enter files it (keymap's ComposerSend), no
+                // new line put in.
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .key_context(crate::keymap::COMPOSER)
+                    .on_action(cx.listener(|form, _: &crate::keymap::ComposerSend, window, cx| form.submit(window, cx)))
+                    .child(crate::focusmode::on_hover(div().child(Textarea::new(&self.body)), self.body.read(cx).focus_handle(cx)))
+                    .children(mentions)
+                    .into_any_element()
             })
             .when_some(self.error.clone(), |d, error| d.child(div().text_color(p().danger).child(error)))
             .child(
@@ -672,9 +731,7 @@ impl Render for NewTicketForm {
                     .gap_2()
                     .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
                     .child(
-                        Button::new("new-ticket-file")
-                            .primary()
-                            .label("File the ticket")
+                        buttons::primary("new-ticket-file", "File the ticket")
                             .loading(busy)
                             .disabled(busy)
                             .on_click(cx.listener(|form, _, window, cx| form.submit(window, cx))),
@@ -693,7 +750,7 @@ impl Render for NewTicketForm {
             .flex_col()
             .bg(p().bg)
             .text_color(p().text)
-            .on_key_down(cx.listener(Self::on_key))
+            .capture_key_down(cx.listener(Self::on_key))
             .child(
                 div()
                     .flex()

@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::*;
 
 use super::Shell;
@@ -45,26 +46,29 @@ enum Tone {
 /// What the agent bar shows of who drives the loop, as claude-loop's bar:
 /// the mode in force (▶ the loop runs on its own, ‖ held a while, ■ held
 /// until let go — typing holds
-/// too), ⌨ while a human types, and the little man with the mode armed by
+/// too; its ⌨ is further on, by the prompt), and the little man with the mode armed by
 /// F9 (grey: away, so auto; the seconds of a ten-minute hold; ∞). F9 moves
 /// the little man at once and the mode in force 3 s after the last press:
 /// while they differ, it is arming.
 #[derive(Debug, PartialEq)]
 struct AfkMarks {
+    /// A glyph alone: it is drawn in a glyph's box.
     in_force: Option<(&'static str, Tone)>,
-    typing: bool,
+    /// A word instead, while the loop boots: text at the bar's size.
+    word: Option<(&'static str, Tone)>,
     armed: Option<(String, Tone)>,
     arming: bool,
 }
 
-fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typing: bool) -> AfkMarks {
+fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>) -> AfkMarks {
     if presence == Some("boot") {
-        return AfkMarks { in_force: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
+        return AfkMarks { in_force: None, word: Some(("… boot", Tone::Boot)), armed: None, arming: false };
     }
     let in_force = match (presence, armed) {
         (Some("loop"), _) => Some(("▶", Tone::Green)),
-        // Held until let go (not AFK, for good): stopped, as the folded list says it.
-        (Some("wait"), Some("wait_inf")) => Some(("■", Tone::Red)),
+        // Held until let go (not AFK, for good): stopped, as the folded list
+        // says it — typing does not make it a pause (stop > pause).
+        (Some("wait") | Some("stop"), Some("wait_inf")) => Some(("■", Tone::Red)),
         (Some("wait") | Some("stop"), _) => Some(("‖", Tone::Orange)),
         _ => None,
     };
@@ -80,7 +84,7 @@ fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typ
         Some("wait_10m") | Some("wait_inf") => presence == Some("loop"),
         _ => false,
     };
-    AfkMarks { in_force, typing: typing || presence == Some("stop"), armed: man, arming }
+    AfkMarks { in_force, word: None, armed: man, arming }
 }
 
 /// Seconds from now to an ISO time: `None` when past or unreadable.
@@ -116,7 +120,7 @@ impl Shell {
         let online = bar.is_some() || status.as_ref().is_some_and(|s| s.online);
         let item = || div().flex().items_center().gap_1().flex_none();
         let sep = || div().text_color(p().border).child("│");
-        let loud = |text: &'static str| {
+        let loud = |text: SharedString| {
             div()
                 .flex_none()
                 .px_1p5()
@@ -132,7 +136,6 @@ impl Shell {
             presence.as_deref(),
             bar.as_ref().map(|b| b.afk.mode.as_str()),
             bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref())),
-            bar.as_ref().is_some_and(|b| b.human_typing),
         );
         let tone = |t: Tone| match t {
             Tone::Green => p().success,
@@ -150,7 +153,7 @@ impl Shell {
             .hover(|d| d.bg(p().hover))
             .when(self.afk_menu, |d| d.bg(p().active))
             .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
-            .when(marks.typing, |d| d.child(div().text_color(p().danger).child("⌨")))
+            .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(word)))
             .children(marks.armed.map(|(man, t)| {
                 div()
                     .flex()
@@ -162,7 +165,7 @@ impl Shell {
             .tip(if marks.arming {
                 "armed: the little man shows the mode chosen with F9, in force 3 s after the last press — ▶ or ‖ says the one in force until then"
             } else {
-                "who drives the loop: ▶ on its own, ‖ held for you, ⌨ you are typing; the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
+                "who drives the loop: ▶ on its own, ‖ held for you (or while you type); the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
             })
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
@@ -316,13 +319,12 @@ impl Shell {
                     .child(format!("Move {agent} {other}? Its Claude restarts, resuming its conversation."))
                     .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the move interrupts it.")))
                     .child(
-                        buttons::chip("agent-move-go", "Move")
-                            .border_color(ink(p().warning))
-                            .text_color(ink(p().warning))
+                        buttons::answer("agent-move-go", "Move")
+                            .warning()
                             .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
                     )
                     .child(
-                        buttons::link("agent-move-cancel", "Cancel")
+                        buttons::secondary("agent-move-cancel", "Cancel")
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 shell.move_asked = None;
                                 cx.notify();
@@ -332,77 +334,45 @@ impl Shell {
             (chip, confirm)
         };
 
-        // Remote Control: whether its Claude can be taken up from claude.ai;
-        // a click turns it on or off for its folder, the loop restarting.
-        let (rc_chip, rc_confirm) = {
-            let session = terminal.session.clone();
-            let known = self.board.known.iter().find(|l| l.session() == session).cloned();
-            let on = known.as_ref().and_then(|l| l.remote_control());
-            let asked = self.rc_asked.as_deref() == Some(session.as_str());
-            let chip = buttons::chip_if("agent-rc", "RC", known.is_some())
+        // Remote Control: whether its Claude can be taken up from claude.ai,
+        // as its loop reads it on the screen (the folder's setting or `/rc`
+        // typed). Said, not set: the folder's setting is the project's
+        // options'. None from a loop too old to say it.
+        let rc_chip = bar.as_ref().and_then(|b| b.remote_control.as_ref()).map(|rc| {
+            div()
+                .id("agent-rc")
+                .flex_none()
                 .px_1()
-                .border_color(ink(if asked { p().warning } else if on.is_some() { p().accent } else { p().border }))
-                .text_color(ink(if on.is_some() { p().accent } else { p().muted }))
-                .tip(match (&on, &known) {
-                    (Some(name), _) => format!("Remote Control is on: its Claude is \"{name}\" on claude.ai and in the mobile app. A click offers to turn it off"),
-                    (None, Some(_)) => "Remote Control is off. A click offers to turn it on, to take its Claude up from claude.ai or the mobile app".to_string(),
-                    (None, None) => "Remote Control: its loop runs on another machine".to_string(),
-                });
-            let chip = if known.is_some() {
-                chip.on_click(cx.listener({
-                    let session = session.clone();
-                    move |shell, _, _, cx| {
-                        shell.rc_asked = (shell.rc_asked.as_deref() != Some(session.as_str())).then(|| session.clone());
-                        cx.notify();
-                    }
-                }))
-            } else {
-                chip
-            };
-            let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
-            let confirm = known.filter(|_| asked).map(|known| {
-                let (agent, turn_on) = (agent.clone(), on.is_none());
-                div()
-                    .id("agent-rc-ask")
-                    .occlude()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom(px(BAR_HEIGHT))
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
-                    .px_2()
-                    .py_1p5()
-                    .bg(p().surface)
-                    .border_t_1()
-                    .border_color(p().warning)
-                    .text_color(p().text)
-                    .child(format!(
-                        "Turn Remote Control {} for {agent}? Its folder keeps it; its Claude restarts, resuming its conversation.",
-                        if turn_on { "on" } else { "off" }
-                    ))
-                    .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the restart interrupts it.")))
-                    .child(
-                        buttons::chip("agent-rc-go", if turn_on { "Turn on" } else { "Turn off" })
-                            .border_color(ink(p().warning))
-                            .text_color(ink(p().warning))
-                            .on_click(cx.listener(move |shell, _, _, cx| shell.set_remote_control(agent.clone(), known.clone(), turn_on, cx))),
-                    )
-                    .child(buttons::link("agent-rc-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
-                        shell.rc_asked = None;
-                        cx.notify();
-                    })))
-            });
-            (chip, confirm)
-        };
+                .rounded_sm()
+                .border_1()
+                .border_color(ink(if rc.on { p().accent } else { p().border }))
+                .text_color(ink(if rc.on { p().accent } else { p().muted }))
+                .child("RC")
+                .tip(if rc.on {
+                    "Remote Control is on: this Claude can be taken up from claude.ai and the mobile app"
+                } else {
+                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's options"
+                })
+        });
+        // The model its Claude ran its last turn on; a newer one of its
+        // family out: yellow, ↑.
+        let model_item = bar.as_ref().and_then(|b| b.model.as_ref()).map(|model| {
+            let newer = model.newer.is_some();
+            item()
+                .id("agent-model")
+                .text_color(ink(if newer { p().warning } else { p().muted }))
+                .child(if newer { format!("{} ↑", model.name) } else { model.name.clone() })
+                .tip(model.said())
+        });
         Some(
             div()
                 .id("agent-bar")
                 .relative()
                 .flex()
                 .flex_none()
+                // The column's width, never more: what is long gives way.
+                .w_full()
+                .min_w_0()
                 .items_center()
                 .gap_2()
                 .h(px(BAR_HEIGHT))
@@ -414,7 +384,7 @@ impl Shell {
                 .border_color(p().border)
                 .text_xs()
                 .text_color(ink(p().muted))
-                .child(afk)
+                .child(crate::tips::target("agent.afk", afk).flex_none())
                 .children(afk_choices)
                 .child(sep())
                 .child(if online {
@@ -426,11 +396,12 @@ impl Shell {
                 .children(dialog.map(|_| item().text_color(ink(p().warning)).child("waits for an answer")))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
-                    d.when(a.trust_dialog, |d| d.child(loud("trust this folder?")))
-                        .when(a.not_logged_in, |d| d.child(loud("not logged in")))
-                        .when(a.api_unreachable, |d| d.child(loud("API unreachable")))
-                        .when(a.link_down, |d| d.child(loud("loop link down")))
-                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable")))
+                    d.when_some(b.limit_said(), |d, limit| d.child(loud(limit.into())))
+                        .when(a.trust_dialog, |d| d.child(loud("trust this folder?".into())))
+                        .when(a.not_logged_in, |d| d.child(loud("not logged in".into())))
+                        .when(a.api_unreachable, |d| d.child(loud("API unreachable".into())))
+                        .when(a.link_down, |d| d.child(loud("loop link down".into())))
+                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable".into())))
                         .when(b.prompt.visible, |d| {
                             d.child(
                                 item()
@@ -509,11 +480,12 @@ impl Shell {
                     )
                 })
                 .child(div().flex_1())
+                .children(model_item)
                 // Where its loop runs: on aiball's host, or in tmux.
-                .child(mode_chip)
-                .child(rc_chip)
+                .child(crate::tips::target("agent.place", mode_chip).flex_none())
+                .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
                 // Copy or controls: whether this terminal types into it.
-                .child({
+                .child(crate::tips::target("agent.controls", {
                     let session = terminal.session.clone();
                     let copy = self.copies.contains(&session);
                     let tone = if copy { p().warning } else { p().muted };
@@ -527,12 +499,13 @@ impl Shell {
                         } else {
                             "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
                         })
-                })
-                .child(item().text_color(ink(p().text)).child(agent.clone()))
-                .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
+                }).flex_none())
+                // Its folder, then its name, give way when the bar is short (the
+                // tab says its name too): the controls stay.
+                .child(item().flex_shrink(1.).min_w_0().overflow_hidden().text_color(ink(p().text)).child(div().min_w_0().truncate().child(agent.clone())))
+                .children(cwd.map(|cwd| item().flex_shrink(1000.).min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(cwd))))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .children(move_confirm)
-                .children(rc_confirm)
                 .into_any_element(),
         )
     }
@@ -714,29 +687,6 @@ impl Shell {
 
     /// Turns `agent`'s Claude's Remote Control on or off, off the UI thread:
     /// its folder keeps the choice, its loop restarts with it and opens again.
-    fn set_remote_control(&mut self, agent: String, known: crate::loops::KnownLoop, on: bool, cx: &mut Context<Self>) {
-        self.rc_asked = None;
-        cx.notify();
-        cx.spawn(async move |this, cx| {
-            let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { return };
-            let done = cx.background_executor().spawn(async move { crate::loops::set_remote_control(&aiball, &known, on) }).await;
-            let _ = this.update(cx, |shell, cx| {
-                let state = if on { "on" } else { "off" };
-                let activity = match done {
-                    Ok(session) => {
-                        shell.open_when_running = Some(session);
-                        let _ = shell.refresh_now.unbounded_send(());
-                        crate::activity::Activity::done(None, format!("Remote Control {state} for {agent}, its conversation resumed"))
-                    }
-                    Err(error) => crate::activity::Activity::failed(None, &format!("Remote Control {state} for {agent}"), short_error(&format!("{error:#}"))),
-                };
-                crate::activity::publish(cx, activity);
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-
     /// Moves `agent`'s loop (`name`) to aiball's host or into tmux, through
     /// claude-loop, off the UI thread. Its session ends and comes back as
     /// another one, which opens.
@@ -841,25 +791,36 @@ mod tests {
     #[test]
     fn f9_arms_a_mode_before_it_is_in_force() {
         // Auto, and nothing armed: ▶ and a grey little man.
-        let auto = afk_marks(Some("loop"), Some("off"), None, false);
-        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), typing: false, armed: Some(("웃".into(), Tone::Grey)), arming: false });
+        let auto = afk_marks(Some("loop"), Some("off"), None);
+        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), word: None, armed: Some(("웃".into(), Tone::Grey)), arming: false });
         // F9 once: 10 min armed, still ▶ in force — arming.
-        let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599), false);
+        let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599));
         assert_eq!((armed.armed, armed.arming), (Some(("웃599s".into(), Tone::Orange)), true));
         // In force 3 s later: ⏸ and the countdown, no longer arming.
-        let held = afk_marks(Some("wait"), Some("wait_10m"), Some(596), false);
+        let held = afk_marks(Some("wait"), Some("wait_10m"), Some(596));
         assert_eq!((held.in_force, held.arming), (Some(("‖", Tone::Orange)), false));
         // F9 twice more from there: ∞ then off armed while ⏸ holds — arming;
         // david's "held" was this: ⏸ in force, the grey man armed.
-        assert!(afk_marks(Some("wait"), Some("off"), None, false).arming);
-        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).armed, Some(("웃∞".into(), Tone::Red)));
+        assert!(afk_marks(Some("wait"), Some("off"), None).arming);
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).armed, Some(("웃∞".into(), Tone::Red)));
         // Held until let go: stopped, not paused.
-        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).in_force, Some(("■", Tone::Red)));
-        // Typing holds, marks ⌨, arms nothing.
-        let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600), true);
-        assert_eq!((typing.in_force, typing.typing, typing.arming), (Some(("‖", Tone::Orange)), true, false));
-        // Booting: the boot alone.
-        assert_eq!(afk_marks(Some("boot"), Some("off"), None, false).in_force, Some(("… boot", Tone::Boot)));
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).in_force, Some(("■", Tone::Red)));
+        // Typing in a loop held until let go: still stopped, not paused.
+        assert_eq!(afk_marks(Some("stop"), Some("wait_inf"), None).in_force, Some(("■", Tone::Red)));
+        // Typing holds and arms nothing (its ⌨ is by the prompt, once).
+        let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600));
+        assert_eq!((typing.in_force, typing.arming), (Some(("‖", Tone::Orange)), false));
+        // Booting: the boot alone, as a word — never in a glyph's box.
+        let boot = afk_marks(Some("boot"), Some("off"), None);
+        assert_eq!((boot.in_force, boot.word), (None, Some(("… boot", Tone::Boot))));
+        // Whatever the state, the glyph's box gets a glyph alone.
+        for presence in [None, Some("boot"), Some("loop"), Some("wait"), Some("stop")] {
+            for armed in [None, Some("off"), Some("wait_10m"), Some("wait_inf")] {
+                if let Some((glyph, _)) = afk_marks(presence, armed, Some(30)).in_force {
+                    assert_eq!(glyph.chars().count(), 1, "{glyph:?} is not a glyph alone");
+                }
+            }
+        }
     }
     use super::{short_error, tier};
 

@@ -344,8 +344,10 @@ pub fn sentence(thread: &Thread, reading: &Reading, row: Option<&RowState>, stal
         .find(|c| c.kind == "comment_added" && c.status != "rejected")
         .map(|c| c.by_agent.as_str());
     match row.map(|r| r.turn) {
-        Some(Turn::You) => match last {
-            Some(speaker) if speaker != user => format!("Yours: answer {speaker}"),
+        Some(Turn::You) => match (last, holder.as_deref()) {
+            (Some(speaker), _) if speaker != user => format!("Yours: answer {speaker}"),
+            // Someone else holds it (assigned, claimed): not nobody.
+            (_, Some(holder)) if holder != "you" => format!("{holder} holds it: you spoke last"),
             _ => "Yours: nobody else is on it".into(),
         },
         Some(Turn::Them) => match holder {
@@ -469,6 +471,8 @@ mod tests {
         let t = thread(serde_json::json!([comment(2, "david", serde_json::json!(null))]));
         let r = read(&t);
         assert_eq!(sentence(&t, &r, Some(&turn(Turn::Them)), false, "david", 0), "demo-claude's turn: you spoke last");
+        // Held by an agent, though the board says it is yours: it is not nobody's.
+        assert_eq!(sentence(&t, &r, Some(&turn(Turn::You)), false, "david", 0), "demo-claude holds it: you spoke last");
     }
 
     #[test]

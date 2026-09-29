@@ -31,11 +31,15 @@ mod agentbar;
 mod ended;
 mod frame;
 mod help;
+mod megaphone;
+pub use megaphone::Steered;
 mod newproject;
+mod projectopts;
 mod loopstabs;
 mod quit;
 mod stacks;
 mod tabs;
+mod tips;
 use tabs::Restoring;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
@@ -163,8 +167,6 @@ pub struct Shell {
     /// The session whose loop the user asked to move (host ↔ tmux): its
     /// confirmation shows in the agent bar.
     pub(super) move_asked: Option<String>,
-    /// The session whose Claude's Remote Control is asked to change.
-    pub(super) rc_asked: Option<String>,
     /// Loops being moved, by agent: the session they come back as, and
     /// since when. The old one ends meanwhile; the new one opens.
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
@@ -259,11 +261,22 @@ pub struct Shell {
     help_menu: bool,
     /// The "New project" wizard, while open.
     new_project: Option<newproject::NewProject>,
+    /// The project the options are scoped to, its folders' settings.
+    project_opts: Option<projectopts::ProjectOpts>,
+    /// The options' scope list, while they are open.
+    scope_select: Option<Entity<projectopts::ScopeSelect>>,
+    /// What steers each project's agents (the 📢), and its popover.
+    standing: HashMap<String, crate::aiball::Standing>,
+    megaphone: Option<megaphone::Megaphone>,
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
     decorations_said: Option<String>,
     /// The window's title as last given to the system.
     os_title: String,
+    /// The tip on screen, and the surface last drawn (its first entry
+    /// offers one).
+    tip: Option<tips::TipCard>,
+    tip_surface: Option<&'static str>,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -607,8 +620,13 @@ impl Shell {
         cx.observe_global::<crate::sidecol::SideWidth>(|shell, cx| {
             shell.settings.layout.fields_width = crate::sidecol::width(cx);
             shell.settings.save(cx);
+            // The options' column follows it.
+            if shell.options.is_some() {
+                cx.notify();
+            }
         })
         .detach();
+        cx.subscribe_in(&panel, window, |shell, _, _: &crate::panel::OpenMegaphone, window, cx| shell.open_megaphone(window, cx)).detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
             shell.go_full(window, cx)
         })
@@ -675,7 +693,6 @@ impl Shell {
             compact: None,
             afk_menu: false,
             move_asked: None,
-            rc_asked: None,
             moves: HashMap::new(),
             restarting: None,
             backlog_view: None,
@@ -718,8 +735,14 @@ impl Shell {
             theme_menu: false,
             help_menu: false,
             new_project: None,
+            project_opts: None,
+            scope_select: None,
+            standing: HashMap::new(),
+            megaphone: None,
             decorations_said: None,
             os_title: String::new(),
+            tip: None,
+            tip_surface: None,
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -727,6 +750,14 @@ impl Shell {
             refresh_now,
         };
         shell.wire = Some(wire);
+        shell.start_tips(cx);
+        shell.start_standing(cx);
+        // Once the work is back, the list's order settles (see stack_terminals).
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(3500)).await;
+            let _ = this.update(cx, |shell, cx| shell.rebuild(cx));
+        })
+        .detach();
         shell.follow_wire(wire_notices, cx);
         // aiball not running: start it (detached), or say it is missing.
         cx.spawn(async move |_, cx| {
@@ -846,6 +877,7 @@ impl Shell {
         self.aiball.find_user(&self.live.consumers());
         let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
         self.forget_stopping(&mut board);
+        self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);
         self.keep_sidebar_order(&board);
         if self.board != board {
@@ -888,6 +920,21 @@ impl Shell {
                     if self.options.is_some() {
                         self.load_remote(cx);
                     }
+                }
+                // The loop holds it until let go: the user is told, with
+                // the way to its terminal.
+                Update::Limit(agent, said) => {
+                    let session = self
+                        .board
+                        .projects
+                        .iter()
+                        .flat_map(|p| &p.terminals)
+                        .find(|t| t.agent.as_deref() == Some(agent.as_str()))
+                        .map(|t| t.session.clone());
+                    activity::publish(
+                        cx,
+                        Activity::news(agent.clone(), Kind::Error, None, format!("{said}: its loop is held until you let it go")).on(session),
+                    );
                 }
             }
         }
@@ -1570,6 +1617,26 @@ impl Shell {
     /// Points the panel at the selected terminal's project and agent — or
     /// at the project chosen in the projects' list.
     fn sync_panel(&mut self, cx: &mut Context<Self>) {
+        let scope = self.panel_scope();
+        // A project shown with no session open is not on the board: its
+        // tickets as aiball pushes them.
+        let tickets = scope
+            .as_ref()
+            .and_then(|s| self.board.tickets.get(&s.project).or_else(|| self.live.tickets().get(&s.project)).cloned())
+            .unwrap_or_default();
+        let critical = scope
+            .as_ref()
+            .and_then(|s| self.board.critical.get(&s.project).copied().or_else(|| tickets.iter().find(|t| t.critical.is_some()).map(|t| t.id)));
+        let aiball = self.aiball.clone();
+        self.panel.update(cx, |panel, cx| {
+            panel.set_scope(scope, cx);
+            panel.set_board(&aiball, tickets, critical, cx);
+        });
+    }
+
+    /// What the ticket panel is about: the project shown from the list, else
+    /// the shown terminal's (or the ended session's) project and agent.
+    fn panel_scope(&self) -> Option<Scope> {
         let on_board = |name: &str| self.board.projects.iter().any(|p| p.name == name && p.on_board);
         let shown = self
             .project_shown
@@ -1597,20 +1664,7 @@ impl Shell {
                 Some(Scope { project, agent: ended.agent.clone(), sessionless: false })
             })
         });
-        // A project shown with no session open is not on the board: its
-        // tickets as aiball pushes them.
-        let tickets = scope
-            .as_ref()
-            .and_then(|s| self.board.tickets.get(&s.project).or_else(|| self.live.tickets().get(&s.project)).cloned())
-            .unwrap_or_default();
-        let critical = scope
-            .as_ref()
-            .and_then(|s| self.board.critical.get(&s.project).copied().or_else(|| tickets.iter().find(|t| t.critical.is_some()).map(|t| t.id)));
-        let aiball = self.aiball.clone();
-        self.panel.update(cx, |panel, cx| {
-            panel.set_scope(scope, cx);
-            panel.set_board(&aiball, tickets, critical, cx);
-        });
+        scope
     }
 
     fn select(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -1707,6 +1761,28 @@ impl Shell {
                     }
                 }
             }
+        }
+    }
+
+    /// Within each project, the sessions in the order they came: a new one
+    /// last, the others in their place (aiball lists them its own way). Kept
+    /// in the workspace; nothing dropped until the work is back at start.
+    fn stack_terminals(&mut self, board: &mut sessions::Board, cx: &mut Context<Self>) {
+        let settled = self.live.ready() && self.restoring.is_none() && self.began.elapsed() > std::time::Duration::from_secs(3);
+        let mut changed = false;
+        for project in &mut board.projects {
+            let order = self.settings.workspace.terminal_order.entry(project.name.clone()).or_default();
+            changed |= sessions::stack(&mut project.terminals, order, settled);
+        }
+        // The groups gone (a folder's, while its loop joined its project)
+        // are forgotten once the work is back.
+        if settled {
+            let before = self.settings.workspace.terminal_order.len();
+            self.settings.workspace.terminal_order.retain(|name, _| board.projects.iter().any(|p| p.name == *name));
+            changed |= self.settings.workspace.terminal_order.len() != before;
+        }
+        if changed && settled {
+            self.settings.save(cx);
         }
     }
 
@@ -1977,9 +2053,8 @@ impl Shell {
                 self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
                 cx.notify();
             }
-        } else if key == "escape" && (self.move_asked.is_some() || self.rc_asked.is_some()) {
+        } else if key == "escape" && self.move_asked.is_some() {
             self.move_asked = None;
-            self.rc_asked = None;
             cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
@@ -2002,6 +2077,10 @@ impl Shell {
             if let Some(list) = self.full_list.clone() {
                 list.update(cx, |list, cx| list.select_all(cx));
             }
+        } else if key == "escape" && self.megaphone.is_some() {
+            self.close_megaphone(window, cx);
+            cx.stop_propagation();
+            return;
         } else if key == "escape" && self.new_project.is_some() {
             self.close_new_project(window, cx);
         } else if key == "escape" && self.help_menu {
@@ -2244,6 +2323,8 @@ impl Shell {
             self.options = Some(Section::Appearance);
             theme::load(cx);
             self.load_remote(cx);
+            self.load_project_settings(cx);
+            self.new_scope_select(window, cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.
             let focus = self.options_search.read(cx).focus_handle(cx);
             window.focus(&focus, cx);
@@ -2264,6 +2345,7 @@ impl Shell {
             Section::TicketList => named(schema("Ticket list").into_iter().chain(["Legend"]).collect()),
             Section::Shortcuts => named(vec!["Window", "Workspace", "Terminal", "Fixed keys"]),
             Section::Aiball => self.remote_layout().into_iter().map(|(group, _)| group.into()).collect(),
+            Section::Project => self.project_groups(),
             Section::About => Vec::new(),
         }
     }
@@ -2307,6 +2389,7 @@ impl Shell {
                 sections.extend(self.remote_sections(None, &[], cx));
                 sections
             }
+            Section::Project => self.project_sections(cx),
             Section::About => vec![(None, self.options_about(cx).into_any_element())],
         }
     }
@@ -2401,7 +2484,9 @@ impl Shell {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll();
-        for page in Section::ALL.into_iter().filter(|p| page_hit(*p)) {
+        // The Project page is a project's: only scoped to one.
+        let scoped = self.remote_layer.is_some();
+        for page in Section::ALL.into_iter().filter(|p| page_hit(*p) && (*p != Section::Project || scoped)) {
             let chosen = !searching && page == section;
             tree = tree.child(
                 div()
@@ -2434,18 +2519,15 @@ impl Shell {
                 );
             }
         }
-        let nav = div()
+        // The full pages' side column: its width dragged by its border.
+        let nav = crate::sidecol::column(cx)
             .flex()
             .flex_col()
             .gap_2()
-            .w(px(240.))
-            .flex_none()
-            .h_full()
             .p_3()
             .bg(p().surface)
-            .border_r_1()
-            .border_color(p().border)
             .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
+            .child(self.options_scope())
             .child(Input::new(&self.options_search).cleanable(true))
             .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
             .child(tree);
@@ -2482,15 +2564,20 @@ impl Shell {
             .flex()
             .bg(p().bg)
             .text_color(p().text)
-            .child(nav)
             .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .child(content)
-                    .child(div().absolute().inset_0().child(Scrollbar::new(&self.options_scroll).axis(ScrollbarAxis::Vertical))),
+                crate::sidecol::row()
+                    .size_full()
+                    .child(nav)
+                    .child(crate::sidecol::edge("options-edge"))
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(content)
+                            .child(div().absolute().inset_0().child(Scrollbar::new(&self.options_scroll).axis(ScrollbarAxis::Vertical))),
+                    ),
             )
     }
 
@@ -2579,34 +2666,16 @@ impl Shell {
 
     /// The head of aiball's page: which layer is shown, and how it reads.
     fn remote_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut layers = div().flex().flex_wrap().items_center().gap_1();
-        let names = std::iter::once(None).chain(self.board.projects.iter().filter(|p| p.on_board).map(|p| Some(p.name.clone())));
-        for layer in names {
-            let on = self.remote_layer == layer;
-            let label: SharedString = layer.clone().unwrap_or_else(|| "Global".into()).into();
-            layers = layers.child(
-                buttons::chip(SharedString::from(format!("options-layer-{label}")), label)
-                    .px_3()
-                    .py_1()
-                    .chosen(on)
-                    .on_click(cx.listener(move |shell, _, _, cx| shell.show_layer(layer.clone(), cx))),
-            );
-        }
+        let _ = cx;
         let note: SharedString = match (&self.remote_error, &self.remote, &self.remote_layer) {
-            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the layer again to try again.").into(),
+            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the scope again, top left, to try again.").into(),
             (None, None, _) => "Reading aiball's config…".into(),
-            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise.".into(),
+            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise. Choose a project, top left, for its own.".into(),
             (None, Some(_), Some(project)) => {
                 format!("What {project} says over the board's config; ↺ gives a key back to the board's value.").into()
             }
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .max_w(px(720.))
-            .child(layers)
-            .child(div().text_sm().text_color(p().muted).child(note))
+        div().max_w(px(720.)).text_sm().text_color(p().muted).child(note)
     }
 
     /// aiball's config as sections by group (only `only`'s keys, when
@@ -2715,10 +2784,7 @@ impl Shell {
                         .py_0p5()
                         .border_color(p().accent.opacity(0.6))
                         .text_color(p().accent)
-                        .on_click(cx.listener(|shell, _, _, cx| {
-                            shell.options_scroll.set_offset(point(px(0.), px(0.)));
-                            shell.show_layer(None, cx)
-                        })),
+                        .on_click(cx.listener(|shell, _, window, cx| shell.scope_options(None, window, cx))),
                 )
             })
     }
@@ -2940,18 +3006,21 @@ impl Shell {
         // A short list of its own (what to do with the loops), else themes.
         let fixed: Option<&[(&str, &str)]> = match key {
             "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
-            "sessions.on_start" => Some(&[("restart", "Restart them"), ("leave", "Leave them stopped")]),
+            "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
+            "mouse.focus" => Some(&[("click", "Click"), ("hover", "Hover")]),
             _ => None,
         };
-        let (chosen, default) = match key {
+        let (chosen, default): (Option<SharedString>, Option<SharedString>) = match key {
             "appearance.theme" => (Some(theme::current(cx)), None),
-            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask")),
-            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask")),
-            _ => (theme::current_terminal(), Some("Same as the window")),
+            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask".into())),
+            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask".into())),
+            // As the system: what it was read to do.
+            "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
+            _ => (theme::current_terminal(), Some("Same as the window".into())),
         };
         let away = SCHEMA.is_modified(&self.applied, key).then(|| {
-            Away::default(match default {
-                Some(label) => SharedString::from(label),
+            Away::default(match &default {
+                Some(label) => label.clone(),
                 None => theme::known_or_default(None, cx),
             })
         });
@@ -2993,7 +3062,7 @@ impl Shell {
         };
         let mut column = column;
         if let Some(label) = default {
-            column = column.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
+            column = column.child(choice("default".into(), label, None, chosen.is_none(), cx));
         }
         if let Some(fixed) = fixed {
             for (name, label) in fixed {
@@ -3757,7 +3826,12 @@ impl Shell {
                 let bar = self.board.bars.get(agent).filter(|b| !b.stale).map(|b| &b.bar);
                 let presence = bar.map(|b| b.presence.as_str()).unwrap_or(status.driver.as_str());
                 let (glyph, said) = loop_mark(&status.state, presence, bar.map(|b| b.afk.mode.as_str()));
-                Some(Mark { colour, glyph, tip: Some(format!("{agent}: {said}")) })
+                // Why it is held, when a usage limit holds it.
+                let tip = match bar.and_then(|b| b.limit_said()) {
+                    Some(limit) => format!("{agent}: {said} — {limit}"),
+                    None => format!("{agent}: {said}"),
+                };
+                Some(Mark { colour, glyph, tip: Some(tip) })
             })
             .collect()
     }
@@ -3920,7 +3994,10 @@ impl Shell {
                             .py_1p5()
                             .border_b_1()
                             .border_color(p().border)
-                            .child(Input::new(&self.sessions_filter).small().cleanable(true)),
+                            .child(crate::focusmode::on_hover(
+                                crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full(),
+                                self.sessions_filter.read(cx).focus_handle(cx),
+                            )),
                     )
                     .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
@@ -3962,12 +4039,14 @@ impl Shell {
                     .overflow_hidden()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .gap_1()
                     .px_3()
                     .pt_2()
                     .pb_1()
                     .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
                     .child(alerts.badges(format!("project-{}", project.name)))
+                    // Something steers its agents (the 📢).
+                    .children(self.steered_mark(&project.name))
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
@@ -3976,6 +4055,15 @@ impl Shell {
                                 .on_click(cx.listener(move |shell, _, window, cx| {
                                     shell.ask_new_session(name.clone(), window, cx)
                                 })),
+                        )
+                    })
+                    // Its options: its folders' settings, its layer of the board's config.
+                    .when(project.on_board, |d| {
+                        let name = project.name.clone();
+                        d.child(
+                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its options: where its loops run, Remote Control, its board config")
+                                .text_xs()
+                                .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                         )
                     })
                     // A plain shell in the project's folder, listed with it.
@@ -4082,7 +4170,26 @@ impl Shell {
                                         })
                                         .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
                                 )
-                                .when_some(terminal.status.as_ref(), |d, status| d.child(status.line(self.armed_of(terminal).as_deref()))),
+                                .when_some(terminal.status.as_ref(), |d, status| {
+                                    // Its model beside its state: yellow, ↑, when a newer one of its family is out.
+                                    let model = terminal
+                                        .agent
+                                        .as_ref()
+                                        .and_then(|a| self.board.bars.get(a))
+                                        .filter(|b| !b.stale)
+                                        .and_then(|b| b.bar.model.clone())
+                                        .map(|model| {
+                                            let newer = model.newer.is_some();
+                                            div()
+                                                .id(SharedString::from(format!("row-model-{}", terminal.session)))
+                                                .flex_none()
+                                                .text_size(px(11.))
+                                                .text_color(if newer { p().warning } else { p().muted })
+                                                .child(if newer { format!("· {} ↑", model.name) } else { format!("· {}", model.name) })
+                                                .tip(model.said())
+                                        });
+                                    d.child(div().flex().items_center().gap_1().child(status.line(self.armed_of(terminal).as_deref())).children(model))
+                                }),
                         )
                         .on_click(cx.listener(move |shell, _, window, cx| {
                             shell.select(session.clone(), window, cx)
@@ -4234,6 +4341,11 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.surface_drawn(cx);
+        // The slider and the gallery above the notifications: none drawn
+        // while they are up.
+        let over = self.slider.is_some() || self.page_shown(cx) == Some("Gallery");
+        notify::hide(cx, over);
         // Who draws the frame, as the compositor settled it: tvty asks to
         // draw its own (client); a server frame would double it.
         let decorations = match window.window_decorations() {
@@ -4537,6 +4649,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::Megaphone, window, cx| shell.open_megaphone(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
             .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
@@ -4570,13 +4683,17 @@ impl Render for Shell {
                     // The app's icon, first: its menu (about, help, restart),
                     // as a desktop's application menu.
                     .child(
-                        buttons::icon(
-                            "help-button",
-                            img(crate::icons::APP).size(px(20.)).flex_none(),
-                            buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                        crate::tips::target(
+                            "menu.icon",
+                            buttons::icon(
+                                "help-button",
+                                img(crate::icons::APP).size(px(20.)).flex_none(),
+                                buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                            )
+                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
                         )
-                        .mr_1()
-                        .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                        .flex_none()
+                        .mr_1(),
                     )
                     .child(
                         div()
@@ -4601,21 +4718,43 @@ impl Render for Shell {
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
-                        buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
-                            .mr_2()
-                            .text_xs()
-                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                        crate::tips::target(
+                            "title.theme",
+                            buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
+                                .text_xs()
+                                .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                        )
+                        .flex_none()
+                        .mr_2(),
+                    )
+                    // A message to every running agent: the whole board's.
+                    .child(
+                        buttons::icon("message-all", crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.), "A message to every running agent: send, send & hold, release holds")
+                            .mr_1()
+                            .on_click(cx.listener(|shell, _, window, cx| shell.open_message_all(window, cx))),
                     )
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
                             .mr_2()
                             .text_sm()
                             .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
+                    )
+                    // Who tvty acts as on aiball's board.
+                    .child(
+                        div()
+                            .id("title-user")
+                            .flex_none()
+                            .mr_2()
+                            .text_sm()
+                            .text_color(p().muted)
+                            .child(self.aiball.user.clone())
+                            .tip("who tvty acts as on aiball's board"),
                     ),
             )
             .child(body)
             .children(menu)
             .children(self.help_menu_view(cx))
+            .children(self.megaphone_view(window, cx))
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))
@@ -4626,6 +4765,9 @@ impl Render for Shell {
             } else {
                 FOLDED_WIDTH
             }))
+            // Where the root is painted: the tips' cards are placed in it.
+            .child(crate::tips::root_mark())
+            .children(self.tip_view(cx))
             .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))

@@ -42,7 +42,9 @@ pub struct KnownLoop {
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew
 /// agent when `crew` — or, `again`, a loop this machine knows, started again
-/// where it ran, its conversation resumed.
+/// where it ran, its conversation resumed. `mode`: `tmux` or `host` when the
+/// user chose; none, the folder's own (its `claude_loop.session`, as aiball
+/// reads it).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Start {
     pub cwd: String,
@@ -50,20 +52,12 @@ pub struct Start {
     pub agent: Option<String>,
     pub crew: bool,
     pub again: Option<String>,
+    pub mode: Option<&'static str>,
 }
 
 impl KnownLoop {
     pub fn agent(&self) -> Option<&str> {
         self.agent.as_deref()
-    }
-
-    /// The name its Claude is found by with Remote Control, when it runs so.
-    pub fn remote_control(&self) -> Option<String> {
-        match &self.remote_control {
-            Value::Bool(true) => Some(self.agent.clone().unwrap_or_else(|| self.name.clone())),
-            Value::String(name) if !name.is_empty() => Some(name.clone()),
-            _ => None,
-        }
     }
 
     /// It runs (or ran) on aiball's session host, not in tmux.
@@ -82,22 +76,33 @@ impl KnownLoop {
 }
 
 /// The loops of this machine; none when aiball does not answer (said in
-/// the log).
+/// the log, once until it changes: the list is asked every few seconds).
 pub fn known(aiball: &Aiball) -> Vec<KnownLoop> {
-    match aiball.call::<Vec<KnownLoop>>("loop.list", json!({})) {
+    static SAID: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+    let answer = aiball.call::<Vec<KnownLoop>>("loop.list", json!({}));
+    let error = answer.as_ref().err().map(|e| format!("{e:#}"));
+    if let Ok(mut said) = SAID.lock()
+        && *said != error
+    {
+        match &error {
+            Some(error) => log::warn!("loops: {error}"),
+            None if said.is_some() => log::info!("loops: listed again"),
+            None => {}
+        }
+        *said = error;
+    }
+    match answer {
         Ok(mut loops) => {
             loops.sort_by(|a, b| a.name.cmp(&b.name));
             loops
         }
-        Err(error) => {
-            log::warn!("loops: {error:#}");
-            Vec::new()
-        }
+        Err(_) => Vec::new(),
     }
 }
 
-/// Starts a loop in tmux, in its directory — or, `again`, starts a known
-/// one again where it ran. Answers the session to open.
+/// Starts a loop in its directory, where its folder says (or `mode`) — or,
+/// `again`, starts a known one again where it ran. Answers the session to
+/// open.
 pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if let Some(name) = &start.again {
         return restart(aiball, name);
@@ -105,7 +110,10 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if !std::path::Path::new(&start.cwd).is_dir() {
         bail!("{} is not a directory", start.cwd);
     }
-    let mut params = json!({ "cwd": start.cwd, "mode": "tmux" });
+    let mut params = json!({ "cwd": start.cwd });
+    if let Some(mode) = start.mode {
+        params["mode"] = json!(mode);
+    }
     if let Some(project) = &start.project {
         params["project"] = json!(project);
     }
@@ -146,16 +154,6 @@ pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
     Ok(view.session())
 }
 
-/// Turns its Claude's Remote Control on or off: the folder keeps the choice
-/// (its `.aiball.yaml`, through aiball: the loops started there follow it),
-/// then the loop starts again with it, its conversation resumed. Answers the
-/// session to open.
-pub fn set_remote_control(aiball: &Aiball, known: &KnownLoop, on: bool) -> anyhow::Result<String> {
-    aiball.call::<Value>("project.settings_set", json!({ "cwd": known.cwd, "remote_control": on }))?;
-    let view: KnownLoop = aiball.call("loop.restart", json!({ "name": known.name, "remote_control": on, "force": true })).map_err(said)?;
-    Ok(view.session())
-}
-
 /// aiball's refusal said for the user: a Claude at work is not moved.
 fn said(error: anyhow::Error) -> anyhow::Error {
     if format!("{error:#}").contains("NOT_IDLE") {
@@ -185,15 +183,6 @@ mod tests {
         assert_eq!(session_of(&json!({ "agent": "a", "host": "tmux", "tmux": "cl-a" })).as_deref(), Some("cl-a"));
         assert_eq!(session_of(&json!({ "agent": "a" })), Some(format!("{}a", crate::sessions::HOSTED_PREFIX)));
         assert_eq!(session_of(&json!({})), None);
-    }
-
-    #[test]
-    fn remote_control_is_named_as_the_agent_or_as_said() {
-        let l = |rc: serde_json::Value| KnownLoop { name: "cl-w".into(), agent: Some("w-claude".into()), remote_control: rc, ..Default::default() };
-        assert_eq!(l(json!(true)).remote_control().as_deref(), Some("w-claude"));
-        assert_eq!(l(json!("desk")).remote_control().as_deref(), Some("desk"));
-        assert_eq!(l(json!(false)).remote_control(), None);
-        assert_eq!(l(serde_json::Value::Null).remote_control(), None);
     }
 
     #[test]

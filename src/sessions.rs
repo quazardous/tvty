@@ -73,6 +73,25 @@ pub const HOSTED_GROUP: &str = "terminals";
 /// What names a hosted terminal's session, apart from tmux's.
 pub const HOSTED_PREFIX: &str = "host:";
 
+/// A project's terminals in the order they came: those already listed keep
+/// their place, a new one goes last. `order` is the order kept (updated);
+/// `prune` drops from it the sessions no longer there (not while the work
+/// is still coming back at start: they are coming). Answers whether `order`
+/// changed.
+pub fn stack(terminals: &mut [Terminal], order: &mut Vec<String>, prune: bool) -> bool {
+    let before = order.clone();
+    if prune {
+        order.retain(|s| terminals.iter().any(|t| t.session == *s));
+    }
+    for t in terminals.iter() {
+        if !order.contains(&t.session) {
+            order.push(t.session.clone());
+        }
+    }
+    terminals.sort_by_key(|t| order.iter().position(|s| *s == t.session).unwrap_or(usize::MAX));
+    *order != before
+}
+
 /// The words of a filter: what the user typed, lowercase, by word.
 pub fn filter_words(text: &str) -> Vec<String> {
     text.split_whitespace().map(str::to_lowercase).collect()
@@ -464,5 +483,27 @@ mod tests {
         // A name that only begins like a folder is not in it.
         assert_eq!(project_at("/w/apple", &folders), None);
         assert_eq!(project_at("/home", &folders), None);
+    }
+
+    #[test]
+    fn a_new_session_goes_last_and_the_others_keep_their_place() {
+        let t = |s: &str| super::Terminal { session: s.into(), label: s.into(), attach: None, agent: None, status: None };
+        let mut order = vec!["b".to_string(), "a".to_string()];
+        // aiball lists them its way (the new "c" first): the order kept wins.
+        let mut terminals = vec![t("c"), t("a"), t("b")];
+        assert!(super::stack(&mut terminals, &mut order, true));
+        assert_eq!(terminals.iter().map(|t| t.session.as_str()).collect::<Vec<_>>(), ["b", "a", "c"]);
+        // One gone frees its place; back, it goes last.
+        let mut terminals = vec![t("c"), t("b")];
+        super::stack(&mut terminals, &mut order, true);
+        assert_eq!(order, ["b", "c"]);
+        let mut terminals = vec![t("a"), t("c"), t("b")];
+        super::stack(&mut terminals, &mut order, true);
+        assert_eq!(terminals.iter().map(|t| t.session.as_str()).collect::<Vec<_>>(), ["b", "c", "a"]);
+        // At start, one not back yet keeps its place.
+        let mut order = vec!["x".to_string(), "y".to_string()];
+        let mut terminals = vec![t("y")];
+        assert!(!super::stack(&mut terminals, &mut order, false));
+        assert_eq!(order, ["x", "y"]);
     }
 }

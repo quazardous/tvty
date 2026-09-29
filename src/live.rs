@@ -59,6 +59,8 @@ pub enum Update {
     Ping(PingInfo),
     /// aiball's config changed.
     Config,
+    /// An agent's Claude hit its usage limit: what the bar says of it.
+    Limit(String, String),
 }
 
 /// A ticket filed, from the row that brought it.
@@ -327,13 +329,19 @@ impl Live {
                 } else {
                     match serde_json::from_value::<BarRead>(data.clone()) {
                         Ok(mut bar) => {
+                            // Its limit, once reached: said once.
+                            let was = self.bars.get(&agent).is_some_and(|b| b.bar.alerts.limit_reached);
+                            let limit = (!was && !bar.stale).then(|| bar.bar.limit_said()).flatten();
                             // Since when it is in its phase: kept while it stays.
                             bar.phase_since = match self.bars.get(&agent) {
                                 Some(before) if before.bar.phase == bar.bar.phase => before.phase_since,
                                 Some(_) => Some(crate::status::now()),
                                 None => None,
                             };
-                            self.bars.insert(agent, bar);
+                            self.bars.insert(agent.clone(), bar);
+                            if let Some(said) = limit {
+                                return vec![Update::Board, Update::Limit(agent, said)];
+                            }
                         }
                         Err(error) => log::debug!("aiball bus: a bar tvty does not read: {error}"),
                     }
@@ -588,9 +596,28 @@ mod tests {
             "data": { "op": "set", "key": "tickets.stale_after", "project": null, "value": 3600, "by": "david" } }));
         assert!(matches!(&changed[..], [Update::Config]));
 
+        // A usage limit reached is said once, with when it resets.
+        let bar = |limit: bool| json!({ "subscription": "b", "subject": "agent.demo-crew.bar", "seq": 17, "data": { "stale": false,
+            "bar": { "phase": "idle", "presence": "wait", "afk": { "mode": "wait_inf", "expires_at": null },
+                     "prompt": { "visible": true, "has_input": false }, "human_typing": false,
+                     "marker": { "info": null, "health_prompt": false, "resume_picker": false, "resume_mode_picker": false },
+                     "alerts": { "link_down": false, "daemon_down": false, "not_logged_in": false, "trust_dialog": false,
+                                 "api_unreachable": false, "limit_reached": limit },
+                     "limit_resets": if limit { json!({ "text": "Mon 9:00", "at": null }) } else { json!(null) },
+                     "proxy_alive": true, "zen": false, "counters": null, "next_wake_at": null, "boot": null } } });
+        match &live.event(&bar(true))[..] {
+            [Update::Board, Update::Limit(agent, said)] => {
+                assert_eq!((agent.as_str(), said.as_str()), ("demo-crew", "usage limit reached · resets Mon 9:00"))
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(matches!(&live.event(&bar(true))[..], [Update::Board]), "said once");
+        assert!(matches!(&live.event(&bar(false))[..], [Update::Board]));
+        assert!(matches!(&live.event(&bar(true))[..], [Update::Board, Update::Limit(..)]), "reached again");
+
         // Resuming names the epoch and the last seq.
         let plan = live.plan("david");
-        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 16 }));
+        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 17 }));
     }
 
     #[test]

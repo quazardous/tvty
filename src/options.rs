@@ -4,6 +4,9 @@
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
+    /// A project's own settings (its folders' `.aiball.yaml`, the board
+    /// keys it overrides): shown when the options are scoped to a project.
+    Project,
     Appearance,
     Layout,
     TicketList,
@@ -14,7 +17,8 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const ALL: [Section; 7] = [
+        Section::Project,
         Section::Appearance,
         Section::Layout,
         Section::TicketList,
@@ -25,6 +29,7 @@ impl Section {
 
     pub fn title(self) -> &'static str {
         match self {
+            Section::Project => "Project",
             Section::Appearance => "Appearance",
             Section::Layout => "Layout",
             Section::TicketList => "Ticket list",
@@ -42,7 +47,8 @@ pub const FIXED_KEYS: &[(&str, &str)] = &[
     ("Arrows", "In the slider and the gallery: move to the card seen there"),
     ("Drag · double click · triple click", "In a terminal: select text · a word · a line — copied to the primary selection"),
     ("Middle click", "In a terminal: paste the primary selection"),
-    ("Right click", "In a terminal: Copy, Paste"),
+    ("Right click", "In a terminal: Copy, Paste — on a link, Open link, Copy link"),
+    ("Ctrl+click", "In a terminal, on a link: open it"),
     ("Mouse wheel", "Scroll the history"),
 ];
 

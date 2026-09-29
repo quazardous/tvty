@@ -82,6 +82,8 @@ struct Notices {
     next: u64,
     max: usize,
     ttl: Duration,
+    /// Under the slider or the gallery: none drawn, none expires.
+    hidden: bool,
 }
 
 impl Global for Notices {}
@@ -109,6 +111,9 @@ impl Notices {
 
     /// Drops what lived its time (not while hovered). Answers whether any.
     fn expire(&mut self, now: Instant) -> bool {
+        if self.hidden {
+            return false;
+        }
         let ttl = self.ttl;
         let before = self.shown.len();
         self.shown.retain(|n| n.hovered || now.duration_since(n.born) < ttl);
@@ -122,7 +127,24 @@ pub fn init(cx: &mut App, max: usize, seconds: u64) {
         next: 0,
         max: max.max(1),
         ttl: Duration::from_secs(seconds.max(1)),
+        hidden: false,
     });
+}
+
+/// None drawn while the slider or the gallery is up: nothing covers them.
+/// Their time is still whole when they come back.
+pub fn hide(cx: &mut App, hidden: bool) {
+    let notices = cx.global_mut::<Notices>();
+    if notices.hidden == hidden {
+        return;
+    }
+    notices.hidden = hidden;
+    if !hidden {
+        let now = Instant::now();
+        for n in &mut notices.shown {
+            n.born = now;
+        }
+    }
 }
 
 /// Shows `notice`; it goes by itself after its time.
@@ -230,8 +252,9 @@ pub enum Corner {
 /// The stack, at its corner, above everything: the newest in the corner,
 /// the older ones away from it.
 pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
-    let shown = &cx.global::<Notices>().shown;
-    if shown.is_empty() {
+    let notices = cx.global::<Notices>();
+    let shown = &notices.shown;
+    if shown.is_empty() || notices.hidden {
         return None;
     }
     let column = div().id("notices").absolute().w(px(NOTICE_WIDTH)).flex().flex_col().gap_2();
@@ -319,7 +342,7 @@ mod tests {
     use super::{Kind, Notice, Notices};
 
     fn notices(max: usize) -> Notices {
-        Notices { shown: Vec::new(), next: 0, max, ttl: Duration::from_secs(6) }
+        Notices { shown: Vec::new(), next: 0, max, ttl: Duration::from_secs(6), hidden: false }
     }
 
     #[test]
@@ -361,5 +384,14 @@ mod tests {
         assert!(n.expire(Instant::now() + Duration::from_secs(7)));
         assert_eq!(n.shown.len(), 1);
         assert_eq!(n.shown[0].text, "x");
+    }
+
+    #[test]
+    fn hidden_they_do_not_expire() {
+        let mut n = notices(5);
+        n.push(Notice::new(Kind::Info, "tvty", "y"));
+        n.hidden = true;
+        assert!(!n.expire(Instant::now() + Duration::from_secs(60)));
+        assert_eq!(n.shown.len(), 1);
     }
 }

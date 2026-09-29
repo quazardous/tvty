@@ -182,6 +182,98 @@ pub struct AgentBar {
     pub counters: Option<BarCounters>,
     pub next_wake_at: Option<String>,
     pub boot: Option<BarBoot>,
+    /// While its usage limit is reached: when it resets, as Claude Code
+    /// says it, and as a date when it could be read.
+    #[serde(default)]
+    pub limit_resets: Option<LimitResets>,
+    /// Whether its Claude is in Remote Control, whatever turned it on (its
+    /// folder's setting, or `/rc` typed): none from an older loop.
+    #[serde(default)]
+    pub remote_control: Option<BarRemoteControl>,
+    /// The model its Claude ran its last turn on, with its price and a
+    /// newer one of its family, as aiball's model list says: none before
+    /// the first turn ends, or from an older loop.
+    #[serde(default)]
+    pub model: Option<BarModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarModel {
+    /// `claude-opus-5-5`.
+    pub id: String,
+    /// `Opus 5.5`.
+    pub name: String,
+    /// USD per million tokens.
+    #[serde(default)]
+    pub cost: Option<ModelCost>,
+    #[serde(default)]
+    pub newer: Option<NewerModel>,
+    /// The list the price and the newer model come from.
+    #[serde(default)]
+    pub catalog: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize)]
+pub struct ModelCost {
+    pub input: f64,
+    pub output: f64,
+}
+
+impl ModelCost {
+    /// `$15 / $75 per M tokens`.
+    pub fn said(&self) -> String {
+        let usd = |n: f64| if n.fract() == 0. { format!("${n:.0}") } else { format!("${n}") };
+        format!("{} / {} per M tokens", usd(self.input), usd(self.output))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct NewerModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub cost: Option<ModelCost>,
+}
+
+impl BarModel {
+    /// What its tip says: its id, its price, a newer one of its family.
+    pub fn said(&self) -> String {
+        let mut said = self.id.clone();
+        if let Some(cost) = &self.cost {
+            said.push_str(&format!(" · {}", cost.said()));
+        }
+        if let Some(newer) = &self.newer {
+            said.push_str(&format!("\n{} is out", newer.name));
+            if let Some(cost) = &newer.cost {
+                said.push_str(&format!(" ({})", cost.said()));
+            }
+        }
+        if let Some(catalog) = &self.catalog {
+            said.push_str(&format!("\nprices from {catalog}"));
+        }
+        said
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarRemoteControl {
+    pub on: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct LimitResets {
+    pub text: String,
+    pub at: Option<String>,
+}
+
+impl AgentBar {
+    /// "usage limit reached", and when it resets if said.
+    pub fn limit_said(&self) -> Option<String> {
+        self.alerts.limit_reached.then(|| match &self.limit_resets {
+            Some(resets) if !resets.text.is_empty() => format!("usage limit reached · resets {}", resets.text),
+            _ => "usage limit reached".to_string(),
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -219,6 +311,10 @@ pub struct BarAlerts {
     /// A restart was asked and waits for its Claude's next idle.
     #[serde(default)]
     pub restart_pending: bool,
+    /// Its Claude hit a usage limit (weekly, session, monthly spend…): the
+    /// loop holds it until let go.
+    #[serde(default)]
+    pub limit_reached: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -261,6 +357,10 @@ pub struct BacklogRow {
     /// -1 critical, 0 hot, 1 actionable, 2 follow-up, 3 waiting on them,
     /// 4 blocked.
     pub backlog_tier: Option<i64>,
+    /// Sunk: a backlog wake gave it to the agent, and its loop will not
+    /// bring it up again before this, unless the thread moves.
+    #[serde(default)]
+    pub backlog_cooled_until: Option<String>,
 }
 
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
@@ -716,6 +816,51 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
+    /// What a loop started in `cwd` would start with, each value with where
+    /// it comes from, as aiball resolves it (`project.settings`). tvty never
+    /// reads the folder's `.aiball.yaml` itself.
+    pub fn project_settings(&self, cwd: &str) -> anyhow::Result<ProjectSettings> {
+        self.rpc("project.settings", json!({ "cwd": cwd }))
+    }
+
+    /// Sets where the folder's loops run (`session`) and its Claude's Remote
+    /// Control (`remote_control`) in the `.aiball.yaml` they read
+    /// (`project.settings_set`): the keys `patch` gives, a null one removed
+    /// (the layer below applies again). Answers the settings as they now are.
+    pub fn project_settings_set(&self, cwd: &str, patch: Value) -> anyhow::Result<ProjectSettings> {
+        let mut params = patch;
+        params["cwd"] = json!(cwd);
+        self.rpc("project.settings_set", params)
+    }
+
+    /// A project's standing instruction and wake focus
+    /// (`project.standing_prompt`).
+    pub fn standing(&self, project: &str) -> anyhow::Result<Standing> {
+        self.rpc("project.standing_prompt", json!({ "project": project }))
+    }
+
+    /// Sets a project's standing instruction (none: cleared) and its wake
+    /// focus: the tickets (none: cleared) and until when (an ISO date).
+    pub fn set_standing(&self, project: &str, prompt: Option<&str>, focus: Option<&str>, until: Option<&str>) -> anyhow::Result<Standing> {
+        self.rpc(
+            "project.set_standing_prompt",
+            json!({ "project": project, "standing_prompt": prompt, "focus_tickets": focus, "focus_until": until }),
+        )
+    }
+
+    /// Types `message` into every running agent loop now; `hold`: holds
+    /// them too (not AFK ∞) until released.
+    pub fn message_all(&self, message: &str, hold: bool) -> anyhow::Result<Vec<LoopHold>> {
+        let answer: LoopHolds = self.rpc("loops.message_all", json!({ "message": message, "hold": hold }))?;
+        Ok(answer.results)
+    }
+
+    /// Lifts the hold on every running agent loop.
+    pub fn release_all(&self) -> anyhow::Result<Vec<LoopHold>> {
+        let answer: LoopHolds = self.rpc("loops.release_all", json!({}))?;
+        Ok(answer.results)
+    }
+
     /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
     /// `aiball init` would; `dry_run`: says what it would do, writes nothing.
     pub fn project_init(&self, ask: &InitAsk, dry_run: bool) -> anyhow::Result<InitDone> {
@@ -773,9 +918,11 @@ impl Aiball {
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
     }
 
-    /// An agent's own backlog, in `project`.
+    /// An agent's own backlog, in `project`: every row (as its loop reads
+    /// it), each sunk one saying until when — with the pause its loop
+    /// announced to aiball.
     pub fn agent_backlog(&self, agent: &str, project: &str) -> anyhow::Result<AgentBacklog> {
-        self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project }))
+        self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project, "limit": "500" }))
     }
 
     /// Whether aiball's host runs `agent`'s session, its program up — which
@@ -844,7 +991,8 @@ impl Aiball {
     /// the folder's own), as a crew agent of that name when `crew`. Answers
     /// the agent.
     pub fn start_agent(&self, cwd: &str, project: Option<&str>, agent: Option<&str>, crew: bool) -> anyhow::Result<String> {
-        let mut params = json!({ "cwd": cwd });
+        // On the host, asked: whatever the folder says.
+        let mut params = json!({ "cwd": cwd, "mode": "host" });
         if let Some(project) = project {
             params["project"] = json!(project);
         }
@@ -1209,6 +1357,131 @@ pub fn new_ticket_message(ticket: &NewTicket) -> Value {
     message
 }
 
+/// A folder's configuration as aiball resolves it (`project.settings`): what
+/// a loop started there takes, each value with where it comes from.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ProjectSettings {
+    /// The `.aiball.yaml` that applies (the nearest up the tree), if any.
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub consumer: FolderConsumer,
+    /// Where its loops run: `host` or `tmux`.
+    #[serde(default)]
+    pub session: Setting<String>,
+    /// Its Claude's Remote Control: `false`, `true` or a name.
+    #[serde(default)]
+    pub remote_control: Setting<Value>,
+    /// Every setting of the folder a client may show and change, described:
+    /// a key aiball adds shows with no code of tvty's own.
+    #[serde(default)]
+    pub settings: Vec<FolderSetting>,
+}
+
+/// A folder setting as aiball describes it: its key in `.aiball.yaml`, its
+/// type (`enum`: one of `options`; `boolean_or_name`: true, false or a
+/// name), its default and value, where the value comes from.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct FolderSetting {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Value,
+    #[serde(default)]
+    pub value: Value,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
+}
+
+/// The identity a loop started in the folder takes.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct FolderConsumer {
+    #[serde(default)]
+    pub project: Setting<String>,
+    #[serde(default)]
+    pub agent: Setting<String>,
+    /// `crew`, or none for the project's lead.
+    #[serde(default)]
+    pub role: Setting<Option<String>>,
+}
+
+/// A value, and where it comes from: `file` (the folder's `.aiball.yaml`),
+/// `global` (the machine's config), `mcp`, `env`, or `default`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Setting<T> {
+    pub value: T,
+    #[serde(default)]
+    pub from: String,
+}
+
+impl<T> Setting<T> {
+    /// Not aiball's default: something set it.
+    pub fn set(&self) -> bool {
+        !self.from.is_empty() && self.from != "default"
+    }
+
+    /// Where it comes from, said to the user.
+    pub fn said(&self) -> &str {
+        match self.from.as_str() {
+            "file" => "from .aiball.yaml",
+            "global" => "from aiball's global config",
+            "mcp" => "from .mcp.json",
+            "env" => "from aiball's environment",
+            _ => "default",
+        }
+    }
+}
+
+/// A project's standing instruction (read at the head of every wake of its
+/// agents) and its wake focus (only these tickets wake them).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Standing {
+    #[serde(default)]
+    pub standing_prompt: Option<String>,
+    #[serde(default)]
+    pub focus_tickets: Option<String>,
+    #[serde(default)]
+    pub focus_until: Option<String>,
+    #[serde(default)]
+    pub focus_active: bool,
+    /// The focus as aiball reads it, said.
+    #[serde(default)]
+    pub focus_line: Option<String>,
+}
+
+impl Standing {
+    /// Something steers the project's agents now.
+    pub fn active(&self) -> bool {
+        self.standing_prompt.as_deref().is_some_and(|p| !p.trim().is_empty()) || self.focus_active
+    }
+}
+
+#[derive(Deserialize)]
+struct LoopHolds {
+    #[serde(default)]
+    results: Vec<LoopHold>,
+}
+
+/// What became of one loop: its message typed (`delivered`) or queued
+/// (`spooled`), its hold `armed`, `released` or `failed`.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct LoopHold {
+    pub consumer_id: String,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub hold: Option<String>,
+    #[serde(default)]
+    pub hold_error: Option<String>,
+}
+
 /// A folder to make an aiball project of, and how.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InitAsk {
@@ -1317,6 +1590,22 @@ mod bar_tests {
         updated["alerts"]["restart_needed"] = json!(true);
         let updated: AgentBar = serde_json::from_value(updated).unwrap();
         assert!(updated.alerts.restart_needed);
+    }
+
+    #[test]
+    fn a_bar_says_its_model_its_price_and_a_newer_one() {
+        let plain: AgentBar = serde_json::from_value(bar()).unwrap();
+        assert!(plain.model.is_none());
+        let mut with = bar();
+        with["model"] = json!({ "id": "claude-opus-5-5", "name": "Opus 5.5", "cost": { "input": 15, "output": 75 },
+                                "newer": { "id": "claude-opus-5-6", "name": "Opus 5.6", "cost": { "input": 12.5, "output": 60 } },
+                                "catalog": "models.dev" });
+        let model = serde_json::from_value::<AgentBar>(with).unwrap().model.unwrap();
+        assert_eq!(model.said(), "claude-opus-5-5 · $15 / $75 per M tokens\nOpus 5.6 is out ($12.5 / $60 per M tokens)\nprices from models.dev");
+        // As a loop pushes it, before the daemon adds the price.
+        let mut bare = bar();
+        bare["model"] = json!({ "id": "claude-opus-5-5", "name": "Opus 5.5" });
+        assert_eq!(serde_json::from_value::<AgentBar>(bare).unwrap().model.unwrap().said(), "claude-opus-5-5");
     }
 }
 

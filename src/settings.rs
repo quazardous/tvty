@@ -25,9 +25,32 @@ pub struct Preferences {
     pub appearance: Appearance,
     pub notifications: Notifications,
     pub scroll: Scroll,
+    pub mouse: Mouse,
     pub tickets: Tickets,
     pub sessions: Sessions,
     pub updates: Updates,
+    pub tips: Tips,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mouse {
+    /// Whether the pointer gives the keyboard: `click`, `hover`; none: as
+    /// the window manager does.
+    pub focus: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tips {
+    /// "Did you know?" once after start and on first entering a surface.
+    pub show: bool,
+}
+
+impl Default for Tips {
+    fn default() -> Self {
+        Self { show: true }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -54,8 +77,9 @@ pub struct Sessions {
     /// `keep` them running; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_quit: Option<String>,
-    /// At start, the loops stopped when tvty quit: `restart` them, `leave`
-    /// them; none: ask.
+    /// At start, the loops stopped when tvty quit: `restart` them as they
+    /// were (their hold put back), restart them `fresh` (on their own),
+    /// `leave` them; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_start: Option<String>,
 }
@@ -193,6 +217,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false, slider: false },
     },
     Setting {
+        key: "mouse.focus",
+        page: "Appearance",
+        group: "Mouse",
+        label: "Focus",
+        about: "What gives the keyboard to the terminal or to a box to write in: a click, or the pointer moving over it (as a window manager's focus follows the mouse). By default, as the system does.",
+        kind: Kind::Choice,
+    },
+    Setting {
         key: "appearance.theme",
         page: "Appearance",
         group: "Colours",
@@ -233,6 +265,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: true, on: "check", off: "never" },
     },
     Setting {
+        key: "tips.show",
+        page: "Layout",
+        group: "Tips",
+        label: "Show tips",
+        about: "\"Did you know?\": a short tip once after start, and the first time a page is opened; never one for what you already use. The menu's Tips… shows them all.",
+        kind: Kind::Toggle { default: true, on: "show", off: "never" },
+    },
+    Setting {
         key: "sessions.recent_first",
         page: "Layout",
         group: "Sessions",
@@ -253,7 +293,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Layout",
         group: "Sessions",
         label: "On start",
-        about: "The loops tvty stopped when it quit: ask whether to restart them, restart them (resuming their conversation), or leave them stopped.",
+        about: "The loops tvty stopped when it quit: ask, restart them as they were (resuming their conversation, a held one held again), restart them fresh (booting, then on their own), or leave them stopped.",
         kind: Kind::Choice,
     },
     Setting {
@@ -294,9 +334,11 @@ impl Stored for Preferences {
                 copied: true,
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
+            mouse: Mouse::default(),
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
             sessions: Sessions::default(),
             updates: Updates::default(),
+            tips: Tips::default(),
         })
     }
 }
@@ -388,6 +430,17 @@ pub struct Workspace {
     /// The loops tvty stopped when it quit: offered to restart at start.
     #[serde(default)]
     pub stopped_on_quit: Vec<String>,
+    /// Their AFK mode then (`off`, `wait_10m`, `wait_inf`), by loop: put
+    /// back when they restart as they were.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub holds_on_quit: HashMap<String, String>,
+    /// Each project's sessions in the order they came, as the list shows
+    /// them: a new one last.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub terminal_order: HashMap<String, Vec<String>>,
+    /// The standing instructions given last (the 📢), newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standing_history: Vec<String>,
 }
 
 impl Stored for Workspace {
@@ -402,6 +455,9 @@ impl Stored for Workspace {
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
             pings_seen: None,
             stopped_on_quit: Vec::new(),
+            holds_on_quit: HashMap::new(),
+            terminal_order: HashMap::new(),
+            standing_history: Vec::new(),
         })
     }
 }

@@ -50,6 +50,7 @@ actions!(
         GotoTicket,
         AfkCycle,
         ToggleOptions,
+        Megaphone,
         HelpMenu,
         FullScreen,
         FontBigger,
@@ -62,8 +63,13 @@ actions!(
         TerminalPaste,
         SendTab,
         SendBackTab,
+        ComposerSend,
     ]
 );
+
+/// A box to write to aiball in (a reply, a new ticket's body): its key
+/// context, around the kit's `Input`.
+pub const COMPOSER: &str = "Composer";
 
 /// The key context of the window's content (the shell): everywhere.
 pub const WINDOW: &str = "Window";
@@ -112,6 +118,7 @@ commands! {
     "font.smaller", WORKSPACE, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
     "font.reset", WORKSPACE, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;
     "ticket.new", WINDOW, ["ctrl-shift-n"], "A new ticket (also + in the panel and the full list)", NewTicket;
+    "project.megaphone", WINDOW, ["ctrl-shift-m"], "The 📢 of the shown project: its standing instruction and its wake focus", Megaphone;
     "list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList;
     "theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme;
     "terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection", TerminalCopy;
@@ -158,6 +165,18 @@ pub fn current(cx: &App) -> Keymap {
     keymap
 }
 
+/// The keymap with its defaults only.
+#[cfg(test)]
+pub fn current_defaults() -> Keymap {
+    Keymap::new(COMMANDS, CONTEXTS)
+}
+
+/// The name of the action a command dispatches, as a keystroke's event
+/// gives it.
+pub fn action_name(command: &str) -> Option<&'static str> {
+    action(command).map(|a| a.name())
+}
+
 /// Binds again: the kit's bindings, then tvty's in force.
 fn apply(cx: &mut App) {
     let kit = cx.global::<KitBindings>().0.clone();
@@ -165,6 +184,10 @@ fn apply(cx: &mut App) {
     cx.clear_key_bindings();
     cx.bind_keys(kit);
     cx.bind_keys(bindings);
+    // Ctrl+Enter sends what a composer holds: bound over the kit's box, which
+    // would put a new line in first (and after the window's Ctrl+Enter,
+    // which stays the newest notification everywhere else).
+    cx.bind_keys([KeyBinding::new("ctrl-enter", ComposerSend, Some("Composer > Input"))]);
 }
 
 /// Binds the defaults and `keymap.toml` over them — once the kit has bound

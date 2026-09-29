@@ -98,11 +98,15 @@ without stopping Claude.
 **Quitting tvty** with Claude Code loops of this machine running asks
 whether to stop them too (through aiball: they stay restartable) or
 keep them running — or cancel; "Remember this choice" keeps the answer
-(Options > Layout > Sessions > On quit). The loops tvty stopped are kept
-in its workspace: at the next start it asks whether to restart them
-(aiball's `loop.restart`, each where it ran, its conversation
-resumed), with its own remembered choice (On start). tvty quits once they
-stopped, 15 s at most. Loops of another machine are never touched.
+(Options > Layout > Sessions > On quit). The dialog lists the sessions
+by project, each with its mark (▶ on its own, ‖ held for now, ■ held
+until let go), in a box that scrolls when they are many. The loops tvty
+stopped are kept in its workspace with their hold: at the next start it
+asks whether to restart them (aiball's `loop.restart`, each where it
+ran, its conversation resumed) **as they were** — a held one held again
+(`consumer.afk`) — or **fresh**, each booting then running on its own,
+or not now; with its own remembered choice (On start). tvty quits once
+they stopped, 15 s at most. Loops of another machine are never touched.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
@@ -347,8 +351,10 @@ its Claude Code installed an update, **⟳ update** — a click has its loop
 restart it as soon as it is idle ("⟳ restart pending" meanwhile, an
 offer turned into a state), and the terminal comes back
 on its own; "waits for an answer" when a
-dialog is up; the alerts in red (trust this folder?, not logged in, API
-unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
+dialog is up; the alerts in red (usage limit reached · resets …, trust
+this folder?, not logged in, API unreachable, loop link down, aiball
+unreachable) — a usage limit also comes as a notification, the loop held
+until let go (■); the prompt ❯ (bright when
 it holds text), ⌨ while a human types, ⇄ the proxy; its counters in
 claude-loop's terms and full words — `all:` the project's open tickets,
 `backlog:`, `events:` (claude-loop's a: b: e:) — then the tickets it holds;
@@ -358,12 +364,10 @@ where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
 tmux) — for a loop of this machine, a click offers to **move** it to the
 other (a confirmation over the bar, which says when Claude works; aiball
 restarts it there — `loop.restart` —, resuming its conversation, and the terminal comes back
-on the new session, "moving…" meanwhile); **RC**, its Claude's Remote
-Control (lit when it runs with it, named as its agent on claude.ai and the
-mobile app): a click offers to turn it on or off — its folder keeps the
-choice (aiball's `claude.remote_control`, set through `project.settings_set`:
-the loops started there follow it) and its loop restarts with it, resuming
-its conversation; whether this terminal has the **controls** or is a **copy** (a
+on the new session, "moving…" meanwhile); **RC**, lit while its Claude is in
+Remote Control, whatever turned it on — its folder's setting or `/rc` typed —
+as its loop reads it on the screen (said, not set: none from a loop too old
+to say it); whether this terminal has the **controls** or is a **copy** (a
 click switches: the terminal leaves and comes back in the other mode, its
 Claude goes on); its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
@@ -474,7 +478,8 @@ cards keep their size: they fit the screen to themselves.
 
 ## Options
 
-A full page (⚙ in the title bar, or ctrl+,): on the left a search box
+A full page (⚙ in the title bar, or ctrl+,): on the left, in the full
+pages' side column (its border dragged, double click: back to default), a search box
 (focused at once: ctrl+, then type) and a tree, each page unfolded into its
 groups — a click on a group brings it up, the one in view is lit. A search
 finds settings and shortcuts together, by name, text, key
@@ -486,22 +491,59 @@ a shortcut away from its default stands out (lighter, a bar on its left),
 says its default (`Default: 16 px`) and has a "↺ Default" button that puts
 it back — in an aiball project, "↺ Board", the board's value; `@modified` lists every one; a setting shows its key as settings.toml
 spells it. The pages:
-Appearance (sizes, notifications, the wheel's speed, the window's and the
+Appearance (sizes, notifications, the wheel's speed, the focus, the window's and the
 terminals' colour themes, the terminals' opacity), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
 shortcuts (all of them, edited in place — see Keys), aiball (the board's
-config, read and written through aiball: a layer chosen at its head,
-Global or a project; a project's value overrides the board's, ↺ clears it
+config, read and written through aiball, in the scope chosen: Global or a
+project; a project's value overrides the board's, ↺ clears it
 there; 🔒 on the keys only a human may change; a change made elsewhere
 shows at once), About (version,
 aiball's socket, who tvty acts as, the live feed, where settings and
 themes live).
+
+**Scope.** Atop the tree, a list: Global or a project of the board, typed
+to be found. Global: the
+pages above. A project (or its ⚙ in the sessions list): a **Project** page
+comes first, and the aiball page shows that project's layer. The Project
+page has two groups. *Folder*: what the folder's `.aiball.yaml` sets, as
+aiball resolves and writes it (tvty never opens that file) — where the
+loops started there run (session host or tmux) and its Claude's Remote
+Control, each saying where its value comes from (the file, the machine's
+global config, the default), ↺ removing it from the file; a project with
+several folders (a lead's, a crew's) shows one at a time, and says which
+other folders the same file serves. *Board*: the board's keys the project
+sets over the board's values, and a link to all of them.
 
 The settings' pages are built from the settings themselves: each is
 declared once in `src/settings.rs` (its key in `settings.toml`, its page and
 group, what it says, its kind and bounds — `crates/tvty-config`), and a
 change from a page, a shortcut or a hand edit of the file goes the same way:
 into the store, which writes the file and puts it in force.
+
+## Tips
+
+"Did you know?": a small card in the tips' own colour, a violet (not the
+accent's blue nor a state's colour), never in the way. A tip about an
+element of the window sits beside it, never over it — under it, or above
+when there is no room, 24 px away so that the element and what is around it
+stay in sight —, the element wearing a violet halo; when that element is not
+on screen, when there is no room either way, and for a tip about a key, the
+card keeps its corner: bottom left (bottom right over a full page, where the notifications
+take the left). One
+comes 5 s after start, and one the first time a page is opened (the full
+list, a ticket full screen, the gallery, the options…). A tip says one
+thing, with its key as the keymap in force has it; the tip of a command
+already used is not shown, nor one shown in the last day.
+
+- **Got it**: that tip never comes back; **Next tip**: another one for
+  the same page; **✕**: not now; **Turn tips off**: none any more, until
+  Options > Layout > Tips turns them back on.
+- The menu's **Tips…** goes through them all (‹ Previous, Next ›), and
+  **Show them all again** forgets which ones were understood.
+- The tips are files, `tips/<id>.md`: a header (`id`, `surface` — a key
+  context —, `command`, `target` — an element the code marks with
+  `tips::target`) and one short text, `{key}` for the command's key.
 
 ## The wheel
 
@@ -512,10 +554,40 @@ one call at a time, those that come meanwhile added up into the next: a
 fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 `speed` under `[scroll]` in `settings.toml` multiplies both (1 by default).
 
+## The 📢, and a message to every agent
+
+What steers a project's agents, as aiball keeps it, is the project's: its
+📢 in the ticket panel's header (lit while something steers them), or
+ctrl+shift+m; the project in the sessions list wears a small 📢 then, what
+steers it in its tip. The **standing instruction** (read at the head of
+every wake of its agents; the ones given last are a click away) and the
+**wake focus** (only these tickets wake them — `123, 456`, `!789`,
+`123+`, `123++`, `+123`, `123~` — until a date if one is given; aiball's
+own reading of it said under the box). tvty reads every project's again
+each minute and after its own changes.
+
+A **message to every agent** loop running is the whole board's: its
+button in the title bar (by ⚙), or the menu's "Message every agent…" —
+send, send & hold (not AFK ∞, until released), release holds; what
+became of each loop is said.
+
+## Focus
+
+What gives the keyboard to the terminal or to a box to write in (a reply,
+a new ticket's body, the sessions' filter): a click, or the pointer moving
+over it, as a window manager's focus follows the mouse. By default tvty
+does as the system does — GNOME's `focus-mode` (`sloppy` and `mouse` are
+the pointer's), KDE's `FocusPolicy`, else a click — and follows GNOME's
+changes; Options > Appearance > Mouse > Focus says what it read, and can
+choose click or hover instead (`focus` under `[mouse]`). Following the
+pointer, the keyboard moves only into the terminal or a box to write in,
+never while a button is held (a selection, a drag), nor through what lies
+over them (a dialog, a full page).
+
 ## Buttons
 
 Everything that acts, and is not a row of a list (a ticket, a session, a
-tab, a menu item), is one of four kinds (`src/ui/buttons.rs`):
+tab, a menu item), is one of five kinds (`src/ui/buttons.rs`):
 
 - **link**: an action in words, in the accent colour, no border ("+
   terminal", "← Tickets", "⇅ recent", "✕ Esc");
@@ -525,7 +597,10 @@ tab, a menu item), is one of four kinds (`src/ui/buttons.rs`):
 - **chip**: a bordered label, for an option or a state to change ("+ New",
   a choice among several, the agent bar's chips); a chosen one has the
   chosen row's background and an accent border;
-- **primary**: the main answer of a form or a dialog.
+- **answers** of a form or a dialog, all the same size whatever their
+  kind: **primary** the main one, **secondary** (outlined) the others —
+  Cancel, Not now, Back —, or a colour of their own for a decision
+  (Approve, Reject, Move). Never a chip nor a link beside them.
 
 Under the pointer each gets a light background (an icon's glyph
 brightens), pressed a stronger one, and the hand pointer; one with
@@ -584,12 +659,13 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | F11 | the window full screen, or back |
-| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (its web UI at the local address aiball gives, as its GNOME extension opens it) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
+| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, the tips, what's new, GitHub, report an issue, aiball (its web UI at the local address aiball gives, as its GNOME extension opens it) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |
 | middle click | paste the primary selection |
-| right click | a menu: Copy, Paste (Esc closes it) |
+| right click | a menu: Copy, Paste — on a link, Open link and Copy link too (Esc closes it) |
+| ctrl+click on a link | opens it (the pointer over a link underlines it; a program's OSC 8 link shows where it goes) |
 
 Esc in a text field (a search, the reply, a form's box) only leaves the
 field; the next Esc closes the page it sits on. A click anywhere else — a

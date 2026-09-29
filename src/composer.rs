@@ -29,22 +29,8 @@ pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set:
                 .on_click(cx.listener(move |view, _, _, cx| set(view, to, cx))),
         );
     }
-    tabs
-}
-
-/// Markdown with its images said, not drawn ("🖼 image"): a preview where
-/// the pictures are not at hand.
-pub fn images_said(markdown: &str) -> String {
-    let mut out = String::new();
-    let mut rest = markdown;
-    while let Some(at) = rest.find("![") {
-        let Some(close) = rest[at..].find("](").and_then(|b| rest[at + b..].find(')').map(|c| at + b + c)) else { break };
-        out.push_str(&rest[..at]);
-        out.push_str("🖼 image");
-        rest = &rest[close + 1..];
-    }
-    out.push_str(rest);
-    out
+    // What the Write / Preview tip is about.
+    crate::tips::target("composer.tabs", tabs)
 }
 
 /// The `@name` being typed at the end of `text`, lowercase.
@@ -112,9 +98,6 @@ pub fn mention_chips<V: 'static>(
 mod preview_tests {
     #[test]
     fn a_preview_says_its_images() {
-        assert_eq!(super::images_said("see ![shot](/uploads/a.png) here"), "see 🖼 image here");
-        assert_eq!(super::images_said("no picture"), "no picture");
-        assert_eq!(super::images_said("broken ![x](y"), "broken ![x](y");
     }
 }
 

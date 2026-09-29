@@ -31,7 +31,8 @@ impl Status {
     /// `armed`: the loop's AFK mode, as its bar says it — held until let go
     /// (`wait_inf`) shows ■, as the folded list and the agent's bar do.
     pub fn line(&self, armed: Option<&str>) -> impl IntoElement + use<> {
-        let for_good = self.driver == "wait" && armed == Some("wait_inf");
+        // Held until let go wins over a human typing: stop > pause.
+        let for_good = matches!(self.driver.as_str(), "wait" | "stop") && armed == Some("wait_inf");
         if !self.online {
             return div()
                 .id("status")
@@ -41,6 +42,7 @@ impl Status {
                 .tip("its loop is not connected to aiball");
         }
         let who = match self.driver.as_str() {
+            "stop" if for_good => "held until let go (a human is typing in it): the loop does not wake it",
             "stop" => "a human is typing in it: the loop waits",
             "wait" if for_good => "held until let go: the loop does not wake it",
             "wait" => "held a while: the loop does not wake it",
@@ -53,8 +55,8 @@ impl Status {
             _ => "Claude is idle",
         };
         let (glyph, glyph_colour) = match self.driver.as_str() {
+            _ if for_good => ("■", p().danger),
             "stop" => ("✎", p().danger),
-            "wait" if for_good => ("■", p().danger),
             "wait" => ("‖", p().warning),
             "boot" => ("…", p().warning),
             _ => ("▶", p().success),

@@ -1,26 +1,29 @@
 # Terminal Velocity
 
-**Twenty AI agents in loops. Tickets driven. One window. No tab hunting.**
+**Terminal Velocity for Claude Code: tickets, loops, focus — all in one.**
 
-*Beta · Linux for now.*
+*Twenty agents in loops, one window, no tab hunting. Beta · Linux for now.*
 
 ![Terminal Velocity at work: an agent answers live beside its ticket; the slider, the gallery, a notification, a ticket full screen](docs/images/tvty.gif)
 
-`tvty` is for everyone who wants to develop at full speed with Claude: a
-native terminal for running many Claude Code agents at once, their terminals
-grouped by project and each project's tickets right beside — the agent asks,
+Run many Claude Code agents at full speed without losing track of them.
+Each project's agents and its tickets live side by side: the agent asks,
 you decide, it carries on.
 
-## Why
+## Tickets, loops, focus
 
-- **One window instead of twenty tabs.** Every project, every agent, and who
-  is waiting for you: a decision, an unread answer, the ticket that holds the
-  others back.
-- **Each agent's terminal, live.** Attached to its session, full speed, no
-  tmux screen in the way. Switch in one keystroke, or pick from live
-  thumbnails of all of them.
-- **Its tickets beside it.** Plans, resolutions, escalations, with their
-  pictures: accept, reject or reply without leaving the keyboard.
+- **Tickets.** Each project's board sits beside its agents: plans waiting
+  for your go, escalations, answers, with their pictures. Accept, reject
+  or reply without leaving the keyboard. The ticket that holds the others
+  back is flagged.
+- **Loops.** Every agent runs in its own loop and picks up its work on its
+  own. You see who is working, who waits for you, and since when. Hold a
+  loop or let it go with one key (F9). Quitting and restarting keep each
+  loop as it was.
+- **Focus.** One window instead of twenty tabs. The agent that needs you
+  comes to you: a notification, Ctrl+Enter, and you are in its terminal,
+  its ticket beside it. Ctrl+Tab and the live gallery switch in one
+  keystroke.
 
 ## Quick start
 

@@ -260,6 +260,20 @@ fn terminal_of(theme: &Theme) -> TerminalColours {
     }
 }
 
+/// The tips' own colour: a violet — not the accent's blue, nor a state's
+/// green, yellow, orange or red. Fixed rather than a theme's magenta, which
+/// some terminal themes wash out to a grey; lighter on a dark window,
+/// darker on a light one.
+pub fn tip() -> Hsla {
+    if p().bg.l < 0.5 { hsla(270. / 360., 0.75, 0.74, 1.) } else { hsla(270. / 360., 0.6, 0.45, 1.) }
+}
+
+/// What was imported, not typed: a choice filled from a folder's
+/// configuration. A teal, apart from the accent, the states and the tips.
+pub fn imported() -> Hsla {
+    if p().bg.l < 0.5 { hsla(172. / 360., 0.6, 0.55, 1.) } else { hsla(172. / 360., 0.75, 0.3, 1.) }
+}
+
 /// Readable text on a `background`: dark on light colours, light on dark.
 pub fn on(background: Hsla) -> Hsla {
     let c = background.to_rgb();

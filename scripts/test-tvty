@@ -2,11 +2,16 @@
 # test-tvty — runs tvty apart from the user's own (see scripts/test-env):
 # the test tmux server, the test settings, the throwaway aiball (started if
 # it is not up; TVTY_NO_AIBALL=1: none, where aiball is not installed — a CI
-# checking the window alone). Arguments go to tvty (a session to open).
+# checking the window alone; TVTY_AIBALL=proxy: the node of the proxy
+# stack, scripts/proxy-stack, as a tvty on a machine behind a node).
+# Arguments go to tvty (a session to open).
 set -euo pipefail
 TVTY_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 . "$TVTY_ROOT/scripts/test-env"
-if [[ -z ${TVTY_NO_AIBALL:-} ]]; then
+if [[ ${TVTY_AIBALL:-} == proxy ]]; then
+    export AIBALL_SOCK="$TVTY_ROOT/dev/proxy-stack/run/node/sock/sock"
+    [[ -S $AIBALL_SOCK ]] || { echo "the proxy stack is not up: scripts/proxy-stack up" >&2; exit 1; }
+elif [[ -z ${TVTY_NO_AIBALL:-} ]]; then
     "$TVTY_ROOT/scripts/fake-aiball" up >/dev/null
 fi
 export TVTY_STATS="${TVTY_STATS-$TVTY_ROOT/dev/tvty-wbox/log/tvty-stats.log}"

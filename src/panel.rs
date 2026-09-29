@@ -5,11 +5,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use serde_json::json;
 use gpui_kit::component::text::TextView;
-use gpui_kit::component::{Disableable as _, Sizable as _};
+use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -34,6 +34,9 @@ const ROW_HEIGHT: f32 = 56.;
 
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
+
+/// The 📢 of the panel's project was clicked.
+pub struct OpenMegaphone;
 
 /// The user flipped the thread's order: newest first when true.
 pub struct OrderChanged(pub bool);
@@ -76,6 +79,8 @@ struct Detail {
 enum Menu {
     Snooze,
     Priority,
+    /// Who it is assigned to: the project's agents.
+    Assignee,
 }
 
 /// Full screen, the invariant being changed in the left column.
@@ -101,6 +106,8 @@ struct Catalog {
     tags: Vec<String>,
     milestones: Vec<(u64, String)>,
     agents: Vec<String>,
+    /// The project's own agents, as aiball knows them.
+    own: Vec<String>,
     projects: Vec<String>,
 }
 
@@ -109,6 +116,12 @@ pub struct TicketPanel {
     scope: Option<Scope>,
     tickets: Vec<TicketRow>,
     critical: Option<u64>,
+    /// The tickets sunk in the shown agent's backlog, and until when:
+    /// asked of aiball for that agent and project.
+    sunk: HashMap<u64, String>,
+    sunk_for: Option<(String, String)>,
+    /// Asks counted, the latest answer only kept.
+    sunk_asked: u64,
     detail: Option<Detail>,
     reply: Entity<TextareaState>,
     /// The bands folded to their title, and each band's own scroll.
@@ -147,6 +160,7 @@ impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
+impl EventEmitter<OpenMegaphone> for TicketPanel {}
 
 
 impl TicketPanel {
@@ -159,12 +173,12 @@ impl TicketPanel {
                 .placeholder("Reply… (ctrl+enter sends)")
                 .auto_grow(2, 8)
         });
-        // Reject waits for a reason: redraw as the reason is typed.
-        // Ctrl+Enter sends it (the box has put in the new line first).
-        cx.subscribe_in(&reply, window, |panel, _, event: &InputEvent, window, cx| match event {
-            InputEvent::Change => cx.notify(),
-            InputEvent::PressEnter { secondary: true, .. } => panel.send_reply(window, cx),
-            _ => {}
+        // Reject waits for a reason: redraw as the reason is typed. (Ctrl+Enter
+        // sends: the reply is a composer, see keymap's ComposerSend.)
+        cx.subscribe_in(&reply, window, |_, _, event: &InputEvent, _, cx| {
+            if let InputEvent::Change = event {
+                cx.notify()
+            }
         })
         .detach();
         let edit_title = cx.new(|cx| InputState::new(window, cx));
@@ -196,6 +210,9 @@ impl TicketPanel {
         Self {
             aiball,
             scope: None,
+            sunk: HashMap::new(),
+            sunk_for: None,
+            sunk_asked: 0,
             tickets: Vec::new(),
             critical: None,
             detail: None,
@@ -316,7 +333,16 @@ impl TicketPanel {
                 .background_executor()
                 .spawn(async move {
                     let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
+                    let mut own: Vec<String> = aiball
+                        .consumers()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|c| c.kind != "human" && c.project.as_deref() == Some(project.as_str()))
+                        .map(|c| c.consumer_id)
+                        .collect();
+                    own.sort();
                     Catalog {
+                        own,
                         tags: aiball.tag_catalog(&project).unwrap_or_default(),
                         milestones: aiball.milestones(&project).unwrap_or_default(),
                         agents,
@@ -432,7 +458,52 @@ impl TicketPanel {
             self.detail = None;
         }
         self.scope = scope;
+        self.load_sunk(cx);
         cx.notify();
+    }
+
+    /// Asks aiball which tickets are sunk in the shown agent's backlog (none
+    /// without an agent), and again when the first pause ends.
+    fn load_sunk(&mut self, cx: &mut Context<Self>) {
+        let wanted = self.scope.as_ref().and_then(|s| Some((s.agent.clone()?, s.project.clone())));
+        if wanted != self.sunk_for {
+            self.sunk.clear();
+            self.sunk_for = wanted.clone();
+        }
+        self.sunk_asked += 1;
+        let asked = self.sunk_asked;
+        let Some((agent, project)) = wanted else { return };
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let read = cx.background_executor().spawn(async move { aiball.agent_backlog(&agent, &project) }).await;
+            let _ = this.update(cx, |panel, cx| {
+                if panel.sunk_asked != asked {
+                    return;
+                }
+                match read {
+                    Ok(backlog) => {
+                        panel.sunk = sunk_of(&backlog, crate::status::now());
+                        cx.notify();
+                    }
+                    Err(error) => log::debug!("sunk tickets: {error:#}"),
+                }
+                // Read again as the first pause ends.
+                let first = panel.sunk.values().filter_map(|until| crate::status::parse_time(until)).min();
+                if let Some(first) = first {
+                    let wait = first.saturating_sub(crate::status::now()) + 1;
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(wait)).await;
+                        let _ = this.update(cx, |panel, cx| {
+                            if panel.sunk_asked == asked {
+                                panel.load_sunk(cx);
+                            }
+                        });
+                    })
+                    .detach();
+                }
+            });
+        })
+        .detach();
     }
 
     /// The board as last read: this project's tickets, and who tvty is.
@@ -455,6 +526,8 @@ impl TicketPanel {
             self.tickets = tickets;
             self.critical = critical;
             self.keep_scrolls();
+            // A ticket moved: its pause may have ended.
+            self.load_sunk(cx);
             if let (true, Some(id)) = (moved, open) {
                 self.load(id, false, cx);
             }
@@ -662,6 +735,15 @@ impl TicketPanel {
         self.act(&format!("priority {priority}"), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
     }
 
+    /// Assigns the open ticket to `who`, or releases it; the menu closes.
+    fn assign_to(&mut self, who: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(detail) = self.detail.as_mut() {
+            detail.menu = None;
+        }
+        let said = who.as_ref().map_or("released".to_string(), |w| format!("assigned to {w}"));
+        self.change(said, move |aiball, ticket| aiball.assign(ticket, who.as_deref()), window, cx);
+    }
+
     fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
         if let Some(detail) = self.detail.as_mut() {
             detail.menu = if detail.menu == Some(menu) { None } else { Some(menu) };
@@ -834,6 +916,13 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
+        // Sunk in the shown agent's backlog: steps back, a ⤓ says until when.
+        let sunk = self.sunk.get(&id).and_then(|until| crate::status::resume_short(until));
+        let group: SharedString = format!("ticket-row-{id}").into();
+        let sunk_tip = sunk.as_ref().map(|until| {
+            let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
+            format!("sunk in {agent}'s backlog until {until}: its loop won't bring it up before, unless the thread moves")
+        });
         let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
         let glyph_colour = |glyph: Glyph| glyph_colour(glyph, yours);
@@ -858,10 +947,21 @@ impl TicketPanel {
             .children(critical_chip(ticket))
             .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
+            .when_some(sunk_tip, |d, tip| d.child(div().id(("sunk", id)).flex_none().child("⤓").tip(tip)))
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
+        // Stepped back while sunk; itself again under the pointer.
+        let dim = sunk.is_some();
+        let content = div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .flex_1()
+            .min_w_0()
+            .when(dim, |d| d.opacity(0.5).group_hover(group.clone(), |s| s.opacity(1.)));
 
         div()
             .id(("ticket", id))
+            .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()
             .overflow_hidden()
@@ -881,12 +981,7 @@ impl TicketPanel {
                     .when_some(state.glyph, |d, glyph| d.child(glyph_chip(glyph, glyph_colour(glyph), 16., ticket))),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .flex_1()
-                    .min_w_0()
+                content
                     .child(
                         div()
                             .flex()
@@ -994,6 +1089,23 @@ impl TicketPanel {
             });
         }
         {
+            // Who it is assigned to, a click away from changing (the project's
+            // agents).
+            let (label, tip) = match ticket.assignee.as_deref() {
+                Some(assignee) => (format!("→ {assignee}"), format!("assigned to {assignee}: a click changes it")),
+                None => ("assign…".to_string(), "assigned to nobody: a click assigns it to one of the project's agents".to_string()),
+            };
+            chips.push(
+                buttons::chip("assignee-chip", label)
+                    .tip(tip)
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        panel.read_catalog(cx);
+                        panel.toggle_menu(Menu::Assignee, cx)
+                    }))
+                    .into_any_element(),
+            );
+        }
+        {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let label = match icons::priority(&priority) {
@@ -1056,7 +1168,12 @@ impl TicketPanel {
                 .rounded_md()
                 .bg(p().hover)
                 .child(div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user))))
-                .child(div().child(text))
+                // Selectable, as the thread's words: it is copied as often.
+                .child(
+                    TextView::markdown("thread-summary", crate::ui::ticketref::linkify(&text))
+                        .selectable(true)
+                        .on_link_click(crate::ui::ticketref::on_link),
+                )
         });
         // Full screen, the title spans the top, the state and chips go to
         // the left column, the summary heads the talk; in the panel they
@@ -1085,6 +1202,15 @@ impl TicketPanel {
                 .pb_2()
                 .border_b_1()
                 .border_color(p().border)
+                // The way back to the list, above what it leads back from.
+                .child(
+                    div().flex().child(
+                        buttons::link("back", "← Tickets").text_sm().on_click(cx.listener(|panel, _, _, cx| {
+                            panel.detail = None;
+                            cx.notify();
+                        })),
+                    ),
+                )
                 .child(title)
                 .children(turn)
                 .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
@@ -1171,18 +1297,14 @@ impl TicketPanel {
                             d.child(div().flex_none().text_xs().text_color(p().muted).child("decided once the ticket is approved"))
                         })
                         .when(!unmoderated, |d| d.child(
-                            Button::new("reject")
+                            buttons::answer("reject", "Reject")
                                 .danger()
-                                .small()
-                                .label("Reject")
                                 .disabled(detail.busy || !typed)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, window, cx))),
                         )
                         .child(
-                            Button::new("accept")
+                            buttons::answer("accept", accept)
                                 .success()
-                                .small()
-                                .label(accept)
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, window, cx))),
                         )),
@@ -1199,18 +1321,14 @@ impl TicketPanel {
                 .gap_2()
                 .child(div().flex_1().child("This ticket waits for moderation"))
                 .child(
-                    Button::new("moderate-reject")
+                    buttons::answer("moderate-reject", "Reject")
                         .danger()
-                        .small()
-                        .label("Reject")
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    Button::new("moderate-approve")
+                    buttons::answer("moderate-approve", "Approve")
                         .success()
-                        .small()
-                        .label("Approve")
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
                 )
@@ -1238,6 +1356,37 @@ impl TicketPanel {
                         row = row.child(
                             chip(id, priority).on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx))),
                         );
+                    }
+                    row
+                }
+                Menu::Assignee => {
+                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Assign to"));
+                    let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
+                    match own {
+                        None => row = row.child(div().text_xs().text_color(p().muted).child("…")),
+                        Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
+                        Some(own) => {
+                            for agent in own {
+                                let on = ticket.assignee.as_deref() == Some(agent.as_str());
+                                let name = agent.clone();
+                                row = row.child(
+                                    buttons::chip(SharedString::from(format!("assign-to-{agent}")), agent.clone())
+                                        .py_0p5()
+                                        .text_xs()
+                                        .chosen(on)
+                                        .when(!on, |d| {
+                                            d.on_click(cx.listener(move |panel, _, window, cx| {
+                                                let name = name.clone();
+                                                panel.assign_to(Some(name), window, cx)
+                                            }))
+                                        }),
+                                );
+                            }
+                        }
+                    }
+                    // Taken back from whoever holds it.
+                    if ticket.holder().is_some() {
+                        row = row.child(chip("assign-release", "release").on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))));
                     }
                     row
                 }
@@ -1270,6 +1419,9 @@ impl TicketPanel {
             .when(self.full, |d| {
                 d.child(crate::composer::write_tabs("reply", self.reply_preview, cx, |panel: &mut Self, on, cx| {
                     panel.reply_preview = on;
+                    if on {
+                        panel.load_preview_images(cx);
+                    }
                     cx.notify();
                 }))
             })
@@ -1284,11 +1436,20 @@ impl TicketPanel {
                     .child(if text.trim().is_empty() {
                         div().text_color(p().muted).child("Nothing to preview yet.")
                     } else {
-                        self.rich_text("reply-preview".into(), &text, cx)
+                        self.rich_text("reply-preview".into(), &crate::images::preview(&text, &self.images, false), cx)
                     })
                     .into_any_element()
             } else {
-                Textarea::new(&self.reply).into_any_element()
+                // A composer: Ctrl+Enter sends (keymap's ComposerSend), no
+                // new line put in.
+                crate::focusmode::on_hover(
+                    div()
+                        .key_context(crate::keymap::COMPOSER)
+                        .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(window, cx)))
+                        .child(Textarea::new(&self.reply)),
+                    self.reply.read(cx).focus_handle(cx),
+                )
+                .into_any_element()
             })
             .children(mentions)
             .when(!detail.answers.is_empty(), |d| {
@@ -1305,26 +1466,17 @@ impl TicketPanel {
                     .items_center()
                     .gap_2()
                     .child(
-                        Button::new("close")
-                            .ghost()
-                            .small()
-                            .label(if closed { "Reopen" } else { "Close" })
+                        buttons::secondary("close", if closed { "Reopen" } else { "Close" })
                             .disabled(detail.busy)
                             .on_click(cx.listener(move |panel, _, window, cx| panel.set_closed(!closed, window, cx))),
                     )
                     .when(!closed, |d| {
                         d.child(if snoozed {
-                            Button::new("wake")
-                                .ghost()
-                                .small()
-                                .label("Wake")
+                            buttons::secondary("wake", "Wake")
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, window, cx| panel.snooze(None, window, cx)))
                         } else {
-                            Button::new("snooze")
-                                .ghost()
-                                .small()
-                                .label("Snooze ▾")
+                            buttons::secondary("snooze", "Snooze ▾")
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
@@ -1344,12 +1496,13 @@ impl TicketPanel {
                             })),
                     )
                     .child(
-                        Button::new("send")
-                            .primary()
-                            .small()
-                            .label("Reply")
-                            .loading(detail.busy)
-                            .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
+                        crate::tips::target(
+                            "panel.reply",
+                            buttons::primary("send", "Reply")
+                                .loading(detail.busy)
+                                .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
+                        )
+                        .flex_none(),
                     ),
             );
 
@@ -1568,17 +1721,11 @@ impl TicketPanel {
                             .gap_2()
                             .justify_end()
                             .child(
-                                Button::new("content-cancel")
-                                    .ghost()
-                                    .small()
-                                    .label("Cancel")
+                                buttons::secondary("content-cancel", "Cancel")
                                     .on_click(cx.listener(|panel, _, window, cx| panel.start_editing(Editing::Content, window, cx))),
                             )
                             .child(
-                                Button::new("content-save")
-                                    .primary()
-                                    .small()
-                                    .label("Save")
+                                buttons::primary("content-save", "Save")
                                     .loading(busy)
                                     .on_click(cx.listener(|panel, _, window, cx| panel.save_content(window, cx))),
                             ),
@@ -1903,18 +2050,14 @@ impl TicketPanel {
                 .flex()
                 .gap_1()
                 .child(
-                    Button::new(("comment-reject", id))
+                    buttons::answer(("comment-reject", id), "Reject")
                         .danger()
-                        .xsmall()
-                        .label("Reject")
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    Button::new(("comment-approve", id))
+                    buttons::answer(("comment-approve", id), "Approve")
                         .success()
-                        .xsmall()
-                        .label("Approve")
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
                 )
@@ -1978,7 +2121,7 @@ impl TicketPanel {
                                 .flex()
                                 .gap_2()
                                 .justify_end()
-                                .child(Button::new(("comment-cancel", comment.id)).ghost().small().label("Cancel").on_click(
+                                .child(buttons::secondary(("comment-cancel", comment.id), "Cancel").on_click(
                                     cx.listener(|panel, _, _, cx| {
                                         panel.comment_editing = None;
                                         cx.notify();
@@ -1986,10 +2129,7 @@ impl TicketPanel {
                                 ))
                                 .child({
                                     let id = comment.id;
-                                    Button::new(("comment-save", comment.id))
-                                        .primary()
-                                        .small()
-                                        .label("Save")
+                                    buttons::primary(("comment-save", comment.id), "Save")
                                         .loading(busy)
                                         .on_click(cx.listener(move |panel, _, window, cx| panel.edit_comment_save(id, window, cx)))
                                 }),
@@ -2208,13 +2348,11 @@ impl Render for TicketPanel {
                 buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
+            // A ticket open: its project's name and badges, as the list has
+            // them (the way back is above its title).
             .when(self.detail.is_some(), |d| {
-                d.child(
-                    buttons::link("back", "← Tickets").on_click(cx.listener(|panel, _, _, cx| {
-                        panel.detail = None;
-                        cx.notify();
-                    })),
-                )
+                d.children(self.scope.as_ref().map(|s| div().font_weight(FontWeight::BOLD).child(s.project.clone())))
+                    .children(self.scope.is_some().then(|| crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title")))
             })
             .when(self.detail.is_none(), |d| {
                 d.child(div().font_weight(FontWeight::BOLD).child(
@@ -2226,19 +2364,25 @@ impl Render for TicketPanel {
                 .when(self.scope.as_ref().is_some_and(|s| s.sessionless), |d| {
                     d.child(div().text_xs().text_color(p().muted).child("no session open"))
                 })
-            })
-            // What the project's tickets ask of you, as its row in the
-            // sessions list counts it: the critical one, decisions, unread.
-            .when(self.scope.is_some(), |d| {
-                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+                // What the project's tickets ask of you, as its row in the
+                // sessions list counts it: the critical one, decisions, unread.
+                .when(self.scope.is_some(), |d| {
+                    d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+                })
             })
             .child(div().flex_1())
-            .child(
-                div()
-                    .text_xs()
-                    .text_color(p().muted)
-                    .child(format!("as {}", self.aiball.user)),
-            )
+            // What steers the project's agents: lit when something does.
+            .child({
+                let steered = self
+                    .scope
+                    .as_ref()
+                    .is_some_and(|s| cx.try_global::<crate::shell::Steered>().is_some_and(|g| g.0.contains(&s.project)));
+                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, "The project's standing instruction and wake focus", "project.megaphone"))
+                    // Lit while something steers them (not dimmed otherwise: an
+                    // emoji does not fade).
+                    .when(steered, |d| d.bg(p().active).border_1().border_color(p().accent).rounded_sm())
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenMegaphone)))
+            })
             .child(
                 buttons::chip("new-ticket", "+ New")
                     .text_xs()
@@ -2401,12 +2545,28 @@ impl TicketPanel {
     /// line drawn by tvty — a thumbnail in the panel, the column's width full
     /// screen —,
     /// a click opening the viewer.
+    /// The images of the reply being written, read for its preview (a
+    /// capture just pasted is not in the thread's yet).
+    fn load_preview_images(&mut self, cx: &mut Context<Self>) {
+        let text = self.reply.read(cx).value().to_string();
+        let (aiball, images) = (self.aiball.clone(), self.images.clone());
+        cx.spawn(async move |this, cx| {
+            let came = cx.background_executor().spawn(async move { crate::images::load(&text, &aiball, &images) }).await;
+            if came {
+                let _ = this.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .detach();
+    }
+
     fn rich_text(&self, id: String, text: &str, cx: &mut Context<Self>) -> Div {
         let mut col = div().flex().flex_col().gap_1();
         for (i, segment) in crate::images::segments(text, &self.images).into_iter().enumerate() {
             col = match segment {
                 crate::images::Segment::Text(md) => col.child(
-                    TextView::markdown(SharedString::from(format!("{id}-{i}")), crate::ui::ticketref::linkify(&md)).on_link_click(crate::ui::ticketref::on_link),
+                    TextView::markdown(SharedString::from(format!("{id}-{i}")), crate::ui::ticketref::linkify(&md))
+                        .selectable(true)
+                        .on_link_click(crate::ui::ticketref::on_link),
                 ),
                 crate::images::Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
                 crate::images::Segment::Pictures(pictures) => {
@@ -2623,4 +2783,37 @@ pub(crate) fn ago(when: &str) -> Option<String> {
         3600..86400 => format!("{}h", seconds / 3600),
         _ => format!("{}d", seconds / 86400),
     })
+}
+
+/// The tickets sunk in an agent's backlog at `now` (seconds since the
+/// epoch), and until when.
+fn sunk_of(backlog: &crate::aiball::AgentBacklog, now: u64) -> HashMap<u64, String> {
+    backlog
+        .rows
+        .iter()
+        .filter_map(|r| {
+            let until = r.backlog_cooled_until.clone()?;
+            (crate::status::parse_time(&until)? > now).then_some((r.id, until))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod sunk_tests {
+    use super::sunk_of;
+    use crate::aiball::AgentBacklog;
+    use serde_json::json;
+
+    #[test]
+    fn only_a_pause_still_running_marks_a_ticket_sunk() {
+        let backlog: AgentBacklog = serde_json::from_value(json!({ "rows": [
+            { "id": 1, "project": "p", "title": "a", "backlog_tier": 1, "backlog_cooled_until": "2026-09-29T15:00:00.000Z" },
+            { "id": 2, "project": "p", "title": "b", "backlog_tier": 1, "backlog_cooled_until": "2026-09-29T13:00:00.000Z" },
+            { "id": 3, "project": "p", "title": "c", "backlog_tier": 3, "backlog_cooled_until": null },
+        ] }))
+        .unwrap();
+        let now = crate::status::parse_time("2026-09-29T14:00:00.000Z").unwrap();
+        let sunk = sunk_of(&backlog, now);
+        assert_eq!(sunk.keys().copied().collect::<Vec<_>>(), vec![1]);
+    }
 }

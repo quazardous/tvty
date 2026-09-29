@@ -10,6 +10,7 @@ mod bus;
 mod daemon;
 mod emoji;
 mod field;
+mod focusmode;
 mod fonts;
 mod composer;
 mod config;
@@ -18,6 +19,7 @@ mod icons;
 mod images;
 mod instance;
 mod keymap;
+mod links;
 mod loops;
 mod mux;
 mod newticket;
@@ -37,6 +39,7 @@ mod terminal;
 mod thread;
 mod theme;
 mod tip;
+mod tips;
 mod ui;
 mod updates;
 mod wheel;
@@ -84,6 +87,9 @@ fn main() {
         fonts::load(cx);
         // The sets of settings (settings.toml, the layout, the workspace).
         settings::init(cx);
+        tips::init(cx);
+        // Whether the pointer gives the keyboard, as the window manager does.
+        focusmode::start(cx);
         // The full pages' side column, as last dragged.
         cx.set_global(sidecol::SideWidth(config::get::<settings::Layout>(cx).fields_width));
         let prefs = config::get::<settings::Preferences>(cx).clone();
