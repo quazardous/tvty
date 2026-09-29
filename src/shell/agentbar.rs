@@ -419,7 +419,6 @@ impl Shell {
                 } else {
                     item().text_color(ink(p().danger)).child("offline").into_any_element()
                 })
-                .children(restart)
                 .children(dialog.map(|_| item().text_color(ink(p().warning)).child("waits for an answer")))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
@@ -505,6 +504,9 @@ impl Shell {
                 })
                 .child(div().flex_1())
                 .children(model_item)
+                // Claude Code updated: restarting it is a gesture on the loop,
+                // beside the loop's place and hands.
+                .children(restart.map(|chip| chip.flex_none()))
                 // Where its loop runs, and whose hands are on it.
                 .child(crate::tips::target("agent.place", place_chip).flex_none())
                 .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
