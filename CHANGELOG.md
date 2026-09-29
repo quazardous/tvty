@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- tvty no longer crashes on a Wayland desktop that sends the keyboard's modifiers before its keymap (a headless compositor, a keyboard plugged in later): a GPUI bug, patched here until fixed upstream.
+
 ## [0.7.0-beta.1] - 2026-09-30
 
 ### Added

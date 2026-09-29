@@ -79,3 +79,9 @@ debug-assertions = false
 [profile.dist]
 inherits = "release"
 lto = "thin"
+
+# GPUI's Wayland client, with one fix: a keyboard event before any keymap is
+# ignored instead of a panic (tvty crashed under a headless compositor).
+# Remove once fixed upstream: https://github.com/zed-industries/zed/issues/64660
+[patch.crates-io]
+gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
