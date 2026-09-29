@@ -36,6 +36,13 @@ swash = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tungstenite = "0.30.0"
 
+# In a debug build, rust-embed reads the kit's icons (the window's minimize,
+# maximize and close among them) from the sources of the machine that built
+# it: on any other Windows — Windows Sandbox, where the tests run — they are
+# blank. Embedded instead, as a release does.
+[target.'cfg(windows)'.dependencies]
+rust-embed = { version = "8", features = ["debug-embed"] }
+
 # Full debug info makes target/debug weigh ~8 GB (GPUI is large). Line tables
 # keep backtraces readable at a fraction of the size.
 [profile.dev]

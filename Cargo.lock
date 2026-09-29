@@ -7646,6 +7646,7 @@ dependencies = [
  "gpui-kit",
  "image",
  "log",
+ "rust-embed",
  "serde",
  "serde_json",
  "swash",
