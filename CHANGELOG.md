@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The agent bar has one chip for where a loop runs and who types into it ("tmux · controls +1"); a click opens one line to take or leave the controls — taking them makes claude-loop's terminal a copy — or to move the loop.
 - A tmux loop another terminal types into (claude-loop's) opens as a copy; the agent bar's chip and the session's row say who else is attached ("copy · +1").
 - Long choices (project, tags, milestone, assignee, reporter) are a dropdown searched as it is typed, in a new ticket and a full-screen ticket alike; moving a ticket to another project asks "Move to …" first.
 - The app menu opens the settings ("Settings…", Ctrl+,), and Options is now called Settings.

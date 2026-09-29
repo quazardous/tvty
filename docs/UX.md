@@ -96,11 +96,14 @@ resizes the session — it is drawn at the session's size. Either leaves
 without stopping Claude.
 
 Who else is attached is aiball's word (its session's `clients` and
-`interactive`): the chip says it (`copy · +1`), and so does the session's
+`interactive`): the chip says it (`tmux · copy +1`), and so does the session's
 row in the list, before it is opened (`+1`, yellow while another client has
-the controls). A tmux loop another terminal types into opens **as a copy**;
-a click on the chip takes the controls, and tvty keeps them for that
-session.
+the controls). A tmux loop another terminal types into opens **as a copy**.
+A click on the chip opens one line over the bar: **Take the controls** —
+the loop's other terminals (claude-loop's) become copies, which say
+`C-b d` to leave, and tvty keeps the controls for that session — or
+**Leave for a copy**; and, for a loop of this machine, **Move to host** /
+**Move into tmux**.
 
 **Quitting tvty** with Claude Code loops of this machine running asks
 whether to stop them too (through aiball: they stay restartable) or
@@ -367,16 +370,20 @@ claude-loop's terms and full words — `all:` the project's open tickets,
 `backlog:`, `events:` (claude-loop's a: b: e:) — then the tickets it holds;
 a click on `backlog:` lists **its own backlog** by tier
 (`/api/consumers/:id/backlog`), a click on one opens it —; the next wake;
-where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
-tmux) — for a loop of this machine, a click offers to **move** it to the
-other (a confirmation over the bar, which says when Claude works; aiball
-restarts it there — `loop.restart` —, resuming its conversation, and the terminal comes back
-on the new session, "moving…" meanwhile); **RC**, lit while its Claude is in
-Remote Control, whatever turned it on — its folder's setting or `/rc` typed —
-as its loop reads it on the screen (said, not set: none from a loop too old
-to say it); whether this terminal has the **controls** or is a **copy** (a
-click switches: the terminal leaves and comes back in the other mode, its
-Claude goes on); its name and where it works. A gesture aiball refuses
+one chip for where its loop runs and whose hands are on it —
+`tmux · controls`, `host · copy +1` (`host`: aiball's session host, `tmux`:
+claude-loop in tmux; `+N`: other clients attached; its tip says whether the
+terminal proxy is alive) —, a click opening the line of what can change
+over the bar: the controls taken or left (the terminal leaves and comes back
+in the other mode, its Claude goes on), and, for a loop of this machine, the
+loop **moved** to the other side (aiball restarts it there — `loop.restart`
+—, resuming its conversation; the button's tip says when Claude works; the
+terminal comes back on the new session, "moving…" meanwhile; the terminal
+claude-loop ran it in returns to its shell, saying where the loop went);
+**RC**, lit while its Claude is in Remote Control, whatever turned it on —
+its folder's setting or `/rc` typed — as its loop reads it on the screen
+(said, not set: none from a loop too old to say it); its name and where it
+works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread

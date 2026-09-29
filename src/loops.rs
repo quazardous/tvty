@@ -141,6 +141,12 @@ pub fn move_to(aiball: &Aiball, name: &str, to_host: bool) -> anyhow::Result<()>
     aiball.call::<Value>("loop.restart", json!({ "name": name, "mode": mode, "force": true })).map(drop).map_err(said)
 }
 
+/// The loop's other tmux clients (claude-loop's terminal) made read-only
+/// copies: `keep` is the pid of the one taking the controls.
+pub fn others_to_copies(aiball: &Aiball, name: &str, keep: u32) -> anyhow::Result<()> {
+    aiball.call::<Value>("loop.clients_readonly", json!({ "name": name, "keep_pid": keep })).map(drop)
+}
+
 /// Stops a loop, keeping its state: it stays restartable.
 pub fn stop(aiball: &Aiball, known: &KnownLoop) -> anyhow::Result<()> {
     let agent = known.agent().with_context(|| format!("{}: no agent to stop it by", known.name))?;

@@ -4169,7 +4169,7 @@ impl Shell {
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child("⇄")
-                                                    .tip("its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                                    .tip("tmux: its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
                                             )
                                         })
                                         .when_some(attached, |d, a| {

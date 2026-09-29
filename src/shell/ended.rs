@@ -42,8 +42,28 @@ impl Shell {
             self.controls_taken.insert(session.clone());
         }
         self.terminals.remove(&session);
-        self.select(session, window, cx);
+        self.select(session.clone(), window, cx);
+        // The controls taken on a tmux loop: its other clients (claude-loop's
+        // terminal) become copies, as aiball does it; this one kept.
+        if !copy {
+            self.others_to_copies(&session, cx);
+        }
         cx.notify();
+    }
+
+    /// Makes the other tmux clients of `session`'s loop copies, off the UI
+    /// thread: its terminal here, just opened, is the one kept.
+    fn others_to_copies(&mut self, session: &str, cx: &mut Context<Self>) {
+        let Some(name) = self.board.known.iter().find(|l| l.session() == session && !l.on_host()).map(|l| l.name.clone()) else { return };
+        let Some(pid) = self.terminals.get(session).and_then(|t| t.read(cx).child_pid) else { return };
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |_, cx| {
+            let done = cx.background_executor().spawn(async move { crate::loops::others_to_copies(&aiball, &name, pid) }).await;
+            if let Err(error) = done {
+                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, "make the other terminals copies", format!("{error:#}"))));
+            }
+        })
+        .detach();
     }
 
     /// Lets the ended terminal go: a later selection of the same name

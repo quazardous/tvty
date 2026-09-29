@@ -105,6 +105,9 @@ pub struct TerminalView {
     /// A copy: its grid is the session's size, never the element's (it
     /// does not resize the session, so it draws it as it is).
     follows_session: bool,
+    /// The program's pid, run in its PTY: a tmux client's is how tmux
+    /// (and aiball) tell it from the session's other clients.
+    pub child_pid: Option<u32>,
     exited: bool,
     /// The tmux session shown, to scroll its history in copy mode.
     tmux_session: Option<String>,
@@ -280,10 +283,13 @@ impl TerminalView {
             cell_height: 16,
         };
         let pty = tty::new(&options, window_size, 0)?;
+        let child_pid = pty.child().id();
         let event_loop = EventLoop::new(term.clone(), listener, pty, false, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
-        Ok(Self::with(term, Backend::Pty(notifier), rx, cx))
+        let mut view = Self::with(term, Backend::Pty(notifier), rx, cx);
+        view.child_pid = Some(child_pid);
+        Ok(view)
     }
 
     fn with(
@@ -317,6 +323,7 @@ impl TerminalView {
             pending_size: None,
             last_new_size: None,
             follows_session: false,
+            child_pid: None,
             sized: false,
             exited: false,
             tmux_session: None,
