@@ -1,8 +1,10 @@
 //! An agent's backlog in a project, as aiball ranks it for the agent —
 //! read once for every view that shows it (the panel's sunk tickets, the
-//! agent bar's list), and read again when it moves: one of the project's
-//! tickets changed, the agent's bar changed (a wake recorded, a pause
-//! begun), the first pause ended, back on the bus or aiball restarted.
+//! agent bar's list), and read again when it moves: aiball says so on the
+//! agent's `agent.NAME.backlog` (a wake sank a ticket, a rest ended, a tier
+//! changed), which the store subscribes to for each agent it keeps; one of
+//! the project's tickets changed, the agent's bar changed, the first pause
+//! ended, back on the bus or aiball restarted.
 //!
 //! A view asks with [`request`] and reads with [`get`]; it observes the
 //! store's entity ([`store`]) to hear when a read comes in.
@@ -35,6 +37,8 @@ pub struct BacklogStore {
     again: HashSet<Key>,
     /// Bumped by each read of a key: the timer of an older one lets go.
     generation: HashMap<Key, u64>,
+    /// The agents whose `agent.NAME.backlog` this connection follows.
+    followed: HashSet<String>,
 }
 
 struct GlobalStore(Entity<BacklogStore>);
@@ -46,14 +50,29 @@ pub fn init(aiball: Aiball, cx: &mut App) {
     let store = cx.new(|cx| {
         cx.subscribe(&crate::bus::bus(cx), |store: &mut BacklogStore, _, signal: &Signal, cx| match signal {
             Signal::TicketsChanged(project) => store.moved(|(_, p)| p == project, cx),
-            Signal::BarChanged(agent) => store.moved(|(a, _)| a == agent, cx),
-            Signal::Bus(BusSignal::Reconnected { .. } | BusSignal::EpochChanged) => store.moved(|_| true, cx),
+            Signal::BarChanged(agent) | Signal::BacklogChanged(agent) => store.moved(|(a, _)| a == agent, cx),
+            // Another connection: its subscriptions are to make again.
+            Signal::Bus(BusSignal::Reconnected { .. } | BusSignal::EpochChanged) => {
+                store.followed.clear();
+                let agents: HashSet<String> = store.entries.keys().map(|(a, _)| a.clone()).collect();
+                for agent in agents {
+                    store.follow(agent, cx);
+                }
+                store.moved(|_| true, cx)
+            }
             // The tickets read whole after a failure: whatever moved meanwhile.
             Signal::Bus(BusSignal::SubscriptionLive { kind, resynced: true }) if kind == "Tickets" => store.moved(|_| true, cx),
             _ => {}
         })
         .detach();
-        BacklogStore { aiball, entries: HashMap::new(), reading: HashSet::new(), again: HashSet::new(), generation: HashMap::new() }
+        BacklogStore {
+            aiball,
+            entries: HashMap::new(),
+            reading: HashSet::new(),
+            again: HashSet::new(),
+            generation: HashMap::new(),
+            followed: HashSet::new(),
+        }
     });
     cx.set_global(GlobalStore(store));
 }
@@ -73,6 +92,7 @@ pub fn get(cx: &App, agent: &str, project: &str) -> Option<Read> {
 pub fn request(cx: &mut App, agent: &str, project: &str) {
     let key = (agent.to_string(), project.to_string());
     store(cx).update(cx, |store, cx| {
+        store.follow(key.0.clone(), cx);
         if !store.entries.contains_key(&key) {
             store.read(key, Duration::ZERO, cx);
         }
@@ -80,6 +100,29 @@ pub fn request(cx: &mut App, agent: &str, project: &str) {
 }
 
 impl BacklogStore {
+    /// Subscribes to `agent`'s backlog on the bus, once per connection:
+    /// its events come as `Signal::BacklogChanged`.
+    fn follow(&mut self, agent: String, cx: &mut Context<Self>) {
+        if !self.followed.insert(agent.clone()) {
+            return;
+        }
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let subject = format!("agent.{agent}.backlog");
+            let asked = subject.clone();
+            let done = cx
+                .background_executor()
+                .spawn(async move { aiball.call::<Value>("bus.subscribe", json!({ "subject": asked })) })
+                .await;
+            if let Err(error) = done {
+                log::warn!("backlog: subscribing to {subject}: {error:#}");
+                // Asked again at the next request.
+                let _ = this.update(cx, |store, _| store.followed.remove(&agent));
+            }
+        })
+        .detach();
+    }
+
     /// The backlogs `which` picks may have moved: read again, once the
     /// burst has settled.
     fn moved(&mut self, which: impl Fn(&Key) -> bool, cx: &mut Context<Self>) {
@@ -143,7 +186,10 @@ impl BacklogStore {
 
     /// As the debug control says it.
     pub fn said(&self) -> Value {
-        self.entries
+        let mut followed: Vec<_> = self.followed.iter().cloned().collect();
+        followed.sort();
+        let entries: serde_json::Map<String, Value> = self
+            .entries
             .iter()
             .map(|((agent, project), read)| {
                 let said = match read {
@@ -152,8 +198,8 @@ impl BacklogStore {
                 };
                 (format!("{agent}@{project}"), said)
             })
-            .collect::<serde_json::Map<_, _>>()
-            .into()
+            .collect();
+        json!({ "followed": followed, "backlogs": entries })
     }
 }
 

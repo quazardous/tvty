@@ -40,6 +40,8 @@ pub enum Signal {
     TicketsChanged(String),
     /// An agent's loop bar changed (a wake recorded, a pause begun…).
     BarChanged(String),
+    /// An agent's backlog changed, as aiball says it (`agent.NAME.backlog`).
+    BacklogChanged(String),
     /// tvty's link to aiball changed (`crate::kernel::signals`).
     Bus(crate::kernel::signals::BusSignal),
 }

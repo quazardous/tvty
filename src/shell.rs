@@ -594,7 +594,7 @@ impl Shell {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
             // For the stores: the board itself comes from the live lists.
-            Signal::TicketsChanged(_) | Signal::BarChanged(_) | Signal::StandingChanged(_) => {}
+            Signal::TicketsChanged(_) | Signal::BarChanged(_) | Signal::BacklogChanged(_) | Signal::StandingChanged(_) => {}
             Signal::TicketClosed(ticket) => {
                 if shell.live.drop_ticket(*ticket) {
                     log::info!("board: #{ticket} read closed, yet listed open: dropped from the list");
@@ -987,7 +987,13 @@ impl Shell {
                     "bus.event" => this.update(cx, |shell, cx| {
                         // What moved, for the stores that keep a part of it.
                         if let Some(moved) = crate::live::moved_of(&notice.params) {
+                            // A backlog's event is the backlogs' store's: none
+                            // of the board's subscriptions.
+                            let backlog = matches!(moved, Signal::BacklogChanged(_));
                             bus::emit(cx, moved);
+                            if backlog {
+                                return;
+                            }
                         }
                         let updates = shell.live.event(&notice.params);
                         shell.take_updates(updates, cx);

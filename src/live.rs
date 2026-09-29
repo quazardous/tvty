@@ -586,7 +586,8 @@ fn filed_of(row: &TicketRow) -> Filed {
 }
 
 /// What a `bus.event` says moved, by its subject: a project's tickets
-/// (`project.NAME.tickets`) or an agent's bar (`agent.NAME.bar`).
+/// (`project.NAME.tickets`), an agent's bar (`agent.NAME.bar`) or its
+/// backlog (`agent.NAME.backlog`, the backlogs' store's own subscription).
 pub fn moved_of(params: &Value) -> Option<crate::bus::Signal> {
     let subject = params.get("subject").and_then(Value::as_str)?;
     let name = middle(subject)?;
@@ -594,6 +595,8 @@ pub fn moved_of(params: &Value) -> Option<crate::bus::Signal> {
         Some(crate::bus::Signal::TicketsChanged(name))
     } else if subject.ends_with(".bar") && subject.starts_with("agent.") {
         Some(crate::bus::Signal::BarChanged(name))
+    } else if subject.ends_with(".backlog") && subject.starts_with("agent.") {
+        Some(crate::bus::Signal::BacklogChanged(name))
     } else {
         None
     }
