@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The updater shows its window buttons: close, minimize, maximize.
+- The slider and the gallery are no longer covered by notifications: those that come meanwhile show once they close.
 
 ## [0.4.0-beta.1] - 2026-09-28
 

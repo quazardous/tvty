@@ -4243,6 +4243,10 @@ impl Shell {
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         self.surface_drawn(cx);
+        // The slider and the gallery above the notifications: none drawn
+        // while they are up.
+        let over = self.slider.is_some() || self.page_shown(cx) == Some("Gallery");
+        notify::hide(cx, over);
         // Who draws the frame, as the compositor settled it: tvty asks to
         // draw its own (client); a server frame would double it.
         let decorations = match window.window_decorations() {
