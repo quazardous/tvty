@@ -2193,6 +2193,11 @@ impl Render for TicketPanel {
                 buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
+            // A ticket open: its project's badges first, where the list has
+            // them, then the way back.
+            .when(self.detail.is_some() && self.scope.is_some(), |d| {
+                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+            })
             .when(self.detail.is_some(), |d| {
                 d.child(
                     buttons::link("back", "← Tickets").on_click(cx.listener(|panel, _, _, cx| {
@@ -2211,11 +2216,11 @@ impl Render for TicketPanel {
                 .when(self.scope.as_ref().is_some_and(|s| s.sessionless), |d| {
                     d.child(div().text_xs().text_color(p().muted).child("no session open"))
                 })
-            })
-            // What the project's tickets ask of you, as its row in the
-            // sessions list counts it: the critical one, decisions, unread.
-            .when(self.scope.is_some(), |d| {
-                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+                // What the project's tickets ask of you, as its row in the
+                // sessions list counts it: the critical one, decisions, unread.
+                .when(self.scope.is_some(), |d| {
+                    d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+                })
             })
             .child(div().flex_1())
             .child(
