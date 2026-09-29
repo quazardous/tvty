@@ -86,7 +86,13 @@ unticked, in claude-loop's tmux (the same `session.start`, in tmux). Either
 way it starts **in that directory**, and tvty never starts Claude itself:
 it opens the session once it runs. An agent whose loop runs already (on
 the host, or claude-loop's in tmux) is never started again: tvty opens it
-**as a copy**, as claude-loop joins a loop that runs.
+**as a copy**, as claude-loop joins a loop that runs. Idle keeps one loop
+per agent: one in its own project's folder first, then one aiball does not
+say superseded, then one on aiball's host. Nothing starts in the folder of
+another project's agent — its Claude would resume that agent's
+conversation: the row says "⚠ AGENT's folder" instead of ▶ start, and a
+start there (idle, shut, the end screen's Enter, "+ session") is refused
+with a notice.
 
 A terminal has **the controls** or is **a copy** (the agent bar's chip).
 The controls are shared, as tmux shares them: claude-loop's own terminal

@@ -38,6 +38,9 @@ pub struct KnownLoop {
     /// the name it is found by on claude.ai.
     #[serde(default)]
     pub remote_control: Value,
+    /// Stopped, and its agent has a loop that runs, or a later one.
+    #[serde(default)]
+    pub superseded: bool,
 }
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew
@@ -73,6 +76,17 @@ impl KnownLoop {
             _ => self.tmux.clone().unwrap_or_else(|| self.name.clone()),
         }
     }
+}
+
+/// The agent of another project whose folder `cwd` is, if one is: a
+/// loop started there resumes the conversation it finds, that agent's.
+pub fn stranger<'a>(cwd: &str, project: Option<&str>, homes: &'a [(String, Option<String>, String)]) -> Option<&'a str> {
+    let same = |a: &str, b: &str| a.trim_end_matches('/') == b.trim_end_matches('/');
+    let project = project?;
+    homes
+        .iter()
+        .find(|(_, of, home)| same(home, cwd) && of.as_deref().is_some_and(|of| of != project))
+        .map(|(agent, _, _)| agent.as_str())
 }
 
 /// Starts a loop in its directory, where its folder says (or `mode`) — or,
@@ -146,7 +160,7 @@ fn said(error: anyhow::Error) -> anyhow::Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{KnownLoop, session_of};
+    use super::{KnownLoop, session_of, stranger};
     use serde_json::json;
 
     #[test]
@@ -175,5 +189,20 @@ mod tests {
         .unwrap();
         assert!(listed.running && !listed.on_host());
         assert_eq!(listed.session(), "cl-demo");
+    }
+
+    #[test]
+    fn a_folder_of_another_projects_agent_is_a_strangers() {
+        let homes = vec![
+            ("aiball-dev".to_string(), Some("aiball".to_string()), "/w/aiball".to_string()),
+            ("book".to_string(), Some("book".to_string()), "/w/book".to_string()),
+            ("aiball-crew".to_string(), Some("aiball".to_string()), "/w/aiball-crew".to_string()),
+        ];
+        assert_eq!(stranger("/w/aiball/", Some("book"), &homes), Some("aiball-dev"));
+        assert_eq!(stranger("/w/book", Some("book"), &homes), None);
+        // A crew agent next to its project's main loop is at home.
+        assert_eq!(stranger("/w/aiball", Some("aiball"), &homes), None);
+        // No project known: nothing to compare.
+        assert_eq!(stranger("/w/aiball", None, &homes), None);
     }
 }

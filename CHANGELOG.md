@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- tvty no longer starts a loop in another project's agent's folder, where it would resume that agent's conversation: the sessions list marks it "⚠ AGENT's folder" and IDLE picks the agent's loop in its own folder.
 - A ticket closed while tvty missed the bus's news no longer stays in the list: a subscription that failed is tried again and read whole, and a ticket opened that reads closed leaves the list.
 - Assign ▾ lists the project's agents at once, read ahead when the project changes. In its list, whoever holds the ticket is marked, and unassigning is a crossed-out person whose tip says what it does (no more "release").
 - A ticket's reply field starts at four lines in full screen (two in the panel).

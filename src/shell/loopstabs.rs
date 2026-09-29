@@ -13,16 +13,20 @@ use gpui_kit::*;
 use super::Shell;
 use crate::loops::{KnownLoop, Start};
 use crate::theme::p;
+use crate::tip::Tip as _;
 use crate::ui::buttons;
 
 /// One stopped loop per agent (aiball keeps the ones an agent had before,
-/// under other names): the one on aiball's host first, where tvty starts
-/// them; loops with no agent all kept.
-fn one_per_agent(loops: Vec<&KnownLoop>) -> Vec<&KnownLoop> {
+/// under other names): one in its own project's folder first (`astray`: in
+/// another project's agent's folder, where it would resume that one's
+/// conversation), then one aiball does not say superseded, then one on
+/// aiball's host, where tvty starts them; loops with no agent all kept.
+fn one_per_agent<'a>(loops: Vec<&'a KnownLoop>, astray: impl Fn(&KnownLoop) -> bool) -> Vec<&'a KnownLoop> {
+    let rank = |l: &KnownLoop| (astray(l), l.superseded, !l.on_host());
     let mut kept: Vec<&KnownLoop> = Vec::new();
     for l in loops {
         match l.agent().and_then(|agent| kept.iter().position(|k| k.agent() == Some(agent))) {
-            Some(at) if l.on_host() && !kept[at].on_host() => kept[at] = l,
+            Some(at) if rank(l) < rank(kept[at]) => kept[at] = l,
             Some(_) => {}
             None => kept.push(l),
         }
@@ -83,12 +87,17 @@ impl Shell {
                 crate::sessions::found(words, &[&project, l.agent().unwrap_or(""), &l.name, &l.cwd])
             })
             .collect();
-        let mut loops = one_per_agent(loops);
+        let mut loops = one_per_agent(loops, |l| self.astray(l).is_some());
         loops.sort_by_cached_key(|l| {
             let project = self.loop_project(l);
             (project.is_none(), project)
         });
         loops
+    }
+
+    /// The agent of another project whose folder `l` works in, if it does.
+    fn astray(&self, l: &KnownLoop) -> Option<&str> {
+        crate::loops::stranger(&l.cwd, self.loop_project(l).as_deref(), &self.board.homes)
     }
 
     /// `agent` runs: a loop of it runs, or a terminal of it is live.
@@ -162,8 +171,20 @@ impl Shell {
         let mut list = div().flex().flex_col();
         let words = self.filter_words(cx);
         let heading = |text: String, cx: &mut Context<Self>| div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx));
-        let row = |id: String, name: String, cwd: &str, cx: &mut Context<Self>, start: Start| {
+        let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start| {
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
+            let action = match (busy, astray) {
+                (true, _) => div().text_xs().text_color(p().accent).child("starting…").into_any_element(),
+                // Refused: said why on hover.
+                (false, Some(other)) => div()
+                    .id(SharedString::from(format!("{id}-astray")))
+                    .text_xs()
+                    .text_color(p().danger)
+                    .child(format!("⚠ {other}'s folder"))
+                    .tip(format!("{other} works in {}: started here, this agent would resume its conversation. Not started.", home_short(cwd)))
+                    .into_any_element(),
+                (false, None) => div().text_xs().text_color(p().accent).child("▶ start").into_any_element(),
+            };
             div()
                 .id(SharedString::from(id))
                 .flex()
@@ -177,7 +198,7 @@ impl Shell {
                         .flex()
                         .gap_2()
                         .child(div().flex_1().min_w_0().truncate().child(super::marked(&name, &words)))
-                        .child(div().text_xs().text_color(p().accent).child(if busy { "starting…" } else { "▶ start" })),
+                        .child(action),
                 )
                 .child(div().text_xs().text_color(p().muted).truncate().child(home_short(cwd)))
                 .on_click(cx.listener(move |shell, _, _, cx| shell.start_loop(start.clone(), cx)))
@@ -209,7 +230,7 @@ impl Shell {
                         again: l.on_host().then(|| l.name.clone()),
                         mode: None,
                     };
-                    list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
+                    list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, self.astray(l), cx, start));
                 }
             }
             Other::Shut => {
@@ -227,7 +248,8 @@ impl Shell {
                         last = Some(heading_of);
                     }
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
-                    list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, cx, start));
+                    let astray = crate::loops::stranger(cwd, project.as_deref(), &self.board.homes);
+                    list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, astray, cx, start));
                 }
             }
         }
@@ -372,10 +394,21 @@ impl Shell {
         )
     }
 
+    /// A start in another project's agent's folder: its Claude would resume
+    /// that agent's conversation, two Claudes writing in one. Refused, and
+    /// said.
+    fn astray_start(&self, start: &Start, cx: &mut Context<Self>) -> bool {
+        let Some(other) = crate::loops::stranger(&start.cwd, start.project.as_deref(), &self.board.homes) else { return false };
+        let agent = start.agent.clone().unwrap_or_else(|| "a loop".into());
+        let why = format!("{} is {other}'s folder: {agent} would resume its conversation", home_short(&start.cwd));
+        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start", why));
+        true
+    }
+
     /// Starts an agent's loop on aiball's host (`session.start`), off the UI
     /// thread; once its session is listed, tvty opens it over its socket.
     pub(super) fn start_on_host(&mut self, start: Start, cx: &mut Context<Self>) {
-        if self.starting.is_some() {
+        if self.starting.is_some() || self.astray_start(&start, cx) {
             return;
         }
         self.starting = Some(start.cwd.clone());
@@ -423,6 +456,9 @@ impl Shell {
     /// session runs, tvty opens it.
     pub(super) fn start_loop(&mut self, start: Start, cx: &mut Context<Self>) {
         if self.starting.is_some() {
+            return;
+        }
+        if self.astray_start(&start, cx) {
             return;
         }
         self.starting = Some(start.cwd.clone());
@@ -507,7 +543,7 @@ mod tests {
     use crate::loops::KnownLoop;
 
     #[test]
-    fn an_agent_is_idle_once_on_its_host_loop_first() {
+    fn an_agent_is_idle_once_in_its_folder_first_then_not_superseded_then_on_its_host() {
         let known = |name: &str, agent: Option<&str>, mode: &str| KnownLoop {
             name: name.into(),
             agent: agent.map(String::from),
@@ -521,8 +557,13 @@ mod tests {
             known("cl-a-2", Some("a"), "tmux"),
             known("cl-x", None, "tmux"),
             known("cl-y", None, "tmux"),
+            // Newer, on the host, but in another agent's folder.
+            KnownLoop { cwd: "/w/other".into(), ..known("cl-c-2", Some("c"), "host") },
+            KnownLoop { superseded: true, ..known("cl-c-1", Some("c"), "host") },
+            KnownLoop { superseded: true, ..known("cl-d-1", Some("d"), "host") },
+            known("cl-d-2", Some("d"), "tmux"),
         ];
-        let kept: Vec<&str> = one_per_agent(loops.iter().collect()).iter().map(|l| l.name.as_str()).collect();
-        assert_eq!(kept, vec!["cl-b-2", "cl-a-1", "cl-x", "cl-y"]);
+        let kept: Vec<&str> = one_per_agent(loops.iter().collect(), |l| l.cwd == "/w/other").iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(kept, vec!["cl-b-2", "cl-a-1", "cl-x", "cl-y", "cl-c-1", "cl-d-2"]);
     }
 }
