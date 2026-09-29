@@ -280,6 +280,9 @@ impl TicketPanel {
         if self.full != full {
             self.full = full;
             self.editing = None;
+            // Full screen, the reply starts at four lines; in the panel, two.
+            let (min, max) = if full { (4, 16) } else { (2, 8) };
+            self.reply.update(cx, |reply, cx| reply.set_auto_grow(min, max, cx));
             if full {
                 self.read_catalog(cx);
             }
