@@ -693,9 +693,10 @@ impl Render for NewTicketForm {
             }))
             .child(if self.preview {
                 let text = self.body.read(cx).value().to_string();
+                // Its own height, the button right under it; shrunk, and
+                // scrolled, when the page is short.
                 div()
                     .id("new-body-preview")
-                    .flex_1()
                     .min_h_0()
                     .overflow_y_scroll()
                     .p_3()
@@ -712,7 +713,6 @@ impl Render for NewTicketForm {
                 // A composer: Ctrl+Enter files it (keymap's ComposerSend), no
                 // new line put in.
                 div()
-                    .flex_1()
                     .min_h_0()
                     .flex()
                     .flex_col()

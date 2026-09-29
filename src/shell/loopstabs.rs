@@ -66,7 +66,7 @@ impl Shell {
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
     fn inactive(&self, words: &[String]) -> Vec<&KnownLoop> {
-        let mut loops: Vec<&KnownLoop> = self
+        let loops: Vec<&KnownLoop> = self
             .board
             .known
             .iter()
