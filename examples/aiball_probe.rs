@@ -4,7 +4,8 @@
 //!
 //! Locates aiball as tvty does (docs/IPC.md), asks its version (a public
 //! route: the address is right), then `bus.whoami` on its bus (the
-//! credentials are right, and say whom tvty acts as). Changes nothing.
+//! credentials are right, and say whom tvty acts as), and `loop.list` (the
+//! credentials are this machine's: aiball lists its loops). Changes nothing.
 
 use std::io::{Read, Write};
 use std::time::Duration;
@@ -36,6 +37,18 @@ fn main() -> anyhow::Result<()> {
         let text = message.to_text()?;
         if text.contains("\"id\":1") {
             println!("whoami: {text}");
+            break;
+        }
+    }
+    // Reserved to this machine's callers: over TCP, only the machine secret
+    // opens it.
+    bus.send(tungstenite::Message::text(r#"{"jsonrpc":"2.0","id":2,"method":"loop.list","params":{}}"#))?;
+    loop {
+        let message = bus.read()?;
+        let text = message.to_text()?;
+        if text.contains("\"id\":2") {
+            let shown: String = text.chars().take(300).collect();
+            println!("loop.list: {shown}");
             break;
         }
     }
