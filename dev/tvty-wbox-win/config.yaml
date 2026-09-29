@@ -1,0 +1,22 @@
+# tvty in wbox on Windows. There is no compositor there: the window is on
+# the desktop, and clicks move the real pointer (wbox's docs/windows.md).
+# Paths are relative to this file's folder, where wbox runs.
+name: tvty-wbox-win
+compositor: win32
+title_hint: "Terminal Velocity"
+log:
+  dir: ./log
+  level: info
+screenshot_dir: ./screenshots
+timeouts:
+  window_discovery: 20
+  edit_control: 1
+  app_render: 3
+  stop: 10
+app:
+  # scripts/test-tvty.ps1 keeps the test tvty apart from the user's (its own
+  # settings, never the user's aiball); its console stays hidden.
+  command: pwsh -NoProfile -WindowStyle Hidden -File ../../scripts/test-tvty.ps1
+  env: {}
+# Tests copy and paste inside the sandbox: never bridge to the host's clipboard.
+clipboard_bridge: false

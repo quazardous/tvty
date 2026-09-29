@@ -28,6 +28,24 @@ an agent working here, next to aiball's own server:
 }
 ```
 
+### On Windows
+
+`dev/tvty-wbox-win/` is the same for Windows, with a difference that
+matters: wbox has no compositor there (its `docs/windows.md`). The window
+is on the desktop, and clicks move the real pointer; `headless` does
+nothing. `scripts/test-tvty.ps1` keeps the test tvty apart (its own
+settings under `dev/tvty-wbox-win/`, never the user's aiball). No `make`:
+
+```bash
+W=path/to/wbox-mcp/.venv/Scripts/python.exe
+$W scripts/wbox_ctl.py up   dev/tvty-wbox-win/config.yaml
+$W scripts/wbox_ctl.py shot dev/tvty-wbox-win/config.yaml --name check
+$W scripts/wbox_ctl.py down dev/tvty-wbox-win/config.yaml
+```
+
+For now tvty there has no aiball (its socket is Unix only), no session
+host and no multiplexer: the window, its settings and its panels.
+
 ## Something to attach to
 
 `scripts/fake-loop` starts plain tmux sessions, no tokens spent:

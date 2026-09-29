@@ -4,9 +4,7 @@
 //!
 //! Every call blocks: run them off the UI thread.
 
-use std::io::{Read, Write};
 use std::path::PathBuf;
-use std::time::Duration;
 
 use anyhow::{Context as _, bail};
 use serde::Deserialize;
@@ -15,6 +13,7 @@ use serde_json::{Value, json};
 
 #[derive(Clone, Debug)]
 pub struct Aiball {
+    #[cfg_attr(not(unix), allow(dead_code))]
     socket: PathBuf,
     /// Who tvty acts as. Found with [`Aiball::find_user`].
     pub user: String,
@@ -1104,7 +1103,9 @@ impl Aiball {
         headers: &[(&str, &str)],
         body: &[u8],
     ) -> anyhow::Result<Vec<u8>> {
+        use std::io::{Read, Write};
         use std::os::unix::net::UnixStream;
+        use std::time::Duration;
 
         let mut stream = UnixStream::connect(&self.socket)
             .with_context(|| format!("aiball's socket {}", self.socket.display()))?;

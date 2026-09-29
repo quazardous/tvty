@@ -10,7 +10,6 @@
 //! `closed`) ends the view, as a PTY's child exiting does.
 
 use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -33,6 +32,11 @@ const EXITED: u8 = 0x0a;
 const CLOSED: u8 = 0x0b;
 const ERROR: u8 = 0x0c;
 
+#[cfg(unix)]
+type Stream = std::os::unix::net::UnixStream;
+#[cfg(not(unix))]
+type Stream = std::net::TcpStream;
+
 /// The history the snapshot brings above the screen.
 const SCROLLBACK: u32 = 2000;
 
@@ -44,7 +48,7 @@ const READY_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
 pub struct Attach {
     /// Once connected; what is written before is dropped (keys) or kept
     /// for the hello (the size).
-    stream: Mutex<Option<UnixStream>>,
+    stream: Mutex<Option<Stream>>,
     size: Mutex<(u16, u16)>,
     closed: std::sync::atomic::AtomicBool,
     /// A client that types and whose size counts; a copy (an observer)
@@ -85,12 +89,12 @@ impl Attach {
 
     /// Connects (trying a while), says hello with the size wanted by then,
     /// and, interactive, takes the focus; answers the stream to read.
-    fn open(&self, socket: &Path, interactive: bool) -> anyhow::Result<UnixStream> {
+    fn open(&self, socket: &Path, interactive: bool) -> anyhow::Result<Stream> {
         let mut tries = 0;
         let stream = loop {
-            match UnixStream::connect(socket) {
+            match dial(socket) {
                 Ok(stream) => break stream,
-                Err(error) if tries < READY_TRIES => {
+                Err(error) if tries < READY_TRIES && error.kind() != std::io::ErrorKind::Unsupported => {
                     tries += 1;
                     log::debug!("attach {}: not yet ({error})", socket.display());
                     std::thread::sleep(READY_PAUSE);
@@ -171,8 +175,19 @@ impl Attach {
     }
 }
 
+#[cfg(unix)]
+fn dial(socket: &Path) -> std::io::Result<Stream> {
+    Stream::connect(socket)
+}
+
+/// No session host off Unix yet: aiball's holds ConPTY there later.
+#[cfg(not(unix))]
+fn dial(_: &Path) -> std::io::Result<Stream> {
+    Err(std::io::Error::new(std::io::ErrorKind::Unsupported, "no session host on this system yet"))
+}
+
 /// The session's side, until it ends: frames to the terminal.
-fn read<L: EventListener + Clone>(mut stream: UnixStream, term: Arc<FairMutex<Term<L>>>, listener: L) {
+fn read<L: EventListener + Clone>(mut stream: Stream, term: Arc<FairMutex<Term<L>>>, listener: L) {
     let mut parser: ansi::Processor = ansi::Processor::new();
     let mut snapshots = 0usize;
     loop {
@@ -230,7 +245,7 @@ fn read<L: EventListener + Clone>(mut stream: UnixStream, term: Arc<FairMutex<Te
 }
 
 /// One frame: its type and payload.
-fn frame(stream: &mut UnixStream) -> std::io::Result<(u8, Vec<u8>)> {
+fn frame(stream: &mut Stream) -> std::io::Result<(u8, Vec<u8>)> {
     let mut head = [0u8; 5];
     stream.read_exact(&mut head)?;
     let length = u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize;

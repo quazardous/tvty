@@ -4,12 +4,17 @@
 //! (scripts/test-env, wbox: a state directory of its own) never meets the
 //! user's. `TVTY_NEW_INSTANCE=1` starts one more anyway.
 
+#[cfg(unix)]
 use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
 use std::os::unix::net::{UnixListener, UnixStream};
 use std::path::PathBuf;
+#[cfg(unix)]
 use std::time::Duration;
 
-use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
+use futures::channel::mpsc::UnboundedReceiver;
+#[cfg(unix)]
+use futures::channel::mpsc::{UnboundedSender, unbounded};
 
 use crate::config;
 use tvty_config::Place;
@@ -26,6 +31,7 @@ pub struct Raises(pub Option<UnboundedReceiver<Raise>>);
 impl gpui_kit::Global for Raises {}
 
 /// How this launch starts.
+#[cfg_attr(not(unix), allow(dead_code))]
 pub enum Claim {
     /// It is the instance: later launches' requests come here.
     First(UnboundedReceiver<Raise>),
@@ -52,7 +58,15 @@ fn socket() -> Option<PathBuf> {
     Some(config::dir(Place::State)?.join("tvty.sock"))
 }
 
+/// Off Unix, no rendez-vous yet (a named pipe, later): each launch is one
+/// more tvty.
+#[cfg(not(unix))]
+pub fn claim(_: Option<&str>) -> Claim {
+    Claim::Alone
+}
+
 /// Hands over to the running tvty, or becomes the one: before the window.
+#[cfg(unix)]
 pub fn claim(session: Option<&str>) -> Claim {
     if std::env::var_os("TVTY_NEW_INSTANCE").is_some() {
         return Claim::Alone;
@@ -85,6 +99,7 @@ pub fn claim(session: Option<&str>) -> Claim {
 }
 
 /// Tells the running tvty to come forward; whether it answered.
+#[cfg(unix)]
 fn hand_over(path: &PathBuf, session: Option<&str>) -> bool {
     let Ok(mut stream) = UnixStream::connect(path) else { return false };
     let _ = stream.set_read_timeout(Some(Duration::from_secs(2)));
@@ -95,6 +110,7 @@ fn hand_over(path: &PathBuf, session: Option<&str>) -> bool {
     BufReader::new(stream).read_line(&mut answer).is_ok() && answer.trim() == "ok"
 }
 
+#[cfg(unix)]
 fn listen(listener: UnixListener, tx: UnboundedSender<Raise>) {
     for stream in listener.incoming().flatten() {
         let mut line = String::new();
@@ -111,6 +127,7 @@ fn listen(listener: UnixListener, tx: UnboundedSender<Raise>) {
 }
 
 /// `raise [SESSION]`.
+#[cfg_attr(not(unix), allow(dead_code))]
 fn parse(line: &str) -> Option<Raise> {
     let rest = line.trim().strip_prefix("raise")?;
     let session = rest.trim();

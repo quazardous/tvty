@@ -12,7 +12,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context as _, anyhow};
+use anyhow::anyhow;
 use futures::channel::mpsc::UnboundedSender;
 use serde_json::{Value, json};
 
@@ -183,10 +183,14 @@ fn run(user: Arc<Mutex<String>>, queue: Receiver<Outgoing>, notices: UnboundedSe
     }
 }
 
+#[cfg(unix)]
 type Socket = tungstenite::WebSocket<std::os::unix::net::UnixStream>;
+#[cfg(not(unix))]
+type Socket = tungstenite::WebSocket<std::net::TcpStream>;
 
 #[cfg(unix)]
 fn connect(user: &str) -> anyhow::Result<Socket> {
+    use anyhow::Context as _;
     use tungstenite::client::IntoClientRequest as _;
     let stream = std::os::unix::net::UnixStream::connect(crate::aiball::socket_path()).context("aiball's socket")?;
     let mut request = "ws://aiball/bus".into_client_request()?;
@@ -197,6 +201,11 @@ fn connect(user: &str) -> anyhow::Result<Socket> {
     // Short reads, so that calls waiting to go out are not held up.
     socket.get_ref().set_read_timeout(Some(Duration::from_millis(20)))?;
     Ok(socket)
+}
+
+#[cfg(not(unix))]
+fn connect(_: &str) -> anyhow::Result<Socket> {
+    Err(anyhow!("aiball's bus is Unix only for now"))
 }
 
 /// Sends the calls queued and reads what comes, until the connection drops
