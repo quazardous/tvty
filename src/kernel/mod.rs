@@ -3,6 +3,7 @@
 //! (connected, dropped, a subscription failed…) the views observe. What aiball pushes is kept by
 //! [`crate::live`]; the transport is [`crate::wire`].
 
+pub mod backlog;
 pub mod catalog;
 pub mod signals;
 pub mod subscriptions;

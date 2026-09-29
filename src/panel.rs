@@ -110,12 +110,10 @@ pub struct TicketPanel {
     scope: Option<Scope>,
     tickets: Vec<TicketRow>,
     critical: Option<u64>,
-    /// The tickets sunk in the shown agent's backlog, and until when:
-    /// asked of aiball for that agent and project.
+    /// The tickets sunk in the shown agent's backlog, and until when: as
+    /// the backlogs' store has it (`crate::kernel::backlog`).
     sunk: HashMap<u64, String>,
     sunk_for: Option<(String, String)>,
-    /// Asks counted, the latest answer only kept.
-    sunk_asked: u64,
     detail: Option<Detail>,
     reply: Entity<TextareaState>,
     /// The bands folded to their title, and each band's own scroll.
@@ -182,6 +180,8 @@ impl TicketPanel {
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         // A catalog read in by the store.
         cx.observe(&catalogs::store(cx), |panel: &mut Self, _, cx| panel.take_catalog(cx)).detach();
+        // The shown agent's backlog read again: its sunk tickets.
+        cx.observe(&crate::kernel::backlog::store(cx), |panel: &mut Self, _, cx| panel.take_sunk(cx)).detach();
         // The rows a notification is about shine while it is up.
         cx.subscribe(&crate::bus::bus(cx), |panel: &mut Self, _, signal: &crate::bus::Signal, cx| {
             use crate::bus::Signal;
@@ -210,7 +210,6 @@ impl TicketPanel {
             scope: None,
             sunk: HashMap::new(),
             sunk_for: None,
-            sunk_asked: 0,
             tickets: Vec::new(),
             critical: None,
             detail: None,
@@ -538,40 +537,27 @@ impl TicketPanel {
             self.sunk.clear();
             self.sunk_for = wanted.clone();
         }
-        self.sunk_asked += 1;
-        let asked = self.sunk_asked;
         let Some((agent, project)) = wanted else { return };
-        let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
-            let read = cx.background_executor().spawn(async move { aiball.agent_backlog(&agent, &project) }).await;
-            let _ = this.update(cx, |panel, cx| {
-                if panel.sunk_asked != asked {
-                    return;
+        // The store reads it once and keeps it up to date; its reads come
+        // in by `take_sunk`.
+        crate::kernel::backlog::request(cx, &agent, &project);
+        self.take_sunk(cx);
+    }
+
+    /// The shown agent's sunk tickets, as the backlogs' store has them.
+    fn take_sunk(&mut self, cx: &mut Context<Self>) {
+        let Some((agent, project)) = self.sunk_for.clone() else { return };
+        match crate::kernel::backlog::get(cx, &agent, &project) {
+            Some(Ok(backlog)) => {
+                let sunk = sunk_of(&backlog, crate::status::now());
+                if sunk != self.sunk {
+                    self.sunk = sunk;
+                    cx.notify();
                 }
-                match read {
-                    Ok(backlog) => {
-                        panel.sunk = sunk_of(&backlog, crate::status::now());
-                        cx.notify();
-                    }
-                    Err(error) => log::debug!("sunk tickets: {error:#}"),
-                }
-                // Read again as the first pause ends.
-                let first = panel.sunk.values().filter_map(|until| crate::status::parse_time(until)).min();
-                if let Some(first) = first {
-                    let wait = first.saturating_sub(crate::status::now()) + 1;
-                    cx.spawn(async move |this, cx| {
-                        cx.background_executor().timer(std::time::Duration::from_secs(wait)).await;
-                        let _ = this.update(cx, |panel, cx| {
-                            if panel.sunk_asked == asked {
-                                panel.load_sunk(cx);
-                            }
-                        });
-                    })
-                    .detach();
-                }
-            });
-        })
-        .detach();
+            }
+            Some(Err(error)) => log::debug!("sunk tickets: {error}"),
+            None => {}
+        }
     }
 
     /// The board as last read: this project's tickets, and who tvty is.

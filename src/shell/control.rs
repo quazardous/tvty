@@ -48,6 +48,7 @@ impl Shell {
             "subscriptions": self.live.subscriptions_said(),
             "link": self.bus_state.said(),
             "catalogs": crate::kernel::catalog::store(cx).read(cx).said(),
+            "backlogs": crate::kernel::backlog::store(cx).read(cx).said(),
             "place_bar": self.move_asked,
         })
     }

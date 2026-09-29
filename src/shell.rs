@@ -551,6 +551,10 @@ impl Shell {
         let aiball = Aiball::from_env();
         // The projects' catalogs, read once for every view that needs one.
         crate::kernel::catalog::init(aiball.clone(), cx);
+        // The agents' backlogs, kept up to date for the panel and the bar.
+        crate::kernel::backlog::init(aiball.clone(), cx);
+        // The agent bar's backlog list, redrawn as its backlog is read.
+        cx.observe(&crate::kernel::backlog::store(cx), |_, _, cx| cx.notify()).detach();
         // aiball's bus first: the first read of the board goes through it.
         let (notices, wire_notices) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
         let wire = crate::aiball::start_wire(&aiball.user, notices);
@@ -587,6 +591,8 @@ impl Shell {
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
+            // For the stores: the board itself comes from the live lists.
+            Signal::TicketsChanged(_) | Signal::BarChanged(_) => {}
             Signal::TicketClosed(ticket) => {
                 if shell.live.drop_ticket(*ticket) {
                     log::info!("board: #{ticket} read closed, yet listed open: dropped from the list");
@@ -979,6 +985,10 @@ impl Shell {
             while let Some(notice) = incoming.next().await {
                 let alive = match notice.method.as_str() {
                     "bus.event" => this.update(cx, |shell, cx| {
+                        // What moved, for the stores that keep a part of it.
+                        if let Some(moved) = crate::live::moved_of(&notice.params) {
+                            bus::emit(cx, moved);
+                        }
                         let updates = shell.live.event(&notice.params);
                         shell.take_updates(updates, cx);
                     }),

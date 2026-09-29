@@ -15,7 +15,7 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::ui::buttons;
-use crate::aiball::{AgentBacklog, AgentBar};
+use crate::aiball::AgentBar;
 use crate::status::{ago, now, parse_time};
 use crate::theme::p;
 use crate::tip::Tip as _;
@@ -26,10 +26,11 @@ pub const BAR_HEIGHT: f32 = 24.;
 /// What the AFK chip offers: aiball's action, and its label.
 const AFK_ACTIONS: &[(&str, &str)] = &[("off", "auto"), ("arm_10m", "hold 10 min"), ("arm_inf", "hold")];
 
-/// An agent's backlog, open over the bar: whose, and what aiball answered.
+/// An agent's backlog, open over the bar: whose, in which project (the
+/// backlogs' store keeps it, `crate::kernel::backlog`).
 pub(super) struct BacklogView {
     agent: String,
-    read: Option<Result<AgentBacklog, String>>,
+    project: String,
 }
 
 /// A mark's colour, as claude-loop's tmux bar paints it.
@@ -541,9 +542,10 @@ impl Shell {
             .text_sm()
             .text_color(p().text)
             .child(div().text_xs().text_color(p().muted).pb_1().child(format!("{}'s backlog", view.agent)));
-        match &view.read {
+        let read = crate::kernel::backlog::get(cx, &view.agent, &view.project);
+        match &read {
             None => list = list.child(div().text_color(p().muted).child("reading…")),
-            Some(Err(error)) => list = list.child(div().text_color(p().danger).child(error.clone())),
+            Some(Err(error)) => list = list.child(div().text_color(p().danger).child(format!("backlog: {}", short_error(error)))),
             Some(Ok(backlog)) if backlog.rows.iter().all(|r| r.backlog_tier.is_none()) => {
                 list = list.child(div().text_color(p().muted).child("nothing in its backlog"));
             }
@@ -593,24 +595,8 @@ impl Shell {
             cx.notify();
             return;
         }
-        self.backlog_view = Some(BacklogView { agent: agent.clone(), read: None });
-        let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
-            let read = cx
-                .background_executor()
-                .spawn({
-                    let agent = agent.clone();
-                    async move { aiball.agent_backlog(&agent, &project) }
-                })
-                .await;
-            let _ = this.update(cx, |shell, cx| {
-                if let Some(view) = shell.backlog_view.as_mut().filter(|v| v.agent == agent) {
-                    view.read = Some(read.map_err(|e| format!("backlog: {}", short_error(&format!("{e:#}")))));
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
+        crate::kernel::backlog::request(cx, &agent, &project);
+        self.backlog_view = Some(BacklogView { agent, project });
         cx.notify();
     }
 

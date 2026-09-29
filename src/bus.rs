@@ -34,6 +34,10 @@ pub enum Signal {
     Activity(crate::activity::Activity),
     /// Text went to the clipboard: a brief "copied" says so.
     Copied,
+    /// A project's tickets changed on the board (an event of its list).
+    TicketsChanged(String),
+    /// An agent's loop bar changed (a wake recorded, a pause begun…).
+    BarChanged(String),
     /// tvty's link to aiball changed (`crate::kernel::signals`).
     Bus(crate::kernel::signals::BusSignal),
 }
