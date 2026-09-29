@@ -1,22 +1,37 @@
-# tvty in wbox on Windows. There is no compositor there: the window is on
-# the desktop, and clicks move the real pointer (wbox's docs/windows.md).
-# Paths are relative to this file's folder, where wbox runs.
+# tvty in wbox on Windows, isolated in Windows Sandbox (wbox's `sandbox:`,
+# docs/windows.md): the test tvty runs in a throwaway Windows, whose pointer,
+# keyboard and clipboard are its own — nothing touches the maintainer's
+# desktop, and it never sees their tvty or their aiball.
+# Paths on the host are relative to this file's folder, where wbox runs.
 name: tvty-wbox-win
 compositor: win32
 title_hint: "Terminal Velocity"
+# The sandbox's window minimized: the app keeps running, shots and input work.
+headless: true
 log:
   dir: ./log
   level: info
 screenshot_dir: ./screenshots
 timeouts:
-  window_discovery: 20
+  window_discovery: 30
   edit_control: 1
   app_render: 3
   stop: 10
+sandbox:
+  mounts:
+    # The build, read-only: build on the host, `kill` first (the sandbox holds
+    # the binary open while tvty runs).
+    - {host: ../../target/debug, guest: 'C:\tvty', readonly: true}
+    # tvty's settings and log, readable from here (home/state/tvty/tvty.log).
+    - {host: ./home, guest: 'C:\tvty-home', readonly: false}
+  # Up between launches: a rebuild costs a relaunch, not a boot.
+  keep: true
 app:
-  # scripts/test-tvty.ps1 keeps the test tvty apart from the user's (its own
-  # settings, never the user's aiball); its console stays hidden.
-  command: pwsh -NoProfile -WindowStyle Hidden -File ../../scripts/test-tvty.ps1
-  env: {}
-# Tests copy and paste inside the sandbox: never bridge to the host's clipboard.
-clipboard_bridge: false
+  command: 'C:\tvty\tvty.exe'
+  env:
+    # tvty's own folders, apart from the maintainer's (dev/tvty-wbox-win/home).
+    XDG_CONFIG_HOME: 'C:\tvty-home\config'
+    XDG_STATE_HOME: 'C:\tvty-home\state'
+    XDG_DATA_HOME: 'C:\tvty-home\data'
+    # No aiball in the sandbox (yet): nothing to reach.
+    AIBALL_SOCK: 'C:\tvty-home\no-aiball\sock'

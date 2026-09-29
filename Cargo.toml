@@ -48,6 +48,13 @@ opt-level = 1
 debug = false
 opt-level = 3
 
+# On Windows, a debug GPUI compiles its shaders when it starts, from its
+# sources on the machine that built it: that tvty runs nowhere else (not in
+# Windows Sandbox, where the Windows tests run). Without debug assertions
+# they are compiled at build time and embedded (fxc.exe, the Windows SDK).
+[profile.dev.package.gpui-pre-windows]
+debug-assertions = false
+
 # The profile that 'dist' will build with
 [profile.dist]
 inherits = "release"

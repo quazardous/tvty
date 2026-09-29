@@ -30,11 +30,13 @@ an agent working here, next to aiball's own server:
 
 ### On Windows
 
-`dev/tvty-wbox-win/` is the same for Windows, with a difference that
-matters: wbox has no compositor there (its `docs/windows.md`). The window
-is on the desktop, and clicks move the real pointer; `headless` does
-nothing. `scripts/test-tvty.ps1` keeps the test tvty apart (its own
-settings under `dev/tvty-wbox-win/`, never the user's aiball). No `make`:
+`dev/tvty-wbox-win/` is the same for Windows. wbox has no compositor
+there; it isolates the test tvty in **Windows Sandbox** instead (wbox 0.9
+and later, its `docs/windows.md`): a throwaway Windows whose pointer,
+keyboard and clipboard are its own, its window minimized (`headless`).
+Nothing of it touches the desktop, and it cannot see the user's tvty or
+aiball. It needs Windows Sandbox turned on — wbox's `setup.ps1` does it,
+then a reboot. No `make`:
 
 ```bash
 W=path/to/wbox-mcp/.venv/Scripts/python.exe
@@ -42,6 +44,21 @@ $W scripts/wbox_ctl.py up   dev/tvty-wbox-win/config.yaml
 $W scripts/wbox_ctl.py shot dev/tvty-wbox-win/config.yaml --name check
 $W scripts/wbox_ctl.py down dev/tvty-wbox-win/config.yaml
 ```
+
+The first `up` boots the sandbox (about 15 seconds); it stays up between
+launches (`keep`), so `down`, `cargo build`, `up` costs a relaunch only.
+`down` ends tvty, not the sandbox: closing its window ends it. The sandbox
+sees `target/debug` read-only and `dev/tvty-wbox-win/home` read-write — the
+test tvty's settings and its log (`home/state/tvty/tvty.log`).
+
+A fresh Windows has what tvty needs only because tvty brings it: the C
+runtime linked in (`.cargo/config.toml`) and, in a debug build, GPUI's
+shaders compiled at build time (`Cargo.toml`), which needs the Windows
+SDK's `fxc.exe` at build time.
+
+`scripts/test-tvty.ps1` runs a test tvty on the desktop instead, apart from
+the user's (its own settings, never their aiball), for when the sandbox is
+not there.
 
 For now tvty there has no aiball (its socket is Unix only), no session
 host and no multiplexer: the window, its settings and its panels.

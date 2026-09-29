@@ -1,0 +1,5 @@
+# On Windows, the C runtime goes into the binary: a Windows without the
+# Visual C++ Redistributable (a fresh install, Windows Sandbox) has no
+# vcruntime140.dll, and a tvty linked against it would not even start.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
