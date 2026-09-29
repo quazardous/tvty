@@ -109,6 +109,12 @@ pub struct TicketPanel {
     scope: Option<Scope>,
     tickets: Vec<TicketRow>,
     critical: Option<u64>,
+    /// The tickets sunk in the shown agent's backlog, and until when:
+    /// asked of aiball for that agent and project.
+    sunk: HashMap<u64, String>,
+    sunk_for: Option<(String, String)>,
+    /// Asks counted, the latest answer only kept.
+    sunk_asked: u64,
     detail: Option<Detail>,
     reply: Entity<TextareaState>,
     /// The bands folded to their title, and each band's own scroll.
@@ -196,6 +202,9 @@ impl TicketPanel {
         Self {
             aiball,
             scope: None,
+            sunk: HashMap::new(),
+            sunk_for: None,
+            sunk_asked: 0,
             tickets: Vec::new(),
             critical: None,
             detail: None,
@@ -432,7 +441,52 @@ impl TicketPanel {
             self.detail = None;
         }
         self.scope = scope;
+        self.load_sunk(cx);
         cx.notify();
+    }
+
+    /// Asks aiball which tickets are sunk in the shown agent's backlog (none
+    /// without an agent), and again when the first pause ends.
+    fn load_sunk(&mut self, cx: &mut Context<Self>) {
+        let wanted = self.scope.as_ref().and_then(|s| Some((s.agent.clone()?, s.project.clone())));
+        if wanted != self.sunk_for {
+            self.sunk.clear();
+            self.sunk_for = wanted.clone();
+        }
+        self.sunk_asked += 1;
+        let asked = self.sunk_asked;
+        let Some((agent, project)) = wanted else { return };
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let read = cx.background_executor().spawn(async move { aiball.agent_backlog(&agent, &project) }).await;
+            let _ = this.update(cx, |panel, cx| {
+                if panel.sunk_asked != asked {
+                    return;
+                }
+                match read {
+                    Ok(backlog) => {
+                        panel.sunk = sunk_of(&backlog, crate::status::now());
+                        cx.notify();
+                    }
+                    Err(error) => log::debug!("sunk tickets: {error:#}"),
+                }
+                // Read again as the first pause ends.
+                let first = panel.sunk.values().filter_map(|until| crate::status::parse_time(until)).min();
+                if let Some(first) = first {
+                    let wait = first.saturating_sub(crate::status::now()) + 1;
+                    cx.spawn(async move |this, cx| {
+                        cx.background_executor().timer(std::time::Duration::from_secs(wait)).await;
+                        let _ = this.update(cx, |panel, cx| {
+                            if panel.sunk_asked == asked {
+                                panel.load_sunk(cx);
+                            }
+                        });
+                    })
+                    .detach();
+                }
+            });
+        })
+        .detach();
     }
 
     /// The board as last read: this project's tickets, and who tvty is.
@@ -455,6 +509,8 @@ impl TicketPanel {
             self.tickets = tickets;
             self.critical = critical;
             self.keep_scrolls();
+            // A ticket moved: its pause may have ended.
+            self.load_sunk(cx);
             if let (true, Some(id)) = (moved, open) {
                 self.load(id, false, cx);
             }
@@ -834,6 +890,13 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
+        // Sunk in the shown agent's backlog: steps back, a ⤓ says until when.
+        let sunk = self.sunk.get(&id).and_then(|until| crate::status::resume_short(until));
+        let group: SharedString = format!("ticket-row-{id}").into();
+        let sunk_tip = sunk.as_ref().map(|until| {
+            let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
+            format!("sunk in {agent}'s backlog until {until}: its loop won't bring it up before, unless the thread moves")
+        });
         let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
         let glyph_colour = |glyph: Glyph| glyph_colour(glyph, yours);
@@ -858,10 +921,21 @@ impl TicketPanel {
             .children(critical_chip(ticket))
             .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
+            .when_some(sunk_tip, |d, tip| d.child(div().id(("sunk", id)).flex_none().child("⤓").tip(tip)))
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
+        // Stepped back while sunk; itself again under the pointer.
+        let dim = sunk.is_some();
+        let content = div()
+            .flex()
+            .flex_col()
+            .gap_0p5()
+            .flex_1()
+            .min_w_0()
+            .when(dim, |d| d.opacity(0.5).group_hover(group.clone(), |s| s.opacity(1.)));
 
         div()
             .id(("ticket", id))
+            .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()
             .overflow_hidden()
@@ -881,12 +955,7 @@ impl TicketPanel {
                     .when_some(state.glyph, |d, glyph| d.child(glyph_chip(glyph, glyph_colour(glyph), 16., ticket))),
             )
             .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .flex_1()
-                    .min_w_0()
+                content
                     .child(
                         div()
                             .flex()
@@ -2631,4 +2700,37 @@ pub(crate) fn ago(when: &str) -> Option<String> {
         3600..86400 => format!("{}h", seconds / 3600),
         _ => format!("{}d", seconds / 86400),
     })
+}
+
+/// The tickets sunk in an agent's backlog at `now` (seconds since the
+/// epoch), and until when.
+fn sunk_of(backlog: &crate::aiball::AgentBacklog, now: u64) -> HashMap<u64, String> {
+    backlog
+        .rows
+        .iter()
+        .filter_map(|r| {
+            let until = r.backlog_cooled_until.clone()?;
+            (crate::status::parse_time(&until)? > now).then_some((r.id, until))
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod sunk_tests {
+    use super::sunk_of;
+    use crate::aiball::AgentBacklog;
+    use serde_json::json;
+
+    #[test]
+    fn only_a_pause_still_running_marks_a_ticket_sunk() {
+        let backlog: AgentBacklog = serde_json::from_value(json!({ "rows": [
+            { "id": 1, "project": "p", "title": "a", "backlog_tier": 1, "backlog_cooled_until": "2026-09-29T15:00:00.000Z" },
+            { "id": 2, "project": "p", "title": "b", "backlog_tier": 1, "backlog_cooled_until": "2026-09-29T13:00:00.000Z" },
+            { "id": 3, "project": "p", "title": "c", "backlog_tier": 3, "backlog_cooled_until": null },
+        ] }))
+        .unwrap();
+        let now = crate::status::parse_time("2026-09-29T14:00:00.000Z").unwrap();
+        let sunk = sunk_of(&backlog, now);
+        assert_eq!(sunk.keys().copied().collect::<Vec<_>>(), vec![1]);
+    }
 }

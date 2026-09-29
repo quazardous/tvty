@@ -341,6 +341,10 @@ pub struct BarRead {
     pub phase_since: Option<u64>,
 }
 
+/// How long a loop keeps a ticket out of its backlog wakes once a wake named
+/// it: claude-loop's default (each loop may set its own).
+const BACKLOG_COOLDOWN_SEC: u64 = 3600;
+
 /// An agent's own backlog, as it sees it.
 #[derive(Clone, Debug, Deserialize)]
 pub struct AgentBacklog {
@@ -356,6 +360,10 @@ pub struct BacklogRow {
     /// -1 critical, 0 hot, 1 actionable, 2 follow-up, 3 waiting on them,
     /// 4 blocked.
     pub backlog_tier: Option<i64>,
+    /// Sunk: a backlog wake gave it to the agent, and its loop will not
+    /// bring it up again before this, unless the thread moves.
+    #[serde(default)]
+    pub backlog_cooled_until: Option<String>,
 }
 
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
@@ -886,9 +894,14 @@ impl Aiball {
         answer.get("id").and_then(Value::as_u64).context("the new ticket has no id")
     }
 
-    /// An agent's own backlog, in `project`.
+    /// An agent's own backlog, in `project`: every row (as its loop reads
+    /// it), each sunk one saying until when — with a loop's default pause
+    /// after a backlog wake, which aiball does not know per loop.
     pub fn agent_backlog(&self, agent: &str, project: &str) -> anyhow::Result<AgentBacklog> {
-        self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project }))
+        self.rpc(
+            "consumer.backlog",
+            json!({ "consumer_id": agent, "project": project, "limit": "500", "cooldown_sec": BACKLOG_COOLDOWN_SEC.to_string() }),
+        )
     }
 
     /// Whether aiball's host runs `agent`'s session, its program up — which
