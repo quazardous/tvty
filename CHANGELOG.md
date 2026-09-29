@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0-beta.1] - 2026-09-29
+
 ### Added
 
 - When an agent's Claude hits its usage limit (weekly, session, monthly spend…), tvty says so: a notification, the agent bar in red with when it resets, and the reason on its ■.
@@ -36,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A project's 📢 (ticket panel, ctrl+shift+m): its standing instruction and wake focus, as aiball's own page; a steered project wears a 📢 in the sessions list. A message to every running agent (send, send & hold, release holds) has its own button in the title bar, and the menu's "Message every agent…".
 - The pointer can give the keyboard: over the terminal or a box to write in (a reply, a new ticket's title and body, its tag and parent boxes, the sessions' filter), as the system's focus follows the mouse (GNOME, KDE), or as chosen in Options > Appearance > Mouse > Focus.
 - In the ticket list, the tickets sunk in the shown agent's backlog (its loop won't bring them up for a while) step back, a ⤓ saying until when.
+- A ticket open in the panel has an assignee chip: a click lists the project's agents to assign it to, or releases it.
 - The agent bar and the sessions list show the model each Claude runs (its price in the tip), in yellow with ↑ when a newer one of its family is out.
 
 ### Fixed
@@ -44,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The answers of every dialog and form are buttons of one size.
 - A new ticket's note under "scope" no longer runs over the tags when the column is narrow.
 - Who tvty acts as on aiball's board is in the title bar, after ⚙, no longer in the ticket panel's header.
-- A ticket open in the panel has an assignee chip: a click lists the project's agents to assign it to, or releases it.
 - A ticket an agent holds no longer reads "Yours: nobody else is on it": it names who holds it.
 - A ticket open in the panel: the header stays as the list has it (project, badges); "← Tickets" sits above the ticket's title.
 - The agent bar keeps its controls in sight when short: its folder, then its name, give way.
