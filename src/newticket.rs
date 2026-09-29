@@ -71,6 +71,9 @@ impl Catalog {
     }
 }
 
+/// The tallest a picture of the preview is drawn.
+const PREVIEW_PICTURE_HEIGHT: f32 = 600.;
+
 pub struct NewTicketForm {
     aiball: Aiball,
     project: String,
@@ -97,12 +100,42 @@ pub struct NewTicketForm {
     mentions: Vec<String>,
     /// The body shown as it will read (the Preview tab).
     preview: bool,
+    /// The images of the body, read for its preview.
+    images: crate::images::Cache,
 }
 
 impl EventEmitter<CloseNewTicket> for NewTicketForm {}
 impl EventEmitter<Created> for NewTicketForm {}
 
 impl NewTicketForm {
+    /// The body as it will read: its words, and its pictures alone on their
+    /// line drawn at the column's width (never beyond their size), as the
+    /// thread draws them; those not read yet say so.
+    fn preview_view(&self, text: &str) -> Div {
+        use crate::images::Segment;
+        let text = crate::images::preview(text, &self.images, false);
+        let mut col = div().flex().flex_col().gap_2();
+        for (i, segment) in crate::images::segments(&text, &self.images).into_iter().enumerate() {
+            col = match segment {
+                Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("new-body-preview-{i}")), md).selectable(true)),
+                Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
+                Segment::Pictures(pictures) => col.children(pictures.into_iter().map(|picture| {
+                    let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
+                    div()
+                        .w_full()
+                        .max_w(px(width.min(PREVIEW_PICTURE_HEIGHT * width / height)))
+                        .aspect_ratio(width / height)
+                        .rounded_sm()
+                        .overflow_hidden()
+                        .border_1()
+                        .border_color(p().border)
+                        .child(img(ImageSource::Image(picture.image.clone())).size_full())
+                })),
+            };
+        }
+        col
+    }
+
     pub fn new(aiball: Aiball, project: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // The fields column's width, dragged here or on another full page.
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
@@ -190,6 +223,7 @@ impl NewTicketForm {
             error: None,
             mentions: Vec::new(),
             preview: false,
+            images: Default::default(),
         };
         form.set_project(project, cx);
         form
@@ -641,6 +675,18 @@ impl Render for NewTicketForm {
             // one; a person's title says enough.)
             .child(composer::write_tabs("new-body", self.preview, cx, |form: &mut Self, on, cx| {
                 form.preview = on;
+                if on {
+                    // Its pictures, read once; the preview draws them when they came.
+                    let text = form.body.read(cx).value().to_string();
+                    let (aiball, images) = (form.aiball.clone(), form.images.clone());
+                    cx.spawn(async move |this, cx| {
+                        let came = cx.background_executor().spawn(async move { crate::images::load(&text, &aiball, &images) }).await;
+                        if came {
+                            let _ = this.update(cx, |_, cx| cx.notify());
+                        }
+                    })
+                    .detach();
+                }
                 cx.notify();
             }))
             .child(if self.preview {
@@ -657,7 +703,7 @@ impl Render for NewTicketForm {
                     .child(if text.trim().is_empty() {
                         div().text_color(p().muted).child("Nothing to preview yet.").into_any_element()
                     } else {
-                        TextView::markdown("new-body-preview-text", composer::images_said(&text)).into_any_element()
+                        self.preview_view(&text).into_any_element()
                     })
                     .into_any_element()
             } else {

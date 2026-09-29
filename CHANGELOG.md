@@ -36,6 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The answers of every dialog and form are buttons of one size.
 - While a loop boots, the agent bar's "… boot" is no longer squashed.
 - The agent bar shows ⌨ once while a human types, by the prompt.
+- The "Where it stands" summary and the thread's words can be selected and copied with the mouse.
+- Preview (a new ticket, a reply) draws the pictures pasted into the text.
 - A loop held until let go stays ■ while a human types in it, in the agent bar and the list: a stop is not a pause.
 - The agent bar's RC chip is gone for now: it could not tell a session put in Remote Control by hand.
 - The slider and the gallery are no longer covered by notifications: those that come meanwhile show once they close.

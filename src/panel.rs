@@ -1056,7 +1056,12 @@ impl TicketPanel {
                 .rounded_md()
                 .bg(p().hover)
                 .child(div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user))))
-                .child(div().child(text))
+                // Selectable, as the thread's words: it is copied as often.
+                .child(
+                    TextView::markdown("thread-summary", crate::ui::ticketref::linkify(&text))
+                        .selectable(true)
+                        .on_link_click(crate::ui::ticketref::on_link),
+                )
         });
         // Full screen, the title spans the top, the state and chips go to
         // the left column, the summary heads the talk; in the panel they
@@ -1262,6 +1267,9 @@ impl TicketPanel {
             .when(self.full, |d| {
                 d.child(crate::composer::write_tabs("reply", self.reply_preview, cx, |panel: &mut Self, on, cx| {
                     panel.reply_preview = on;
+                    if on {
+                        panel.load_preview_images(cx);
+                    }
                     cx.notify();
                 }))
             })
@@ -1276,7 +1284,7 @@ impl TicketPanel {
                     .child(if text.trim().is_empty() {
                         div().text_color(p().muted).child("Nothing to preview yet.")
                     } else {
-                        self.rich_text("reply-preview".into(), &text, cx)
+                        self.rich_text("reply-preview".into(), &crate::images::preview(&text, &self.images, false), cx)
                     })
                     .into_any_element()
             } else {
@@ -2368,12 +2376,28 @@ impl TicketPanel {
     /// line drawn by tvty — a thumbnail in the panel, the column's width full
     /// screen —,
     /// a click opening the viewer.
+    /// The images of the reply being written, read for its preview (a
+    /// capture just pasted is not in the thread's yet).
+    fn load_preview_images(&mut self, cx: &mut Context<Self>) {
+        let text = self.reply.read(cx).value().to_string();
+        let (aiball, images) = (self.aiball.clone(), self.images.clone());
+        cx.spawn(async move |this, cx| {
+            let came = cx.background_executor().spawn(async move { crate::images::load(&text, &aiball, &images) }).await;
+            if came {
+                let _ = this.update(cx, |_, cx| cx.notify());
+            }
+        })
+        .detach();
+    }
+
     fn rich_text(&self, id: String, text: &str, cx: &mut Context<Self>) -> Div {
         let mut col = div().flex().flex_col().gap_1();
         for (i, segment) in crate::images::segments(text, &self.images).into_iter().enumerate() {
             col = match segment {
                 crate::images::Segment::Text(md) => col.child(
-                    TextView::markdown(SharedString::from(format!("{id}-{i}")), crate::ui::ticketref::linkify(&md)).on_link_click(crate::ui::ticketref::on_link),
+                    TextView::markdown(SharedString::from(format!("{id}-{i}")), crate::ui::ticketref::linkify(&md))
+                        .selectable(true)
+                        .on_link_click(crate::ui::ticketref::on_link),
                 ),
                 crate::images::Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
                 crate::images::Segment::Pictures(pictures) => {

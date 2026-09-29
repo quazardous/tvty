@@ -275,6 +275,54 @@ pub enum Link {
     Missing,
 }
 
+/// Every upload `text` cites as an image, wherever it stands.
+fn every_image(text: &str) -> Vec<String> {
+    let found = std::cell::RefCell::new(Vec::new());
+    for line in text.split('\n') {
+        rewrite_line(line, &|reference| {
+            found.borrow_mut().push(reference.to_string());
+            Link::Missing
+        });
+    }
+    found.into_inner()
+}
+
+/// Reads into `cache` the images `text` cites that it has not read yet: a
+/// preview's, of a text not sent (no attachment to go by: through aiball).
+/// Off the UI thread. Answers whether any came.
+pub fn load(text: &str, aiball: &Aiball, cache: &Cache) -> bool {
+    let mut came = false;
+    for reference in every_image(text) {
+        if cache.lock().is_ok_and(|c| c.contains_key(&reference)) {
+            continue;
+        }
+        let read = read(&reference, None, aiball);
+        if !matches!(read, Entry::Missing) {
+            if let Ok(mut cache) = cache.lock() {
+                cache.insert(reference, read);
+                came = true;
+            }
+        }
+    }
+    came
+}
+
+/// What a preview shows of `text`: its images inside a sentence as `data:`
+/// URLs from `cache` — and, with `all`, those alone on their line too, for a
+/// view that does not draw them itself. One not read yet says so.
+pub fn preview(text: &str, cache: &Cache, all: bool) -> String {
+    let known = cache.lock().map(|c| c.clone()).unwrap_or_default();
+    let link = |reference: &str| match known.get(reference) {
+        Some(Entry::Loaded(p)) => Link::Data(p.data_url.clone()),
+        Some(Entry::TooLarge) => Link::TooLarge,
+        _ => Link::Missing,
+    };
+    if !all {
+        return rewrite(text, &link);
+    }
+    text.split('\n').map(|line| rewrite_line(line, &link)).collect::<Vec<_>>().join("\n")
+}
+
 /// `text` with each image inside a sentence (`… ![alt](/uploads/…) …`)
 /// turned into what `link` makes of it. Images that end their line stay —
 /// tvty draws them —, and so do plain links to uploads.
@@ -322,7 +370,7 @@ fn rewrite_line(text: &str, link: &dyn Fn(&str) -> Link) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Link, api_ref, cited, images_of_line, rewrite, trailing_images};
+    use super::{Cache, Entry, Link, api_ref, cited, every_image, images_of_line, preview, rewrite, trailing_images};
 
     fn link(reference: &str) -> Link {
         match reference {
@@ -398,5 +446,18 @@ mod tests {
         // Words before it stay, quoted.
         let parts = segments("> Look: ![shot](/uploads/a.png)", &cache);
         assert!(matches!(&parts[..], [Segment::Text(t), Segment::Pictures(_)] if t.trim() == "> Look:"));
+    }
+
+    #[test]
+    fn a_preview_finds_every_image_and_draws_those_it_read() {
+        let text = "see ![a](/uploads/a.png) here\n![shot](/uploads/b.png)";
+        assert_eq!(every_image(text), vec!["/uploads/a.png".to_string(), "/uploads/b.png".to_string()]);
+        let cache = Cache::default();
+        cache.lock().unwrap().insert("/uploads/big.png".into(), Entry::TooLarge);
+        // Nothing read yet: said so, inside a sentence; alone on its line, left to the drawer.
+        assert_eq!(preview(text, &cache, false), "see *(image unavailable)* here\n![shot](/uploads/b.png)");
+        // For a view that draws nothing itself, the lone image too.
+        assert_eq!(preview(text, &cache, true), "see *(image unavailable)* here\n*(image unavailable)*");
+        assert_eq!(preview("![x](/uploads/big.png)", &cache, true), "*(image too large to show here)*");
     }
 }
