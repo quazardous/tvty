@@ -22,4 +22,21 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
     println!("cargo:rerun-if-changed=.git/index");
+    windows_icon();
 }
+
+/// On Windows, the icon Explorer, the Start menu and the taskbar show.
+#[cfg(windows)]
+fn windows_icon() {
+    println!("cargo:rerun-if-changed=assets/tvty.ico");
+    println!("cargo:rerun-if-changed=packaging/windows/tvty.rc");
+    // Drawn by `cargo run --example windows_icon`, which builds this first.
+    if !std::path::Path::new("assets/tvty.ico").exists() {
+        println!("cargo:warning=no assets/tvty.ico: tvty.exe without its icon");
+        return;
+    }
+    embed_resource::compile("packaging/windows/tvty.rc", embed_resource::NONE).manifest_required().expect("the Windows resources");
+}
+
+#[cfg(not(windows))]
+fn windows_icon() {}

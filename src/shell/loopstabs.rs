@@ -495,16 +495,35 @@ impl Shell {
 
 /// A path with the home directory as `~`.
 pub(super) fn home_short(path: &str) -> String {
-    match std::env::var("HOME") {
-        Ok(home) if !home.is_empty() && path.starts_with(&home) => format!("~{}", &path[home.len()..]),
-        _ => path.to_string(),
+    match tvty_config::home() {
+        Some(home) => shorten(path, &home),
+        None => path.to_string(),
+    }
+}
+
+/// `path` with `home` as `~`, compared as paths: on Windows a folder is the
+/// same whichever slashes name it.
+fn shorten(path: &str, home: &std::path::Path) -> String {
+    match std::path::Path::new(path).strip_prefix(home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".into(),
+        Ok(rest) => format!("~/{}", rest.to_string_lossy().replace('\\', "/")),
+        Err(_) => path.to_string(),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::one_per_agent;
+    use super::{one_per_agent, shorten};
     use crate::loops::KnownLoop;
+    use std::path::Path;
+
+    #[test]
+    fn a_path_under_home_reads_from_tilde() {
+        assert_eq!(shorten("/srv/u/dev/p", Path::new("/srv/u")), "~/dev/p");
+        assert_eq!(shorten("/srv/u", Path::new("/srv/u")), "~");
+        // A sibling folder that only starts with the same letters is not home.
+        assert_eq!(shorten("/srv/user2/p", Path::new("/srv/u")), "/srv/user2/p");
+    }
 
     #[test]
     fn an_agent_is_idle_once_on_its_host_loop_first() {

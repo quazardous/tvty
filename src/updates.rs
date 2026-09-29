@@ -92,9 +92,7 @@ fn remember(version: &str) {
 
 /// Starts the updater, on its own; `false` when it is not installed.
 pub fn open_updater() -> bool {
-    let local = tvty_updater::bin_dir().join("tvty-updater");
-    let program = if local.exists() { local } else { "tvty-updater".into() };
-    std::process::Command::new(program)
+    std::process::Command::new(tvty_updater::program("tvty-updater"))
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

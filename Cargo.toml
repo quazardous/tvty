@@ -16,6 +16,8 @@ members = ["crates/*"]
 [dependencies]
 tvty-config = { path = "crates/tvty-config" }
 tvty-keys = { path = "crates/tvty-keys" }
+# How tvty talks to other processes: aiball, sessions, a second tvty (docs/IPC.md).
+tvty-ipc = { path = "crates/tvty-ipc" }
 # The updater's engine: the versions, the latest release (not its window).
 tvty-updater = { path = "crates/tvty-updater" }
 alacritty_terminal = "0.26"
@@ -36,6 +38,21 @@ swash = "0.2"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 tungstenite = "0.30.0"
 
+# In a debug build, rust-embed reads the kit's icons (the window's minimize,
+# maximize and close among them) from the sources of the machine that built
+# it: on any other Windows — Windows Sandbox, where the tests run — they are
+# blank. Embedded instead, as a release does.
+[target.'cfg(windows)'.dependencies]
+rust-embed = { version = "8", features = ["debug-embed"] }
+
+# The Windows programs' icon (assets/tvty.ico), in the .exe.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+
+[dev-dependencies]
+# Already built for GPUI: draws assets/tvty.ico (examples/windows_icon.rs).
+resvg = "0.46"
+
 # Full debug info makes target/debug weigh ~8 GB (GPUI is large). Line tables
 # keep backtraces readable at a fraction of the size.
 [profile.dev]
@@ -47,6 +64,13 @@ opt-level = 1
 [profile.dev.package."*"]
 debug = false
 opt-level = 3
+
+# On Windows, a debug GPUI compiles its shaders when it starts, from its
+# sources on the machine that built it: that tvty runs nowhere else (not in
+# Windows Sandbox, where the Windows tests run). Without debug assertions
+# they are compiled at build time and embedded (fxc.exe, the Windows SDK).
+[profile.dev.package.gpui-pre-windows]
+debug-assertions = false
 
 # The profile that 'dist' will build with
 [profile.dist]

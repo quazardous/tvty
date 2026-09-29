@@ -170,7 +170,8 @@ impl Drop for TerminalView {
 impl TerminalView {
     /// Attaches to a tmux session.
     pub fn tmux(session: &str, cx: &mut Context<Self>) -> anyhow::Result<Self> {
-        let mut view = Self::new("tmux", &["attach", "-t", &format!("={session}")], cx)?;
+        let args = crate::mux::args(&["attach", "-t", &format!("={session}")]);
+        let mut view = Self::new(crate::mux::program(), &args.iter().map(String::as_str).collect::<Vec<_>>(), cx)?;
         view.tmux_session = Some(session.to_string());
         Ok(view)
     }
@@ -208,7 +209,8 @@ impl TerminalView {
     /// client that ignores its own size (`attach -r`), as large as the
     /// session's window so it sees all of it.
     pub fn watch(session: &str, columns: u16, lines: u16, cx: &mut Context<Self>) -> anyhow::Result<Self> {
-        let mut view = Self::new("tmux", &["attach", "-r", "-t", &format!("={session}")], cx)?;
+        let args = crate::mux::args(&["attach", "-r", "-t", &format!("={session}")]);
+        let mut view = Self::new(crate::mux::program(), &args.iter().map(String::as_str).collect::<Vec<_>>(), cx)?;
         view.tmux_session = Some(session.to_string());
         view.apply_size(columns.max(1), lines.max(1), size(px(8.), px(16.)));
         Ok(view)
@@ -283,12 +285,15 @@ impl TerminalView {
             cell_height: 16,
         };
         let pty = tty::new(&options, window_size, 0)?;
-        let child_pid = pty.child().id();
+        #[cfg(unix)]
+        let child_pid = Some(pty.child().id());
+        #[cfg(windows)]
+        let child_pid = pty.child_watcher().pid().map(|pid| pid.get());
         let event_loop = EventLoop::new(term.clone(), listener, pty, false, false)?;
         let notifier = Notifier(event_loop.channel());
         event_loop.spawn();
         let mut view = Self::with(term, Backend::Pty(notifier), rx, cx);
-        view.child_pid = Some(child_pid);
+        view.child_pid = child_pid;
         Ok(view)
     }
 
@@ -877,9 +882,7 @@ fn tmux_scroller(session: String) -> std::sync::mpsc::Sender<i32> {
         // `=name:` — exactly this session, its current pane.
         let target = format!("={session}:");
         let tmux = |args: &[&str]| {
-            let _ = std::process::Command::new("tmux")
-                .args(args)
-                .env_remove("TMUX")
+            let _ = crate::mux::command(args)
                 .stderr(std::process::Stdio::null())
                 .status();
         };

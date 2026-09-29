@@ -3281,7 +3281,7 @@ impl Shell {
         let rows = [
             // The version and the commit it was built from (`+`: with changes not committed).
             ("Version", help::version()),
-            ("aiball socket", crate::aiball::socket_path().display().to_string()),
+            ("aiball at", crate::aiball::location_said()),
             ("Acting as", self.aiball.user.clone()),
             (
                 "aiball bus",
@@ -4026,7 +4026,7 @@ impl Shell {
     /// Starts a shell the daemon's host holds, in the home directory, and
     /// opens it once it is listed.
     fn new_terminal(&mut self, cx: &mut Context<Self>) {
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/".into());
+        let home = tvty_config::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
         self.open_shell("term", home, cx);
     }
 

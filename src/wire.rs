@@ -12,7 +12,7 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use anyhow::{Context as _, anyhow};
+use anyhow::anyhow;
 use futures::channel::mpsc::UnboundedSender;
 use serde_json::{Value, json};
 
@@ -127,7 +127,7 @@ impl Wire {
                 }
                 Ok(tungstenite::Message::Close(_)) => return Err(anyhow!("{method}: aiball's bus closed")),
                 Ok(_) => {}
-                Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {
+                Err(tungstenite::Error::Io(e)) if tvty_ipc::Conn::is_timeout(&e) => {
                     // The daemon's pings get their pongs.
                     let _ = socket.flush();
                 }
@@ -199,16 +199,25 @@ fn run(user: Arc<Mutex<String>>, queue: Receiver<Outgoing>, notices: UnboundedSe
     }
 }
 
-type Socket = tungstenite::WebSocket<std::os::unix::net::UnixStream>;
+type Socket = tungstenite::WebSocket<tvty_ipc::Conn>;
 
-#[cfg(unix)]
+/// The bus, where aiball is (docs/IPC.md), as `user`: over its socket the
+/// header says who; over TCP the human's token does, and aiball honours
+/// the header for it.
 fn connect(user: &str) -> anyhow::Result<Socket> {
+    use anyhow::Context as _;
     use tungstenite::client::IntoClientRequest as _;
-    let stream = std::os::unix::net::UnixStream::connect(crate::aiball::socket_path()).context("aiball's socket")?;
-    let mut request = "ws://aiball/bus".into_client_request()?;
-    request.headers_mut().insert("x-aiball-consumer", user.parse()?);
+    let at = crate::aiball::location().map_err(|e| anyhow!("{e}"))?;
+    at.credentials.check(&at.endpoint)?;
+    let stream = at.endpoint.connect().with_context(|| format!("aiball at {}", at.endpoint))?;
+    let mut request = format!("ws://{}/bus", at.endpoint.http_host()).into_client_request()?;
+    let headers = request.headers_mut();
+    if let Some((name, value)) = at.credentials.header() {
+        headers.insert(name, value.parse()?);
+    }
+    headers.insert("x-aiball-consumer", user.parse()?);
     // What the client runs on: aiball tags the tickets filed with it.
-    request.headers_mut().insert("x-aiball-platform", std::env::consts::OS.parse()?);
+    headers.insert("x-aiball-platform", std::env::consts::OS.parse()?);
     let (socket, _) = tungstenite::client(request, stream).map_err(|e| anyhow!("/bus: {e}"))?;
     // Short reads, so that calls waiting to go out are not held up.
     socket.get_ref().set_read_timeout(Some(Duration::from_millis(20)))?;
@@ -269,7 +278,7 @@ fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSend
                 break;
             }
             Ok(_) => {}
-            Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(tungstenite::Error::Io(e)) if tvty_ipc::Conn::is_timeout(&e) => {}
             Err(error) => {
                 log::info!("aiball bus: dropped: {error}");
                 why = format!("{error}");

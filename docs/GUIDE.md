@@ -47,6 +47,11 @@ their usual defaults):
 | `~/.local/state/tvty/tvty.log` | the log (the previous run's in `tvty.log.1`) |
 | `~/.local/share/tvty/fonts/` | fonts of your own (`make emoji-font` fetches a colour emoji font) |
 
+On Windows, without the XDG variables, `~/.config/tvty` is
+`%APPDATA%\tvty`, `~/.local/state/tvty` is `%LOCALAPPDATA%\tvty\state` and
+`~/.local/share/tvty` is `%LOCALAPPDATA%\tvty\data`. Settings > About shows
+the folders in use.
+
 A file that does not read is said in a notification, and left as it is.
 
 ## Tested headless

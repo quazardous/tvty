@@ -24,6 +24,7 @@ mod kernel;
 mod keymap;
 mod links;
 mod loops;
+mod mux;
 mod newticket;
 mod notify;
 mod options;

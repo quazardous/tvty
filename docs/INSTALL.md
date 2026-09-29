@@ -55,6 +55,24 @@ make install-desktop BIN=$PWD/target/release/tvty
 ```
 
 
+## Windows (in progress)
+
+Terminal Velocity builds and starts on Windows 10 and 11 (x86_64), and its
+releases carry a Windows build. Expect gaps: it needs an aiball recent
+enough to write its machine secret (without it, tvty cannot list or start
+the agents' loops), and the agents' sessions run under psmux. The same
+updater installs it, from PowerShell:
+
+```powershell
+irm https://github.com/quazardous/tvty/releases/latest/download/tvty-updater-installer.ps1 | iex
+~\.local\bin\tvty-updater.exe
+```
+
+It puts Terminal Velocity and its updater in the Start menu. aiball is
+installed through its own `install.ps1`, which needs PowerShell 7 (`pwsh`),
+Node.js and git. Settings live in `%APPDATA%\tvty`, the layout and the log in
+`%LOCALAPPDATA%\tvty`.
+
 ## Updates
 
 Terminal Velocity says itself, once, when a newer release is out (at start
@@ -95,3 +113,7 @@ Remove `~/.local/bin/tvty`, `~/.local/bin/tvty-updater` and their launchers
 (`~/.local/share/applications/tvty*.desktop`); your settings stay in
 `~/.config/tvty` and `~/.local/state/tvty`. aiball uninstalls its own way
 (`./install.sh --uninstall` in its checkout).
+
+On Windows: remove `tvty.exe` and `tvty-updater.exe` from `~\.local\bin`
+and their shortcuts from the Start menu; the settings stay in
+`%APPDATA%\tvty` and `%LOCALAPPDATA%\tvty`.

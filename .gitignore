@@ -13,6 +13,9 @@ __pycache__/
 /dev/tvty-wbox/*
 !/dev/tvty-wbox/config.yaml
 !/dev/tvty-wbox/scripts/
+!/dev/tvty-wbox-win/
+/dev/tvty-wbox-win/*
+!/dev/tvty-wbox-win/config.yaml
 !/dev/proxy-stack/
 /dev/proxy-stack/run/
 

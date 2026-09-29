@@ -8,7 +8,6 @@
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
-use std::process::Command;
 
 use crate::aiball::{BarRead, Consumer, TicketRow};
 
@@ -329,10 +328,7 @@ fn basename(path: &str) -> String {
 
 /// `(session name, start directory)` of every tmux session.
 pub fn tmux_sessions() -> Vec<(String, String)> {
-    let Ok(output) = Command::new("tmux")
-        .args(["ls", "-F", "#{session_name}\t#{session_path}"])
-        .env_remove("TMUX")
-        .output()
+    let Ok(output) = crate::mux::command(&["ls", "-F", "#{session_name}\t#{session_path}"]).output()
     else {
         return Vec::new();
     };
@@ -347,9 +343,7 @@ pub fn tmux_sessions() -> Vec<(String, String)> {
 /// Blocking. A session's window size, in cells: a card watching it live
 /// needs to be as large to see all of it.
 pub fn window_size(session: &str) -> Option<(u16, u16)> {
-    let output = Command::new("tmux")
-        .args(["display", "-p", "-t", &format!("={session}:"), "#{window_width} #{window_height}"])
-        .env_remove("TMUX")
+    let output = crate::mux::command(&["display", "-p", "-t", &format!("={session}:"), "#{window_width} #{window_height}"])
         .output()
         .ok()
         .filter(|o| o.status.success())?;

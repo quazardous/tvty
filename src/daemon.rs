@@ -1,8 +1,8 @@
 //! aiball's daemon, when it is not running: tvty starts it, detached — it
 //! serves the loops, the web UI and other machines too, so it never lives
-//! and dies with tvty. Only the user's own aiball, at its usual socket, and
-//! only through its systemd user service: a socket set by `AIBALL_SOCK` (a
-//! test's throwaway aiball) is never started from here.
+//! and dies with tvty. Only the user's own aiball, where it usually is, and
+//! only through its systemd user service: an aiball chosen by `AIBALL_SOCK`
+//! or `AIBALL_URL` (a test's throwaway aiball) is never started from here.
 
 use std::process::{Command, Stdio};
 
@@ -19,35 +19,32 @@ pub enum Start {
 
 /// Whether aiball answers, and if not, starts it when tvty may.
 pub fn ensure() -> Start {
-    let socket = crate::aiball::socket_path();
-    if answers(&socket) {
+    // Where aiball is may not be known yet: on a first start, before the
+    // daemon ever ran, there is neither its socket nor its machine secret.
+    // That is no reason not to start it.
+    let at = crate::aiball::location();
+    if at.as_ref().is_ok_and(|at| at.endpoint.connect().is_ok()) {
         return Start::Running;
     }
-    let chosen = std::env::var("AIBALL_SOCK").is_ok_and(|s| !s.is_empty());
+    let not_there = match &at {
+        Ok(at) => format!("aiball does not answer at {}", at.endpoint),
+        Err(error) => error.to_string(),
+    };
+    let chosen = ["AIBALL_SOCK", "AIBALL_URL"].iter().any(|v| std::env::var(v).is_ok_and(|s| !s.is_empty()));
     match decide(chosen, has_service()) {
         Some(()) => match start_service() {
             Ok(()) => Start::Started,
             Err(error) => Start::Missing(format!("aiball's service did not start: {error}")),
         },
-        None if chosen => Start::Missing(format!("aiball does not answer at {}", socket.display())),
-        None => Start::Missing("aiball is not running, and there is no aiball service to start".into()),
+        None if chosen => Start::Missing(not_there),
+        None => Start::Missing(format!("{not_there}; there is no aiball service to start")),
     }
 }
 
-/// Starts only the user's own aiball (no `AIBALL_SOCK`), and only through
-/// its service.
-fn decide(socket_chosen: bool, service: bool) -> Option<()> {
-    (!socket_chosen && service).then_some(())
-}
-
-#[cfg(unix)]
-fn answers(socket: &std::path::Path) -> bool {
-    std::os::unix::net::UnixStream::connect(socket).is_ok()
-}
-
-#[cfg(not(unix))]
-fn answers(_: &std::path::Path) -> bool {
-    true
+/// Starts only the user's own aiball (no `AIBALL_SOCK`/`AIBALL_URL`), and
+/// only through its service.
+fn decide(chosen: bool, service: bool) -> Option<()> {
+    (!chosen && service).then_some(())
 }
 
 fn has_service() -> bool {
@@ -77,7 +74,7 @@ mod tests {
     fn only_the_users_own_aiball_is_started_and_only_by_its_service() {
         assert_eq!(decide(false, true), Some(()));
         assert_eq!(decide(false, false), None);
-        // A test's throwaway aiball, or any socket chosen: never.
+        // A test's throwaway aiball, or any address chosen: never.
         assert_eq!(decide(true, true), None);
     }
 }

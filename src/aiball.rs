@@ -1,21 +1,19 @@
-//! aiball's HTTP API, over its local socket. The socket trusts the same
-//! user (file permissions), so there is no token: the identity rides in the
-//! `x-aiball-consumer` header. tvty acts as the human it runs for.
+//! aiball's HTTP API, where aiball is (tvty-ipc's `aiball::locate`,
+//! docs/IPC.md): its socket, which trusts the same user, or TCP with the
+//! human's token. Either way the identity rides in the `x-aiball-consumer`
+//! header — over TCP aiball honours it for a human's token. tvty acts as the
+//! human it runs for.
 //!
 //! Every call blocks: run them off the UI thread.
 
-use std::io::{Read, Write};
-use std::path::PathBuf;
-use std::time::Duration;
-
-use anyhow::{Context as _, bail};
+use anyhow::{Context as _, anyhow, bail};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
+use tvty_ipc::aiball::{LocateError, Location};
 
 #[derive(Clone, Debug)]
 pub struct Aiball {
-    socket: PathBuf,
     /// Who tvty acts as. Found with [`Aiball::find_user`].
     pub user: String,
 }
@@ -768,12 +766,11 @@ impl Aiball {
         self.rpc::<Value>(method, params).map(drop)
     }
 
-    /// [`socket_path`]; acting as `$TVTY_USER`,
-    /// else as the local owner until [`Aiball::find_user`] knows better.
+    /// aiball where [`location`] finds it, at each call; acting as `$TVTY_USER`, else as
+    /// the local owner until [`Aiball::find_user`] knows better.
     pub fn from_env() -> Self {
-        let socket = socket_path();
         let user = std::env::var("TVTY_USER").unwrap_or_else(|_| "human".into());
-        Self { socket, user }
+        Self { user }
     }
 
     /// The human to act as: `$TVTY_USER` if set, else the named human seen
@@ -1263,7 +1260,6 @@ impl Aiball {
         Ok(String::from_utf8_lossy(&answer).into_owned())
     }
 
-    #[cfg(unix)]
     fn request_raw(
         &self,
         method: &str,
@@ -1272,17 +1268,24 @@ impl Aiball {
         headers: &[(&str, &str)],
         body: &[u8],
     ) -> anyhow::Result<Vec<u8>> {
-        use std::os::unix::net::UnixStream;
+        use std::io::{Read, Write};
+        use std::time::Duration;
 
-        let mut stream = UnixStream::connect(&self.socket)
-            .with_context(|| format!("aiball's socket {}", self.socket.display()))?;
+        // Found again at each call: aiball may have come up since (its
+        // socket made by a start tvty asked for), as the bus finds it again
+        // at each reconnection.
+        let at = location().map_err(|e| anyhow!("{e}"))?;
+        at.credentials.check(&at.endpoint)?;
+        let mut stream = at.endpoint.connect().with_context(|| format!("aiball at {}", at.endpoint))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;
         // HTTP/1.0: the daemon closes the connection after the answer, so
         // reading to the end reads exactly one answer, never chunked.
+        let auth: String = at.credentials.header().map(|(k, v)| format!("{k}: {v}\r\n")).unwrap_or_default();
         let extra: String = headers.iter().map(|(k, v)| format!("{k}: {v}\r\n")).collect();
         let head = format!(
-            "{method} {path} HTTP/1.0\r\nHost: aiball\r\nx-aiball-consumer: {user}\r\n\
+            "{method} {path} HTTP/1.0\r\nHost: {host}\r\n{auth}x-aiball-consumer: {user}\r\n\
              content-type: {content_type}\r\n{extra}content-length: {len}\r\n\r\n",
+            host = at.endpoint.http_host(),
             user = self.user,
             len = body.len(),
         );
@@ -1301,23 +1304,19 @@ impl Aiball {
         }
         Ok(body.to_vec())
     }
-
-    #[cfg(not(unix))]
-    fn request_raw(&self, _: &str, _: &str, _: &str, _: &[(&str, &str)], _: &[u8]) -> anyhow::Result<Vec<u8>> {
-        bail!("aiball's socket is Unix only for now")
-    }
 }
 
-/// aiball's local socket: `$AIBALL_SOCK`, else its default place.
-pub fn socket_path() -> PathBuf {
-    std::env::var("AIBALL_SOCK")
-        .ok()
-        .filter(|p| !p.is_empty())
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            let home = std::env::var("HOME").unwrap_or_default();
-            PathBuf::from(home).join(".local/share/aiball/sock")
-        })
+/// Where aiball is, found as aiball's own clients find it (docs/IPC.md).
+pub fn location() -> Result<Location, LocateError> {
+    tvty_ipc::aiball::locate()
+}
+
+/// Where aiball is, said to a person (Options > About, errors).
+pub fn location_said() -> String {
+    match location() {
+        Ok(at) => at.endpoint.to_string(),
+        Err(error) => error.to_string(),
+    }
 }
 
 /// A ticket to file: what goes in the one call that creates it.
