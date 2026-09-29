@@ -9,6 +9,7 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use tvty_config::Value;
@@ -17,6 +18,11 @@ use super::Shell;
 use crate::theme::p;
 use crate::tip::Tip as _;
 use crate::ui::buttons;
+
+/// The height of the dialogs' list of sessions once it scrolls, and the
+/// lines (sessions and projects' heads) it shows before it does.
+const LIST_HEIGHT: f32 = 240.;
+const LIST_LINES: usize = 8;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
 const STOP_WAIT: Duration = Duration::from_secs(15);
@@ -350,7 +356,8 @@ impl Shell {
         let mut projects: Vec<(String, Vec<AnyElement>)> = Vec::new();
         let mut names: Vec<&String> = loops.iter().collect();
         let project_of = |name: &str| self.board.known.iter().find(|l| l.name == name).and_then(|l| l.project.clone()).unwrap_or_default();
-        names.sort_by_key(|name| (project_of(name), name.to_string()));
+        let agent_of = |name: &str| self.board.known.iter().find(|l| l.name == name).and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.to_string());
+        names.sort_by_key(|name| (project_of(name), agent_of(name)));
         for name in names {
             let known = self.board.known.iter().find(|l| l.name == *name);
             let agent = known.and_then(|l| l.agent().map(str::to_string));
@@ -394,7 +401,10 @@ impl Shell {
                 if loops.len() == 1 { "it resumes" } else { "each resumes" }
             ),
         };
-        let mut list = div().id("quit-list").flex().flex_col().gap_2().max_h(px(240.)).overflow_y_scroll().p_2().rounded_md().border_1().border_color(p().border).bg(p().bg).text_sm();
+        // Past what fits, a fixed height and a scrollbar (a height the list
+        // only caps would take its content's, and nothing would scroll).
+        let scrolls = loops.len() + projects.len() > LIST_LINES;
+        let mut list = div().id("quit-list").flex().flex_col().gap_2().p_2().text_sm();
         for (project, rows) in projects {
             list = list.child(
                 div()
@@ -434,7 +444,17 @@ impl Shell {
                     .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
                     .child(div().text_sm().text_color(p().muted).child(summary)),
             )
-            .child(list)
+            // A box of its own height at most, its scrollbar shown: many
+            // sessions scroll there, the dialog keeps its size.
+            .child(
+                div()
+                    .rounded_md()
+                    .border_1()
+                    .border_color(p().border)
+                    .bg(p().bg)
+                    .overflow_hidden()
+                    .map(|d| if scrolls { d.child(list.h(px(LIST_HEIGHT)).overflow_y_scrollbar()) } else { d.child(list) }),
+            )
             .when(matches!(ask, Ask::Restart(..)), |d| {
                 d.child(div().text_xs().text_color(p().muted).child("As they were: a held session is held again. Fresh: each boots, then runs on its own."))
             })
