@@ -44,6 +44,9 @@ tungstenite = "0.30.0"
 # blank. Embedded instead, as a release does.
 [target.'cfg(windows)'.dependencies]
 rust-embed = { version = "8", features = ["debug-embed"] }
+# Already built for GPUI: a window program still writes to the console it
+# was started from (src/main.rs).
+windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 
 # The Windows programs' icon (assets/tvty.ico), in the .exe.
 [target.'cfg(windows)'.build-dependencies]

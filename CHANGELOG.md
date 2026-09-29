@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A Windows build in each release, with a PowerShell installer; the updater
   puts Terminal Velocity in the Start menu and installs aiball its Windows
   way. Early days.
+- Windows in one line: `irm …/tvty-setup.ps1 | iex` installs what is
+  missing through winget (Git, Node.js, PowerShell 7, psmux), then Terminal
+  Velocity, its updater and aiball, and puts them in the Start menu;
+  `tvty-updater --install` does the last part without a window.
 - tvty reaches an aiball of the same machine without any token to set up,
   through aiball's machine secret; on Windows, with an aiball that has it,
   that is what lets tvty list, restart and wake the loops.

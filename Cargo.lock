@@ -7658,6 +7658,7 @@ dependencies = [
  "tvty-ipc",
  "tvty-keys",
  "tvty-updater",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -7692,6 +7693,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tvty-config",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -2,6 +2,10 @@
 //! and update Terminal Velocity and aiball — what each has, what the latest
 //! release is, a button, and what is being done, line by line.
 
+// On Windows a window program: no console window behind it; `--install`
+// started from a console still writes there.
+#![cfg_attr(windows, windows_subsystem = "windows")]
+
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -372,6 +376,20 @@ fn link(id: &'static str, label: &'static str, url: &str, theme: &gpui_kit::comp
 }
 
 fn main() {
+    #[cfg(windows)]
+    // SAFETY: a plain Win32 call; it fails harmlessly without a parent console.
+    unsafe {
+        windows_sys::Win32::System::Console::AttachConsole(windows_sys::Win32::System::Console::ATTACH_PARENT_PROCESS)
+    };
+    // Without a window: what the Windows setup script runs, its lines on
+    // standard output.
+    if std::env::args().any(|a| a == "--install") {
+        let result = tvty_updater::install_all(&mut |line| println!("{line}"));
+        if let Err(error) = &result {
+            eprintln!("✗ {error:#}");
+        }
+        std::process::exit(if result.is_ok() { 0 } else { 1 });
+    }
     // The kit's icons: the title bar's window buttons are drawn with them.
     gpui_kit::application().with_assets(gpui_kit::assets::Assets).run(|cx| {
         gpui_kit::init(cx);
