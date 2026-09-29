@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::*;
 
 use super::Shell;
@@ -315,13 +316,12 @@ impl Shell {
                     .child(format!("Move {agent} {other}? Its Claude restarts, resuming its conversation."))
                     .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the move interrupts it.")))
                     .child(
-                        buttons::chip("agent-move-go", "Move")
-                            .border_color(ink(p().warning))
-                            .text_color(ink(p().warning))
+                        buttons::answer("agent-move-go", "Move")
+                            .warning()
                             .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
                     )
                     .child(
-                        buttons::link("agent-move-cancel", "Cancel")
+                        buttons::secondary("agent-move-cancel", "Cancel")
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 shell.move_asked = None;
                                 cx.notify();
@@ -384,12 +384,11 @@ impl Shell {
                     ))
                     .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the restart interrupts it.")))
                     .child(
-                        buttons::chip("agent-rc-go", if turn_on { "Turn on" } else { "Turn off" })
-                            .border_color(ink(p().warning))
-                            .text_color(ink(p().warning))
+                        buttons::answer("agent-rc-go", if turn_on { "Turn on" } else { "Turn off" })
+                            .warning()
                             .on_click(cx.listener(move |shell, _, _, cx| shell.set_remote_control(agent.clone(), known.clone(), turn_on, cx))),
                     )
-                    .child(buttons::link("agent-rc-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                    .child(buttons::secondary("agent-rc-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
                         shell.rc_asked = None;
                         cx.notify();
                     })))

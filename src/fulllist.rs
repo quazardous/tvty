@@ -8,6 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, TicketRow};
@@ -325,12 +326,11 @@ impl FullList {
                         .text_sm()
                         .child(format!("{} {count} ticket{}?", action.label(), if count == 1 { "" } else { "s" }))
                         .child(
-                            buttons::chip("bulk-confirm", action.label())
-                                .border_color(p().warning)
-                                .text_color(p().warning)
+                            buttons::answer("bulk-confirm", action.label())
+                                .warning()
                                 .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, cx))),
                         )
-                        .child(link("bulk-cancel", "Cancel").on_click(cx.listener(|list, _, _, cx| {
+                        .child(buttons::secondary("bulk-cancel", "Cancel").on_click(cx.listener(|list, _, _, cx| {
                             list.confirm = None;
                             cx.notify();
                         }))),

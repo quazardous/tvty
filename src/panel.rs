@@ -5,11 +5,11 @@
 
 use std::collections::{HashMap, HashSet};
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use serde_json::json;
 use gpui_kit::component::text::TextView;
-use gpui_kit::component::{Disableable as _, Sizable as _};
+use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -1171,18 +1171,14 @@ impl TicketPanel {
                             d.child(div().flex_none().text_xs().text_color(p().muted).child("decided once the ticket is approved"))
                         })
                         .when(!unmoderated, |d| d.child(
-                            Button::new("reject")
+                            buttons::answer("reject", "Reject")
                                 .danger()
-                                .small()
-                                .label("Reject")
                                 .disabled(detail.busy || !typed)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, window, cx))),
                         )
                         .child(
-                            Button::new("accept")
+                            buttons::answer("accept", accept)
                                 .success()
-                                .small()
-                                .label(accept)
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, window, cx))),
                         )),
@@ -1199,18 +1195,14 @@ impl TicketPanel {
                 .gap_2()
                 .child(div().flex_1().child("This ticket waits for moderation"))
                 .child(
-                    Button::new("moderate-reject")
+                    buttons::answer("moderate-reject", "Reject")
                         .danger()
-                        .small()
-                        .label("Reject")
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    Button::new("moderate-approve")
+                    buttons::answer("moderate-approve", "Approve")
                         .success()
-                        .small()
-                        .label("Approve")
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
                 )
@@ -1305,26 +1297,17 @@ impl TicketPanel {
                     .items_center()
                     .gap_2()
                     .child(
-                        Button::new("close")
-                            .ghost()
-                            .small()
-                            .label(if closed { "Reopen" } else { "Close" })
+                        buttons::secondary("close", if closed { "Reopen" } else { "Close" })
                             .disabled(detail.busy)
                             .on_click(cx.listener(move |panel, _, window, cx| panel.set_closed(!closed, window, cx))),
                     )
                     .when(!closed, |d| {
                         d.child(if snoozed {
-                            Button::new("wake")
-                                .ghost()
-                                .small()
-                                .label("Wake")
+                            buttons::secondary("wake", "Wake")
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, window, cx| panel.snooze(None, window, cx)))
                         } else {
-                            Button::new("snooze")
-                                .ghost()
-                                .small()
-                                .label("Snooze ▾")
+                            buttons::secondary("snooze", "Snooze ▾")
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
@@ -1344,10 +1327,7 @@ impl TicketPanel {
                             })),
                     )
                     .child(
-                        Button::new("send")
-                            .primary()
-                            .small()
-                            .label("Reply")
+                        buttons::primary("send", "Reply")
                             .loading(detail.busy)
                             .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
                     ),
@@ -1568,17 +1548,11 @@ impl TicketPanel {
                             .gap_2()
                             .justify_end()
                             .child(
-                                Button::new("content-cancel")
-                                    .ghost()
-                                    .small()
-                                    .label("Cancel")
+                                buttons::secondary("content-cancel", "Cancel")
                                     .on_click(cx.listener(|panel, _, window, cx| panel.start_editing(Editing::Content, window, cx))),
                             )
                             .child(
-                                Button::new("content-save")
-                                    .primary()
-                                    .small()
-                                    .label("Save")
+                                buttons::primary("content-save", "Save")
                                     .loading(busy)
                                     .on_click(cx.listener(|panel, _, window, cx| panel.save_content(window, cx))),
                             ),
@@ -1903,18 +1877,14 @@ impl TicketPanel {
                 .flex()
                 .gap_1()
                 .child(
-                    Button::new(("comment-reject", id))
+                    buttons::answer(("comment-reject", id), "Reject")
                         .danger()
-                        .xsmall()
-                        .label("Reject")
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    Button::new(("comment-approve", id))
+                    buttons::answer(("comment-approve", id), "Approve")
                         .success()
-                        .xsmall()
-                        .label("Approve")
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
                 )
@@ -1978,7 +1948,7 @@ impl TicketPanel {
                                 .flex()
                                 .gap_2()
                                 .justify_end()
-                                .child(Button::new(("comment-cancel", comment.id)).ghost().small().label("Cancel").on_click(
+                                .child(buttons::secondary(("comment-cancel", comment.id), "Cancel").on_click(
                                     cx.listener(|panel, _, _, cx| {
                                         panel.comment_editing = None;
                                         cx.notify();
@@ -1986,10 +1956,7 @@ impl TicketPanel {
                                 ))
                                 .child({
                                     let id = comment.id;
-                                    Button::new(("comment-save", comment.id))
-                                        .primary()
-                                        .small()
-                                        .label("Save")
+                                    buttons::primary(("comment-save", comment.id), "Save")
                                         .loading(busy)
                                         .on_click(cx.listener(move |panel, _, window, cx| panel.edit_comment_save(id, window, cx)))
                                 }),

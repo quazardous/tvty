@@ -8,7 +8,6 @@
 //! The form lives on while hidden: Esc puts it away, the draft kept for the
 //! next time, until it is sent.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -672,9 +671,7 @@ impl Render for NewTicketForm {
                     .gap_2()
                     .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
                     .child(
-                        Button::new("new-ticket-file")
-                            .primary()
-                            .label("File the ticket")
+                        buttons::primary("new-ticket-file", "File the ticket")
                             .loading(busy)
                             .disabled(busy)
                             .on_click(cx.listener(|form, _, window, cx| form.submit(window, cx))),

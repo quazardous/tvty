@@ -11,6 +11,8 @@ use std::path::{Path, PathBuf};
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::stepper::{Stepper, StepperItem};
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::Disableable as _;
+use gpui_kit::component::button::Button;
 use gpui_kit::*;
 
 use super::Shell;
@@ -388,8 +390,8 @@ impl Shell {
     }
 
     /// The main button of a step: the accent when it can go.
-    fn wizard_go(id: &'static str, label: &'static str, enabled: bool) -> Stateful<Div> {
-        buttons::chip_if(id, label, enabled).px_3().py_1().when(enabled, |d| d.border_color(p().accent).text_color(p().accent))
+    fn wizard_go(id: &'static str, label: &'static str, enabled: bool) -> Button {
+        buttons::primary(id, label).disabled(!enabled)
     }
 
     fn folder_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
@@ -427,7 +429,7 @@ impl Shell {
             .flex()
             .gap_3()
             .children(open.map(|name| {
-                buttons::chip("new-project-open", format!("Open {name}")).px_3().py_1().on_click(cx.listener(move |shell, _, window, cx| {
+                buttons::secondary("new-project-open", format!("Open {name}")).on_click(cx.listener(move |shell, _, window, cx| {
                     shell.close_new_project(window, cx);
                     shell.show_project(name.clone(), cx);
                 }))
@@ -513,7 +515,7 @@ impl Shell {
         let footer = div()
             .flex()
             .gap_3()
-            .child(buttons::link("new-project-back", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Folder, cx))))
+            .child(buttons::secondary("new-project-back", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Folder, cx))))
             .child(Self::wizard_go("new-project-go", if running { "Setting it up…" } else { "Set it up" }, go).when(go, |d| d.on_click(cx.listener(|shell, _, _, cx| shell.set_it_up(cx)))));
         (page, footer)
     }
@@ -547,7 +549,7 @@ impl Shell {
         let footer = if ok {
             div().child(Self::wizard_go("new-project-whatnext", "Next →", true).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Next, cx))))
         } else {
-            div().flex().gap_3().child(buttons::link("new-project-retry", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Identity, cx))))
+            div().flex().gap_3().child(buttons::secondary("new-project-retry", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Identity, cx))))
         };
         (page, footer)
     }
@@ -595,7 +597,7 @@ impl Shell {
             .flex()
             .items_center()
             .gap_3()
-            .child(buttons::link("new-project-done", "Close").on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
+            .child(buttons::secondary("new-project-done", "Close").on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
             .child(Self::wizard_go("new-project-start", "Start its first session", true).on_click(cx.listener(|shell, _, window, cx| shell.start_first_session(window, cx))));
         (page, footer)
     }

@@ -6,7 +6,6 @@
 //! (proposed, checked) and an agent. claude-loop starts it, detached, in
 //! that directory — never tvty's —, and tvty opens it once it runs.
 
-use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::*;
@@ -312,20 +311,14 @@ impl Shell {
                         .gap_2()
                         .justify_end()
                         .child(
-                            Button::new("new-session-cancel")
-                                .ghost()
-                                .xsmall()
-                                .label("Cancel")
+                            buttons::secondary("new-session-cancel", "Cancel")
                                 .on_click(cx.listener(|shell, _, _, cx| {
                                     shell.new_session = None;
                                     cx.notify();
                                 })),
                         )
                         .child(
-                            Button::new("new-session-start")
-                                .primary()
-                                .xsmall()
-                                .label("Start")
+                            buttons::primary("new-session-start", "Start")
                                 .loading(form.busy)
                                 .disabled(form.busy || !exists)
                                 .on_click(cx.listener(|shell, _, _, cx| {

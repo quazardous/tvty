@@ -1,5 +1,5 @@
 //! Every clickable that is not a row of a list comes from here, in one of
-//! four kinds — never made by hand, so that each one shows it is clickable,
+//! five kinds — never made by hand, so that each one shows it is clickable,
 //! and the same way.
 //!
 //! - [`link`]: an action said in words, in the accent colour, no border
@@ -9,7 +9,11 @@
 //!   the one that takes something away (✕).
 //! - [`chip`]: a bordered label, for an option or a state one can change
 //!   ("+ New", the agent bar's chips, a choice among several).
-//! - [`primary`]: the main answer of a form or a dialog — the kit's button.
+//! - the answers of a dialog or a form — the kit's button, **all the same
+//!   size**: [`primary`] the main one, [`secondary`] the others (Cancel,
+//!   Not now…), [`answer`] with a colour of its own (`.danger()`,
+//!   `.success()`, `.warning()`) for a decision. Never a chip nor a link
+//!   beside them: side by side, they would not match.
 //!
 //! The same states for all: under the pointer, a light background and the
 //! text brighter; pressed, a stronger background; [`Look::chosen`], the
@@ -90,9 +94,20 @@ pub fn chip_if(id: impl Into<ElementId>, label: impl IntoElement, enabled: bool)
         .child(label)
 }
 
+/// An answer of a form or a dialog, the size they all share: a colour
+/// to give (`.danger()`, `.success()`, `.warning()`).
+pub fn answer(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
+    Button::new(id).small().label(label)
+}
+
 /// The main answer of a form or a dialog.
 pub fn primary(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
-    Button::new(id).primary().small().label(label)
+    answer(id, label).primary()
+}
+
+/// Another answer beside it: Cancel, Not now, Back…
+pub fn secondary(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
+    answer(id, label).outline()
 }
 
 /// Sets groups of actions apart, in a bar.
