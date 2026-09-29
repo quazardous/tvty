@@ -38,7 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The updater shows its window buttons: close, minimize, maximize.
 - The answers of every dialog and form are buttons of one size.
-- A ticket open in the panel: its header shows the project and its badges where the list has them, then "← Tickets".
+- A ticket open in the panel: the header stays as the list has it (project, badges); "← Tickets" sits above the ticket's title.
 - The agent bar keeps its controls in sight when short: its folder, then its name, give way.
 - In the sessions list, a new session goes last in its project; the others keep their place, across restarts too.
 - A loop started from its folder (the sessions list, the end screen, a new project's first session) runs where its folder says — the session host or tmux — instead of always tmux.

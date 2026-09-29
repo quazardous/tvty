@@ -1090,6 +1090,15 @@ impl TicketPanel {
                 .pb_2()
                 .border_b_1()
                 .border_color(p().border)
+                // The way back to the list, above what it leads back from.
+                .child(
+                    div().flex().child(
+                        buttons::link("back", "← Tickets").text_sm().on_click(cx.listener(|panel, _, _, cx| {
+                            panel.detail = None;
+                            cx.notify();
+                        })),
+                    ),
+                )
                 .child(title)
                 .children(turn)
                 .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
@@ -2193,19 +2202,11 @@ impl Render for TicketPanel {
                 buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
-            // A ticket open: its project's name and badges first, as the list
-            // has them, then the way back.
+            // A ticket open: its project's name and badges, as the list has
+            // them (the way back is above its title).
             .when(self.detail.is_some(), |d| {
                 d.children(self.scope.as_ref().map(|s| div().font_weight(FontWeight::BOLD).child(s.project.clone())))
                     .children(self.scope.is_some().then(|| crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title")))
-            })
-            .when(self.detail.is_some(), |d| {
-                d.child(
-                    buttons::link("back", "← Tickets").on_click(cx.listener(|panel, _, _, cx| {
-                        panel.detail = None;
-                        cx.notify();
-                    })),
-                )
             })
             .when(self.detail.is_none(), |d| {
                 d.child(div().font_weight(FontWeight::BOLD).child(
