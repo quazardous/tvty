@@ -4771,9 +4771,10 @@ impl Render for Shell {
             .children(menu)
             .children(self.help_menu_view(cx))
             .children(self.megaphone_view(window, cx))
-            .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))
+            // An image zoomed in: over the notices too, which wait under it.
+            .children(self.viewer_view(window, cx))
             .children(self.copied_pill(if covered {
                 0.
             } else if self.settings.layout.panel_open {
