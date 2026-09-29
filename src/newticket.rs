@@ -533,7 +533,7 @@ impl NewTicketForm {
                     }),
             );
         }
-        row = row.child(div().w(px(160.)).child(Input::new(&input)));
+        row = row.child(crate::focusmode::on_hover(div().w(px(160.)).child(Input::new(&input)), input.read(cx).focus_handle(cx)));
         let mut suggested = div().flex().flex_wrap().gap_1().pt_1();
         let found = self.suggestions(pick, &query);
         let none = found.is_empty() && !query.trim().is_empty();
@@ -604,8 +604,9 @@ impl NewTicketForm {
             }
             col = col.child(field(name, list));
             if name == "scope" {
-                // Two lines kept whatever it says: the fields below do not move.
-                col = col.child(div().pl(px(88.)).pb_1().h(px(36.)).text_xs().text_color(p().muted).child(match value {
+                // Two lines kept whatever it says, the fields below not moving
+                // as it changes; more when the column is narrow: never over them.
+                col = col.child(div().pl(px(88.)).pb_1().min_h(px(36.)).text_xs().text_color(p().muted).child(match value {
                     "internal" => "notifies nobody but who is mentioned",
                     "broadcast" => "notifies the project's followers too",
                     _ => "notifies the ticket's subscribers and the project's owners",
@@ -636,7 +637,7 @@ impl NewTicketForm {
                             cx.notify();
                         })),
                 ),
-            None => div().w(px(120.)).child(Input::new(&self.parent_input)),
+            None => crate::focusmode::on_hover(div().w(px(120.)).child(Input::new(&self.parent_input)), self.parent_input.read(cx).focus_handle(cx)),
         };
         col = col.child(group("Links")).child(field("sub-ticket of", parent));
 
@@ -670,7 +671,7 @@ impl Render for NewTicketForm {
                     cx.stop_propagation();
                 }
             }))
-            .child(Input::new(&self.title))
+            .child(crate::focusmode::on_hover(div().child(Input::new(&self.title)), self.title.read(cx).focus_handle(cx)))
             // The body, written or previewed; the names that fit an `@`
             // right under the words. (No summary: aiball's agents write
             // one; a person's title says enough.)
