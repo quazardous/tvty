@@ -14,8 +14,9 @@
     scripts/tvty-ctl fault KIND         KIND's next subscribing fails once (Tickets…)
 
 tvty listens only when TVTY_DEBUG_CONTROL is set, as scripts/test-env sets
-it: a test tvty, never the user's. The socket is in tvty's state directory
-($XDG_STATE_HOME/tvty/tvty-control.sock). Only the standard library.
+it: a test tvty, never the user's. The rendez-vous is in tvty's state directory: a Unix socket
+(tvty-control.sock), or on Windows the file with a loopback port and its
+secret (tvty-control.addr). Only the standard library.
 Prints the answer as JSON; exits 1 on an error.
 """
 import json
@@ -25,15 +26,40 @@ import sys
 from pathlib import Path
 
 
-def socket_path():
-    state = os.environ.get("XDG_STATE_HOME") or str(Path.home() / ".local" / "state")
-    return Path(state) / "tvty" / "tvty-control.sock"
+def state_dir():
+    """tvty's state directory, as tvty-config finds it."""
+    if os.environ.get("XDG_STATE_HOME"):
+        return Path(os.environ["XDG_STATE_HOME"]) / "tvty"
+    if os.name == "nt":
+        return Path(os.environ["LOCALAPPDATA"]) / "tvty" / "state"
+    return Path.home() / ".local" / "state" / "tvty"
+
+
+def rendezvous():
+    """A Unix socket where there are some; elsewhere the file with the
+    control's TCP port and its secret."""
+    tcp = os.name == "nt" or not hasattr(socket, "AF_UNIX") or os.environ.get("TVTY_CONTROL_TCP")
+    name = "tvty-control.addr" if tcp else "tvty-control.sock"
+    return state_dir() / name
+
+
+def connect():
+    """A connection to the control, the secret said when there is one."""
+    where = rendezvous()
+    if where.suffix == ".sock":
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(40)
+        s.connect(str(where))
+        return s
+    address, secret = where.read_text().split("\n")[:2]
+    host, port = address.removeprefix("tcp://").rsplit(":", 1)
+    s = socket.create_connection((host, int(port)), timeout=40)
+    s.sendall(f"secret {secret.strip()}\n".encode())
+    return s
 
 
 def request(command):
-    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
-        s.settimeout(40)
-        s.connect(str(socket_path()))
+    with connect() as s:
         s.sendall((json.dumps(command) + "\n").encode())
         data = b""
         while not data.endswith(b"\n"):
@@ -67,7 +93,7 @@ def main(argv):
     try:
         answer = request(command)
     except OSError as error:
-        print(f"tvty-ctl: {socket_path()}: {error} (is a test tvty running, with TVTY_DEBUG_CONTROL?)", file=sys.stderr)
+        print(f"tvty-ctl: {rendezvous()}: {error} (is a test tvty running, with TVTY_DEBUG_CONTROL?)", file=sys.stderr)
         return 1
     print(json.dumps(answer.get("ok", answer), indent=1))
     return 1 if "error" in answer else 0

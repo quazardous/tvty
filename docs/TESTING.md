@@ -174,8 +174,12 @@ uid, the source read-only.
 
 A test tvty — a development build (`debug_assertions`; a release build has
 no such control), with `TVTY_DEBUG_CONTROL=1` as `scripts/test-env` sets it
-(the user's tvty never has it) — listens on `tvty-control.sock` in its state directory,
-and `scripts/tvty-ctl` speaks to it — no coordinates to guess, no sleep to
+(the user's tvty never has it) — listens in its state directory, through
+`tvty-ipc` as the instance's rendez-vous does: on `tvty-control.sock` where
+there are Unix sockets, on Windows on a loopback port written with a secret
+in `tvty-control.addr` (the client says the secret first;
+`TVTY_CONTROL_TCP=1`, for tvty and the client, takes that way on Linux too,
+to test it). `scripts/tvty-ctl` speaks to it, on either — no coordinates to guess, no sleep to
 hope for:
 
 - `tvty-ctl tree [PREFIX]` — what is on screen, by id, with where it is
