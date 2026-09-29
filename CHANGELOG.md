@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- In the Assign ▾ list, whoever holds the ticket is marked, and unassigning is a crossed-out person whose tip says what it does (no more "release").
 - A zoomed image stays over the notifications; they wait under it.
 - The agent bar reads "holds:N", like its "events:N".
 - A new ticket's "File the ticket" sits right under its body, no longer at the bottom of the page.

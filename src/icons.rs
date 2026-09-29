@@ -59,6 +59,7 @@ icons! {
     CommentsMine => "chat_bubble_mine.svg",
     PendingComments => "schedule.svg",
     Sunk => "snooze.svg",
+    Unassign => "person_off.svg",
 }
 
 impl AssetSource for Assets {

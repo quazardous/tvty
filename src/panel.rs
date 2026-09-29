@@ -740,7 +740,7 @@ impl TicketPanel {
         if let Some(detail) = self.detail.as_mut() {
             detail.menu = None;
         }
-        let said = who.as_ref().map_or("released".to_string(), |w| format!("assigned to {w}"));
+        let said = who.as_ref().map_or("unassigned".to_string(), |w| format!("assigned to {w}"));
         self.change(said, move |aiball, ticket| aiball.assign(ticket, who.as_deref()), window, cx);
     }
 
@@ -1362,7 +1362,8 @@ impl TicketPanel {
                         Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
                         Some(own) => {
                             for agent in own {
-                                let on = ticket.assignee.as_deref() == Some(agent.as_str());
+                                // Marked: its assignee, else whoever holds it (a claim).
+                                let on = ticket.assignee.as_deref().or(ticket.holder()) == Some(agent.as_str());
                                 let name = agent.clone();
                                 row = row.child(
                                     buttons::chip(SharedString::from(format!("assign-to-{agent}")), agent.clone())
@@ -1379,9 +1380,14 @@ impl TicketPanel {
                             }
                         }
                     }
-                    // Taken back from whoever holds it.
-                    if ticket.holder().is_some() {
-                        row = row.child(chip("assign-release", "release").on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))));
+                    // Last, unassign: taken back from whoever holds it.
+                    if let Some(holder) = ticket.holder() {
+                        row = row.child(
+                            buttons::chip("assign-release", icons::icon(Icon::Unassign, p().muted, 14.))
+                                .py_0p5()
+                                .tip(format!("unassign: takes it back from {holder}; nobody holds it, it waits for whoever takes it"))
+                                .on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))),
+                        );
                     }
                     row
                 }
