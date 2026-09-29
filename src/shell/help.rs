@@ -17,6 +17,7 @@ pub(super) const AIBALL_REPOSITORY: &str = "https://github.com/quazardous/aiball
 #[derive(Clone, Copy)]
 enum Entry {
     About,
+    Options,
     NewProject,
     Megaphone,
     FullScreen,
@@ -32,8 +33,9 @@ enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 13] = [
+    const ALL: [Entry; 14] = [
         Entry::About,
+        Entry::Options,
         Entry::NewProject,
         Entry::Megaphone,
         Entry::FullScreen,
@@ -51,6 +53,7 @@ impl Entry {
     fn label(self) -> &'static str {
         match self {
             Entry::About => "About Terminal Velocity",
+            Entry::Options => "Settings…",
             Entry::NewProject => "New project…",
             Entry::Megaphone => "Message every agent…",
             Entry::FullScreen => "Full screen",
@@ -71,6 +74,7 @@ impl Entry {
         match self {
             // Its key, as the keymap in force has it.
             Entry::FullScreen => crate::keymap::current(cx).keys_of("window.fullscreen").first().map(|k| k.pretty()).unwrap_or_default(),
+            Entry::Options => crate::keymap::current(cx).keys_of("options.toggle").first().map(|k| k.pretty()).unwrap_or_default(),
             Entry::Megaphone => String::new(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
@@ -134,6 +138,12 @@ impl Shell {
                 .detach();
             }
             Entry::About => self.open_options_page(Section::About, None, window, cx),
+            // Opened, never closed from here: the menu is not a toggle.
+            Entry::Options => {
+                if self.options.is_none() {
+                    self.toggle_options(window, cx);
+                }
+            }
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(window, cx),
             Entry::Tips => self.browse_tips(cx),

@@ -26,9 +26,6 @@ const DEFAULT_MESSAGE: &str = "I'll be back. Until then, stabilise: finish or pa
 /// The instructions given last, offered again.
 const HISTORY: usize = 6;
 
-/// How often every project's standing is read again (aiball says no change).
-const EVERY: Duration = Duration::from_secs(60);
-
 /// The projects something steers now: the ticket panel lights its 📢.
 #[derive(Clone, Default)]
 pub struct Steered(pub HashSet<String>);
@@ -98,31 +95,77 @@ impl Shell {
     /// Reads every on-board project's standing now, then every minute.
     pub(super) fn start_standing(&mut self, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
+            // Once the board is there: then aiball says each change.
             loop {
-                // Until the board is there, soon again.
                 let Ok(read) = this.update(cx, |shell, cx| shell.load_standing(cx)) else { return };
-                cx.background_executor().timer(if read { EVERY } else { Duration::from_secs(2) }).await;
+                if read {
+                    return;
+                }
+                cx.background_executor().timer(Duration::from_secs(2)).await;
             }
         })
         .detach();
     }
 
-    /// Reads every on-board project's standing; false: no project yet.
-    fn load_standing(&mut self, cx: &mut Context<Self>) -> bool {
-        let projects: Vec<String> = self.board.projects.iter().filter(|p| p.on_board).map(|p| p.name.clone()).collect();
-        if projects.is_empty() {
+    /// Reads every project's standing in one call, and the end of the
+    /// focuses that apply (they lapse with no word from aiball); false: no
+    /// project yet.
+    pub(super) fn load_standing(&mut self, cx: &mut Context<Self>) -> bool {
+        if !self.board.projects.iter().any(|p| p.on_board) {
             return false;
         }
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let read = cx
                 .background_executor()
-                .spawn(async move { projects.into_iter().filter_map(|p| aiball.standing(&p).ok().map(|s| (p, s))).collect::<HashMap<_, _>>() })
+                .spawn(async move {
+                    let all = aiball.standings()?;
+                    // A focus that applies: its end, to read it again then.
+                    Ok::<_, anyhow::Error>(
+                        all.into_iter()
+                            .map(|s| if s.focus_active { aiball.standing(&s.project).unwrap_or(s) } else { s })
+                            .map(|s| (s.project.clone(), s))
+                            .collect::<HashMap<_, _>>(),
+                    )
+                })
                 .await;
-            let _ = this.update(cx, |shell, cx| shell.set_standing(read, cx));
+            let _ = this.update(cx, |shell, cx| match read {
+                Ok(read) => {
+                    for standing in read.values() {
+                        shell.watch_focus_end(standing, cx);
+                    }
+                    shell.set_standing(read, cx);
+                }
+                Err(error) => log::warn!("standing: {error:#}"),
+            });
         })
         .detach();
         true
+    }
+
+    /// A project's standing, as aiball said it changed.
+    pub(super) fn standing_changed(&mut self, standing: Standing, cx: &mut Context<Self>) {
+        self.watch_focus_end(&standing, cx);
+        let mut all = self.standing.clone();
+        all.insert(standing.project.clone(), standing);
+        self.set_standing(all, cx);
+    }
+
+    /// A focus that applies lapses at its end with no word from aiball: the
+    /// project read again then.
+    fn watch_focus_end(&mut self, standing: &Standing, cx: &mut Context<Self>) {
+        let Some(end) = standing.focus_until.as_deref().filter(|_| standing.focus_active).and_then(crate::status::parse_time) else { return };
+        let wait = end.saturating_sub(crate::status::now()) + 1;
+        let project = standing.project.clone();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_secs(wait)).await;
+            let read = cx.background_executor().spawn(async move { aiball.standing(&project) }).await;
+            if let Ok(standing) = read {
+                let _ = this.update(cx, |shell, cx| shell.standing_changed(standing, cx));
+            }
+        })
+        .detach();
     }
 
     fn set_standing(&mut self, standing: HashMap<String, Standing>, cx: &mut Context<Self>) {
@@ -135,7 +178,6 @@ impl Shell {
         cx.notify();
     }
 
-    /// Opens the 📢 on the ticket panel's project (none: only the message).
     /// The 📢 of the ticket panel's project: its standing instruction and
     /// wake focus. No project shown: said, nothing opens.
     pub(super) fn open_megaphone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -171,9 +213,29 @@ impl Shell {
         // message.
         let focus = if project.is_some() { prompt.read(cx).focus_handle(cx) } else { message.read(cx).focus_handle(cx) };
         window.focus(&focus, cx);
-        self.megaphone = Some(Megaphone { project, prompt, tickets, until, message, busy: false, error: None, said: None });
-        // Read it again: another client may have changed it.
-        let _ = self.load_standing(cx);
+        self.megaphone = Some(Megaphone { project: project.clone(), prompt, tickets, until, message, busy: false, error: None, said: None });
+        // The focus's tickets and end, which the list does not give: read,
+        // put in their boxes unless typed in meanwhile.
+        if let Some(project) = project {
+            let aiball = self.aiball.clone();
+            cx.spawn_in(window, async move |this, cx| {
+                let read = cx.background_executor().spawn(async move { aiball.standing(&project) }).await;
+                let Ok(standing) = read else { return };
+                let _ = this.update_in(cx, |shell, window, cx| {
+                    if let Some(m) = shell.megaphone.as_ref().filter(|m| m.project.as_deref() == Some(standing.project.as_str())) {
+                        let fill = |e: &Entity<InputState>, value: Option<String>, window: &mut Window, cx: &mut Context<Shell>| {
+                            if e.read(cx).value().is_empty() {
+                                e.update(cx, |e, cx| e.set_value(value.unwrap_or_default(), window, cx));
+                            }
+                        };
+                        fill(&m.tickets.clone(), standing.focus_tickets.clone(), window, cx);
+                        fill(&m.until.clone(), standing.focus_until.as_deref().map(until_local), window, cx);
+                    }
+                    shell.standing_changed(standing, cx);
+                });
+            })
+            .detach();
+        }
         cx.notify();
     }
 

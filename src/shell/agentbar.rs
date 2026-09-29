@@ -259,48 +259,59 @@ impl Shell {
         let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
         let target = (agent.clone(), project.to_string());
 
-        // Where its loop runs, and moving it: a loop of this machine moves
-        // from aiball's host to tmux and back, once confirmed.
-        let (mode_chip, move_confirm) = {
+        // One chip, where it runs and whose hands are on it: "tmux ·
+        // controls +1". A click opens the bar of what can change — the
+        // controls taken or left, the loop moved — each said before done.
+        let (place_chip, place_bar) = {
             let hosted = terminal.attach.is_some();
             let session = terminal.session.clone();
             let known = self.board.known.iter().find(|l| l.session() == session).map(|l| l.name.clone());
             let moving = self.moves.contains_key(&agent);
             let asked = self.move_asked.as_deref() == Some(session.as_str());
-            // Moving, or run from another machine: nothing to click here.
-            let chip = buttons::chip_if(
-                "agent-mode",
-                match (moving, hosted) {
-                    (true, _) => "moving…",
-                    (_, true) => "host",
-                    _ => "tmux",
+            let copy = self.copies.contains(&session);
+            // Who else is attached: claude-loop's terminal, another tvty.
+            let attached = self.attached(&session).filter(|a| a.others > 0);
+            let place = if hosted { "host" } else { "tmux" };
+            let hands = if copy { "copy" } else { "controls" };
+            let label = match (moving, attached) {
+                (true, _) => "moving…".to_string(),
+                (false, Some(a)) => format!("{place} · {hands} +{}", a.others),
+                (false, None) => format!("{place} · {hands}"),
+            };
+            let proxy = bar.as_ref().is_some_and(|b| b.proxy_alive);
+            let tip = format!(
+                "its loop runs {}; {}{}{} A click: take or leave the controls, move the loop.",
+                if hosted { "on aiball's session host" } else { "in tmux (claude-loop)" },
+                if copy {
+                    "this terminal is a copy: you watch, nothing you type reaches its Claude, and the session keeps its size."
+                } else {
+                    "you have the controls, shared with any other client: the size follows who types last."
                 },
-                known.is_some() && !moving,
-            )
-            .px_1()
-            .border_color(ink(if asked { p().warning } else { p().border }))
-            .text_color(ink(p().muted));
-            let place = if hosted { "on aiball's session host" } else { "in tmux (claude-loop)" };
-            let other = if hosted { "into tmux" } else { "to aiball's host" };
-            let chip = match (&known, moving) {
-                (Some(_), false) => chip
-                    .on_click(cx.listener({
+                attached
+                    .map(|a| format!(" {} other client{} attached ({} with the controls).", a.others, if a.others == 1 { "" } else { "s" }, a.typing))
+                    .unwrap_or_default(),
+                if proxy { " The terminal proxy in front of Claude is alive." } else { "" },
+            );
+            let chip = buttons::chip_if("agent-place", label, !moving)
+                .px_1()
+                .border_color(ink(if asked || copy { p().warning } else { p().border }))
+                .text_color(ink(if copy { p().warning } else { p().muted }))
+                .when(!moving, |d| {
+                    d.on_click(cx.listener({
                         let session = session.clone();
                         move |shell, _, _, cx| {
                             shell.move_asked = (shell.move_asked.as_deref() != Some(session.as_str())).then(|| session.clone());
                             cx.notify();
                         }
                     }))
-                    .tip(format!("its loop runs {place}. A click offers to move it {other}")),
-                (Some(_), true) => chip.tip(format!("its loop moves {other}: it restarts there, resuming its conversation")),
-                (None, _) => chip.tip(format!("its loop runs {place}, on another machine: it moves from there")),
-            };
+                })
+                .tip(tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
-            let confirm = known.filter(|_| asked).map(|name| {
-                let (agent, to_host) = (agent.clone(), !hosted);
-                // Above the bar, its whole width: the bar has no room.
-                div()
-                    .id("agent-move")
+            let other = if hosted { "into tmux" } else { "to aiball's host" };
+            let place_bar = asked.then(|| {
+                let hands_session = session.clone();
+                let mut row = div()
+                    .id("agent-place-bar")
                     .occlude()
                     .absolute()
                     .left_0()
@@ -316,22 +327,38 @@ impl Shell {
                     .border_t_1()
                     .border_color(p().warning)
                     .text_color(p().text)
-                    .child(format!("Move {agent} {other}? Its Claude restarts, resuming its conversation."))
-                    .when(busy, |d| d.child(item().text_color(p().warning).child("It works now: the move interrupts it.")))
+                    .when_some(attached.filter(|a| a.typing > 0 && !hosted), |d, _| {
+                        d.child(item().text_color(p().warning).child("claude-loop's terminal types into it too"))
+                    })
                     .child(
-                        buttons::answer("agent-move-go", "Move")
-                            .warning()
-                            .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
-                    )
-                    .child(
-                        buttons::secondary("agent-move-cancel", "Cancel")
-                            .on_click(cx.listener(|shell, _, _, cx| {
+                        buttons::answer("agent-hands", if copy { "Take the controls" } else { "Leave for a copy" })
+                            .on_click(cx.listener(move |shell, _, window, cx| {
                                 shell.move_asked = None;
-                                cx.notify();
+                                shell.set_copy(hands_session.clone(), !copy, window, cx);
                             })),
-                    )
+                    );
+                // Moved from here only a loop of this machine.
+                if let Some(name) = known.clone() {
+                    let (agent, to_host) = (agent.clone(), !hosted);
+                    row = row
+                        .child(
+                            buttons::answer("agent-move-go", if hosted { "Move into tmux" } else { "Move to host" })
+                                .warning()
+                                .tooltip(format!(
+                                    "its Claude restarts {other}, resuming its conversation{}",
+                                    if busy { " — it works now: the move interrupts it" } else { "" }
+                                ))
+                                .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
+                        );
+                }
+                row.child(
+                    buttons::secondary("agent-move-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                        shell.move_asked = None;
+                        cx.notify();
+                    })),
+                )
             });
-            (chip, confirm)
+            (chip, place_bar)
         };
 
         // Remote Control: whether its Claude can be taken up from claude.ai,
@@ -351,7 +378,7 @@ impl Shell {
                 .tip(if rc.on {
                     "Remote Control is on: this Claude can be taken up from claude.ai and the mobile app"
                 } else {
-                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's options"
+                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's settings"
                 })
         });
         // The model its Claude ran its last turn on; a newer one of its
@@ -424,9 +451,6 @@ impl Shell {
                                     .tip("a human typed in its terminal a moment ago: the loop holds off"),
                             )
                         })
-                        .when(b.proxy_alive, |d| {
-                            d.child(item().id("agent-proxy").child("⇄").tip("the terminal proxy in front of Claude is alive"))
-                        })
                         .when(b.zen, |d| d.child(item().id("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
                 })
                 .child(sep())
@@ -463,7 +487,7 @@ impl Shell {
                     item()
                         .id("agent-holds")
                         .when(holds > 0, |d| d.text_color(ink(p().text)))
-                        .child(format!("holds {holds}"))
+                        .child(format!("holds:{holds}"))
                         .tip("the tickets it holds"),
                 )
                 .when(pending || wake.is_some(), |d| {
@@ -481,31 +505,15 @@ impl Shell {
                 })
                 .child(div().flex_1())
                 .children(model_item)
-                // Where its loop runs: on aiball's host, or in tmux.
-                .child(crate::tips::target("agent.place", mode_chip).flex_none())
+                // Where its loop runs, and whose hands are on it.
+                .child(crate::tips::target("agent.place", place_chip).flex_none())
                 .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
-                // Copy or controls: whether this terminal types into it.
-                .child(crate::tips::target("agent.controls", {
-                    let session = terminal.session.clone();
-                    let copy = self.copies.contains(&session);
-                    let tone = if copy { p().warning } else { p().muted };
-                    buttons::chip("agent-controls", if copy { "copy" } else { "controls" })
-                        .px_1()
-                        .border_color(ink(if copy { p().warning } else { p().border }))
-                        .text_color(ink(tone))
-                        .on_click(cx.listener(move |shell, _, window, cx| shell.set_copy(session.clone(), !copy, window, cx)))
-                        .tip(if copy {
-                            "a copy: you watch; nothing you type reaches its Claude, and the session keeps its size. A click takes the controls"
-                        } else {
-                            "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
-                        })
-                }).flex_none())
                 // Its folder, then its name, give way when the bar is short (the
                 // tab says its name too): the controls stay.
                 .child(item().flex_shrink(1.).min_w_0().overflow_hidden().text_color(ink(p().text)).child(div().min_w_0().truncate().child(agent.clone())))
                 .children(cwd.map(|cwd| item().flex_shrink(1000.).min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(cwd))))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
-                .children(move_confirm)
+                .children(place_bar)
                 .into_any_element(),
         )
     }

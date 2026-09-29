@@ -35,12 +35,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `TVTY_MUX_SERVER=name` points tvty at another tmux or psmux server than
   yours (`-L name`); a test tvty on Windows uses it, and no longer sees
   your own loops.
+- A dot before your name in the title bar when the link to aiball is not right: red while its bus is down, yellow while a list's subscription fails; back on the bus, the ticket open and the 📢 are read again.
+- In a debug build, ctrl+alt+shift+i opens GPUI's inspector: pick an element, read its id and where it is made.
+
+### Changed
+
+- The agent bar has one chip for where a loop runs and who types into it ("tmux · controls +1"); a click opens one line to take or leave the controls — taking them makes claude-loop's terminal a copy — or to move the loop.
+- A tmux loop another terminal types into (claude-loop's) opens as a copy; the agent bar's chip and the session's row say who else is attached ("copy · +1").
+- Long choices (project, intent, priority, tags, milestone, assignee, reporter) are a dropdown searched as it is typed, in a new ticket and a full-screen ticket alike; moving a ticket to another project asks "Move to …" first.
+- The app menu opens the settings ("Settings…", Ctrl+,), and Options is now called Settings.
+- A ticket sunk in the agent's backlog shows the time left before its loop brings it up again, then an alarm's zzz.
+- A ticket's assignee is an "Assign ▾" button beside Snooze (it names the assignee), its list of the project's agents right under it; Snooze's choices open under it too, and the priority's ("high ▾") right under its chip.
 
 ### Fixed
 
 - On Windows, tvty keeps its settings, layout and log in the usual Windows
   folders (`%APPDATA%`, `%LOCALAPPDATA%`), and finds your home folder even
   when started from the Start menu.
+- A ticket closed while tvty missed the bus's news no longer stays in the list: a subscription that failed is tried again and read whole, and a ticket opened that reads closed leaves the list.
+- Assign ▾ lists the project's agents at once, read ahead when the project changes. In its list, whoever holds the ticket is marked, and unassigning is a crossed-out person whose tip says what it does (no more "release").
+- A ticket's reply field starts at four lines in full screen (two in the panel).
+- A zoomed image stays over the notifications; they wait under it.
+- The agent bar reads "holds:N", like its "events:N".
+- A new ticket's "File the ticket" sits right under its body, no longer at the bottom of the page.
+- A double click on the title bar's buttons (menu, theme, message, ⚙, the ticket box) no longer maximizes the window; on the title it still does.
+- The sessions list's IDLE no longer shows an agent that runs, nor the same agent twice: aiball keeps the loops it had before, under other names.
+- A project's 📢 changed elsewhere (aiball's page, another tvty) shows at once, and a wake focus ending at its date lets go by itself.
 
 ## [0.5.0-beta.1] - 2026-09-29
 

@@ -15,6 +15,21 @@ use crate::loops::{KnownLoop, Start};
 use crate::theme::p;
 use crate::ui::buttons;
 
+/// One stopped loop per agent (aiball keeps the ones an agent had before,
+/// under other names): the one on aiball's host first, where tvty starts
+/// them; loops with no agent all kept.
+fn one_per_agent(loops: Vec<&KnownLoop>) -> Vec<&KnownLoop> {
+    let mut kept: Vec<&KnownLoop> = Vec::new();
+    for l in loops {
+        match l.agent().and_then(|agent| kept.iter().position(|k| k.agent() == Some(agent))) {
+            Some(at) if l.on_host() && !kept[at].on_host() => kept[at] = l,
+            Some(_) => {}
+            None => kept.push(l),
+        }
+    }
+    kept
+}
+
 /// The idle and shut sections.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Other {
@@ -51,7 +66,7 @@ impl Shell {
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
     fn inactive(&self, words: &[String]) -> Vec<&KnownLoop> {
-        let mut loops: Vec<&KnownLoop> = self
+        let loops: Vec<&KnownLoop> = self
             .board
             .known
             .iter()
@@ -60,16 +75,26 @@ impl Shell {
             .filter(|l| {
                 !l.on_host() || self.terminal_of(&l.session()).is_none()
             })
+            // An agent live under another loop is not idle: its older,
+            // stopped loops stay out of the list.
+            .filter(|l| !l.agent().is_some_and(|agent| self.agent_live(agent)))
             .filter(|l| {
                 let project = self.loop_project(l).unwrap_or_default();
                 crate::sessions::found(words, &[&project, l.agent().unwrap_or(""), &l.name, &l.cwd])
             })
             .collect();
+        let mut loops = one_per_agent(loops);
         loops.sort_by_cached_key(|l| {
             let project = self.loop_project(l);
             (project.is_none(), project)
         });
         loops
+    }
+
+    /// `agent` runs: a loop of it runs, or a terminal of it is live.
+    fn agent_live(&self, agent: &str) -> bool {
+        self.board.known.iter().any(|k| k.running && k.agent() == Some(agent))
+            || self.board.projects.iter().any(|p| p.terminals.iter().any(|t| t.agent.as_deref() == Some(agent) && t.status.as_ref().is_some_and(|s| s.online)))
     }
 
     /// The agents aiball knows with no loop on this machine.
@@ -488,7 +513,8 @@ fn shorten(path: &str, home: &std::path::Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::shorten;
+    use super::{one_per_agent, shorten};
+    use crate::loops::KnownLoop;
     use std::path::Path;
 
     #[test]
@@ -497,5 +523,25 @@ mod tests {
         assert_eq!(shorten("/srv/u", Path::new("/srv/u")), "~");
         // A sibling folder that only starts with the same letters is not home.
         assert_eq!(shorten("/srv/user2/p", Path::new("/srv/u")), "/srv/user2/p");
+    }
+
+    #[test]
+    fn an_agent_is_idle_once_on_its_host_loop_first() {
+        let known = |name: &str, agent: Option<&str>, mode: &str| KnownLoop {
+            name: name.into(),
+            agent: agent.map(String::from),
+            mode: mode.into(),
+            ..Default::default()
+        };
+        let loops = [
+            known("cl-b-1", Some("b"), "tmux"),
+            known("cl-b-2", Some("b"), "host"),
+            known("cl-a-1", Some("a"), "tmux"),
+            known("cl-a-2", Some("a"), "tmux"),
+            known("cl-x", None, "tmux"),
+            known("cl-y", None, "tmux"),
+        ];
+        let kept: Vec<&str> = one_per_agent(loops.iter().collect()).iter().map(|l| l.name.as_str()).collect();
+        assert_eq!(kept, vec!["cl-b-2", "cl-a-1", "cl-x", "cl-y"]);
     }
 }

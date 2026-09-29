@@ -58,6 +58,8 @@ icons! {
     // The same bubble mirrored: its point on the right, the user's word.
     CommentsMine => "chat_bubble_mine.svg",
     PendingComments => "schedule.svg",
+    Sunk => "snooze.svg",
+    Unassign => "person_off.svg",
 }
 
 impl AssetSource for Assets {

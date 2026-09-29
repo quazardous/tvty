@@ -28,6 +28,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod control;
 mod ended;
 mod frame;
 mod help;
@@ -204,6 +205,14 @@ pub struct Shell {
     /// Sessions open as a copy: watched, never typed into nor resized.
     /// The others have the controls (shared with any other client).
     pub(super) copies: HashSet<String>,
+    /// Sessions whose controls the user took: never opened as a copy on
+    /// their own, whoever else is attached.
+    pub(super) controls_taken: HashSet<String>,
+    /// Bumped by each subscribing: a retry planned before it gives up.
+    retry_generation: u64,
+    /// Where tvty stands with aiball's bus: the title bar shows it, the
+    /// views hear its signals.
+    bus_state: crate::kernel::signals::BusState,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -576,8 +585,15 @@ impl Shell {
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
+            Signal::TicketClosed(ticket) => {
+                if shell.live.drop_ticket(*ticket) {
+                    log::info!("board: #{ticket} read closed, yet listed open: dropped from the list");
+                    shell.rebuild(cx);
+                }
+            }
             Signal::Notices => cx.notify(),
             Signal::Copied => shell.show_copied(cx),
+            Signal::Bus(signal) => shell.on_bus_signal(signal, cx),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
             Signal::GoToTicket { reference, project } => shell.follow_reference(reference.clone(), project.clone(), window, cx),
@@ -702,6 +718,9 @@ impl Shell {
             open_when_running: None,
             restarts_asked: HashMap::new(),
             copies: HashSet::new(),
+            controls_taken: HashSet::new(),
+            retry_generation: 0,
+            bus_state: Default::default(),
             project_shown: None,
             ask: None,
             remember: false,
@@ -795,6 +814,10 @@ impl Shell {
                 }
                 shell.focus_home(window, cx)
             }
+        }
+        // A test's debug control (TVTY_DEBUG_CONTROL): tvty read and driven by id.
+        if let Some(requests) = crate::control::start() {
+            Self::serve_control(requests, window, cx);
         }
         shell
     }
@@ -916,6 +939,7 @@ impl Shell {
                 Update::Board => self.board_moved(cx),
                 Update::Filed(filed) => self.announce_filed(filed, cx),
                 Update::Ping(ping) => self.announce_ping(ping, cx),
+                Update::Standing(standing) => self.standing_changed(standing, cx),
                 Update::Config => {
                     if self.options.is_some() {
                         self.load_remote(cx);
@@ -956,11 +980,22 @@ impl Shell {
                         let updates = shell.live.event(&notice.params);
                         shell.take_updates(updates, cx);
                     }),
+                    crate::wire::DROPPED => this.update(cx, |shell, cx| {
+                        let why = notice.params.get("why").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+                        let signals = shell.bus_state.dropped(&why, std::time::Instant::now());
+                        shell.publish_bus(signals, cx);
+                    }),
                     "bus.hello" => {
                         // The user's pings are one's own: subscribed as a human.
                         let text = |key: &str| notice.params.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
                         let user = if text("kind") == "human" { text("consumer") } else { String::new() };
-                        let planned = this.update(cx, |shell, _| {
+                        let version = notice.params.get("version").and_then(serde_json::Value::as_u64).unwrap_or_default();
+                        let planned = this.update(cx, |shell, cx| {
+                            let signals = shell.bus_state.hello(version, &user, std::time::Instant::now());
+                            shell.publish_bus(signals, cx);
+                            // A greeting subscribes to everything: the retries
+                            // planned before it are moot.
+                            shell.retry_generation += 1;
                             let plan = shell.live.plan(&user);
                             // Another user's board is coming: what waits
                             // starts again from it.
@@ -991,6 +1026,8 @@ impl Shell {
                             shell.wire_whoami = Some(said);
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
+                            shell.subscriptions_said(cx);
+                            shell.retry_failed(cx);
                             // Once the user is known: what came while tvty was closed.
                             if !user.is_empty() && shell.missed_checked.as_deref() != Some(user.as_str()) {
                                 shell.missed_checked = Some(user.clone());
@@ -1008,6 +1045,98 @@ impl Shell {
                     break;
                 }
             }
+        })
+        .detach();
+    }
+
+    /// A dot in the title bar while the link to aiball is not right: red,
+    /// down (tvty connects again); yellow, subscriptions failing (tried
+    /// again). Nothing while all is well.
+    fn bus_mark(&self) -> Option<Stateful<Div>> {
+        let failing = self.bus_state.failing();
+        let (colour, tip) = if self.bus_state.down() {
+            (p().danger, "aiball's bus is down: tvty connects again; the lists may be behind meanwhile".to_string())
+        } else if !failing.is_empty() {
+            (p().warning, format!("subscribing to {} failed: tried again, read whole; the lists may be behind meanwhile", failing.join(", ")))
+        } else {
+            return None;
+        };
+        Some(
+            div()
+                .id("bus-status")
+                .flex_none()
+                .mr_2()
+                .size(px(9.))
+                .rounded_full()
+                .bg(colour)
+                .children(crate::inspect::mark_if("bus-status"))
+                .tip(tip),
+        )
+    }
+
+    /// The subscriptions' changes, as the link's signals.
+    fn subscriptions_said(&mut self, cx: &mut Context<Self>) {
+        use crate::kernel::subscriptions::Change;
+        let mut signals = Vec::new();
+        for change in self.live.take_changes() {
+            signals.extend(match change {
+                Change::Failed { kind, error } => self.bus_state.failed(&kind, &error),
+                Change::Live { kind, epoch } => self.bus_state.live(&kind, epoch.as_ref()),
+            });
+        }
+        self.publish_bus(signals, cx);
+    }
+
+    /// Each signal of the link, logged and put on the internal bus for
+    /// whoever observes it.
+    fn publish_bus(&mut self, signals: Vec<crate::kernel::signals::BusSignal>, cx: &mut Context<Self>) {
+        for signal in signals {
+            log::info!("aiball bus: {signal:?}");
+            bus::emit(cx, Signal::Bus(signal));
+        }
+        cx.notify();
+    }
+
+    /// What the shell itself does on a signal of the link: the 📢 read
+    /// again after a gap (its changes came while tvty was not listening).
+    fn on_bus_signal(&mut self, signal: &crate::kernel::signals::BusSignal, cx: &mut Context<Self>) {
+        use crate::kernel::signals::BusSignal;
+        match signal {
+            BusSignal::Reconnected { .. } | BusSignal::EpochChanged => {
+                self.load_standing(cx);
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    /// Tries the failed subscriptions again when they are due, on the
+    /// connection that runs, until they are live; a greeting (a
+    /// reconnection) plans them all again and stops these.
+    fn retry_failed(&mut self, cx: &mut Context<Self>) {
+        let Some(at) = self.live.next_retry() else { return };
+        self.retry_generation += 1;
+        let generation = self.retry_generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(at.saturating_duration_since(std::time::Instant::now())).await;
+            let planned = this.update(cx, |shell, _| {
+                (shell.retry_generation == generation).then(|| (shell.wire.clone(), shell.live.retry_plan(std::time::Instant::now())))
+            });
+            let Ok(Some((Some(wire), Some(plan)))) = planned else { return };
+            let (plan, answers) = cx
+                .background_executor()
+                .spawn(async move {
+                    let answers = crate::live::subscribe(&wire, &plan);
+                    (plan, answers)
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                let updates = shell.live.subscribed(plan, answers);
+                shell.take_updates(updates, cx);
+                shell.subscriptions_said(cx);
+                shell.retry_failed(cx);
+                cx.notify();
+            });
         })
         .detach();
     }
@@ -1442,6 +1571,18 @@ impl Shell {
         cx.notify();
     }
 
+    /// Who else is attached to `session`, as aiball counts its clients:
+    /// tvty's own left out.
+    pub(super) fn attached(&self, session: &str) -> Option<Attached> {
+        let status = self.terminal_of(session)?.1.status.as_ref()?;
+        let open = self.terminals.contains_key(session);
+        let typing_here = open && !self.copies.contains(session);
+        Some(Attached {
+            others: status.clients?.saturating_sub(open as u32),
+            typing: status.interactive.unwrap_or(0).saturating_sub(typing_here as u32),
+        })
+    }
+
     fn terminal_of(&self, session: &str) -> Option<(&str, &Terminal)> {
         self.board.projects.iter().find_map(|p| {
             p.terminals
@@ -1591,6 +1732,7 @@ impl Shell {
         let name = project.to_string();
         div()
             .id(SharedString::from(format!("heading-{project}")))
+            .children(crate::inspect::mark_if(format!("heading-{project}")))
             .flex_1()
             .min_w_0()
             .truncate()
@@ -1721,6 +1863,12 @@ impl Shell {
         // more), nothing to open.
         if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
             return None;
+        }
+        // A tmux loop another terminal types into (claude-loop's): opened
+        // as a copy, as claude-loop joins one; the bar's chip takes the
+        // controls.
+        if socket.is_none() && !self.controls_taken.contains(session) && self.attached(session).is_some_and(|a| a.typing > 0) {
+            self.copies.insert(session.to_string());
         }
         let copy = self.copies.contains(session);
         let terminal = cx.new(|cx| match (&socket, copy) {
@@ -2526,7 +2674,7 @@ impl Shell {
             .gap_2()
             .p_3()
             .bg(p().surface)
-            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
+            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Settings"))
             .child(self.options_scope())
             .child(Input::new(&self.options_search).cleanable(true))
             .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
@@ -4061,7 +4209,7 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its options: where its loops run, Remote Control, its board config")
+                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its settings: where its loops run, Remote Control, its board config")
                                 .text_xs()
                                 .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                         )
@@ -4083,6 +4231,8 @@ impl Shell {
                 let selected = self.selected.as_deref() == Some(session.as_str());
                 let aimed = target.as_deref() == Some(session.as_str());
                 let open = self.terminals.contains_key(&session);
+                // Others attached to it: seen before it is opened.
+                let attached = self.attached(&session).filter(|a| a.others > 0);
                 let counts = self.counts_of(&project.name, terminal);
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
                 let restart = terminal
@@ -4094,6 +4244,7 @@ impl Shell {
                 list = list.child(
                     div()
                         .id(SharedString::from(format!("terminal-{session}")))
+                        .children(crate::inspect::mark_if(format!("terminal-{session}")))
                         .h(px(height))
                         .flex_none()
                         .overflow_hidden()
@@ -4144,7 +4295,23 @@ impl Shell {
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child("⇄")
-                                                    .tip("its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                                    .tip("tmux: its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                            )
+                                        })
+                                        .when_some(attached, |d, a| {
+                                            d.child(
+                                                div()
+                                                    .id("attached")
+                                                    .text_xs()
+                                                    .text_color(if a.typing > 0 { p().warning } else { p().muted })
+                                                    .child(format!("+{}", a.others))
+                                                    .tip(format!(
+                                                        "{} other client{} attached (claude-loop's terminal, another tvty), {} with the controls{}",
+                                                        a.others,
+                                                        if a.others == 1 { "" } else { "s" },
+                                                        a.typing,
+                                                        if a.typing > 0 { ": opened here as a copy" } else { "" }
+                                                    )),
                                             )
                                         })
                                         // A shell the host holds, without Claude.
@@ -4341,6 +4508,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::inspect::next_frame();
         self.surface_drawn(cx);
         // The slider and the gallery above the notifications: none drawn
         // while they are up.
@@ -4649,6 +4817,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|_, _: &keymap::ToggleInspector, window, cx| control::toggle_inspector_here(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::Megaphone, window, cx| shell.open_megaphone(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
             .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
@@ -4690,7 +4859,11 @@ impl Render for Shell {
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
                                 buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
                             )
-                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                            .on_click(cx.listener(|shell, _, _, cx| {
+                                // The bar's own double click (maximize) is not its.
+                                cx.stop_propagation();
+                                shell.toggle_help_menu(cx)
+                            })),
                         )
                         .flex_none()
                         .mr_1(),
@@ -4715,6 +4888,8 @@ impl Render for Shell {
                             .rounded_md()
                             .bg(p().hover)
                             .tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g")
+                            // A double click selects in it: it does not maximize.
+                            .on_click(|_, _, cx| cx.stop_propagation())
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
@@ -4722,7 +4897,10 @@ impl Render for Shell {
                             "title.theme",
                             buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
                                 .text_xs()
-                                .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                                .on_click(cx.listener(|shell, _, _, cx| {
+                                    cx.stop_propagation();
+                                    shell.toggle_theme_menu(cx)
+                                })),
                         )
                         .flex_none()
                         .mr_2(),
@@ -4731,14 +4909,23 @@ impl Render for Shell {
                     .child(
                         buttons::icon("message-all", crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.), "A message to every running agent: send, send & hold, release holds")
                             .mr_1()
-                            .on_click(cx.listener(|shell, _, window, cx| shell.open_message_all(window, cx))),
+                            .on_click(cx.listener(|shell, _, window, cx| {
+                                cx.stop_propagation();
+                                shell.open_message_all(window, cx)
+                            })),
                     )
                     .child(
-                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
+                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle"))
                             .mr_2()
                             .text_sm()
-                            .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
+                            .on_click(cx.listener(|shell, _, window, cx| {
+                                cx.stop_propagation();
+                                shell.toggle_options(window, cx)
+                            })),
                     )
+                    // The link to aiball, when it is not right: down, or a
+                    // subscription failing (the lists may be behind).
+                    .children(self.bus_mark())
                     // Who tvty acts as on aiball's board.
                     .child(
                         div()
@@ -4755,9 +4942,10 @@ impl Render for Shell {
             .children(menu)
             .children(self.help_menu_view(cx))
             .children(self.megaphone_view(window, cx))
-            .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))
+            // An image zoomed in: over the notices too, which wait under it.
+            .children(self.viewer_view(window, cx))
             .children(self.copied_pill(if covered {
                 0.
             } else if self.settings.layout.panel_open {
@@ -4772,6 +4960,13 @@ impl Render for Shell {
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }
+}
+
+/// The other clients of a session: attached, and typing into it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Attached {
+    pub others: u32,
+    pub typing: u32,
 }
 
 /// What a side's edge carries while dragged.

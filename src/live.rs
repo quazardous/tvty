@@ -18,7 +18,7 @@ use crate::aiball::{BarRead, Consumer, TicketRow};
 use crate::pings::PingInfo;
 
 /// What a subscription is to.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum Kind {
     Tickets,
     State,
@@ -61,6 +61,8 @@ pub enum Update {
     Config,
     /// An agent's Claude hit its usage limit: what the bar says of it.
     Limit(String, String),
+    /// A project's standing instruction or wake focus changed.
+    Standing(crate::aiball::Standing),
 }
 
 /// A ticket filed, from the row that brought it.
@@ -96,8 +98,8 @@ pub struct Live {
     bars: HashMap<String, BarRead>,
     /// Open tickets by project.
     tickets: BTreeMap<String, Vec<TicketRow>>,
-    /// The daemon's epoch and the last event's seq: what `since` resumes.
-    since: Option<(Value, u64)>,
+    /// Each subscription, where it resumes from, and a failed one's retry.
+    registry: crate::kernel::subscriptions::Registry<Kind>,
     /// The host's sessions, by name, as `session.*.state` has them.
     sessions: BTreeMap<String, Value>,
     /// Subscriptions by id.
@@ -133,24 +135,72 @@ impl Live {
             // theirs until they are in.
             self.user = user.to_string();
             self.tickets_seen = false;
-            self.since = None;
+            self.registry.forget();
         }
         let mut kinds = vec![Kind::Tickets, Kind::State, Kind::Bar, Kind::Sessions, Kind::Config];
         if !user.is_empty() {
             kinds.push(Kind::Pings);
             kinds.push(Kind::Board);
         }
-        let since = self.since.as_ref().map(|(epoch, seq)| json!({ "epoch": epoch, "seq": seq }));
+        self.calls(kinds)
+    }
+
+    /// The failed subscriptions due again at `now`, on the connection that
+    /// runs: each asked whole (it has no cursor any more).
+    pub fn retry_plan(&mut self, now: std::time::Instant) -> Option<Plan> {
+        let due = self.registry.due(now);
+        (!due.is_empty()).then(|| self.calls(due))
+    }
+
+    /// A ticket out of the open lists, known closed: `true` if one had it.
+    pub fn drop_ticket(&mut self, ticket: u64) -> bool {
+        let mut dropped = false;
+        for rows in self.tickets.values_mut() {
+            let before = rows.len();
+            rows.retain(|t| t.id != ticket);
+            dropped |= rows.len() != before;
+        }
+        dropped
+    }
+
+    /// What changed for the subscriptions since last taken, their kinds
+    /// named: for the link's signals.
+    pub fn take_changes(&mut self) -> Vec<crate::kernel::subscriptions::Change<String>> {
+        use crate::kernel::subscriptions::Change;
+        self.registry
+            .take_changes()
+            .into_iter()
+            .map(|change| match change {
+                Change::Failed { kind, error } => Change::Failed { kind: format!("{kind:?}"), error },
+                Change::Live { kind, epoch } => Change::Live { kind: format!("{kind:?}"), epoch },
+            })
+            .collect()
+    }
+
+    /// When a failed subscription is to be tried again.
+    pub fn next_retry(&self) -> Option<std::time::Instant> {
+        self.registry.next_retry()
+    }
+
+    /// The subscriptions, as the debug control says them.
+    pub fn subscriptions_said(&self) -> Value {
+        self.registry.said(std::time::Instant::now())
+    }
+
+    /// The calls for `kinds`, each resuming from its own cursor.
+    fn calls(&mut self, kinds: Vec<Kind>) -> Plan {
+        let user = self.user.clone();
         let calls = kinds
             .into_iter()
             .map(|kind| {
-                let mut params = json!({ "subject": kind.subject(user) });
+                let mut params = json!({ "subject": kind.subject(&user) });
                 if kind == Kind::Tickets {
                     params["open"] = json!(true);
                 }
-                if let Some(since) = &since {
-                    params["since"] = since.clone();
+                if let Some(since) = self.registry.since(kind) {
+                    params["since"] = since;
                 }
+                self.registry.asked(kind);
                 (kind, params)
             })
             .collect();
@@ -164,16 +214,18 @@ impl Live {
             let answer = match answer {
                 Ok(answer) => answer,
                 Err(error) => {
-                    log::warn!("aiball bus: subscribing to {kind:?}: {error:#}");
+                    // Tried again later, and then read whole.
+                    self.registry.failed(kind, format!("{error:#}"), std::time::Instant::now());
                     continue;
                 }
             };
-            let Some(id) = answer.get("id").and_then(id_of) else { continue };
+            let Some(id) = answer.get("id").and_then(id_of) else {
+                self.registry.failed(kind, "an answer without an id".into(), std::time::Instant::now());
+                continue;
+            };
             log::info!("aiball bus: subscribed to {kind:?}");
             self.subscriptions.insert(id, kind);
-            if let (Some(epoch), Some(seq)) = (answer.get("epoch"), answer.get("seq").and_then(Value::as_u64)) {
-                self.advance(epoch.clone(), seq);
-            }
+            self.registry.live(kind, answer.get("epoch").cloned(), answer.get("seq").and_then(Value::as_u64));
             if answer.get("replayed").and_then(Value::as_bool) == Some(true) {
                 for event in answer.get("events").and_then(Value::as_array).into_iter().flatten() {
                     let subject = event.get("subject").and_then(Value::as_str).unwrap_or_default();
@@ -199,20 +251,13 @@ impl Live {
             self.early.push(params.clone());
             return Vec::new();
         };
-        if let (Some(seq), Some((epoch, _))) = (params.get("seq").and_then(Value::as_u64), self.since.clone()) {
-            self.advance(epoch, seq);
+        if let Some(seq) = params.get("seq").and_then(Value::as_u64) {
+            self.registry.advance(kind, seq);
         }
         let subject = params.get("subject").and_then(Value::as_str).unwrap_or_default();
         self.apply(kind, subject, params.get("data").unwrap_or(&Value::Null))
     }
 
-    fn advance(&mut self, epoch: Value, seq: u64) {
-        let seq = match &self.since {
-            Some((known, last)) if *known == epoch => seq.max(*last),
-            _ => seq,
-        };
-        self.since = Some((epoch, seq));
-    }
 
     /// A subscription's whole value.
     fn set_value(&mut self, kind: Kind, value: &Value) -> Vec<Update> {
@@ -365,6 +410,12 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Config => vec![Update::Config],
+            Kind::Board if data.get("type").and_then(Value::as_str) == Some("project_standing_changed") => data
+                .get("data")
+                .and_then(|view| serde_json::from_value::<crate::aiball::Standing>(view.clone()).ok())
+                .map(Update::Standing)
+                .into_iter()
+                .collect(),
             Kind::Board => self.proposal(data).map(Update::Ping).into_iter().collect(),
         }
     }
@@ -536,7 +587,37 @@ fn filed_of(row: &TicketRow) -> Filed {
 
 /// Runs a plan on the bus: one call per subscription. Blocking.
 pub fn subscribe(wire: &crate::wire::Wire, plan: &Plan) -> Vec<anyhow::Result<Value>> {
-    plan.calls.iter().map(|(_, params)| wire.call("bus.subscribe", params.clone())).collect()
+    plan.calls
+        .iter()
+        .map(|(kind, params)| {
+            if take_fault(*kind) {
+                return Err(anyhow::anyhow!("bus.subscribe: failed on purpose (the debug control's fault)"));
+            }
+            wire.call("bus.subscribe", params.clone())
+        })
+        .collect()
+}
+
+/// Subscriptions made to fail once, by a test (the debug control's
+/// `fault`): the failure path, provoked.
+static FAULTS: std::sync::Mutex<Vec<Kind>> = std::sync::Mutex::new(Vec::new());
+
+/// The next subscribing to the kind named so fails once; `false` for a
+/// name that is no kind.
+pub fn fail_next(name: &str) -> bool {
+    let kinds = [Kind::Tickets, Kind::State, Kind::Bar, Kind::Pings, Kind::Sessions, Kind::Config, Kind::Board];
+    let Some(kind) = kinds.into_iter().find(|k| format!("{k:?}").eq_ignore_ascii_case(name)) else { return false };
+    if let Ok(mut faults) = FAULTS.lock() {
+        faults.push(kind);
+    }
+    true
+}
+
+fn take_fault(kind: Kind) -> bool {
+    let Ok(mut faults) = FAULTS.lock() else { return false };
+    let before = faults.len();
+    faults.retain(|k| *k != kind);
+    faults.len() != before
 }
 
 #[cfg(test)]
@@ -547,6 +628,38 @@ mod tests {
     fn row(id: u64, status: &str) -> serde_json::Value {
         json!({ "id": id, "project": "demo", "title": format!("t{id}"), "status": status, "by_agent": "demo-crew",
                 "priority": "normal", "claimant": null, "assignee": null })
+    }
+
+    /// A reconnection where the tickets' subscription fails while the
+    /// others go on: the ticket closed meanwhile must not stay listed.
+    #[test]
+    fn a_failed_tickets_subscription_is_tried_again_and_read_whole() {
+        let mut live = Live::default();
+        let plan = live.plan("david");
+        let ok = |id: &str, value: serde_json::Value| Ok(json!({ "id": id, "epoch": "e1", "seq": 10, "replayed": false, "value": value }));
+        let answers = vec![
+            Err(anyhow::anyhow!("bus.subscribe: no answer from aiball's bus")),
+            ok("s", json!({})),
+            ok("b", json!({})),
+            ok("h", json!({})),
+            ok("c", json!(null)),
+            ok("p", json!({ "unread": 0 })),
+            ok("w", json!(null)),
+        ];
+        live.subscribed(plan, answers);
+        assert!(live.next_retry().is_some());
+        // The board goes on meanwhile.
+        live.event(&json!({ "subscription": "w", "subject": "board.events", "seq": 25, "data": {} }));
+        // Not yet due; then due, asked whole (no `since`).
+        assert!(live.retry_plan(std::time::Instant::now()).is_none());
+        let retry = live.retry_plan(std::time::Instant::now() + std::time::Duration::from_secs(4)).expect("due");
+        assert_eq!(retry.calls.len(), 1);
+        assert_eq!(retry.calls[0].1["subject"], "project.*.tickets");
+        assert!(retry.calls[0].1.get("since").is_none());
+        // Its value comes whole: #1 closed meanwhile is not in it.
+        live.subscribed(retry, vec![ok("t", json!({ "demo": [row(2, "approved")] }))]);
+        assert_eq!(live.tickets()["demo"].iter().map(|t| t.id).collect::<Vec<_>>(), vec![2]);
+        assert!(live.next_retry().is_none());
     }
 
     #[test]
@@ -615,9 +728,10 @@ mod tests {
         assert!(matches!(&live.event(&bar(false))[..], [Update::Board]));
         assert!(matches!(&live.event(&bar(true))[..], [Update::Board, Update::Limit(..)]), "reached again");
 
-        // Resuming names the epoch and the last seq.
+        // Resuming names the epoch and the tickets' own last seq, not the
+        // agents' later ones: each subscription resumes from its own.
         let plan = live.plan("david");
-        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 17 }));
+        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 12 }));
     }
 
     #[test]

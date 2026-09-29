@@ -13,6 +13,7 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::ticketref;
@@ -75,7 +76,7 @@ struct Detail {
     menu: Option<Menu>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Menu {
     Snooze,
     Priority,
@@ -84,7 +85,7 @@ enum Menu {
 }
 
 /// Full screen, the invariant being changed in the left column.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Editing {
     Content,
     Intent,
@@ -98,6 +99,10 @@ enum Editing {
     Relation,
     Project,
 }
+
+/// A ticket's intents and priorities, as aiball takes them.
+const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
+const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
 
 /// What the full-screen detail offers to choose from, per project.
 #[derive(Clone, Default)]
@@ -139,13 +144,14 @@ pub struct TicketPanel {
     /// Full screen, the reply shown as it will read (the Preview tab).
     reply_preview: bool,
     editing: Option<Editing>,
+    /// The field being edited's combo, full screen: a long list, searched.
+    field_combo: Option<Entity<ComboState>>,
+    /// A project chosen for the ticket, moved once confirmed.
+    move_to: Option<String>,
     catalog: Option<Catalog>,
     edit_title: Entity<InputState>,
     edit_body: Entity<TextareaState>,
     relation_target: Entity<InputState>,
-    /// What is typed to search the open list of choices (tags, people,
-    /// projects): the long lists are searched, not scrolled.
-    search: Entity<InputState>,
     /// Full screen, a comment's ⋯ menu, the one being edited, the one
     /// whose deletion waits for a confirming click.
     comment_menu: Option<u64>,
@@ -184,18 +190,21 @@ impl TicketPanel {
         let edit_title = cx.new(|cx| InputState::new(window, cx));
         let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("search…"));
-        cx.subscribe(&search, |_, _, event: &InputEvent, cx| {
-            if matches!(event, InputEvent::Change) {
-                cx.notify();
-            }
-        })
-        .detach();
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         // The rows a notification is about shine while it is up.
-        cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
-            if matches!(signal, crate::bus::Signal::Notices) {
-                cx.notify();
+        cx.subscribe(&crate::bus::bus(cx), |panel: &mut Self, _, signal: &crate::bus::Signal, cx| {
+            use crate::bus::Signal;
+            use crate::kernel::signals::BusSignal;
+            match signal {
+                Signal::Notices => cx.notify(),
+                // Back on the bus: the ticket open may have moved meanwhile.
+                Signal::Bus(BusSignal::Reconnected { .. }) => panel.reload_open(cx),
+                // aiball restarted: what was read of it is stale.
+                Signal::Bus(BusSignal::EpochChanged) => {
+                    panel.catalog = None;
+                    panel.reload_open(cx);
+                }
+                _ => {}
             }
         })
         .detach();
@@ -225,11 +234,12 @@ impl TicketPanel {
             full_folded: false,
             reply_preview: false,
             editing: None,
+            field_combo: None,
+            move_to: None,
             catalog: None,
             edit_title,
             edit_body,
             relation_target,
-            search,
             comment_menu: None,
             comment_editing: None,
             confirm_delete: None,
@@ -272,6 +282,20 @@ impl TicketPanel {
         self.on_comment("comment edited", move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
     }
 
+    /// What the panel shows, said for the debug control: its project and
+    /// agent, the ticket open, the field being edited, the menu open.
+    pub fn said(&self) -> serde_json::Value {
+        serde_json::json!({
+            "project": self.scope.as_ref().map(|s| s.project.clone()),
+            "agent": self.scope.as_ref().and_then(|s| s.agent.clone()),
+            "tickets": self.tickets.len(),
+            "ticket": self.detail.as_ref().map(|d| d.ticket),
+            "full": self.is_full(),
+            "editing": self.editing.map(|e| format!("{e:?}")),
+            "menu": self.detail.as_ref().and_then(|d| d.menu).map(|m| format!("{m:?}")),
+        })
+    }
+
     pub fn is_full(&self) -> bool {
         self.full && self.detail.is_some()
     }
@@ -280,6 +304,9 @@ impl TicketPanel {
         if self.full != full {
             self.full = full;
             self.editing = None;
+            // Full screen, the reply starts at four lines; in the panel, two.
+            let (min, max) = if full { (4, 16) } else { (2, 8) };
+            self.reply.update(cx, |reply, cx| reply.set_auto_grow(min, max, cx));
             if full {
                 self.read_catalog(cx);
             }
@@ -359,21 +386,85 @@ impl TicketPanel {
         .detach();
     }
 
-    /// The names matching what is typed in the search, those that start
-    /// with it first; nothing typed, the first ones. A handful at most.
-    fn searched<'a>(&self, names: impl Iterator<Item = &'a String>, cx: &App) -> Vec<&'a String> {
-        const SHOWN: usize = 8;
-        let query = self.search.read(cx).value().trim().to_lowercase();
-        let (mut first, rest): (Vec<&String>, Vec<&String>) = names
-            .filter(|n| n.to_lowercase().contains(&query))
-            .partition(|n| n.to_lowercase().starts_with(&query));
-        first.extend(rest);
-        first.truncate(SHOWN);
-        first
+
+    /// A long field's choices and what it holds: the project's own agents
+    /// first, the others greyed.
+    fn field_choices(&self, editing: Editing) -> (Vec<Choice>, Option<String>) {
+        let catalog = self.catalog.clone().unwrap_or_default();
+        let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
+        let agents = |first: &[String]| -> Vec<Choice> {
+            let mut all: Vec<Choice> = first.iter().map(Choice::plain).collect();
+            all.extend(catalog.agents.iter().filter(|a| !first.contains(a)).map(|a| Choice::plain(a).muted()));
+            all
+        };
+        match editing {
+            Editing::Project => {
+                let project = self.project().unwrap_or_default();
+                (catalog.projects.iter().map(Choice::plain).collect(), Some(project))
+            }
+            Editing::Tags => {
+                let on: Vec<String> = ticket.iter().flat_map(|t| t.tags.iter().map(|tag| tag.name.clone())).collect();
+                (catalog.tags.iter().filter(|t| !on.contains(t)).map(Choice::plain).collect(), None)
+            }
+            Editing::Milestone => {
+                let title = ticket.as_ref().and_then(|t| t.milestone.as_ref()).and_then(|m| m.title.clone());
+                let selected = catalog.milestones.iter().find(|(_, t)| Some(t) == title.as_ref()).map(|(id, _)| id.to_string());
+                (catalog.milestones.iter().map(|(id, t)| Choice::new(id.to_string(), t.clone())).collect(), selected)
+            }
+            Editing::Owner => {
+                let mut first = catalog.own.clone();
+                first.push(self.aiball.user.clone());
+                (agents(&first), ticket.map(|t| t.by_agent))
+            }
+            Editing::Assignee => (agents(&catalog.own), ticket.and_then(|t| t.assignee)),
+            Editing::Intent => (INTENTS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.intent)),
+            Editing::Priority => (PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.priority)),
+            _ => (Vec::new(), None),
+        }
     }
 
-    fn search_box(&self) -> impl IntoElement + use<> {
-        div().w(px(160.)).child(Input::new(&self.search))
+    /// A choice made in a long field's combo; cleared, the field is emptied.
+    fn field_chosen(&mut self, editing: Editing, value: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        match (editing, value) {
+            (Editing::Project, value) => {
+                self.move_to = value.filter(|v| Some(v) != self.project().as_ref());
+                cx.notify();
+            }
+            (Editing::Tags, Some(name)) => self.change(format!("tagged {name}"), move |aiball, ticket| aiball.add_tag(ticket, &name), window, cx),
+            (Editing::Milestone, Some(id)) => {
+                let id = id.parse::<u64>().ok();
+                self.change("milestone set", move |aiball, ticket| aiball.set_milestone(ticket, id), window, cx)
+            }
+            (Editing::Milestone, None) => self.change("milestone removed", |aiball, ticket| aiball.set_milestone(ticket, None), window, cx),
+            (Editing::Owner, Some(name)) => self.change(format!("reporter now {name}"), move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx),
+            (Editing::Assignee, Some(name)) => {
+                self.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
+            }
+            (Editing::Assignee, None) => self.change("unassigned", |aiball, ticket| aiball.assign(ticket, None), window, cx),
+            (Editing::Intent, Some(v)) => self.change(format!("intent {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
+            (Editing::Priority, Some(v)) => self.change(format!("priority {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
+            _ => {}
+        }
+    }
+
+    /// The long field's combo, under its row.
+    fn field_combo_view(&self, editing: Editing, _cx: &mut Context<Self>) -> AnyElement {
+        let Some(state) = self.field_combo.as_ref() else { return div().into_any_element() };
+        let (placeholder, search) = match editing {
+            Editing::Project => ("a project", "a project…"),
+            Editing::Tags => ("add a tag", "a tag…"),
+            Editing::Milestone => ("none", "a milestone…"),
+            Editing::Owner => ("the reporter", "an agent, or you…"),
+            Editing::Intent => ("intent", "an intent…"),
+            Editing::Priority => ("priority", "a priority…"),
+            _ => ("nobody", "an agent…"),
+        };
+        let clearable = matches!(editing, Editing::Milestone | Editing::Assignee);
+        div()
+            .w(px(220.))
+            .child(combo::view(state, "field-combo", placeholder, search).cleanable(clearable))
+            .children(crate::inspect::mark_if("field-combo"))
+            .into_any_element()
     }
 
     fn start_editing(&mut self, editing: Editing, window: &mut Window, cx: &mut Context<Self>) {
@@ -381,11 +472,17 @@ impl TicketPanel {
             self.editing = None;
         } else {
             self.editing = Some(editing);
-            if matches!(editing, Editing::Tags | Editing::Owner | Editing::Assignee | Editing::Project) {
-                self.search.update(cx, |input, cx| {
-                    input.set_value("", window, cx);
-                    input.focus(window, cx);
-                });
+            self.move_to = None;
+            self.field_combo = None;
+            if matches!(editing, Editing::Tags | Editing::Owner | Editing::Assignee | Editing::Project | Editing::Milestone | Editing::Intent | Editing::Priority) {
+                let (choices, selected) = self.field_choices(editing);
+                let state = combo::new(choices, selected.as_deref(), window, cx);
+                cx.subscribe_in(&state, window, move |panel: &mut Self, _, event: &ComboEvent<combo::Choices>, window, cx| {
+                    let ComboEvent::Confirm(value) = event;
+                    panel.field_chosen(editing, value.clone(), window, cx);
+                })
+                .detach();
+                self.field_combo = Some(state);
             }
             if editing == Editing::Content {
                 let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
@@ -459,6 +556,8 @@ impl TicketPanel {
         }
         self.scope = scope;
         self.load_sunk(cx);
+        // Read ahead: Assign ▾ lists the project's agents at once.
+        self.read_catalog(cx);
         cx.notify();
     }
 
@@ -554,7 +653,16 @@ impl TicketPanel {
             menu: None,
         });
         self.load(ticket, true, cx);
+        // A ticket of another project: its agents, read ahead too.
+        self.read_catalog(cx);
         cx.notify();
+    }
+
+    /// The ticket open, read again (a gap on the bus: it may have moved).
+    fn reload_open(&mut self, cx: &mut Context<Self>) {
+        if let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) {
+            self.load(ticket, false, cx);
+        }
     }
 
     /// Reads the thread again; `mark_read` clears its unread for the user.
@@ -589,6 +697,11 @@ impl TicketPanel {
                                 .is_none_or(|t| t.comments.len() != thread.comments.len());
                             if grew && !newest_first {
                                 detail.scroll.scroll_to_bottom();
+                            }
+                            // Closed, yet listed open (its removal missed):
+                            // the list lets it go.
+                            if thread.ticket.closed && panel.tickets.iter().any(|t| t.id == ticket) {
+                                crate::bus::emit(cx, crate::bus::Signal::TicketClosed(ticket));
                             }
                             detail.thread = Some(thread);
                             detail.error = None;
@@ -740,7 +853,7 @@ impl TicketPanel {
         if let Some(detail) = self.detail.as_mut() {
             detail.menu = None;
         }
-        let said = who.as_ref().map_or("released".to_string(), |w| format!("assigned to {w}"));
+        let said = who.as_ref().map_or("unassigned".to_string(), |w| format!("assigned to {w}"));
         self.change(said, move |aiball, ticket| aiball.assign(ticket, who.as_deref()), window, cx);
     }
 
@@ -916,12 +1029,14 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
-        // Sunk in the shown agent's backlog: steps back, a ⤓ says until when.
-        let sunk = self.sunk.get(&id).and_then(|until| crate::status::resume_short(until));
+        // Sunk in the shown agent's backlog: steps back, how long yet, then an alarm's zzz.
+        let sunk = self.sunk.get(&id).and_then(|until| Some((crate::status::resume_short(until)?, left(until)?)));
         let group: SharedString = format!("ticket-row-{id}").into();
-        let sunk_tip = sunk.as_ref().map(|until| {
+        let sunk_mark = sunk.as_ref().map(|(until, left)| {
             let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
-            format!("sunk in {agent}'s backlog until {until}: its loop won't bring it up before, unless the thread moves")
+            div().flex().flex_none().items_center().gap_1().child(left.clone()).child(icons::icon(Icon::Sunk, p().muted, 13.)).id(("sunk", id)).tip(format!(
+                "sunk in {agent}'s backlog until {until} (in {left}): its loop won't bring it up before, unless the thread moves"
+            ))
         });
         let lit = crate::notify::lit(cx, id);
         let yours = state.turn == Turn::You;
@@ -947,7 +1062,7 @@ impl TicketPanel {
             .children(critical_chip(ticket))
             .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
-            .when_some(sunk_tip, |d, tip| d.child(div().id(("sunk", id)).flex_none().child("⤓").tip(tip)))
+            .children(sunk_mark)
             .when_some(ticket.last_activity.as_deref().and_then(ago), |d, when| d.child(when));
         // Stepped back while sunk; itself again under the pointer.
         let dim = sunk.is_some();
@@ -961,6 +1076,7 @@ impl TicketPanel {
 
         div()
             .id(("ticket", id))
+            .children(crate::inspect::mark_if(format!("ticket-{id}")))
             .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()
@@ -1089,28 +1205,11 @@ impl TicketPanel {
             });
         }
         {
-            // Who it is assigned to, a click away from changing (the project's
-            // agents).
-            let (label, tip) = match ticket.assignee.as_deref() {
-                Some(assignee) => (format!("→ {assignee}"), format!("assigned to {assignee}: a click changes it")),
-                None => ("assign…".to_string(), "assigned to nobody: a click assigns it to one of the project's agents".to_string()),
-            };
-            chips.push(
-                buttons::chip("assignee-chip", label)
-                    .tip(tip)
-                    .on_click(cx.listener(|panel, _, _, cx| {
-                        panel.read_catalog(cx);
-                        panel.toggle_menu(Menu::Assignee, cx)
-                    }))
-                    .into_any_element(),
-            );
-        }
-        {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let label = match icons::priority(&priority) {
-                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone()),
-                None => div().child(priority.clone()),
+                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., format!("{priority} ▾")),
+                None => div().child(format!("{priority} ▾")),
             };
             chips.push(
                 buttons::chip("priority-chip", label)
@@ -1175,6 +1274,22 @@ impl TicketPanel {
                         .on_link_click(crate::ui::ticketref::on_link),
                 )
         });
+        // Under the priority's chip, where its ▾ points.
+        let priority_menu = (detail.menu == Some(Menu::Priority)).then(|| {
+            let current = ticket.priority.clone().unwrap_or_else(|| "normal".into());
+            let mut row = div().flex().flex_wrap().items_center().gap_1().child(div().text_xs().text_color(p().muted).child("Priority"));
+            for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
+                let on = current == priority;
+                row = row.child(
+                    buttons::chip(id, priority)
+                        .py_0p5()
+                        .text_xs()
+                        .chosen(on)
+                        .when(!on, |d| d.on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx)))),
+                );
+            }
+            row
+        });
         // Full screen, the title spans the top, the state and chips go to
         // the left column, the summary heads the talk; in the panel they
         // all make the head.
@@ -1190,7 +1305,7 @@ impl TicketPanel {
                 .children(chips)
         };
         let (head, full_parts) = if self.full {
-            (None, Some((title, turn, chips, summary)))
+            (None, Some((title, turn, chips, summary, priority_menu)))
         } else {
             let head = div()
                 .flex()
@@ -1214,6 +1329,7 @@ impl TicketPanel {
                 .child(title)
                 .children(turn)
                 .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
+                .children(priority_menu)
                 .children(summary);
             (Some(head), None)
         };
@@ -1342,23 +1458,16 @@ impl TicketPanel {
             })
         });
         let chip = |id: &'static str, label: &'static str| buttons::chip(id, label).py_0p5().text_xs();
-        let menu = detail.menu.map(|menu| {
+        // The priority's choices open under its chip, in the head.
+        let menu = detail.menu.filter(|menu| *menu != Menu::Priority).map(|menu| {
             let row = div().flex().flex_wrap().items_center().gap_1();
             match menu {
+                Menu::Priority => row,
                 Menu::Snooze => row
                     .child(div().text_xs().text_color(p().muted).child("Snooze for"))
                     .child(chip("snooze-1h", "1 hour").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
                     .child(chip("snooze-1d", "a day").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
                     .child(chip("snooze-1w", "a week").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
-                Menu::Priority => {
-                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Priority"));
-                    for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
-                        row = row.child(
-                            chip(id, priority).on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx))),
-                        );
-                    }
-                    row
-                }
                 Menu::Assignee => {
                     let mut row = row.child(div().text_xs().text_color(p().muted).child("Assign to"));
                     let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
@@ -1367,7 +1476,8 @@ impl TicketPanel {
                         Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
                         Some(own) => {
                             for agent in own {
-                                let on = ticket.assignee.as_deref() == Some(agent.as_str());
+                                // Marked: its assignee, else whoever holds it (a claim).
+                                let on = ticket.assignee.as_deref().or(ticket.holder()) == Some(agent.as_str());
                                 let name = agent.clone();
                                 row = row.child(
                                     buttons::chip(SharedString::from(format!("assign-to-{agent}")), agent.clone())
@@ -1384,9 +1494,14 @@ impl TicketPanel {
                             }
                         }
                     }
-                    // Taken back from whoever holds it.
-                    if ticket.holder().is_some() {
-                        row = row.child(chip("assign-release", "release").on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))));
+                    // Last, unassign: taken back from whoever holds it.
+                    if let Some(holder) = ticket.holder() {
+                        row = row.child(
+                            buttons::chip("assign-release", icons::icon(Icon::Unassign, p().muted, 14.))
+                                .py_0p5()
+                                .tip(format!("unassign: takes it back from {holder}; nobody holds it, it waits for whoever takes it"))
+                                .on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))),
+                        );
                     }
                     row
                 }
@@ -1459,7 +1574,6 @@ impl TicketPanel {
                     if detail.answers.len() > 1 { "s" } else { "" }
                 )))
             })
-            .children(menu)
             .child(
                 div()
                     .flex()
@@ -1480,6 +1594,18 @@ impl TicketPanel {
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
+                        // Who it is assigned to, as Snooze: the project's agents below.
+                        .child(
+                            buttons::secondary("assign", match ticket.assignee.as_deref() {
+                                Some(assignee) => format!("→ {assignee} ▾"),
+                                None => "Assign ▾".to_string(),
+                            })
+                            .disabled(detail.busy)
+                            .on_click(cx.listener(|panel, _, _, cx| {
+                                panel.read_catalog(cx);
+                                panel.toggle_menu(Menu::Assignee, cx)
+                            })),
+                        )
                     })
                     .child(div().flex_1())
                     .child(
@@ -1504,7 +1630,9 @@ impl TicketPanel {
                         )
                         .flex_none(),
                     ),
-            );
+            )
+            // Under the buttons, where their ▾ points.
+            .children(menu);
 
         let thread_view = div()
             .relative()
@@ -1531,7 +1659,7 @@ impl TicketPanel {
         } else {
             (thread_view.into_any_element(), actions.into_any_element())
         };
-        let Some((title, turn_line, chips, summary_full)) = full_parts else {
+        let Some((title, turn_line, chips, summary_full, priority_menu)) = full_parts else {
             return div()
                 .flex()
                 .flex_col()
@@ -1544,7 +1672,7 @@ impl TicketPanel {
         };
 
         // ── Full screen: the invariants on the left third ───────────────
-        let left = self.invariants(ticket, turn_line, chips_row(chips), &user, cx);
+        let left = self.invariants(ticket, turn_line, div().flex().flex_col().gap_1().child(chips_row(chips)).children(priority_menu), &user, cx);
         // How much was said, and whose word is the last: the list's count.
         let said: Vec<&Comment> = thread.comments.iter().filter(|c| c.kind == "comment_added").collect();
         let count = said.last().map(|last| {
@@ -1634,7 +1762,6 @@ impl TicketPanel {
     fn invariants(&self, ticket: &TicketHeader, turn: Option<Div>, chips: Div, user: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let editing = self.editing;
         let busy = self.detail.as_ref().is_some_and(|d| d.busy);
-        let catalog = self.catalog.clone().unwrap_or_default();
         let label = |text: &'static str| div().w(px(96.)).flex_none().text_color(p().muted).child(text);
         // A row: a click opens its choices, when it has some.
         let row = |id: &'static str, text: &'static str, value: String, edit: Option<Editing>, cx: &mut Context<Self>| {
@@ -1736,14 +1863,17 @@ impl TicketPanel {
         // ── Fields ──
         col = col.child(group("Fields"));
         let fields: [(&'static str, &'static str, Option<String>, &'static str, Editing, &'static [&'static str]); 4] = [
-            ("inv-intent", "intent", ticket.intent.clone(), "intent", Editing::Intent, &["request", "question", "fyi", "feature", "panic"]),
-            ("inv-priority", "priority", ticket.priority.clone(), "priority", Editing::Priority, &["urgent", "high", "normal", "low"]),
+            ("inv-intent", "intent", ticket.intent.clone(), "intent", Editing::Intent, INTENTS),
+            ("inv-priority", "priority", ticket.priority.clone(), "priority", Editing::Priority, PRIORITIES),
             ("inv-level", "level", ticket.level.clone(), "level", Editing::Level, &["task", "milestone", "roadmap"]),
             ("inv-scope", "scope", ticket.scope.clone(), "scope", Editing::Scope, &["internal", "default", "broadcast"]),
         ];
         for (id, text, value, field, edit, values) in fields {
             col = col.child(row(id, text, value.clone().unwrap_or_else(|| "—".into()), Some(edit), cx));
-            if editing == Some(edit) {
+            // Intent and priority: the combo, as the long fields.
+            if editing == Some(edit) && matches!(edit, Editing::Intent | Editing::Priority) {
+                col = col.child(self.field_combo_view(edit, cx));
+            } else if editing == Some(edit) {
                 let mut list = choices();
                 for v in values {
                     let v: &'static str = v;
@@ -1763,27 +1893,7 @@ impl TicketPanel {
         let milestone = ticket.milestone.as_ref().and_then(|m| m.title.clone());
         col = col.child(row("inv-milestone", "milestone", milestone.clone().unwrap_or_else(|| "—".into()), Some(Editing::Milestone), cx));
         if editing == Some(Editing::Milestone) {
-            let mut list = choices().child(choice(
-                "milestone-none".into(),
-                "none".into(),
-                milestone.is_none(),
-                cx,
-                Box::new(|panel, window, cx| panel.change("milestone removed", |aiball, ticket| aiball.set_milestone(ticket, None), window, cx)),
-            ));
-            for (id, title) in &catalog.milestones {
-                let id = *id;
-                list = list.child(choice(
-                    SharedString::from(format!("milestone-{id}")),
-                    title.clone(),
-                    milestone.as_deref() == Some(title.as_str()),
-                    cx,
-                    Box::new(move |panel, window, cx| panel.change("milestone set", move |aiball, ticket| aiball.set_milestone(ticket, Some(id)), window, cx)),
-                ));
-            }
-            if catalog.milestones.is_empty() {
-                list = list.child(div().text_xs().text_color(p().muted).child("no open milestone in this project"));
-            }
-            col = col.child(list);
+            col = col.child(self.field_combo_view(Editing::Milestone, cx));
         }
         let tags: Vec<String> = ticket.tags.iter().map(|t| t.name.clone()).collect();
         col = col.child(row(
@@ -1794,27 +1904,35 @@ impl TicketPanel {
             cx,
         ));
         if editing == Some(Editing::Tags) {
-            let mut list = choices().child(self.search_box());
-            for tag in self.searched(catalog.tags.iter(), cx) {
-                let on = tags.contains(tag);
+            // Its tags, each dropped by its ✕; the combo adds one.
+            let mut list = choices();
+            for tag in tags {
                 let name = tag.clone();
-                list = list.child(choice(
-                    SharedString::from(format!("tag-{tag}")),
-                    tag.clone(),
-                    on,
-                    cx,
-                    Box::new(move |panel, window, cx| {
-                        let name = name.clone();
-                        panel.change(
-                            if on { format!("tag {name} removed") } else { format!("tagged {name}") },
-                            move |aiball, ticket| if on { aiball.remove_tag(ticket, &name) } else { aiball.add_tag(ticket, &name) },
-                            window,
-                            cx,
-                        )
-                    }),
-                ));
+                list = list.child(
+                    div()
+                        .id(SharedString::from(format!("tag-on-{tag}")))
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .px_1p5()
+                        .py_0p5()
+                        .rounded_sm()
+                        .text_xs()
+                        .border_1()
+                        .border_color(p().accent)
+                        .bg(p().accent.opacity(0.15))
+                        .child(tag.clone())
+                        .child(
+                            buttons::remove(SharedString::from(format!("tag-drop-{tag}")), "✕", "take it out")
+                                .min_w(px(0.))
+                                .on_click(cx.listener(move |panel, _, window, cx| {
+                                    let name = name.clone();
+                                    panel.change(format!("tag {name} removed"), move |aiball, ticket| aiball.remove_tag(ticket, &name), window, cx)
+                                })),
+                        ),
+                );
             }
-            col = col.child(list);
+            col = col.child(list.child(self.field_combo_view(Editing::Tags, cx)));
         }
 
         // ── People ──
@@ -1831,24 +1949,7 @@ impl TicketPanel {
             .child(group("People"))
             .child(row("inv-reporter", "reporter", format!("{} · {}", who(&ticket.by_agent, user), date(&ticket.created_at)), Some(Editing::Owner), cx));
         if editing == Some(Editing::Owner) {
-            let mut list = choices().child(self.search_box());
-            let mut people: Vec<&String> = catalog.agents.iter().chain(std::iter::once(&self.aiball.user)).collect();
-            people.sort();
-            people.dedup();
-            for agent in self.searched(people.into_iter(), cx) {
-                let name = agent.clone();
-                list = list.child(choice(
-                    SharedString::from(format!("owner-{agent}")),
-                    agent.clone(),
-                    *agent == ticket.by_agent,
-                    cx,
-                    Box::new(move |panel, window, cx| {
-                        let name = name.clone();
-                        panel.change(format!("reporter now {name}"), move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx)
-                    }),
-                ));
-            }
-            col = col.child(list);
+            col = col.child(self.field_combo_view(Editing::Owner, cx));
         }
         col = col.child(row("inv-claim", "claimed by", claim, None, cx)).child(row(
             "inv-assignee",
@@ -1858,30 +1959,7 @@ impl TicketPanel {
             cx,
         ));
         if editing == Some(Editing::Assignee) {
-            let mut list = choices().child(self.search_box());
-            if ticket.holder().is_some() {
-                list = list.child(choice(
-                    "assign-release".into(),
-                    "release".into(),
-                    false,
-                    cx,
-                    Box::new(|panel, window, cx| panel.change("released", |aiball, ticket| aiball.assign(ticket, None), window, cx)),
-                ));
-            }
-            for agent in self.searched(catalog.agents.iter(), cx) {
-                let name = agent.clone();
-                list = list.child(choice(
-                    SharedString::from(format!("assign-{agent}")),
-                    agent.clone(),
-                    ticket.assignee.as_deref() == Some(agent.as_str()),
-                    cx,
-                    Box::new(move |panel, window, cx| {
-                        let name = name.clone();
-                        panel.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
-                    }),
-                ));
-            }
-            col = col.child(list);
+            col = col.child(self.field_combo_view(Editing::Assignee, cx));
         }
 
         // ── Links ──
@@ -1992,19 +2070,18 @@ impl TicketPanel {
         let project = self.project().unwrap_or_default();
         col = col.child(group("Project")).child(row("inv-project", "project", project.clone(), Some(Editing::Project), cx));
         if editing == Some(Editing::Project) {
-            let mut list = choices().child(self.search_box());
-            for other in self.searched(catalog.projects.iter().filter(|p| **p != project), cx) {
-                let name = other.clone();
-                list = list.child(choice(
-                    SharedString::from(format!("move-{other}")),
-                    format!("move to {other}"),
-                    false,
-                    cx,
-                    Box::new(move |panel, window, cx| {
-                        let name = name.clone();
-                        panel.change(format!("moved to {name}"), move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
-                    }),
-                ));
+            // Chosen, then moved: a move is seen by everyone on the ticket.
+            let mut list = choices().child(self.field_combo_view(Editing::Project, cx));
+            if let Some(to) = self.move_to.clone() {
+                list = list.child(
+                    buttons::answer("move-ticket", format!("Move to {to}"))
+                        .warning()
+                        .on_click(cx.listener(move |panel, _, window, cx| {
+                            let name = to.clone();
+                            panel.move_to = None;
+                            panel.change(format!("moved to {name}"), move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
+                        })),
+                );
             }
             col = col.child(list);
         }
@@ -2776,13 +2853,27 @@ pub(crate) fn ago(when: &str) -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_secs();
-    let seconds = now.saturating_sub(then);
-    Some(match seconds {
+    Some(span(now.saturating_sub(then)))
+}
+
+/// How long until `when`, as short: `12m`, `3h`, `2d` (`now` when passed).
+pub(crate) fn left(when: &str) -> Option<String> {
+    let at = crate::status::parse_time(when)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs();
+    Some(span(at.saturating_sub(now)))
+}
+
+/// A duration, as short: under a minute is `now`, then minutes, hours, days.
+fn span(seconds: u64) -> String {
+    match seconds {
         0..60 => "now".into(),
         60..3600 => format!("{}m", seconds / 60),
         3600..86400 => format!("{}h", seconds / 3600),
         _ => format!("{}d", seconds / 86400),
-    })
+    }
 }
 
 /// The tickets sunk in an agent's backlog at `now` (seconds since the

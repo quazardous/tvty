@@ -4,8 +4,6 @@
 //! `project.settings_set`: tvty reads no such file), and the keys of the
 //! board's config the project overrides.
 
-use gpui_kit::component::IndexPath;
-use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::{Value as Json, json};
@@ -16,6 +14,7 @@ use crate::activity::{self, Activity};
 use crate::options::Section;
 use crate::theme::p;
 use crate::ui::buttons::{self, Look as _};
+use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 
 /// The project the options are scoped to: its folders, each with its
 /// settings once aiball answered, and the one shown.
@@ -27,7 +26,7 @@ pub(super) struct ProjectOpts {
 
 /// The scope list atop the options: Global, then the board's projects,
 /// typed to be found.
-pub(super) type ScopeSelect = SelectState<SearchableVec<SharedString>>;
+pub(super) type ScopeSelect = ComboState;
 
 /// The scope that is not a project.
 const GLOBAL: &str = "Global";
@@ -67,14 +66,13 @@ impl Shell {
     /// The scope list, made as the options open: Global and the board's
     /// projects, the scope shown chosen.
     pub(super) fn new_scope_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut names: Vec<SharedString> = vec![GLOBAL.into()];
-        names.extend(self.board.projects.iter().filter(|p| p.on_board).map(|p| SharedString::from(p.name.clone())));
-        let shown: SharedString = self.remote_layer.clone().unwrap_or_else(|| GLOBAL.into()).into();
-        let at = names.iter().position(|n| *n == shown).map(|row| IndexPath::default().row(row));
-        let state = cx.new(|cx| ScopeSelect::new(SearchableVec::new(names), at, window, cx).searchable(true));
-        cx.subscribe_in(&state, window, |shell, _, event: &SelectEvent<SearchableVec<SharedString>>, window, cx| {
-            let SelectEvent::Confirm(Some(name)) = event else { return };
-            let project = (name.as_ref() != GLOBAL).then(|| name.to_string());
+        let mut names = vec![Choice::plain(GLOBAL)];
+        names.extend(self.board.projects.iter().filter(|p| p.on_board).map(|p| Choice::plain(p.name.clone())));
+        let shown = self.remote_layer.clone().unwrap_or_else(|| GLOBAL.into());
+        let state = combo::new(names, Some(&shown), window, cx);
+        cx.subscribe_in(&state, window, |shell, _, event: &ComboEvent<combo::Choices>, window, cx| {
+            let ComboEvent::Confirm(Some(name)) = event else { return };
+            let project = (name != GLOBAL).then(|| name.to_string());
             shell.scope_options(project, window, cx);
         })
         .detach();
@@ -83,10 +81,10 @@ impl Shell {
 
     /// The scope list, atop the options.
     pub(super) fn options_scope(&self) -> impl IntoElement + use<> {
-        div().px_1().children(
+        div().px_1().children(crate::inspect::mark_if("options-scope")).children(
             self.scope_select
                 .as_ref()
-                .map(|state| Select::new(state).id("options-scope").search_placeholder("a project…").menu_max_h(px(360.)).w_full()),
+                .map(|state| combo::view(state, "options-scope", GLOBAL, "a project…").menu_max_h(px(360.)).w_full()),
         )
     }
 
@@ -96,7 +94,7 @@ impl Shell {
         let to_project = project.is_some();
         // The list says it, wherever the scope was chosen (a project's ⚙).
         if let Some(state) = self.scope_select.clone() {
-            let name: SharedString = project.clone().unwrap_or_else(|| GLOBAL.into()).into();
+            let name = project.clone().unwrap_or_else(|| GLOBAL.into());
             state.update(cx, |state, cx| state.set_selected_value(&name, window, cx));
         }
         self.show_layer(project.clone(), cx);

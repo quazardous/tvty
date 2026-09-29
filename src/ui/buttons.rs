@@ -47,7 +47,10 @@ enum Hover {
 }
 
 fn base(id: impl Into<ElementId>, hover: Hover) -> Stateful<Div> {
-    let d = div().id(id).flex().flex_none().items_center().gap_1().rounded_sm();
+    let id: ElementId = id.into();
+    // Known by its id to the debug control, where it is painted.
+    let mark = crate::inspect::enabled().then(|| crate::inspect::mark(id.to_string()));
+    let d = div().id(id).flex().flex_none().items_center().gap_1().rounded_sm().children(mark);
     match hover {
         Hover::Off => d.text_color(p().muted.opacity(0.5)),
         hover => d.cursor_pointer().active(|d| d.bg(p().active)).hover(move |d| match hover {
@@ -97,7 +100,9 @@ pub fn chip_if(id: impl Into<ElementId>, label: impl IntoElement, enabled: bool)
 /// An answer of a form or a dialog, the size they all share: a colour
 /// to give (`.danger()`, `.success()`, `.warning()`).
 pub fn answer(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
-    Button::new(id).small().label(label)
+    let id: ElementId = id.into();
+    let mark = crate::inspect::enabled().then(|| crate::inspect::mark(id.to_string()));
+    Button::new(id).small().label(label).children(mark)
 }
 
 /// The main answer of a form or a dialog.

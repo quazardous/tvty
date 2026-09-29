@@ -25,12 +25,17 @@ pub enum Signal {
     AskNewTicket { project: Option<String>, parent: Option<u64> },
     /// Something changed on the board: read it again.
     BoardChanged,
+    /// A ticket read whole says it is closed: whatever still lists it as
+    /// open (an event missed) lets it go.
+    TicketClosed(u64),
     /// Show a thread's images in the viewer, from this one.
     OpenPictures { pictures: Vec<crate::images::Picture>, index: usize },
     /// Something happened: the activity service makes it a notification.
     Activity(crate::activity::Activity),
     /// Text went to the clipboard: a brief "copied" says so.
     Copied,
+    /// tvty's link to aiball changed (`crate::kernel::signals`).
+    Bus(crate::kernel::signals::BusSignal),
 }
 
 pub struct Bus;

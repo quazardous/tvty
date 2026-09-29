@@ -49,7 +49,7 @@ their usual defaults):
 
 On Windows, without the XDG variables, `~/.config/tvty` is
 `%APPDATA%\tvty`, `~/.local/state/tvty` is `%LOCALAPPDATA%\tvty\state` and
-`~/.local/share/tvty` is `%LOCALAPPDATA%\tvty\data`. Options > About shows
+`~/.local/share/tvty` is `%LOCALAPPDATA%\tvty\data`. Settings > About shows
 the folders in use.
 
 A file that does not read is said in a notification, and left as it is.
