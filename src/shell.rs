@@ -31,6 +31,8 @@ mod agentbar;
 mod ended;
 mod frame;
 mod help;
+mod megaphone;
+pub use megaphone::Steered;
 mod newproject;
 mod projectopts;
 mod loopstabs;
@@ -263,6 +265,9 @@ pub struct Shell {
     project_opts: Option<projectopts::ProjectOpts>,
     /// The options' scope list, while they are open.
     scope_select: Option<Entity<projectopts::ScopeSelect>>,
+    /// What steers each project's agents (the 📢), and its popover.
+    standing: HashMap<String, crate::aiball::Standing>,
+    megaphone: Option<megaphone::Megaphone>,
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
     decorations_said: Option<String>,
@@ -621,6 +626,7 @@ impl Shell {
             }
         })
         .detach();
+        cx.subscribe_in(&panel, window, |shell, _, _: &crate::panel::OpenMegaphone, window, cx| shell.open_megaphone(window, cx)).detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
             shell.go_full(window, cx)
         })
@@ -731,6 +737,8 @@ impl Shell {
             new_project: None,
             project_opts: None,
             scope_select: None,
+            standing: HashMap::new(),
+            megaphone: None,
             decorations_said: None,
             os_title: String::new(),
             tip: None,
@@ -743,6 +751,7 @@ impl Shell {
         };
         shell.wire = Some(wire);
         shell.start_tips(cx);
+        shell.start_standing(cx);
         // Once the work is back, the list's order settles (see stack_terminals).
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(3500)).await;
@@ -1608,6 +1617,26 @@ impl Shell {
     /// Points the panel at the selected terminal's project and agent — or
     /// at the project chosen in the projects' list.
     fn sync_panel(&mut self, cx: &mut Context<Self>) {
+        let scope = self.panel_scope();
+        // A project shown with no session open is not on the board: its
+        // tickets as aiball pushes them.
+        let tickets = scope
+            .as_ref()
+            .and_then(|s| self.board.tickets.get(&s.project).or_else(|| self.live.tickets().get(&s.project)).cloned())
+            .unwrap_or_default();
+        let critical = scope
+            .as_ref()
+            .and_then(|s| self.board.critical.get(&s.project).copied().or_else(|| tickets.iter().find(|t| t.critical.is_some()).map(|t| t.id)));
+        let aiball = self.aiball.clone();
+        self.panel.update(cx, |panel, cx| {
+            panel.set_scope(scope, cx);
+            panel.set_board(&aiball, tickets, critical, cx);
+        });
+    }
+
+    /// What the ticket panel is about: the project shown from the list, else
+    /// the shown terminal's (or the ended session's) project and agent.
+    fn panel_scope(&self) -> Option<Scope> {
         let on_board = |name: &str| self.board.projects.iter().any(|p| p.name == name && p.on_board);
         let shown = self
             .project_shown
@@ -1635,20 +1664,7 @@ impl Shell {
                 Some(Scope { project, agent: ended.agent.clone(), sessionless: false })
             })
         });
-        // A project shown with no session open is not on the board: its
-        // tickets as aiball pushes them.
-        let tickets = scope
-            .as_ref()
-            .and_then(|s| self.board.tickets.get(&s.project).or_else(|| self.live.tickets().get(&s.project)).cloned())
-            .unwrap_or_default();
-        let critical = scope
-            .as_ref()
-            .and_then(|s| self.board.critical.get(&s.project).copied().or_else(|| tickets.iter().find(|t| t.critical.is_some()).map(|t| t.id)));
-        let aiball = self.aiball.clone();
-        self.panel.update(cx, |panel, cx| {
-            panel.set_scope(scope, cx);
-            panel.set_board(&aiball, tickets, critical, cx);
-        });
+        scope
     }
 
     fn select(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -2061,6 +2077,10 @@ impl Shell {
             if let Some(list) = self.full_list.clone() {
                 list.update(cx, |list, cx| list.select_all(cx));
             }
+        } else if key == "escape" && self.megaphone.is_some() {
+            self.close_megaphone(window, cx);
+            cx.stop_propagation();
+            return;
         } else if key == "escape" && self.new_project.is_some() {
             self.close_new_project(window, cx);
         } else if key == "escape" && self.help_menu {
@@ -4025,6 +4045,8 @@ impl Shell {
                     .pb_1()
                     .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
                     .child(alerts.badges(format!("project-{}", project.name)))
+                    // Something steers its agents (the 📢).
+                    .children(self.steered_mark(&project.name))
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
@@ -4608,6 +4630,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|shell, _: &keymap::Megaphone, window, cx| shell.open_megaphone(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
             .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
@@ -4706,6 +4729,7 @@ impl Render for Shell {
             .child(body)
             .children(menu)
             .children(self.help_menu_view(cx))
+            .children(self.megaphone_view(cx))
             .children(self.viewer_view(window, cx))
             // Above everything, the full screens and the gallery included.
             .children(notify::stack(corner, cx))

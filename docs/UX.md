@@ -554,6 +554,21 @@ one call at a time, those that come meanwhile added up into the next: a
 fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 `speed` under `[scroll]` in `settings.toml` multiplies both (1 by default).
 
+## The 📢
+
+What steers a project's agents, as aiball keeps it, from its 📢 in the
+ticket panel's header (lit while something steers them), ctrl+shift+m, or
+the menu's "Message every agent…"; the project in the sessions list wears
+a small 📢 then, what steers it in its tip. The same as aiball's own page:
+the **standing instruction** (read at the head of every wake of its
+agents; the ones given last are a click away), the **wake focus** (only
+these tickets wake them — `123, 456`, `!789`, `123+`, `123++`, `+123`,
+`123~` — until a date if one is given; aiball's own reading of it said
+under the box), and a **message to every agent** loop running: send, send
+& hold (not AFK ∞, until released), release holds; what became of each
+loop is said. With no project shown, only the message. tvty reads every
+project's standing again each minute and after its own changes.
+
 ## Focus
 
 What gives the keyboard to the terminal or to a box to write in (a reply,

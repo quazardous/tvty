@@ -837,6 +837,34 @@ impl Aiball {
         self.rpc("project.settings_set", params)
     }
 
+    /// A project's standing instruction and wake focus
+    /// (`project.standing_prompt`).
+    pub fn standing(&self, project: &str) -> anyhow::Result<Standing> {
+        self.rpc("project.standing_prompt", json!({ "project": project }))
+    }
+
+    /// Sets a project's standing instruction (none: cleared) and its wake
+    /// focus: the tickets (none: cleared) and until when (an ISO date).
+    pub fn set_standing(&self, project: &str, prompt: Option<&str>, focus: Option<&str>, until: Option<&str>) -> anyhow::Result<Standing> {
+        self.rpc(
+            "project.set_standing_prompt",
+            json!({ "project": project, "standing_prompt": prompt, "focus_tickets": focus, "focus_until": until }),
+        )
+    }
+
+    /// Types `message` into every running agent loop now; `hold`: holds
+    /// them too (not AFK ∞) until released.
+    pub fn message_all(&self, message: &str, hold: bool) -> anyhow::Result<Vec<LoopHold>> {
+        let answer: LoopHolds = self.rpc("loops.message_all", json!({ "message": message, "hold": hold }))?;
+        Ok(answer.results)
+    }
+
+    /// Lifts the hold on every running agent loop.
+    pub fn release_all(&self) -> anyhow::Result<Vec<LoopHold>> {
+        let answer: LoopHolds = self.rpc("loops.release_all", json!({}))?;
+        Ok(answer.results)
+    }
+
     /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
     /// `aiball init` would; `dry_run`: says what it would do, writes nothing.
     pub fn project_init(&self, ask: &InitAsk, dry_run: bool) -> anyhow::Result<InitDone> {
@@ -1417,6 +1445,49 @@ impl<T> Setting<T> {
             _ => "default",
         }
     }
+}
+
+/// A project's standing instruction (read at the head of every wake of its
+/// agents) and its wake focus (only these tickets wake them).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Standing {
+    #[serde(default)]
+    pub standing_prompt: Option<String>,
+    #[serde(default)]
+    pub focus_tickets: Option<String>,
+    #[serde(default)]
+    pub focus_until: Option<String>,
+    #[serde(default)]
+    pub focus_active: bool,
+    /// The focus as aiball reads it, said.
+    #[serde(default)]
+    pub focus_line: Option<String>,
+}
+
+impl Standing {
+    /// Something steers the project's agents now.
+    pub fn active(&self) -> bool {
+        self.standing_prompt.as_deref().is_some_and(|p| !p.trim().is_empty()) || self.focus_active
+    }
+}
+
+#[derive(Deserialize)]
+struct LoopHolds {
+    #[serde(default)]
+    results: Vec<LoopHold>,
+}
+
+/// What became of one loop: its message typed (`delivered`) or queued
+/// (`spooled`), its hold `armed`, `released` or `failed`.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct LoopHold {
+    pub consumer_id: String,
+    #[serde(default)]
+    pub prompt: Option<String>,
+    #[serde(default)]
+    pub hold: Option<String>,
+    #[serde(default)]
+    pub hold_error: Option<String>,
 }
 
 /// A folder to make an aiball project of, and how.

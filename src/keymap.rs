@@ -50,6 +50,7 @@ actions!(
         GotoTicket,
         AfkCycle,
         ToggleOptions,
+        Megaphone,
         HelpMenu,
         FullScreen,
         FontBigger,
@@ -117,6 +118,7 @@ commands! {
     "font.smaller", WORKSPACE, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;
     "font.reset", WORKSPACE, ["ctrl-)", "ctrl-shift-0"], "Terminal font back to its default", FontReset;
     "ticket.new", WINDOW, ["ctrl-shift-n"], "A new ticket (also + in the panel and the full list)", NewTicket;
+    "project.megaphone", WINDOW, ["ctrl-shift-m"], "The 📢 of the shown project: its standing instruction, its wake focus, a message to every agent", Megaphone;
     "list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList;
     "theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme;
     "terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection", TerminalCopy;

@@ -48,6 +48,7 @@ icons! {
     ClosedResolved => "task_alt.svg",
     Closed => "lock.svg",
     Hot => "local_fire_department.svg",
+    Megaphone => "megaphone.svg",
     Critical => "warning.svg",
     PriorityHigh => "arrow_shape_up.svg",
     PriorityUrgent => "arrow_shape_up_stack.svg",
@@ -81,6 +82,12 @@ pub fn icon(icon: Icon, colour: Hsla, size: f32) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(colour)
+}
+
+/// The 📢 (what steers a project's agents), the kit's megaphone: an emoji
+/// draws only where a font has it.
+pub fn megaphone(colour: Hsla, size: f32) -> Svg {
+    icon(Icon::Megaphone, colour, size)
 }
 
 /// A loop's glyph (▶ ‖ ■ …) in `colour`: the pause drawn as two bars

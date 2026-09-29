@@ -18,6 +18,7 @@ pub(super) const AIBALL_REPOSITORY: &str = "https://github.com/quazardous/aiball
 enum Entry {
     About,
     NewProject,
+    Megaphone,
     FullScreen,
     Documentation,
     Shortcuts,
@@ -31,9 +32,10 @@ enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 12] = [
+    const ALL: [Entry; 13] = [
         Entry::About,
         Entry::NewProject,
+        Entry::Megaphone,
         Entry::FullScreen,
         Entry::Documentation,
         Entry::Shortcuts,
@@ -50,6 +52,7 @@ impl Entry {
         match self {
             Entry::About => "About Terminal Velocity",
             Entry::NewProject => "New project…",
+            Entry::Megaphone => "Message every agent…",
             Entry::FullScreen => "Full screen",
             Entry::Documentation => "Documentation",
             Entry::Shortcuts => "Keyboard shortcuts",
@@ -68,6 +71,7 @@ impl Entry {
         match self {
             // Its key, as the keymap in force has it.
             Entry::FullScreen => crate::keymap::current(cx).keys_of("window.fullscreen").first().map(|k| k.pretty()).unwrap_or_default(),
+            Entry::Megaphone => crate::keymap::current(cx).keys_of("project.megaphone").first().map(|k| k.pretty()).unwrap_or_default(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
             Entry::Aiball => "the board ↗".into(),
@@ -134,6 +138,7 @@ impl Shell {
             Entry::Restart => self.restart_tvty(window, cx),
             Entry::Tips => self.browse_tips(cx),
             Entry::NewProject => self.open_new_project(window, cx),
+            Entry::Megaphone => self.open_megaphone(window, cx),
             Entry::FullScreen => window.toggle_fullscreen(),
             Entry::Updates => {
                 if !crate::updates::open_updater() {

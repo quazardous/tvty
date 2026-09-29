@@ -35,6 +35,9 @@ const ROW_HEIGHT: f32 = 56.;
 /// The user wants the tickets full screen.
 pub struct OpenFullList;
 
+/// The 📢 of the panel's project was clicked.
+pub struct OpenMegaphone;
+
 /// The user flipped the thread's order: newest first when true.
 pub struct OrderChanged(pub bool);
 
@@ -153,6 +156,7 @@ impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
+impl EventEmitter<OpenMegaphone> for TicketPanel {}
 
 
 impl TicketPanel {
@@ -2297,6 +2301,18 @@ impl Render for TicketPanel {
                 })
             })
             .child(div().flex_1())
+            // What steers the project's agents: lit when something does.
+            .child({
+                let steered = self
+                    .scope
+                    .as_ref()
+                    .is_some_and(|s| cx.try_global::<crate::shell::Steered>().is_some_and(|g| g.0.contains(&s.project)));
+                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, "Standing instruction, wake focus, a message to every agent", "project.megaphone"))
+                    // Lit while something steers them (not dimmed otherwise: an
+                    // emoji does not fade).
+                    .when(steered, |d| d.bg(p().active).border_1().border_color(p().accent).rounded_sm())
+                    .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenMegaphone)))
+            })
             .child(
                 buttons::chip("new-ticket", "+ New")
                     .text_xs()

@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The new-project wizard starts from what a folder already has (a subfolder of a project included): its project, agent, role, where its loops run and its Remote Control are filled in, in their own colour with where they come from; it also sets where the loops run and the Remote Control.
 - Options can be scoped to a project (a list top left, typed to find it, or ⚙ on the project in the sessions list): a Project page sets its folders' settings as aiball describes them (where its loops run, Remote Control…), folder by folder, and shows the board settings it overrides.
 - The options' left column is resized by dragging its border, as a full ticket's fields.
+- The 📢 (ticket panel, ctrl+shift+m, the menu): a project's standing instruction and wake focus, and a message to every running agent (send, send & hold, release holds), as aiball's own page; a steered project wears a 📢 in the sessions list.
 - The pointer can give the keyboard: over the terminal or a box to write in, as the system's focus follows the mouse (GNOME, KDE), or as chosen in Options > Appearance > Mouse > Focus.
 - In the ticket list, the tickets sunk in the shown agent's backlog (its loop won't bring them up for a while) step back, a ⤓ saying until when.
 - The agent bar shows the model its Claude runs (its price in the tip), in yellow with ↑ when a newer one of its family is out.

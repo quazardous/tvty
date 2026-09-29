@@ -438,6 +438,9 @@ pub struct Workspace {
     /// them: a new one last.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub terminal_order: HashMap<String, Vec<String>>,
+    /// The standing instructions given last (the 📢), newest first.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standing_history: Vec<String>,
 }
 
 impl Stored for Workspace {
@@ -454,6 +457,7 @@ impl Stored for Workspace {
             stopped_on_quit: Vec::new(),
             holds_on_quit: HashMap::new(),
             terminal_order: HashMap::new(),
+            standing_history: Vec::new(),
         })
     }
 }
