@@ -42,7 +42,9 @@ pub struct KnownLoop {
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew
 /// agent when `crew` — or, `again`, a loop this machine knows, started again
-/// where it ran, its conversation resumed.
+/// where it ran, its conversation resumed. `mode`: `tmux` or `host` when the
+/// user chose; none, the folder's own (its `claude_loop.session`, as aiball
+/// reads it).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Start {
     pub cwd: String,
@@ -50,6 +52,7 @@ pub struct Start {
     pub agent: Option<String>,
     pub crew: bool,
     pub again: Option<String>,
+    pub mode: Option<&'static str>,
 }
 
 impl KnownLoop {
@@ -97,8 +100,9 @@ pub fn known(aiball: &Aiball) -> Vec<KnownLoop> {
     }
 }
 
-/// Starts a loop in tmux, in its directory — or, `again`, starts a known
-/// one again where it ran. Answers the session to open.
+/// Starts a loop in its directory, where its folder says (or `mode`) — or,
+/// `again`, starts a known one again where it ran. Answers the session to
+/// open.
 pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if let Some(name) = &start.again {
         return restart(aiball, name);
@@ -106,7 +110,10 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if !std::path::Path::new(&start.cwd).is_dir() {
         bail!("{} is not a directory", start.cwd);
     }
-    let mut params = json!({ "cwd": start.cwd, "mode": "tmux" });
+    let mut params = json!({ "cwd": start.cwd });
+    if let Some(mode) = start.mode {
+        params["mode"] = json!(mode);
+    }
     if let Some(project) = &start.project {
         params["project"] = json!(project);
     }

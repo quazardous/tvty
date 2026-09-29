@@ -749,6 +749,14 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
+    /// The `.aiball.yaml` a loop started in `cwd` would read (the nearest up
+    /// the tree), as aiball finds it: none, the folder is not set up. tvty
+    /// never reads that file itself.
+    pub fn project_file(&self, cwd: &str) -> anyhow::Result<Option<String>> {
+        let settings: Value = self.rpc("project.settings", json!({ "cwd": cwd }))?;
+        Ok(settings.get("file").and_then(Value::as_str).map(str::to_string))
+    }
+
     /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
     /// `aiball init` would; `dry_run`: says what it would do, writes nothing.
     pub fn project_init(&self, ask: &InitAsk, dry_run: bool) -> anyhow::Result<InitDone> {

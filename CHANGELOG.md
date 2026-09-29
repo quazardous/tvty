@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The updater shows its window buttons: close, minimize, maximize.
 - The answers of every dialog and form are buttons of one size.
+- A loop started from its folder (the sessions list, the end screen, a new project's first session) runs where its folder says — the session host or tmux — instead of always tmux.
+- The new-project wizard asks aiball whether a folder is already set up, a subfolder of a project included.
 - Ctrl+Enter sends a reply or files a ticket without first putting a new line in the text.
 - The quit and restart dialogs scroll their list of sessions, with a scrollbar, when they are many.
 - While a loop boots, the agent bar's "… boot" is no longer squashed.

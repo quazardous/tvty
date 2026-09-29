@@ -83,6 +83,7 @@ impl Shell {
             // On the host, its host outlives its program: started again
             // there, through claude-loop's restart.
             again: l.on_host().then(|| l.name.clone()),
+            mode: None,
         });
         self.ended = Some(EndedSession {
             session: session.to_string(),

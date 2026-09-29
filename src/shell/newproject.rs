@@ -62,6 +62,9 @@ pub(super) struct NewProject {
     asked: u64,
     /// What aiball did: or why it did not.
     outcome: Option<Result<InitDone, String>>,
+    /// The folder aiball was last asked about, and the `.aiball.yaml` that
+    /// applies there, if any (aiball's answer: tvty reads no such file).
+    found: Option<(PathBuf, Option<String>)>,
 }
 
 /// What the folder typed is, for aiball.
@@ -70,13 +73,15 @@ enum Folder {
     Empty,
     Missing,
     NotADirectory,
-    /// Already an aiball project (its `.aiball.yaml`), named if it says so.
-    Configured(Option<String>),
+    /// aiball not asked yet, or not answered.
+    Checking,
+    /// Already set up: the `.aiball.yaml` that applies (aiball's answer).
+    Configured(String),
     /// Ready to be one; `git`: a git repository.
     Fresh { git: bool },
 }
 
-fn folder_of(typed: &str) -> Folder {
+fn folder_of(typed: &str, found: Option<&(PathBuf, Option<String>)>) -> Folder {
     let typed = typed.trim();
     if typed.is_empty() {
         return Folder::Empty;
@@ -88,9 +93,10 @@ fn folder_of(typed: &str) -> Folder {
     if !path.is_dir() {
         return Folder::NotADirectory;
     }
-    match std::fs::read_to_string(path.join(".aiball.yaml")) {
-        Ok(yaml) => Folder::Configured(project_in(&yaml)),
-        Err(_) => Folder::Fresh { git: path.join(".git").exists() },
+    match found.filter(|(asked, _)| *asked == path) {
+        Some((_, Some(file))) => Folder::Configured(file.clone()),
+        Some((_, None)) => Folder::Fresh { git: path.join(".git").exists() },
+        None => Folder::Checking,
     }
 }
 
@@ -100,15 +106,6 @@ fn expand(typed: &str) -> PathBuf {
         (Some(rest), Some(home)) => Path::new(&home).join(rest),
         _ => PathBuf::from(typed),
     }
-}
-
-/// The project a `.aiball.yaml` names (`project: name`, under `consumer:`
-/// or alone).
-fn project_in(yaml: &str) -> Option<String> {
-    yaml.lines()
-        .filter_map(|line| line.trim().strip_prefix("project:"))
-        .map(|value| value.trim().trim_matches(['"', '\'']).to_string())
-        .find(|value| !value.is_empty())
 }
 
 /// A project's or an agent's name as aiball takes it: letters, digits,
@@ -150,8 +147,10 @@ impl Shell {
         for input in [&folder, &name, &agent] {
             cx.subscribe(input, |shell, _, event: &InputEvent, cx| {
                 if matches!(event, InputEvent::Change) {
-                    if shell.new_project.as_ref().is_some_and(|w| w.step == Step::Identity) {
-                        shell.preview_init(cx);
+                    match shell.new_project.as_ref().map(|w| w.step) {
+                        Some(Step::Identity) => shell.preview_init(cx),
+                        Some(Step::Folder) => shell.ask_folder(cx),
+                        _ => {}
                     }
                     cx.notify();
                 }
@@ -172,6 +171,7 @@ impl Shell {
             preview: None,
             asked: 0,
             outcome: None,
+            found: None,
         });
         cx.notify();
     }
@@ -199,6 +199,7 @@ impl Shell {
                     if let Some(wizard) = shell.new_project.as_ref() {
                         wizard.folder.update(cx, |f, cx| f.set_value(path.display().to_string(), window, cx));
                     }
+                    shell.ask_folder(cx);
                     cx.notify();
                 });
             });
@@ -206,16 +207,51 @@ impl Shell {
         .detach();
     }
 
+    /// Asks aiball which `.aiball.yaml` applies to the folder typed (none:
+    /// not set up); the answer for the folder still typed only is kept.
+    fn ask_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(wizard) = self.new_project.as_ref() else { return };
+        let path = expand(wizard.folder.read(cx).value().trim());
+        if !path.is_dir() || wizard.found.as_ref().is_some_and(|(asked, _)| *asked == path) {
+            return;
+        }
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let cwd = path.display().to_string();
+            let file = cx.background_executor().spawn(async move { aiball.project_file(&cwd) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                let Some(wizard) = shell.new_project.as_mut() else { return };
+                if expand(wizard.folder.read(cx).value().trim()) != path {
+                    return;
+                }
+                match file {
+                    Ok(file) => wizard.found = Some((path, file)),
+                    Err(error) => log::warn!("new project: {} {error:#}", path.display()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// The project already set up where `file` applies, as aiball knows its
+    /// agents: one working under the file's folder.
+    fn project_of_file(&self, file: &str) -> Option<String> {
+        let root = Path::new(file).parent()?;
+        self.board.homes.iter().find_map(|(_, project, cwd)| project.clone().filter(|_| Path::new(cwd).starts_with(root)))
+    }
+
     /// From the folder to who works in it: the names proposed from the
-    /// folder (or its `.aiball.yaml`), unless already typed.
+    /// folder (or the project already set up there), unless already typed.
     fn to_identity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(wizard) = self.new_project.as_mut() else { return };
+        let Some(wizard) = self.new_project.as_ref() else { return };
         let typed = wizard.folder.read(cx).value().to_string();
-        let proposed = match folder_of(&typed) {
-            Folder::Configured(Some(name)) => name,
-            Folder::Configured(None) | Folder::Fresh { .. } => name_from(&expand(typed.trim())),
+        let proposed = match folder_of(&typed, wizard.found.as_ref()) {
+            Folder::Configured(file) => self.project_of_file(&file).unwrap_or_else(|| name_from(&expand(typed.trim()))),
+            Folder::Fresh { .. } => name_from(&expand(typed.trim())),
             _ => return,
         };
+        let Some(wizard) = self.new_project.as_mut() else { return };
         if wizard.name.read(cx).value().trim().is_empty() {
             wizard.name.update(cx, |n, cx| n.set_value(proposed.clone(), window, cx));
         }
@@ -297,6 +333,7 @@ impl Shell {
             agent: Some(wizard.agent.read(cx).value().trim().to_string()),
             crew: wizard.crew,
             again: None,
+            mode: None,
         };
         self.close_new_project(window, cx);
         self.start_on_host(start, cx);
@@ -396,22 +433,26 @@ impl Shell {
 
     fn folder_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let typed = wizard.folder.read(cx).value().to_string();
-        let folder = folder_of(&typed);
+        let folder = folder_of(&typed, wizard.found.as_ref());
+        let project = match &folder {
+            Folder::Configured(file) => self.project_of_file(file),
+            _ => None,
+        };
         let (said, colour) = match &folder {
             Folder::Empty => ("The folder the agent will work in: the project's root.".to_string(), p().muted),
             Folder::Missing => ("No such folder.".to_string(), p().danger),
             Folder::NotADirectory => ("This is a file, not a folder.".to_string(), p().danger),
-            Folder::Configured(Some(name)) => (format!("Already an aiball project: {name}. Next sets it up again."), p().warning),
-            Folder::Configured(None) => ("Already set up for aiball (.aiball.yaml). Next sets it up again.".to_string(), p().warning),
+            Folder::Checking => ("Asking aiball…".to_string(), p().muted),
+            Folder::Configured(file) => match &project {
+                Some(name) => (format!("Already an aiball project: {name} ({file}). Next sets it up again."), p().warning),
+                None => (format!("Already set up for aiball ({file}). Next sets it up again."), p().warning),
+            },
             Folder::Fresh { git: true } => ("A git repository: ready.".to_string(), p().success),
             Folder::Fresh { git: false } => ("Ready (not a git repository).".to_string(), p().success),
         };
         let ready = matches!(folder, Folder::Configured(_) | Folder::Fresh { .. });
         // Already on the board: open it rather than set it up again.
-        let open = match &folder {
-            Folder::Configured(Some(name)) if self.board.projects.iter().any(|p| p.name == *name) => Some(name.clone()),
-            _ => None,
-        };
+        let open = project.filter(|name| self.board.projects.iter().any(|p| p.name == *name));
         let page = div()
             .flex()
             .flex_col()
@@ -605,26 +646,47 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use super::{Folder, folder_of, name_from, name_ok, project_in};
+    use super::{Folder, folder_of, name_from, name_ok};
     use std::path::Path;
 
     #[test]
-    fn a_folder_says_what_it_is() {
+    fn a_folder_says_what_it_is_as_aiball_answers() {
         let dir = std::env::temp_dir().join(format!("tvty-newproject-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
-        assert_eq!(folder_of(""), Folder::Empty);
-        assert_eq!(folder_of(&dir.join("nothing").display().to_string()), Folder::Missing);
-        assert_eq!(folder_of(&dir.display().to_string()), Folder::Fresh { git: false });
-        std::fs::write(dir.join(".aiball.yaml"), "consumer:\n  agent: app-claude\n  project: \"app\"\n").unwrap();
-        assert_eq!(folder_of(&dir.display().to_string()), Folder::Configured(Some("app".into())));
+        assert_eq!(folder_of("", None), Folder::Empty);
+        assert_eq!(folder_of(&dir.join("nothing").display().to_string(), None), Folder::Missing);
+        // A folder: aiball is asked, its answer said.
+        assert_eq!(folder_of(&dir.display().to_string(), None), Folder::Checking);
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), None))), Folder::Fresh { git: false });
+        let file = Some("/w/.aiball.yaml".to_string());
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), file.clone()))), Folder::Configured("/w/.aiball.yaml".into()));
+        // An answer about another folder is not this one's.
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(Path::new("/elsewhere").to_path_buf(), file))), Folder::Checking);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn names_and_the_folder() {
-        assert_eq!(project_in("project: demo\n"), Some("demo".into()));
-        assert_eq!(project_in("consumer:\n  agent: x\n"), None);
         assert!(name_ok("my-app_2.x") && !name_ok("my app") && !name_ok(""));
         assert_eq!(name_from(Path::new("/tmp/My App")), "My-App");
+    }
+
+    #[test]
+    fn tvty_never_reads_an_aiball_yaml_itself() {
+        // aiball's folder configuration is aiball's: asked over the bus
+        // (project.settings), never opened by tvty.
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src];
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(dir).unwrap().flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if path.extension().is_some_and(|e| e == "rs") {
+                    let code = std::fs::read_to_string(&path).unwrap();
+                    assert!(!code.contains(&format!("join(\"{}\")", ".aiball.yaml")), "{} opens .aiball.yaml", path.display());
+                }
+            }
+        }
     }
 }

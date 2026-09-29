@@ -182,6 +182,7 @@ impl Shell {
                         // through claude-loop's restart: its start is refused
                         // while its host is up, its program ended.
                         again: l.on_host().then(|| l.name.clone()),
+                        mode: None,
                     };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, cx, start));
                 }
@@ -200,7 +201,7 @@ impl Shell {
                         list = list.child(heading(heading_of.clone(), cx));
                         last = Some(heading_of);
                     }
-                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None };
+                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, cx, start));
                 }
             }
@@ -331,6 +332,8 @@ impl Shell {
                                         agent: (!agent.is_empty()).then_some(agent),
                                         crew: form.crew,
                                         again: None,
+                                        // Unchecked "on aiball's host": tmux, asked.
+                                        mode: (!form.on_host).then_some("tmux"),
                                     };
                                     if form.on_host {
                                         shell.start_on_host(start, cx);
