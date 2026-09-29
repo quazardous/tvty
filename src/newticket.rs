@@ -19,6 +19,7 @@ use crate::aiball::{Aiball, NewTicket};
 use crate::{composer, field};
 use crate::theme::p;
 use crate::ui::buttons::{self, Look as _};
+use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 
 /// The form puts itself away (Esc, ✕); the draft stays.
 pub struct CloseNewTicket;
@@ -46,8 +47,6 @@ enum Pick {
     Assignee,
 }
 
-/// The most suggestions a field shows.
-const SUGGESTED: usize = 8;
 
 /// What the left column offers: the board's projects and agents, and the
 /// chosen project's tags and milestones.
@@ -93,8 +92,8 @@ pub struct NewTicketForm {
     /// A parent typed by hand: its number, with or without a hash.
     parent_input: Entity<InputState>,
     catalog: Catalog,
-    /// What is typed in each picker, to search its choices.
-    pickers: [(Pick, Entity<InputState>); 4],
+    /// Each long field's combo: a dropdown searched as it is typed.
+    combos: [(Pick, Entity<ComboState>); 4],
     busy: bool,
     error: Option<String>,
     mentions: Vec<String>,
@@ -163,27 +162,18 @@ impl NewTicketForm {
             .detach();
         }
         let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
-        let pickers = [
-            (Pick::Project, "another project…"),
-            (Pick::Tag, "add a tag…"),
-            (Pick::Milestone, "a milestone…"),
-            (Pick::Assignee, "an agent…"),
-        ]
-        .map(|(pick, hint)| {
-            let input = cx.new(|cx| InputState::new(window, cx).placeholder(hint));
-            // Typing searches; Enter takes the first match.
-            cx.subscribe_in(&input, window, move |form: &mut Self, input, event: &InputEvent, window, cx| match event {
-                InputEvent::Change => cx.notify(),
-                InputEvent::PressEnter { .. } => {
-                    let query = input.read(cx).value().to_string();
-                    if let Some((value, _, _)) = form.suggestions(pick, &query).into_iter().next() {
-                        form.pick(pick, value, window, cx);
-                    }
+        let combos = [Pick::Project, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
+            let state = combo::new(Vec::new(), None, window, cx);
+            // A choice takes it; a milestone or an assignee cleared drops it.
+            cx.subscribe_in(&state, window, move |form: &mut Self, _, event: &ComboEvent<combo::Choices>, window, cx| {
+                let ComboEvent::Confirm(value) = event;
+                match value {
+                    Some(value) => form.pick(pick, value.clone(), window, cx),
+                    None => form.unpick(pick, "", window, cx),
                 }
-                _ => {}
             })
             .detach();
-            (pick, input)
+            (pick, state)
         });
         // A parent typed by hand counts once it reads as a number.
         cx.subscribe(&parent_input, |form: &mut Self, input, event: &InputEvent, cx| {
@@ -218,14 +208,14 @@ impl NewTicketForm {
             body,
             parent_input,
             catalog: Catalog::default(),
-            pickers,
+            combos,
             busy: false,
             error: None,
             mentions: Vec::new(),
             preview: false,
             images: Default::default(),
         };
-        form.set_project(project, cx);
+        form.set_project(project, window, cx);
         form
     }
 
@@ -234,7 +224,7 @@ impl NewTicketForm {
     pub fn prefill(&mut self, project: Option<String>, parent: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
         let begun = !self.title.read(cx).value().trim().is_empty() || !self.body.read(cx).value().trim().is_empty();
         if let Some(project) = project.filter(|_| !begun || parent.is_some()) {
-            self.set_project(project, cx);
+            self.set_project(project, window, cx);
         }
         if parent.is_some() || !begun {
             self.parent = parent;
@@ -246,7 +236,7 @@ impl NewTicketForm {
 
     /// The project the ticket goes to: its tags and milestones are read
     /// again, and a milestone of the other project dropped.
-    fn set_project(&mut self, project: String, cx: &mut Context<Self>) {
+    fn set_project(&mut self, project: String, window: &mut Window, cx: &mut Context<Self>) {
         if project == self.project && self.catalog.project == project {
             return;
         }
@@ -254,8 +244,9 @@ impl NewTicketForm {
             self.milestone = None;
         }
         self.project = project.clone();
+        self.fill_combos(window, cx);
         let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let catalog = cx
                 .background_executor()
                 .spawn(async move {
@@ -277,9 +268,10 @@ impl NewTicketForm {
                     }
                 })
                 .await;
-            let _ = this.update(cx, |form, cx| {
+            let _ = this.update_in(cx, |form, window, cx| {
                 if catalog.project == form.project {
                     form.catalog = catalog;
+                    form.fill_combos(window, cx);
                     cx.notify();
                 }
             });
@@ -288,63 +280,46 @@ impl NewTicketForm {
         cx.notify();
     }
 
-    fn picker(&self, pick: Pick) -> &Entity<InputState> {
-        &self.pickers.iter().find(|(p, _)| *p == pick).expect("every pick has its input").1
+    fn combo(&self, pick: Pick) -> &Entity<ComboState> {
+        &self.combos.iter().find(|(p, _)| *p == pick).expect("every pick has its combo").1
     }
 
-    /// A picker's choices that match what is typed, as (value, label, one
-    /// of the project's own): nothing typed, the likeliest few (the
-    /// project's agents, the first tags and milestones).
-    fn suggestions(&self, pick: Pick, query: &str) -> Vec<(String, String, bool)> {
+    /// A field's choices: the project's own agents first, the others greyed.
+    fn choices(&self, pick: Pick) -> Vec<Choice> {
         let catalog = &self.catalog;
-        let all: Vec<(String, String, bool)> = match pick {
-            Pick::Project => catalog.projects.iter().filter(|p| **p != self.project).map(|p| (p.clone(), p.clone(), true)).collect(),
-            Pick::Tag => catalog.tags.iter().filter(|t| !self.tags.contains(t)).map(|t| (t.clone(), t.clone(), true)).collect(),
-            Pick::Milestone => catalog
-                .milestones
-                .iter()
-                .filter(|(id, _)| self.milestone.as_ref().is_none_or(|m| m.0 != *id))
-                .map(|(id, title)| (id.to_string(), title.clone(), true))
-                .collect(),
+        match pick {
+            Pick::Project => catalog.projects.iter().map(Choice::plain).collect(),
+            Pick::Tag => catalog.tags.iter().filter(|t| !self.tags.contains(t)).map(Choice::plain).collect(),
+            Pick::Milestone => catalog.milestones.iter().map(|(id, title)| Choice::new(id.to_string(), title.clone())).collect(),
             Pick::Assignee => catalog
                 .agents_by_project()
                 .into_iter()
-                .filter(|(a, _)| self.assignee.as_deref() != Some(a.as_str()))
-                .map(|(a, own)| (a.clone(), a, own))
+                .map(|(a, own)| if own { Choice::plain(a) } else { Choice::plain(a).muted() })
                 .collect(),
-        };
-        let query = query.trim().to_lowercase();
-        // One value, already chosen: nothing to offer until one is sought.
-        let chosen = match pick {
-            Pick::Milestone => self.milestone.is_some(),
-            Pick::Assignee => self.assignee.is_some(),
-            _ => false,
-        };
-        if query.is_empty() && chosen {
-            return Vec::new();
         }
-        if query.is_empty() {
-            return match pick {
-                // A project is searched for: the list is long.
-                Pick::Project => Vec::new(),
-                Pick::Assignee => all.into_iter().filter(|(_, _, own)| *own).take(SUGGESTED).collect(),
-                _ => all.into_iter().take(SUGGESTED).collect(),
-            };
-        }
-        // Names that start with it first, then those that contain it.
-        let (mut first, rest): (Vec<_>, Vec<_>) = all
-            .into_iter()
-            .filter(|(_, label, _)| label.to_lowercase().contains(&query))
-            .partition(|(_, label, _)| label.to_lowercase().starts_with(&query));
-        first.extend(rest);
-        first.truncate(SUGGESTED);
-        first
     }
 
-    /// A suggestion taken: the field set (a tag added), the search cleared.
+    /// What a field's combo shows chosen: none for tags, which it adds to.
+    fn selected(&self, pick: Pick) -> Option<String> {
+        match pick {
+            Pick::Project => (!self.project.is_empty()).then(|| self.project.clone()),
+            Pick::Tag => None,
+            Pick::Milestone => self.milestone.as_ref().map(|(id, _)| id.to_string()),
+            Pick::Assignee => self.assignee.clone(),
+        }
+    }
+
+    /// Every combo told its choices and what is chosen.
+    fn fill_combos(&self, window: &mut Window, cx: &mut Context<Self>) {
+        for (pick, state) in &self.combos {
+            combo::set(state, self.choices(*pick), self.selected(*pick).as_deref(), window, cx);
+        }
+    }
+
+    /// A choice taken: the field set (a tag added).
     fn pick(&mut self, pick: Pick, value: String, window: &mut Window, cx: &mut Context<Self>) {
         match pick {
-            Pick::Project => self.set_project(value, cx),
+            Pick::Project => self.set_project(value, window, cx),
             Pick::Tag => {
                 if !self.tags.contains(&value) {
                     self.tags.push(value);
@@ -358,7 +333,8 @@ impl NewTicketForm {
             }
             Pick::Assignee => self.assignee = Some(value),
         }
-        self.picker(pick).clone().update(cx, |input, cx| input.set_value("", window, cx));
+        // A tag added leaves the combo empty, for the next one.
+        self.fill_combos(window, cx);
         cx.notify();
     }
 
@@ -414,7 +390,7 @@ impl NewTicketForm {
         }
         if self.project.is_empty() {
             self.error = Some("Which project?".into());
-            self.picker(Pick::Project).clone().update(cx, |input, cx| input.focus(window, cx));
+            self.combo(Pick::Project).clone().update(cx, |state, cx| state.focus(window, cx));
             cx.notify();
             return;
         }
@@ -476,9 +452,7 @@ impl NewTicketForm {
         self.assignee = None;
         self.milestone = None;
         self.parent = None;
-        for (_, input) in &self.pickers {
-            input.update(cx, |input, cx| input.set_value("", window, cx));
-        }
+        self.fill_combos(window, cx);
         self.error = None;
     }
 
@@ -492,64 +466,54 @@ impl NewTicketForm {
     }
 
     /// A choice dropped: a tag, the milestone, the assignee.
-    fn unpick(&mut self, pick: Pick, value: &str, cx: &mut Context<Self>) {
+    fn unpick(&mut self, pick: Pick, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         match pick {
             Pick::Project => {}
             Pick::Tag => self.tags.retain(|t| t != value),
             Pick::Milestone => self.milestone = None,
             Pick::Assignee => self.assignee = None,
         }
+        self.fill_combos(window, cx);
         cx.notify();
     }
 
-    /// A picker: what is chosen (a click on ✕ drops it), where to type, and
-    /// under it what matches.
-    fn picker_field(&self, pick: Pick, chosen: Vec<(String, String)>, removable: bool, cx: &mut Context<Self>) -> Div {
-        let input = self.picker(pick).clone();
-        let query = input.read(cx).value().to_string();
+    /// A long field: its combo, searched as it is typed. Tags, which are
+    /// several, stand beside it (a click on ✕ drops one); the combo adds.
+    fn picker_field(&self, pick: Pick, cx: &mut Context<Self>) -> Div {
         let id = format!("{pick:?}").to_lowercase();
+        let (placeholder, search) = match pick {
+            Pick::Project => ("a project", "a project…"),
+            Pick::Tag => ("add a tag", "a tag…"),
+            Pick::Milestone => ("none", "a milestone…"),
+            Pick::Assignee => ("nobody", "an agent…"),
+        };
         let mut row = div().flex().flex_wrap().items_center().gap_1();
-        for (value, label) in chosen {
-            row = row.child(
-                div()
-                    .id(SharedString::from(format!("new-{id}-chosen-{value}")))
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_1p5()
-                    .py_0p5()
-                    .rounded_sm()
-                    .text_xs()
-                    .border_1()
-                    .border_color(p().accent)
-                    .bg(p().accent.opacity(0.15))
-                    .child(label)
-                    .when(removable, |d| {
-                        d.child(
-                            buttons::remove(SharedString::from(format!("new-{id}-drop-{value}")), "✕", "take it out")
+        if pick == Pick::Tag {
+            for tag in self.tags.clone() {
+                row = row.child(
+                    div()
+                        .id(SharedString::from(format!("new-tag-chosen-{tag}")))
+                        .flex()
+                        .items_center()
+                        .gap_1()
+                        .px_1p5()
+                        .py_0p5()
+                        .rounded_sm()
+                        .text_xs()
+                        .border_1()
+                        .border_color(p().accent)
+                        .bg(p().accent.opacity(0.15))
+                        .child(tag.clone())
+                        .child(
+                            buttons::remove(SharedString::from(format!("new-tag-drop-{tag}")), "✕", "take it out")
                                 .min_w(px(0.))
-                                .on_click(cx.listener(move |form, _, _, cx| form.unpick(pick, &value, cx))),
-                        )
-                    }),
-            );
+                                .on_click(cx.listener(move |form, _, window, cx| form.unpick(Pick::Tag, &tag, window, cx))),
+                        ),
+                );
+            }
         }
-        row = row.child(crate::focusmode::on_hover(div().w(px(160.)).child(Input::new(&input)), input.read(cx).focus_handle(cx)));
-        let mut suggested = div().flex().flex_wrap().gap_1().pt_1();
-        let found = self.suggestions(pick, &query);
-        let none = found.is_empty() && !query.trim().is_empty();
-        for (value, label, own) in found {
-            suggested = suggested.child(
-                buttons::chip(SharedString::from(format!("new-{id}-{value}")), label)
-                    .py_0p5()
-                    .text_xs()
-                    .when(!own, |d| d.text_color(p().muted))
-                    .on_click(cx.listener(move |form, _, window, cx| form.pick(pick, value.clone(), window, cx))),
-            );
-        }
-        if none {
-            suggested = suggested.child(div().text_xs().text_color(p().muted).child("nothing matches"));
-        }
-        div().flex().flex_col().child(row).child(suggested)
+        let clearable = matches!(pick, Pick::Milestone | Pick::Assignee);
+        row.child(div().w(px(220.)).child(combo::view(self.combo(pick), SharedString::from(format!("new-{id}")), placeholder, search).cleanable(clearable)))
     }
 
     /// The left third: what the ticket is. The short fields show their
@@ -585,8 +549,7 @@ impl NewTicketForm {
         let mut col = div().id("new-ticket-fields").flex().flex_col().pr_3().text_sm();
 
         // ── Where ──
-        let project = (!self.project.is_empty()).then(|| (self.project.clone(), self.project.clone()));
-        col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, project.into_iter().collect(), false, cx)));
+        col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, cx)));
 
         // ── Fields: every choice in sight ──
         col = col.child(group("Fields"));
@@ -613,14 +576,11 @@ impl NewTicketForm {
                 }));
             }
         }
-        let tags = self.tags.iter().map(|t| (t.clone(), t.clone())).collect();
-        col = col.child(field("tags", self.picker_field(Pick::Tag, tags, true, cx)));
-        let milestone = self.milestone.iter().map(|(id, title)| (id.to_string(), title.clone())).collect();
-        col = col.child(field("milestone", self.picker_field(Pick::Milestone, milestone, true, cx)));
+        col = col.child(field("tags", self.picker_field(Pick::Tag, cx)));
+        col = col.child(field("milestone", self.picker_field(Pick::Milestone, cx)));
 
         // ── People: the project's agents first ──
-        let assignee = self.assignee.iter().map(|a| (a.clone(), a.clone())).collect();
-        col = col.child(group("People")).child(field("assign to", self.picker_field(Pick::Assignee, assignee, true, cx)));
+        col = col.child(group("People")).child(field("assign to", self.picker_field(Pick::Assignee, cx)));
 
         // ── Links ──
         let parent = match self.parent {
