@@ -34,6 +34,8 @@ pub enum Signal {
     Activity(crate::activity::Activity),
     /// Text went to the clipboard: a brief "copied" says so.
     Copied,
+    /// tvty's link to aiball changed (`crate::kernel::signals`).
+    Bus(crate::kernel::signals::BusSignal),
 }
 
 pub struct Bus;

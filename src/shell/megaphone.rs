@@ -110,7 +110,7 @@ impl Shell {
     /// Reads every project's standing in one call, and the end of the
     /// focuses that apply (they lapse with no word from aiball); false: no
     /// project yet.
-    fn load_standing(&mut self, cx: &mut Context<Self>) -> bool {
+    pub(super) fn load_standing(&mut self, cx: &mut Context<Self>) -> bool {
         if !self.board.projects.iter().any(|p| p.on_board) {
             return false;
         }

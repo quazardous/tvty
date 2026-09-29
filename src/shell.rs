@@ -210,6 +210,9 @@ pub struct Shell {
     pub(super) controls_taken: HashSet<String>,
     /// Bumped by each subscribing: a retry planned before it gives up.
     retry_generation: u64,
+    /// Where tvty stands with aiball's bus: the title bar shows it, the
+    /// views hear its signals.
+    bus_state: crate::kernel::signals::BusState,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -590,6 +593,7 @@ impl Shell {
             }
             Signal::Notices => cx.notify(),
             Signal::Copied => shell.show_copied(cx),
+            Signal::Bus(signal) => shell.on_bus_signal(signal, cx),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
             Signal::OpenTicket { project, ticket } => shell.open_full_ticket(project.clone(), *ticket, window, cx),
             Signal::GoToTicket { reference, project } => shell.follow_reference(reference.clone(), project.clone(), window, cx),
@@ -716,6 +720,7 @@ impl Shell {
             copies: HashSet::new(),
             controls_taken: HashSet::new(),
             retry_generation: 0,
+            bus_state: Default::default(),
             project_shown: None,
             ask: None,
             remember: false,
@@ -975,11 +980,19 @@ impl Shell {
                         let updates = shell.live.event(&notice.params);
                         shell.take_updates(updates, cx);
                     }),
+                    crate::wire::DROPPED => this.update(cx, |shell, cx| {
+                        let why = notice.params.get("why").and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+                        let signals = shell.bus_state.dropped(&why, std::time::Instant::now());
+                        shell.publish_bus(signals, cx);
+                    }),
                     "bus.hello" => {
                         // The user's pings are one's own: subscribed as a human.
                         let text = |key: &str| notice.params.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
                         let user = if text("kind") == "human" { text("consumer") } else { String::new() };
-                        let planned = this.update(cx, |shell, _| {
+                        let version = notice.params.get("version").and_then(serde_json::Value::as_u64).unwrap_or_default();
+                        let planned = this.update(cx, |shell, cx| {
+                            let signals = shell.bus_state.hello(version, &user, std::time::Instant::now());
+                            shell.publish_bus(signals, cx);
                             // A greeting subscribes to everything: the retries
                             // planned before it are moot.
                             shell.retry_generation += 1;
@@ -1013,6 +1026,7 @@ impl Shell {
                             shell.wire_whoami = Some(said);
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
+                            shell.subscriptions_said(cx);
                             shell.retry_failed(cx);
                             // Once the user is known: what came while tvty was closed.
                             if !user.is_empty() && shell.missed_checked.as_deref() != Some(user.as_str()) {
@@ -1033,6 +1047,67 @@ impl Shell {
             }
         })
         .detach();
+    }
+
+    /// A dot in the title bar while the link to aiball is not right: red,
+    /// down (tvty connects again); yellow, subscriptions failing (tried
+    /// again). Nothing while all is well.
+    fn bus_mark(&self) -> Option<Stateful<Div>> {
+        let failing = self.bus_state.failing();
+        let (colour, tip) = if self.bus_state.down() {
+            (p().danger, "aiball's bus is down: tvty connects again; the lists may be behind meanwhile".to_string())
+        } else if !failing.is_empty() {
+            (p().warning, format!("subscribing to {} failed: tried again, read whole; the lists may be behind meanwhile", failing.join(", ")))
+        } else {
+            return None;
+        };
+        Some(
+            div()
+                .id("bus-status")
+                .flex_none()
+                .mr_2()
+                .size(px(9.))
+                .rounded_full()
+                .bg(colour)
+                .children(crate::inspect::mark_if("bus-status"))
+                .tip(tip),
+        )
+    }
+
+    /// The subscriptions' changes, as the link's signals.
+    fn subscriptions_said(&mut self, cx: &mut Context<Self>) {
+        use crate::kernel::subscriptions::Change;
+        let mut signals = Vec::new();
+        for change in self.live.take_changes() {
+            signals.extend(match change {
+                Change::Failed { kind, error } => self.bus_state.failed(&kind, &error),
+                Change::Live { kind, epoch } => self.bus_state.live(&kind, epoch.as_ref()),
+            });
+        }
+        self.publish_bus(signals, cx);
+    }
+
+    /// Each signal of the link, logged and put on the internal bus for
+    /// whoever observes it.
+    fn publish_bus(&mut self, signals: Vec<crate::kernel::signals::BusSignal>, cx: &mut Context<Self>) {
+        for signal in signals {
+            log::info!("aiball bus: {signal:?}");
+            bus::emit(cx, Signal::Bus(signal));
+        }
+        cx.notify();
+    }
+
+    /// What the shell itself does on a signal of the link: the 📢 read
+    /// again after a gap (its changes came while tvty was not listening).
+    fn on_bus_signal(&mut self, signal: &crate::kernel::signals::BusSignal, cx: &mut Context<Self>) {
+        use crate::kernel::signals::BusSignal;
+        match signal {
+            BusSignal::Reconnected { .. } | BusSignal::EpochChanged => {
+                self.load_standing(cx);
+            }
+            _ => {}
+        }
+        cx.notify();
     }
 
     /// Tries the failed subscriptions again when they are due, on the
@@ -1058,6 +1133,7 @@ impl Shell {
             let _ = this.update(cx, |shell, cx| {
                 let updates = shell.live.subscribed(plan, answers);
                 shell.take_updates(updates, cx);
+                shell.subscriptions_said(cx);
                 shell.retry_failed(cx);
                 cx.notify();
             });
@@ -4847,6 +4923,9 @@ impl Render for Shell {
                                 shell.toggle_options(window, cx)
                             })),
                     )
+                    // The link to aiball, when it is not right: down, or a
+                    // subscription failing (the lists may be behind).
+                    .children(self.bus_mark())
                     // Who tvty acts as on aiball's board.
                     .child(
                         div()

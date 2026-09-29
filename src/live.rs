@@ -163,6 +163,20 @@ impl Live {
         dropped
     }
 
+    /// What changed for the subscriptions since last taken, their kinds
+    /// named: for the link's signals.
+    pub fn take_changes(&mut self) -> Vec<crate::kernel::subscriptions::Change<String>> {
+        use crate::kernel::subscriptions::Change;
+        self.registry
+            .take_changes()
+            .into_iter()
+            .map(|change| match change {
+                Change::Failed { kind, error } => Change::Failed { kind: format!("{kind:?}"), error },
+                Change::Live { kind, epoch } => Change::Live { kind: format!("{kind:?}"), epoch },
+            })
+            .collect()
+    }
+
     /// When a failed subscription is to be tried again.
     pub fn next_retry(&self) -> Option<std::time::Instant> {
         self.registry.next_retry()

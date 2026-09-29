@@ -46,6 +46,7 @@ impl Shell {
             "panel": self.panel.read(cx).said(),
             "bus": self.wire.as_ref().and_then(|w| w.hello()).is_some(),
             "subscriptions": self.live.subscriptions_said(),
+            "link": self.bus_state.said(),
             "place_bar": self.move_asked,
         })
     }

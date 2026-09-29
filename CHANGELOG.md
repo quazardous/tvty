@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A dot before your name in the title bar when the link to aiball is not right: red while its bus is down, yellow while a list's subscription fails; back on the bus, the ticket open and the 📢 are read again.
 - In a debug build, ctrl+alt+shift+i opens GPUI's inspector: pick an element, read its id and where it is made.
 
 ### Changed

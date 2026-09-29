@@ -44,15 +44,24 @@ impl Default for Entry {
     }
 }
 
+/// What changed for a subscription, for the signals.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Change<K> {
+    Failed { kind: K, error: String },
+    Live { kind: K, epoch: Option<Value> },
+}
+
 /// Every subscription, by kind.
 #[derive(Clone, Debug)]
 pub struct Registry<K: Ord> {
     entries: BTreeMap<K, Entry>,
+    /// Changes not taken yet ([`Registry::take_changes`]).
+    changes: Vec<Change<K>>,
 }
 
 impl<K: Ord> Default for Registry<K> {
     fn default() -> Self {
-        Self { entries: BTreeMap::new() }
+        Self { entries: BTreeMap::new(), changes: Vec::new() }
     }
 }
 
@@ -77,6 +86,7 @@ impl<K: Ord + Copy + Debug> Registry<K> {
         }
         entry.state = State::Live;
         entry.failures = 0;
+        self.changes.push(Change::Live { kind, epoch: epoch.clone() });
         if let (Some(epoch), Some(seq)) = (epoch, seq) {
             advance(entry, Some(epoch), seq);
         }
@@ -90,7 +100,13 @@ impl<K: Ord + Copy + Debug> Registry<K> {
         entry.cursor = None;
         let wait = RETRY_FIRST.saturating_mul(1 << (entry.failures - 1).min(5)).min(RETRY_AT_MOST);
         log::warn!("aiball bus: subscribing to {kind:?} failed ({error}); tried again in {} s, read whole", wait.as_secs());
-        entry.state = State::Failed { error, retry_at: now + wait };
+        entry.state = State::Failed { error: error.clone(), retry_at: now + wait };
+        self.changes.push(Change::Failed { kind, error });
+    }
+
+    /// What changed since last taken, oldest first.
+    pub fn take_changes(&mut self) -> Vec<Change<K>> {
+        std::mem::take(&mut self.changes)
     }
 
     /// An event of `kind`: its cursor, and only its, moves on.

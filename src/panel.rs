@@ -192,9 +192,19 @@ impl TicketPanel {
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         // The rows a notification is about shine while it is up.
-        cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
-            if matches!(signal, crate::bus::Signal::Notices) {
-                cx.notify();
+        cx.subscribe(&crate::bus::bus(cx), |panel: &mut Self, _, signal: &crate::bus::Signal, cx| {
+            use crate::bus::Signal;
+            use crate::kernel::signals::BusSignal;
+            match signal {
+                Signal::Notices => cx.notify(),
+                // Back on the bus: the ticket open may have moved meanwhile.
+                Signal::Bus(BusSignal::Reconnected { .. }) => panel.reload_open(cx),
+                // aiball restarted: what was read of it is stale.
+                Signal::Bus(BusSignal::EpochChanged) => {
+                    panel.catalog = None;
+                    panel.reload_open(cx);
+                }
+                _ => {}
             }
         })
         .detach();
@@ -646,6 +656,13 @@ impl TicketPanel {
         // A ticket of another project: its agents, read ahead too.
         self.read_catalog(cx);
         cx.notify();
+    }
+
+    /// The ticket open, read again (a gap on the bus: it may have moved).
+    fn reload_open(&mut self, cx: &mut Context<Self>) {
+        if let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) {
+            self.load(ticket, false, cx);
+        }
     }
 
     /// Reads the thread again; `mark_read` clears its unread for the user.

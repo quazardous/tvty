@@ -19,6 +19,10 @@ use serde_json::{Value, json};
 /// How long a call waits for its answer.
 const CALL_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// The method of the notice the wire gives itself when a connection that
+/// ran is gone: `{"why": …}`.
+pub const DROPPED: &str = "tvty.dropped";
+
 /// Something the daemon sent on its own.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Notification {
@@ -158,7 +162,13 @@ fn run(user: Arc<Mutex<String>>, queue: Receiver<Outgoing>, notices: UnboundedSe
     loop {
         let as_user = user.lock().map(|u| u.clone()).unwrap_or_default();
         let asked_again = match connect(&as_user) {
-            Ok(socket) => serve(socket, &queue, &notices, &hello),
+            Ok(socket) => {
+                let (asked_again, why) = serve(socket, &queue, &notices, &hello);
+                // A connection that ran, gone: said once (a daemon that stays
+                // down is not said again at each try).
+                let _ = notices.unbounded_send(Notification { method: DROPPED.into(), params: serde_json::json!({ "why": why }) });
+                asked_again
+            }
             Err(error) => {
                 log::debug!("aiball bus: {error:#}");
                 false
@@ -207,22 +217,25 @@ fn connect(user: &str) -> anyhow::Result<Socket> {
 
 /// Sends the calls queued and reads what comes, until the connection drops
 /// (`false`) or another user is asked for (`true`).
-fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSender<Notification>, hello: &Mutex<Option<Hello>>) -> bool {
+fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSender<Notification>, hello: &Mutex<Option<Hello>>) -> (bool, String) {
     log::info!("aiball bus: connected");
     let mut waiting: HashMap<u64, Sender<anyhow::Result<Value>>> = HashMap::new();
     let mut asked_again = false;
+    let mut why = String::from("tvty is closing");
     'connected: loop {
         while let Ok(outgoing) = queue.try_recv() {
             match outgoing {
                 Outgoing::Call { frame, id, answer } => {
                     if let Err(error) = socket.send(tungstenite::Message::text(frame)) {
                         let _ = answer.send(Err(anyhow!("aiball's bus: {error}")));
+                        why = format!("{error}");
                         break 'connected;
                     }
                     waiting.insert(id, answer);
                 }
                 Outgoing::Reconnect => {
                     asked_again = true;
+                    why = "connected again on purpose".into();
                     let _ = socket.close(None);
                     break 'connected;
                 }
@@ -252,12 +265,14 @@ fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSend
             }
             Ok(tungstenite::Message::Close(frame)) => {
                 log::info!("aiball bus: closed by the daemon ({frame:?})");
+                why = "closed by the daemon".into();
                 break;
             }
             Ok(_) => {}
             Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
             Err(error) => {
                 log::info!("aiball bus: dropped: {error}");
+                why = format!("{error}");
                 break;
             }
         }
@@ -265,7 +280,7 @@ fn serve(mut socket: Socket, queue: &Receiver<Outgoing>, notices: &UnboundedSend
     for (_, answer) in waiting {
         let _ = answer.send(Err(anyhow!("aiball's bus dropped before answering")));
     }
-    asked_again
+    (asked_again, why)
 }
 
 /// What a frame from the daemon holds.

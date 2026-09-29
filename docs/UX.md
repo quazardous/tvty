@@ -586,6 +586,16 @@ button in the title bar (by ⚙), or the menu's "Message every agent…" —
 send, send & hold (not AFK ∞, until released), release holds; what
 became of each loop is said.
 
+**The link to aiball** shows in the title bar only when it is not right, a
+dot before the user's name: red while aiball's bus is down (tvty connects
+again), yellow while a subscription fails (tried again, then read whole);
+its tip says which, and that the lists may be behind meanwhile. Back on
+the bus, the ticket open and the 📢 are read again; aiball restarted (a new
+epoch), what was read of it is dropped too. The signals behind it
+(`crate::kernel::signals`: connected, dropped, reconnected, a subscription
+failed or live again, a new epoch) are on the internal bus for any view to
+observe.
+
 ## Focus
 
 What gives the keyboard to the terminal or to a box to write in (a reply,
