@@ -49,6 +49,7 @@ impl Shell {
             "link": self.bus_state.said(),
             "catalogs": crate::kernel::catalog::store(cx).read(cx).said(),
             "backlogs": crate::kernel::backlog::store(cx).read(cx).said(),
+            "standing": crate::kernel::standing::store(cx).read(cx).said(),
             "place_bar": self.move_asked,
         })
     }

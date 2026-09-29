@@ -6,4 +6,5 @@
 pub mod backlog;
 pub mod catalog;
 pub mod signals;
+pub mod standing;
 pub mod subscriptions;

@@ -33,7 +33,7 @@ mod ended;
 mod frame;
 mod help;
 mod megaphone;
-pub use megaphone::Steered;
+pub use crate::kernel::standing::Steered;
 mod newproject;
 mod projectopts;
 mod loopstabs;
@@ -275,7 +275,6 @@ pub struct Shell {
     /// The options' scope list, while they are open.
     scope_select: Option<Entity<projectopts::ScopeSelect>>,
     /// What steers each project's agents (the 📢), and its popover.
-    standing: HashMap<String, crate::aiball::Standing>,
     megaphone: Option<megaphone::Megaphone>,
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
@@ -553,6 +552,9 @@ impl Shell {
         crate::kernel::catalog::init(aiball.clone(), cx);
         // The agents' backlogs, kept up to date for the panel and the bar.
         crate::kernel::backlog::init(aiball.clone(), cx);
+        // What steers each project (the 📢), followed from aiball's word.
+        crate::kernel::standing::init(aiball.clone(), cx);
+        cx.observe(&crate::kernel::standing::store(cx), |_, _, cx| cx.notify()).detach();
         // The agent bar's backlog list, redrawn as its backlog is read.
         cx.observe(&crate::kernel::backlog::store(cx), |_, _, cx| cx.notify()).detach();
         // aiball's bus first: the first read of the board goes through it.
@@ -592,7 +594,7 @@ impl Shell {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
             // For the stores: the board itself comes from the live lists.
-            Signal::TicketsChanged(_) | Signal::BarChanged(_) => {}
+            Signal::TicketsChanged(_) | Signal::BarChanged(_) | Signal::StandingChanged(_) => {}
             Signal::TicketClosed(ticket) => {
                 if shell.live.drop_ticket(*ticket) {
                     log::info!("board: #{ticket} read closed, yet listed open: dropped from the list");
@@ -764,7 +766,6 @@ impl Shell {
             new_project: None,
             project_opts: None,
             scope_select: None,
-            standing: HashMap::new(),
             megaphone: None,
             decorations_said: None,
             os_title: String::new(),
@@ -778,7 +779,6 @@ impl Shell {
         };
         shell.wire = Some(wire);
         shell.start_tips(cx);
-        shell.start_standing(cx);
         // Once the work is back, the list's order settles (see stack_terminals).
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(3500)).await;
@@ -947,7 +947,7 @@ impl Shell {
                 Update::Board => self.board_moved(cx),
                 Update::Filed(filed) => self.announce_filed(filed, cx),
                 Update::Ping(ping) => self.announce_ping(ping, cx),
-                Update::Standing(standing) => self.standing_changed(standing, cx),
+                Update::Standing(standing) => bus::emit(cx, Signal::StandingChanged(standing)),
                 Update::Config => {
                     if self.options.is_some() {
                         self.load_remote(cx);
@@ -1109,16 +1109,9 @@ impl Shell {
         cx.notify();
     }
 
-    /// What the shell itself does on a signal of the link: the 📢 read
-    /// again after a gap (its changes came while tvty was not listening).
-    fn on_bus_signal(&mut self, signal: &crate::kernel::signals::BusSignal, cx: &mut Context<Self>) {
-        use crate::kernel::signals::BusSignal;
-        match signal {
-            BusSignal::Reconnected { .. } | BusSignal::EpochChanged => {
-                self.load_standing(cx);
-            }
-            _ => {}
-        }
+    /// What the shell itself does on a signal of the link: drawn again
+    /// (the title bar's dot); the stores keep their own parts.
+    fn on_bus_signal(&mut self, _: &crate::kernel::signals::BusSignal, cx: &mut Context<Self>) {
         cx.notify();
     }
 
@@ -4206,7 +4199,7 @@ impl Shell {
                     .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
                     .child(alerts.badges(format!("project-{}", project.name)))
                     // Something steers its agents (the 📢).
-                    .children(self.steered_mark(&project.name))
+                    .children(self.steered_mark(&project.name, cx))
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(

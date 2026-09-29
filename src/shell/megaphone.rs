@@ -2,10 +2,9 @@
 //! instruction (read at the head of every wake), its wake focus (only these
 //! tickets wake them, until a date) — and a message typed into every
 //! running agent loop at once, holding them or not. The same as aiball's
-//! own page, through its bus.
+//! own page, through its bus. The standings themselves are the kernel's
+//! (`crate::kernel::standing`): this is the view.
 
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
 
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
@@ -14,7 +13,7 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::activity::{self, Activity};
-use crate::aiball::{LoopHold, Standing};
+use crate::aiball::LoopHold;
 use crate::notify::Kind;
 use crate::theme::p;
 use crate::ui::buttons;
@@ -25,12 +24,6 @@ const DEFAULT_MESSAGE: &str = "I'll be back. Until then, stabilise: finish or pa
 
 /// The instructions given last, offered again.
 const HISTORY: usize = 6;
-
-/// The projects something steers now: the ticket panel lights its 📢.
-#[derive(Clone, Default)]
-pub struct Steered(pub HashSet<String>);
-
-impl Global for Steered {}
 
 /// The popover, while it is open.
 pub(super) struct Megaphone {
@@ -92,92 +85,6 @@ fn results_said(results: &[LoopHold]) -> String {
 }
 
 impl Shell {
-    /// Reads every on-board project's standing now, then every minute.
-    pub(super) fn start_standing(&mut self, cx: &mut Context<Self>) {
-        cx.spawn(async move |this, cx| {
-            // Once the board is there: then aiball says each change.
-            loop {
-                let Ok(read) = this.update(cx, |shell, cx| shell.load_standing(cx)) else { return };
-                if read {
-                    return;
-                }
-                cx.background_executor().timer(Duration::from_secs(2)).await;
-            }
-        })
-        .detach();
-    }
-
-    /// Reads every project's standing in one call, and the end of the
-    /// focuses that apply (they lapse with no word from aiball); false: no
-    /// project yet.
-    pub(super) fn load_standing(&mut self, cx: &mut Context<Self>) -> bool {
-        if !self.board.projects.iter().any(|p| p.on_board) {
-            return false;
-        }
-        let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
-            let read = cx
-                .background_executor()
-                .spawn(async move {
-                    let all = aiball.standings()?;
-                    // A focus that applies: its end, to read it again then.
-                    Ok::<_, anyhow::Error>(
-                        all.into_iter()
-                            .map(|s| if s.focus_active { aiball.standing(&s.project).unwrap_or(s) } else { s })
-                            .map(|s| (s.project.clone(), s))
-                            .collect::<HashMap<_, _>>(),
-                    )
-                })
-                .await;
-            let _ = this.update(cx, |shell, cx| match read {
-                Ok(read) => {
-                    for standing in read.values() {
-                        shell.watch_focus_end(standing, cx);
-                    }
-                    shell.set_standing(read, cx);
-                }
-                Err(error) => log::warn!("standing: {error:#}"),
-            });
-        })
-        .detach();
-        true
-    }
-
-    /// A project's standing, as aiball said it changed.
-    pub(super) fn standing_changed(&mut self, standing: Standing, cx: &mut Context<Self>) {
-        self.watch_focus_end(&standing, cx);
-        let mut all = self.standing.clone();
-        all.insert(standing.project.clone(), standing);
-        self.set_standing(all, cx);
-    }
-
-    /// A focus that applies lapses at its end with no word from aiball: the
-    /// project read again then.
-    fn watch_focus_end(&mut self, standing: &Standing, cx: &mut Context<Self>) {
-        let Some(end) = standing.focus_until.as_deref().filter(|_| standing.focus_active).and_then(crate::status::parse_time) else { return };
-        let wait = end.saturating_sub(crate::status::now()) + 1;
-        let project = standing.project.clone();
-        let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
-            cx.background_executor().timer(Duration::from_secs(wait)).await;
-            let read = cx.background_executor().spawn(async move { aiball.standing(&project) }).await;
-            if let Ok(standing) = read {
-                let _ = this.update(cx, |shell, cx| shell.standing_changed(standing, cx));
-            }
-        })
-        .detach();
-    }
-
-    fn set_standing(&mut self, standing: HashMap<String, Standing>, cx: &mut Context<Self>) {
-        if standing == self.standing {
-            return;
-        }
-        let steered = standing.iter().filter(|(_, s)| s.active()).map(|(p, _)| p.clone()).collect();
-        cx.set_global(Steered(steered));
-        self.standing = standing;
-        cx.notify();
-    }
-
     /// The 📢 of the ticket panel's project: its standing instruction and
     /// wake focus. No project shown: said, nothing opens.
     pub(super) fn open_megaphone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -195,7 +102,7 @@ impl Shell {
 
     fn open_popover(&mut self, project: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         self.help_menu = false;
-        let standing = project.as_ref().and_then(|p| self.standing.get(p)).cloned().unwrap_or_default();
+        let standing = project.as_ref().and_then(|p| crate::kernel::standing::get(cx, p)).unwrap_or_default();
         let field = |value: Option<String>, placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| {
                 let mut state = InputState::new(window, cx).placeholder(placeholder);
@@ -231,7 +138,7 @@ impl Shell {
                         fill(&m.tickets.clone(), standing.focus_tickets.clone(), window, cx);
                         fill(&m.until.clone(), standing.focus_until.as_deref().map(until_local), window, cx);
                     }
-                    shell.standing_changed(standing, cx);
+                    crate::kernel::standing::apply(cx, standing);
                 });
             })
             .detach();
@@ -295,9 +202,7 @@ impl Shell {
                             (None, true) => format!("{project}: only its focus wakes its agents"),
                         };
                         activity::publish(cx, Activity::news("tvty", Kind::Info, None, said));
-                        let mut all = shell.standing.clone();
-                        all.insert(project, standing);
-                        shell.set_standing(all, cx);
+                        crate::kernel::standing::apply(cx, standing);
                     }
                     Err(error) => {
                         if let Some(m) = shell.megaphone.as_mut() {
@@ -349,7 +254,8 @@ impl Shell {
         let m = self.megaphone.as_ref()?;
         let head = |text: String| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
         let hint = |text: &'static str| div().text_xs().text_color(p().muted).child(text);
-        let standing = m.project.as_ref().and_then(|p| self.standing.get(p));
+        let standing = m.project.as_ref().and_then(|p| crate::kernel::standing::get(cx, p));
+        let standing = standing.as_ref();
         let mut card = div().flex().flex_col().gap_1p5().p_3().w(px(480.)).text_sm();
         match &m.project {
             Some(project) => {
@@ -457,8 +363,8 @@ impl Shell {
 
     /// The mark of a steered project in the sessions list: 📢, what steers
     /// it in its tip.
-    pub(super) fn steered_mark(&self, project: &str) -> Option<AnyElement> {
-        let standing = self.standing.get(project).filter(|s| s.active())?;
+    pub(super) fn steered_mark(&self, project: &str, cx: &App) -> Option<AnyElement> {
+        let standing = crate::kernel::standing::get(cx, project).filter(|s| s.active())?;
         let mut tip = Vec::new();
         if let Some(prompt) = standing.standing_prompt.as_deref().filter(|p| !p.trim().is_empty()) {
             tip.push(format!("Standing instruction: {prompt}"));
