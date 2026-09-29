@@ -79,6 +79,8 @@ struct Detail {
 enum Menu {
     Snooze,
     Priority,
+    /// Who it is assigned to: the project's agents.
+    Assignee,
 }
 
 /// Full screen, the invariant being changed in the left column.
@@ -104,6 +106,8 @@ struct Catalog {
     tags: Vec<String>,
     milestones: Vec<(u64, String)>,
     agents: Vec<String>,
+    /// The project's own agents, as aiball knows them.
+    own: Vec<String>,
     projects: Vec<String>,
 }
 
@@ -329,7 +333,16 @@ impl TicketPanel {
                 .background_executor()
                 .spawn(async move {
                     let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
+                    let mut own: Vec<String> = aiball
+                        .consumers()
+                        .unwrap_or_default()
+                        .into_iter()
+                        .filter(|c| c.kind != "human" && c.project.as_deref() == Some(project.as_str()))
+                        .map(|c| c.consumer_id)
+                        .collect();
+                    own.sort();
                     Catalog {
+                        own,
                         tags: aiball.tag_catalog(&project).unwrap_or_default(),
                         milestones: aiball.milestones(&project).unwrap_or_default(),
                         agents,
@@ -722,6 +735,15 @@ impl TicketPanel {
         self.act(&format!("priority {priority}"), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
     }
 
+    /// Assigns the open ticket to `who`, or releases it; the menu closes.
+    fn assign_to(&mut self, who: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        if let Some(detail) = self.detail.as_mut() {
+            detail.menu = None;
+        }
+        let said = who.as_ref().map_or("released".to_string(), |w| format!("assigned to {w}"));
+        self.change(said, move |aiball, ticket| aiball.assign(ticket, who.as_deref()), window, cx);
+    }
+
     fn toggle_menu(&mut self, menu: Menu, cx: &mut Context<Self>) {
         if let Some(detail) = self.detail.as_mut() {
             detail.menu = if detail.menu == Some(menu) { None } else { Some(menu) };
@@ -1067,6 +1089,23 @@ impl TicketPanel {
             });
         }
         {
+            // Who it is assigned to, a click away from changing (the project's
+            // agents).
+            let (label, tip) = match ticket.assignee.as_deref() {
+                Some(assignee) => (format!("→ {assignee}"), format!("assigned to {assignee}: a click changes it")),
+                None => ("assign…".to_string(), "assigned to nobody: a click assigns it to one of the project's agents".to_string()),
+            };
+            chips.push(
+                buttons::chip("assignee-chip", label)
+                    .tip(tip)
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        panel.read_catalog(cx);
+                        panel.toggle_menu(Menu::Assignee, cx)
+                    }))
+                    .into_any_element(),
+            );
+        }
+        {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let label = match icons::priority(&priority) {
@@ -1317,6 +1356,37 @@ impl TicketPanel {
                         row = row.child(
                             chip(id, priority).on_click(cx.listener(move |panel, _, window, cx| panel.set_priority(priority, window, cx))),
                         );
+                    }
+                    row
+                }
+                Menu::Assignee => {
+                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Assign to"));
+                    let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
+                    match own {
+                        None => row = row.child(div().text_xs().text_color(p().muted).child("…")),
+                        Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
+                        Some(own) => {
+                            for agent in own {
+                                let on = ticket.assignee.as_deref() == Some(agent.as_str());
+                                let name = agent.clone();
+                                row = row.child(
+                                    buttons::chip(SharedString::from(format!("assign-to-{agent}")), agent.clone())
+                                        .py_0p5()
+                                        .text_xs()
+                                        .chosen(on)
+                                        .when(!on, |d| {
+                                            d.on_click(cx.listener(move |panel, _, window, cx| {
+                                                let name = name.clone();
+                                                panel.assign_to(Some(name), window, cx)
+                                            }))
+                                        }),
+                                );
+                            }
+                        }
+                    }
+                    // Taken back from whoever holds it.
+                    if ticket.holder().is_some() {
+                        row = row.child(chip("assign-release", "release").on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))));
                     }
                     row
                 }
