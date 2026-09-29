@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A new ticket's note under "scope" no longer runs over the tags when the column is narrow.
 - Who tvty acts as on aiball's board is in the title bar, after ⚙, no longer in the ticket panel's header.
 - A ticket open in the panel has an assignee chip: a click lists the project's agents to assign it to, or releases it.
+- A ticket an agent holds no longer reads "Yours: nobody else is on it": it names who holds it.
 - A ticket open in the panel: the header stays as the list has it (project, badges); "← Tickets" sits above the ticket's title.
 - The agent bar keeps its controls in sight when short: its folder, then its name, give way.
 - In the sessions list, a new session goes last in its project; the others keep their place, across restarts too.
