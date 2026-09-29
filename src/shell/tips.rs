@@ -6,7 +6,6 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
-use gpui_kit::component::button::{ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::*;
 
 use super::Shell;
@@ -206,9 +205,24 @@ impl Shell {
                 .flex()
                 .items_center()
                 .gap_3()
+                // Solid, in the tips' violet (the kit's custom button only
+                // tints its colour: it read as disabled).
                 .child(
-                    buttons::answer("tip-got", "Got it")
-                        .custom(ButtonCustomVariant::new(cx).color(violet).foreground(crate::theme::on(violet)).hover(violet.opacity(0.85)).active(violet.opacity(0.7)))
+                    div()
+                        .id("tip-got")
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .h(px(24.))
+                        .px_3()
+                        .rounded_md()
+                        .cursor_pointer()
+                        .bg(violet)
+                        .text_color(crate::theme::on(violet))
+                        .font_weight(FontWeight::MEDIUM)
+                        .hover(move |d| d.bg(violet.blend(gpui_kit::white().opacity(0.15))))
+                        .active(move |d| d.bg(violet.opacity(0.8)))
+                        .child("Got it")
                         .on_click(cx.listener(|shell, _, _, cx| shell.tip_got(cx))),
                 )
                 .child(buttons::link("tip-next", "Next tip").on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
