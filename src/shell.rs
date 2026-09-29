@@ -4573,17 +4573,32 @@ impl Render for Shell {
                 .flex_col()
                 .children(tabs)
                 .child(
+                    // Under the terminal as it slides and fades in, what
+                    // its fade leaves out of its background: it comes in
+                    // over its own colour, never over what is behind a
+                    // see-through window, and the whole stays as
+                    // see-through as set (the backdrop is gone once in).
                     div()
                         .relative()
                         .flex_1()
                         .min_h_0()
-                        // Its own drawing, reused until it changes: the rest
-                        // of the window does not move with its output.
-                        .child(terminal.clone().cached(StyleRefinement::default().size_full()))
+                        .child(
+                            div()
+                                .relative()
+                                .size_full()
+                                // Its own drawing, reused until it changes: the rest
+                                // of the window does not move with its output.
+                                .child(terminal.clone().cached(StyleRefinement::default().size_full()))
+                                .with_animation(
+                                    SharedString::from(format!("switch-{}", self.switches)),
+                                    Animation::new(SWITCH).with_easing(switch_easing),
+                                    |d, t| d.left(px(60. * (1. - t))).opacity(switch_fade(t)),
+                                ),
+                        )
                         .with_animation(
-                            SharedString::from(format!("switch-{}", self.switches)),
-                            Animation::new(Duration::from_millis(240)).with_easing(|t| 1. - (1. - t).powi(3)),
-                            |d, t| d.left(px(60. * (1. - t))).opacity(0.25 + 0.75 * t),
+                            SharedString::from(format!("switch-under-{}", self.switches)),
+                            Animation::new(SWITCH).with_easing(switch_easing),
+                            |d, t| d.bg(crate::terminal::background_colour().opacity(backdrop_alpha(crate::terminal::opacity(), switch_fade(t)))),
                         ),
                 )
                 .children(bar)
@@ -5431,8 +5446,43 @@ fn ticket_reference(typed: &str) -> Option<String> {
     (!hash.is_empty() && hash.chars().all(|c| c.is_ascii_alphanumeric())).then(|| hash.to_string())
 }
 
+
+/// How long a terminal takes to slide in on a switch.
+const SWITCH: Duration = Duration::from_millis(240);
+
+fn switch_easing(t: f32) -> f32 {
+    1. - (1. - t).powi(3)
+}
+
+/// The terminal's opacity as it comes in, `t` from 0 to 1.
+fn switch_fade(t: f32) -> f32 {
+    0.25 + 0.75 * t
+}
+
+/// The backdrop's opacity under a terminal `fade` opaque, so that the two
+/// together are as opaque as the terminal's background is set (`set`):
+/// `set = set·fade + b·(1 − set·fade)`. None once the terminal is in.
+fn backdrop_alpha(set: f32, fade: f32) -> f32 {
+    let over = set * fade;
+    if over >= 1. { 0. } else { (set * (1. - fade) / (1. - over)).clamp(0., 1.) }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_terminal_sliding_in_is_as_see_through_as_set_never_more() {
+        use super::backdrop_alpha;
+        for set in [0.6_f32, 0.9, 1.] {
+            for fade in [0.25_f32, 0.5, 0.9, 1.] {
+                let b = backdrop_alpha(set, fade);
+                let whole = set * fade + b * (1. - set * fade);
+                assert!((whole - set).abs() < 1e-5, "set {set}, fade {fade}: {whole}");
+            }
+            // Once in, no backdrop: the terminal's own background alone.
+            assert_eq!(backdrop_alpha(set, 1.), 0.);
+        }
+    }
+
     #[test]
     fn a_folded_claude_says_its_state_and_who_drives_it() {
         use super::loop_mark;

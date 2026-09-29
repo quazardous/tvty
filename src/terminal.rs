@@ -57,6 +57,16 @@ pub fn opacity() -> f32 {
     f32::from_bits(OPACITY.load(std::sync::atomic::Ordering::Relaxed))
 }
 
+/// A terminal's background as painted: the theme's, see-through as set.
+pub fn background() -> Hsla {
+    background_colour().opacity(opacity())
+}
+
+/// The theme's background for the terminals, opaque.
+pub fn background_colour() -> Hsla {
+    to_hsla(default_rgb(NamedColor::Background as usize))
+}
+
 pub fn font_size() -> f32 {
     f32::from_bits(FONT_SIZE.load(std::sync::atomic::Ordering::Relaxed))
 }
@@ -934,7 +944,7 @@ impl Render for TerminalView {
             .cursor(if self.hover_link.is_some() && window.modifiers().control { CursorStyle::PointingHand } else { CursorStyle::IBeam })
             .relative()
             .size_full()
-            .bg(to_hsla(default_rgb(NamedColor::Background as usize)).opacity(opacity()))
+            .bg(background())
             .child(TerminalElement {
                 term: self.term.clone(),
                 view: Some(cx.entity()),
