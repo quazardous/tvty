@@ -4950,7 +4950,14 @@ impl Render for Shell {
                     )
                     // A message to every running agent: the whole board's.
                     .child(
-                        buttons::icon("message-all", crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.), "A message to every running agent: send, send & hold, release holds")
+                        // An SVG keeps its own colour: brightened with the
+                        // button under the pointer, as the ⚙ beside it.
+                        buttons::icon(
+                            "message-all",
+                            crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.).group_hover("message-all", |s| s.text_color(p().text)),
+                            "A message to every running agent: send, send & hold, release holds",
+                        )
+                        .group("message-all")
                             .mr_1()
                             .on_click(cx.listener(|shell, _, window, cx| {
                                 cx.stop_propagation();

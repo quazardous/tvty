@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The title bar's robot (a message to every agent) brightens under the pointer, as the ⚙ beside it.
+
 ## [0.6.0-beta.1] - 2026-09-30
 
 ### Added
