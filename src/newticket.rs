@@ -718,7 +718,7 @@ impl Render for NewTicketForm {
                     .gap_1()
                     .key_context(crate::keymap::COMPOSER)
                     .on_action(cx.listener(|form, _: &crate::keymap::ComposerSend, window, cx| form.submit(window, cx)))
-                    .child(Textarea::new(&self.body))
+                    .child(crate::focusmode::on_hover(div().child(Textarea::new(&self.body)), self.body.read(cx).focus_handle(cx)))
                     .children(mentions)
                     .into_any_element()
             })

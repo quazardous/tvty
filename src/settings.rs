@@ -25,10 +25,19 @@ pub struct Preferences {
     pub appearance: Appearance,
     pub notifications: Notifications,
     pub scroll: Scroll,
+    pub mouse: Mouse,
     pub tickets: Tickets,
     pub sessions: Sessions,
     pub updates: Updates,
     pub tips: Tips,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Mouse {
+    /// Whether the pointer gives the keyboard: `click`, `hover`; none: as
+    /// the window manager does.
+    pub focus: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -208,6 +217,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Number { min: 0.2, max: 5., step: 0.2, default: 1., unit: "×", integer: false, slider: false },
     },
     Setting {
+        key: "mouse.focus",
+        page: "Appearance",
+        group: "Mouse",
+        label: "Focus",
+        about: "What gives the keyboard to the terminal or to a box to write in: a click, or the pointer moving over it (as a window manager's focus follows the mouse). By default, as the system does.",
+        kind: Kind::Choice,
+    },
+    Setting {
         key: "appearance.theme",
         page: "Appearance",
         group: "Colours",
@@ -317,6 +334,7 @@ impl Stored for Preferences {
                 copied: true,
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
+            mouse: Mouse::default(),
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
             sessions: Sessions::default(),
             updates: Updates::default(),

@@ -582,7 +582,12 @@ impl TerminalView {
         cx.notify();
     }
 
-    fn on_mouse_move(&mut self, event: &MouseMoveEvent, _: &mut Window, cx: &mut Context<Self>) {
+    fn on_mouse_move(&mut self, event: &MouseMoveEvent, window: &mut Window, cx: &mut Context<Self>) {
+        // The pointer gives the keyboard (Options > Mouse > Focus): no button
+        // held, not in a selection or a drag.
+        if event.pressed_button.is_none() && !self.focus.is_focused(window) && crate::focusmode::hover(cx) {
+            window.focus(&self.focus, cx);
+        }
         if !self.selecting || event.pressed_button != Some(MouseButton::Left) {
             return;
         }

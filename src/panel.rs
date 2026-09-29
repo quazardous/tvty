@@ -1368,11 +1368,14 @@ impl TicketPanel {
             } else {
                 // A composer: Ctrl+Enter sends (keymap's ComposerSend), no
                 // new line put in.
-                div()
-                    .key_context(crate::keymap::COMPOSER)
-                    .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(window, cx)))
-                    .child(Textarea::new(&self.reply))
-                    .into_any_element()
+                crate::focusmode::on_hover(
+                    div()
+                        .key_context(crate::keymap::COMPOSER)
+                        .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(window, cx)))
+                        .child(Textarea::new(&self.reply)),
+                    self.reply.read(cx).focus_handle(cx),
+                )
+                .into_any_element()
             })
             .children(mentions)
             .when(!detail.answers.is_empty(), |d| {

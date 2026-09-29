@@ -491,7 +491,7 @@ a shortcut away from its default stands out (lighter, a bar on its left),
 says its default (`Default: 16 px`) and has a "↺ Default" button that puts
 it back — in an aiball project, "↺ Board", the board's value; `@modified` lists every one; a setting shows its key as settings.toml
 spells it. The pages:
-Appearance (sizes, notifications, the wheel's speed, the window's and the
+Appearance (sizes, notifications, the wheel's speed, the focus, the window's and the
 terminals' colour themes, the terminals' opacity), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
 shortcuts (all of them, edited in place — see Keys), aiball (the board's
@@ -553,6 +553,19 @@ terminal's history. In a terminal on tmux, the notches go to tmux in order,
 one call at a time, those that come meanwhile added up into the next: a
 fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 `speed` under `[scroll]` in `settings.toml` multiplies both (1 by default).
+
+## Focus
+
+What gives the keyboard to the terminal or to a box to write in (a reply,
+a new ticket's body, the sessions' filter): a click, or the pointer moving
+over it, as a window manager's focus follows the mouse. By default tvty
+does as the system does — GNOME's `focus-mode` (`sloppy` and `mouse` are
+the pointer's), KDE's `FocusPolicy`, else a click — and follows GNOME's
+changes; Options > Appearance > Mouse > Focus says what it read, and can
+choose click or hover instead (`focus` under `[mouse]`). Following the
+pointer, the keyboard moves only into the terminal or a box to write in,
+never while a button is held (a selection, a drag), nor through what lies
+over them (a dialog, a full page).
 
 ## Buttons
 

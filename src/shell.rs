@@ -2987,17 +2987,20 @@ impl Shell {
         let fixed: Option<&[(&str, &str)]> = match key {
             "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
             "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
+            "mouse.focus" => Some(&[("click", "Click"), ("hover", "Hover")]),
             _ => None,
         };
-        let (chosen, default) = match key {
+        let (chosen, default): (Option<SharedString>, Option<SharedString>) = match key {
             "appearance.theme" => (Some(theme::current(cx)), None),
-            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask")),
-            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask")),
-            _ => (theme::current_terminal(), Some("Same as the window")),
+            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask".into())),
+            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask".into())),
+            // As the system: what it was read to do.
+            "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
+            _ => (theme::current_terminal(), Some("Same as the window".into())),
         };
         let away = SCHEMA.is_modified(&self.applied, key).then(|| {
-            Away::default(match default {
-                Some(label) => SharedString::from(label),
+            Away::default(match &default {
+                Some(label) => label.clone(),
                 None => theme::known_or_default(None, cx),
             })
         });
@@ -3039,7 +3042,7 @@ impl Shell {
         };
         let mut column = column;
         if let Some(label) = default {
-            column = column.child(choice("default".into(), label.into(), None, chosen.is_none(), cx));
+            column = column.child(choice("default".into(), label, None, chosen.is_none(), cx));
         }
         if let Some(fixed) = fixed {
             for (name, label) in fixed {
@@ -3971,7 +3974,10 @@ impl Shell {
                             .py_1p5()
                             .border_b_1()
                             .border_color(p().border)
-                            .child(crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full()),
+                            .child(crate::focusmode::on_hover(
+                                crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full(),
+                                self.sessions_filter.read(cx).focus_handle(cx),
+                            )),
                     )
                     .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
