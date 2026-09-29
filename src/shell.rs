@@ -168,6 +168,8 @@ pub struct Shell {
     /// The session whose loop the user asked to move (host ↔ tmux): its
     /// confirmation shows in the agent bar.
     pub(super) move_asked: Option<String>,
+    /// The agent whose Claude Code update asks for a restart: confirmed first.
+    pub(super) restart_asked: Option<String>,
     /// Loops being moved, by agent: the session they come back as, and
     /// since when. The old one ends meanwhile; the new one opens.
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
@@ -720,6 +722,7 @@ impl Shell {
             compact: None,
             afk_menu: false,
             move_asked: None,
+            restart_asked: None,
             moves: HashMap::new(),
             restarting: None,
             backlog_view: None,
@@ -2213,8 +2216,9 @@ impl Shell {
                 self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
                 cx.notify();
             }
-        } else if key == "escape" && self.move_asked.is_some() {
+        } else if key == "escape" && (self.move_asked.is_some() || self.restart_asked.is_some()) {
             self.move_asked = None;
+            self.restart_asked = None;
             cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;

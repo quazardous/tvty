@@ -186,7 +186,9 @@ impl Shell {
                 (false, None) => div().text_xs().text_color(p().accent).child("▶ start").into_any_element(),
             };
             div()
-                .id(SharedString::from(id))
+                .id(SharedString::from(id.clone()))
+                .relative()
+                .children(crate::inspect::mark_if(id))
                 .flex()
                 .flex_col()
                 .px_3()

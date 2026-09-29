@@ -15,6 +15,7 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::ui::buttons;
+use crate::ui::chipbar::{self, Edge};
 use crate::aiball::AgentBar;
 use crate::status::{ago, now, parse_time};
 use crate::theme::p;
@@ -147,6 +148,8 @@ impl Shell {
         };
         let afk = item()
             .id("agent-afk")
+            .relative()
+            .children(crate::inspect::mark_if("agent-afk"))
             .px_1p5()
             .rounded_sm()
             .cursor_pointer()
@@ -172,7 +175,7 @@ impl Shell {
                 cx.notify();
             }));
         let afk_choices = self.afk_menu.then(|| {
-            let mut row = item();
+            let mut row = chipbar::line("agent-afk-bar");
             for (action, label) in AFK_ACTIONS {
                 let (action, target) = (*action, agent.clone());
                 row = row.child(
@@ -228,22 +231,49 @@ impl Shell {
         let restart = bar.as_ref().filter(|b| b.alerts.restart_needed || b.alerts.restart_pending).map(|b| {
             let restarting = self.restarting.as_deref() == Some(agent.as_str());
             let armed = b.alerts.restart_pending;
+            let asked = self.restart_asked.as_deref() == Some(agent.as_str());
             let target = agent.clone();
             // An offer until clicked: its word names the cause, not a state.
             let (word, tip) = match (restarting, armed) {
                 (true, _) => ("restarting…", "its Claude restarts, resuming its conversation"),
                 (_, true) => ("restart pending", "a restart is asked: its Claude restarts as soon as it is idle, resuming its conversation"),
-                _ => ("update", "its Claude Code installed an update: a click restarts it (at once if idle, otherwise as soon as it is idle), resuming its conversation"),
+                _ => ("update", "its Claude Code installed an update: a click asks to restart it (at once if idle, otherwise as soon as it is idle), resuming its conversation"),
             };
-            buttons::chip_if("agent-restart", "⟳", !restarting && !armed)
+            let chip = buttons::chip_if("agent-restart", "⟳", !restarting && !armed)
                 .child(word)
                 .border_color(p().warning)
                 .text_color(p().warning)
-                .when(armed, |d| d.bg(p().active))
+                .when(armed || asked, |d| d.bg(p().active))
                 .when(!restarting && !armed, |d| {
-                    d.on_click(cx.listener(move |shell, _, _, cx| shell.restart_claude(target.clone(), cx)))
+                    d.on_click(cx.listener({
+                        let target = target.clone();
+                        move |shell, _, _, cx| {
+                            shell.restart_asked = (shell.restart_asked.as_deref() != Some(target.as_str())).then(|| target.clone());
+                            cx.notify();
+                        }
+                    }))
                 })
-                .tip(tip)
+                .tip(tip);
+            let busy = b.phase != "idle";
+            // Said before done: a restart interrupts nothing, it waits.
+            let line = asked.then(|| {
+                chipbar::line("agent-restart-bar")
+                    .child(item().child(if busy { "Restart its Claude once it is idle?" } else { "Restart its Claude now?" }))
+                    .child(
+                        buttons::answer("agent-restart-go", "Restart")
+                            .warning()
+                            .tooltip("its conversation is resumed")
+                            .on_click(cx.listener(move |shell, _, _, cx| {
+                                shell.restart_asked = None;
+                                shell.restart_claude(target.clone(), cx)
+                            })),
+                    )
+                    .child(buttons::secondary("agent-restart-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                        shell.restart_asked = None;
+                        cx.notify();
+                    })))
+            });
+            chipbar::anchored(chip, line, Edge::Right)
         });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
@@ -310,23 +340,7 @@ impl Shell {
             let other = if hosted { "into tmux" } else { "to aiball's host" };
             let place_bar = asked.then(|| {
                 let hands_session = session.clone();
-                let mut row = div()
-                    .id("agent-place-bar")
-                    .occlude()
-                    .absolute()
-                    .left_0()
-                    .right_0()
-                    .bottom(px(BAR_HEIGHT))
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_2()
-                    .px_2()
-                    .py_1p5()
-                    .bg(p().surface)
-                    .border_t_1()
-                    .border_color(p().warning)
-                    .text_color(p().text)
+                let mut row = chipbar::line("agent-place-bar")
                     .when_some(attached.filter(|a| a.typing > 0 && !hosted), |d, _| {
                         d.child(item().text_color(p().warning).child("claude-loop's terminal types into it too"))
                     })
@@ -411,8 +425,7 @@ impl Shell {
                 .border_color(p().border)
                 .text_xs()
                 .text_color(ink(p().muted))
-                .child(crate::tips::target("agent.afk", afk).flex_none())
-                .children(afk_choices)
+                .child(chipbar::anchored(crate::tips::target("agent.afk", afk).flex_none(), afk_choices, Edge::Left))
                 .child(sep())
                 .child(if online {
                     state.into_any_element()
@@ -506,16 +519,15 @@ impl Shell {
                 .children(model_item)
                 // Claude Code updated: restarting it is a gesture on the loop,
                 // beside the loop's place and hands.
-                .children(restart.map(|chip| chip.flex_none()))
+                .children(restart)
                 // Where its loop runs, and whose hands are on it.
-                .child(crate::tips::target("agent.place", place_chip).flex_none())
+                .child(chipbar::anchored(crate::tips::target("agent.place", place_chip).flex_none(), place_bar, Edge::Right))
                 .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
                 // Its folder, then its name, give way when the bar is short (the
                 // tab says its name too): the controls stay.
                 .child(item().flex_shrink(1.).min_w_0().overflow_hidden().text_color(ink(p().text)).child(div().min_w_0().truncate().child(agent.clone())))
                 .children(cwd.map(|cwd| item().flex_shrink(1000.).min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(cwd))))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
-                .children(place_bar)
                 .into_any_element(),
         )
     }

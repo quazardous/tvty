@@ -105,7 +105,9 @@ Who else is attached is aiball's word (its session's `clients` and
 `interactive`): the chip says it (`tmux · copy +1`), and so does the session's
 row in the list, before it is opened (`+1`, yellow while another client has
 the controls). A tmux loop another terminal types into opens **as a copy**.
-A click on the chip opens one line over the bar: **Take the controls** —
+A click on the chip opens a line of choices right above it — as wide as
+what it says, its edge on the chip's, as every chip of the bar that asks
+before doing (auto / hold, ⟳ update): **Take the controls** —
 the loop's other terminals (claude-loop's) become copies, which say
 `C-b d` to leave, and tvty keeps the controls for that session — or
 **Leave for a copy**; and, for a loop of this machine, **Move to host** /
@@ -365,8 +367,9 @@ one step (auto → 10 min → ∞ → auto); the mode takes effect 3 s after the
 last press, and until then the little man is dotted, with "…". A click
 offers auto, hold 10 min, hold. Then its Claude's
 phase, for how long, and the passing word (`retry 2`, `compacting`); when
-its Claude Code installed an update, **⟳ update** — a click has its loop
-restart it as soon as it is idle ("⟳ restart pending" meanwhile, an
+its Claude Code installed an update, **⟳ update** — a click asks first
+("Restart its Claude now?", or once it is idle), then its loop restarts it
+as soon as it is idle ("⟳ restart pending" meanwhile, an
 offer turned into a state), and the terminal comes back
 on its own; "waits for an answer" when a
 dialog is up; the alerts in red (usage limit reached · resets …, trust
