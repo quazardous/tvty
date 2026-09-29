@@ -176,7 +176,7 @@ impl Shell {
                 cx.notify();
             }));
         let afk_choices = self.afk_menu.then(|| {
-            let mut row = chipbar::line("agent-afk-bar");
+            let mut row = chipbar::line("agent-afk-bar", p().accent);
             for (action, label) in AFK_ACTIONS {
                 let (action, target) = (*action, agent.clone());
                 row = row.child(
@@ -258,7 +258,7 @@ impl Shell {
             let busy = b.phase != "idle";
             // Said before done: a restart interrupts nothing, it waits.
             let line = asked.then(|| {
-                chipbar::line("agent-restart-bar")
+                chipbar::line("agent-restart-bar", p().warning)
                     .child(item().child(if busy { "Restart its Claude once it is idle?" } else { "Restart its Claude now?" }))
                     .child(
                         buttons::answer("agent-restart-go", "Restart")
@@ -274,7 +274,10 @@ impl Shell {
                         cx.notify();
                     })))
             });
-            chipbar::anchored(chip, line, Edge::Right)
+            chipbar::anchored(chip, line, Edge::Right, cx.listener(|shell, _: &MouseDownEvent, _, cx| {
+                shell.restart_asked = None;
+                cx.notify();
+            }))
         });
         let dialog = bar.as_ref().filter(|b| b.marker.health_prompt || b.marker.resume_picker || b.marker.resume_mode_picker);
 
@@ -341,7 +344,7 @@ impl Shell {
             let other = if hosted { "into tmux" } else { "to aiball's host" };
             let place_bar = asked.then(|| {
                 let hands_session = session.clone();
-                let mut row = chipbar::line("agent-place-bar")
+                let mut row = chipbar::line("agent-place-bar", p().warning)
                     .when_some(attached.filter(|a| a.typing > 0 && !hosted), |d, _| {
                         d.child(item().text_color(p().warning).child("claude-loop's terminal types into it too"))
                     })
@@ -426,7 +429,15 @@ impl Shell {
                 .border_color(p().border)
                 .text_xs()
                 .text_color(ink(p().muted))
-                .child(chipbar::anchored(crate::tips::target("agent.afk", afk).flex_none(), afk_choices, Edge::Left))
+                .child(chipbar::anchored(
+                    crate::tips::target("agent.afk", afk).flex_none(),
+                    afk_choices,
+                    Edge::Left,
+                    cx.listener(|shell, _: &MouseDownEvent, _, cx| {
+                        shell.afk_menu = false;
+                        cx.notify();
+                    }),
+                ))
                 .child(sep())
                 .child(if online {
                     state.into_any_element()
@@ -522,7 +533,15 @@ impl Shell {
                 // beside the loop's place and hands.
                 .children(restart)
                 // Where its loop runs, and whose hands are on it.
-                .child(chipbar::anchored(crate::tips::target("agent.place", place_chip).flex_none(), place_bar, Edge::Right))
+                .child(chipbar::anchored(
+                    crate::tips::target("agent.place", place_chip).flex_none(),
+                    place_bar,
+                    Edge::Right,
+                    cx.listener(|shell, _: &MouseDownEvent, _, cx| {
+                        shell.move_asked = None;
+                        cx.notify();
+                    }),
+                ))
                 .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
                 // Its folder, then its name, give way when the bar is short (the
                 // tab says its name too): the controls stay.

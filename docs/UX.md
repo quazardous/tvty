@@ -107,7 +107,8 @@ row in the list, before it is opened (`+1`, yellow while another client has
 the controls). A tmux loop another terminal types into opens **as a copy**.
 A click on the chip opens a line of choices right above it — as wide as
 what it says, its edge on the chip's, as every chip of the bar that asks
-before doing (auto / hold, ⟳ update): **Take the controls** —
+before doing (auto / hold, ⟳ update); a click anywhere else closes it:
+**Take the controls** —
 the loop's other terminals (claude-loop's) become copies, which say
 `C-b d` to leave, and tvty keeps the controls for that session — or
 **Leave for a copy**; and, for a loop of this machine, **Move to host** /

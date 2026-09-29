@@ -1,6 +1,10 @@
 //! A chip of the agent bar and the line its click opens: the choices, said
 //! before done, right above the chip — as wide as what they say, its edge
-//! on the chip's, so the pointer barely moves.
+//! on the chip's, so the pointer barely moves. A press anywhere else
+//! closes it; on the chip, the chip's own click does (it toggles).
+
+use std::cell::Cell;
+use std::rc::Rc;
 
 use gpui_kit::*;
 
@@ -14,9 +18,9 @@ pub enum Edge {
     Right,
 }
 
-/// The line's look: a row on the surface, framed in the warning colour (a
-/// gesture on a loop), sized to its content.
-pub fn line(id: &'static str) -> Stateful<Div> {
+/// The line's look: a row on the surface, framed in `border` (the warning
+/// colour for a gesture on a loop, say), sized to its content.
+pub fn line(id: &'static str, border: Hsla) -> Stateful<Div> {
     div()
         .id(id)
         .occlude()
@@ -30,19 +34,34 @@ pub fn line(id: &'static str) -> Stateful<Div> {
         .rounded_md()
         .bg(p().surface)
         .border_1()
-        .border_color(p().warning)
+        .border_color(border)
         .shadow_md()
         .text_color(p().text)
 }
 
-/// `chip`, and above it `line` when open, painted over what is there.
-pub fn anchored(chip: impl IntoElement, line: Option<Stateful<Div>>, edge: Edge) -> Div {
-    div().relative().flex().flex_none().child(chip).children(line.map(|line| {
-        let place = div().absolute().bottom_full().mb(px(6.));
-        let place = match edge {
-            Edge::Left => place.left_0(),
-            Edge::Right => place.right_0(),
-        };
-        deferred(place.child(line)).with_priority(1)
-    }))
+/// `chip`, and above it `line` when open, painted over what is there; a
+/// press outside both calls `close` (a `cx.listener`).
+pub fn anchored(chip: impl IntoElement, line: Option<Stateful<Div>>, edge: Edge, close: impl Fn(&MouseDownEvent, &mut Window, &mut App) + 'static) -> Div {
+    // Where the chip is, as painted: a press on it is its own click's.
+    let chip_at: Rc<Cell<Option<Bounds<Pixels>>>> = Rc::default();
+    let seen = chip_at.clone();
+    div()
+        .relative()
+        .flex()
+        .flex_none()
+        .child(chip)
+        .child(canvas(move |bounds, _, _| seen.set(Some(bounds)), |_, _, _, _| {}).absolute().inset_0())
+        .children(line.map(|line| {
+            let line = line.on_mouse_down_out(move |event, window, cx| {
+                if !chip_at.get().is_some_and(|b| b.contains(&event.position)) {
+                    close(event, window, cx);
+                }
+            });
+            let place = div().absolute().bottom_full().mb(px(6.));
+            let place = match edge {
+                Edge::Left => place.left_0(),
+                Edge::Right => place.right_0(),
+            };
+            deferred(place.child(line)).with_priority(1)
+        }))
 }
