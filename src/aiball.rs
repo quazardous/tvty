@@ -749,12 +749,25 @@ impl Aiball {
         self.rpc_do("ticket.mark_read", json!({ "id": ticket }))
     }
 
-    /// The `.aiball.yaml` a loop started in `cwd` would read (the nearest up
-    /// the tree), as aiball finds it: none, the folder is not set up. tvty
-    /// never reads that file itself.
-    pub fn project_file(&self, cwd: &str) -> anyhow::Result<Option<String>> {
-        let settings: Value = self.rpc("project.settings", json!({ "cwd": cwd }))?;
-        Ok(settings.get("file").and_then(Value::as_str).map(str::to_string))
+    /// What a loop started in `cwd` would start with, each value with where
+    /// it comes from, as aiball resolves it (`project.settings`). tvty never
+    /// reads the folder's `.aiball.yaml` itself.
+    pub fn project_settings(&self, cwd: &str) -> anyhow::Result<ProjectSettings> {
+        self.rpc("project.settings", json!({ "cwd": cwd }))
+    }
+
+    /// Sets where the folder's loops run and its Claude's Remote Control, in
+    /// the `.aiball.yaml` they read (`project.settings_set`); the ones left
+    /// `None` are not touched.
+    pub fn project_settings_set(&self, cwd: &str, session: Option<&str>, remote_control: Option<&Value>) -> anyhow::Result<()> {
+        let mut params = json!({ "cwd": cwd });
+        if let Some(session) = session {
+            params["session"] = json!(session);
+        }
+        if let Some(remote_control) = remote_control {
+            params["remote_control"] = remote_control.clone();
+        }
+        self.rpc_do("project.settings_set", params)
     }
 
     /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
@@ -885,7 +898,8 @@ impl Aiball {
     /// the folder's own), as a crew agent of that name when `crew`. Answers
     /// the agent.
     pub fn start_agent(&self, cwd: &str, project: Option<&str>, agent: Option<&str>, crew: bool) -> anyhow::Result<String> {
-        let mut params = json!({ "cwd": cwd });
+        // On the host, asked: whatever the folder says.
+        let mut params = json!({ "cwd": cwd, "mode": "host" });
         if let Some(project) = project {
             params["project"] = json!(project);
         }
@@ -1249,6 +1263,62 @@ pub fn new_ticket_message(ticket: &NewTicket) -> Value {
         message["level"] = json!(ticket.level);
     }
     message
+}
+
+/// A folder's configuration as aiball resolves it (`project.settings`): what
+/// a loop started there takes, each value with where it comes from.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ProjectSettings {
+    /// The `.aiball.yaml` that applies (the nearest up the tree), if any.
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub consumer: FolderConsumer,
+    /// Where its loops run: `host` or `tmux`.
+    #[serde(default)]
+    pub session: Setting<String>,
+    /// Its Claude's Remote Control: `false`, `true` or a name.
+    #[serde(default)]
+    pub remote_control: Setting<Value>,
+}
+
+/// The identity a loop started in the folder takes.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct FolderConsumer {
+    #[serde(default)]
+    pub project: Setting<String>,
+    #[serde(default)]
+    pub agent: Setting<String>,
+    /// `crew`, or none for the project's lead.
+    #[serde(default)]
+    pub role: Setting<Option<String>>,
+}
+
+/// A value, and where it comes from: `file` (the folder's `.aiball.yaml`),
+/// `global` (the machine's config), `mcp`, `env`, or `default`.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct Setting<T> {
+    pub value: T,
+    #[serde(default)]
+    pub from: String,
+}
+
+impl<T> Setting<T> {
+    /// Not aiball's default: something set it.
+    pub fn set(&self) -> bool {
+        !self.from.is_empty() && self.from != "default"
+    }
+
+    /// Where it comes from, said to the user.
+    pub fn said(&self) -> &str {
+        match self.from.as_str() {
+            "file" => "from .aiball.yaml",
+            "global" => "from aiball's global config",
+            "mcp" => "from .mcp.json",
+            "env" => "from aiball's environment",
+            _ => "default",
+        }
+    }
 }
 
 /// A folder to make an aiball project of, and how.

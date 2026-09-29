@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - When an agent's Claude hits its usage limit (weekly, session, monthly spend…), tvty says so: a notification, the agent bar in red with when it resets, and the reason on its ■.
 - Quitting and restarting remember each session's hold: restart them as they were (a held one held again) or fresh; the dialogs list the sessions by project, scrolling when they are many.
 - Tips: "Did you know?" once after start and on first opening a page, never for what you already use; Got it, Next, off, and Tips… in the menu to see them all. A tip about an element sits beside it, the element haloed, in the tips' own violet.
+- The new-project wizard starts from what a folder already has (a subfolder of a project included): its project, agent, role, where its loops run and its Remote Control are filled in, in their own colour with where they come from; it also sets where the loops run and the Remote Control.
 
 ### Fixed
 
@@ -36,7 +37,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The answers of every dialog and form are buttons of one size.
 - In the sessions list, a new session goes last in its project; the others keep their place, across restarts too.
 - A loop started from its folder (the sessions list, the end screen, a new project's first session) runs where its folder says — the session host or tmux — instead of always tmux.
-- The new-project wizard asks aiball whether a folder is already set up, a subfolder of a project included.
 - Ctrl+Enter sends a reply or files a ticket without first putting a new line in the text.
 - The quit and restart dialogs scroll their list of sessions, with a scrollbar, when they are many.
 - While a loop boots, the agent bar's "… boot" is no longer squashed.

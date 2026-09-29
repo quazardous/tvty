@@ -16,7 +16,7 @@ use gpui_kit::component::button::Button;
 use gpui_kit::*;
 
 use super::Shell;
-use crate::aiball::{InitAsk, InitDone};
+use crate::aiball::{InitAsk, InitDone, ProjectSettings, Setting};
 use crate::loops::Start;
 use crate::theme::p;
 use crate::ui::buttons;
@@ -55,6 +55,10 @@ pub(super) struct NewProject {
     crew: bool,
     private: bool,
     no_claim: bool,
+    /// Where its loops run: on aiball's host, else in tmux.
+    on_host: bool,
+    /// Its Claude's Remote Control.
+    remote_control: bool,
     running: bool,
     /// What aiball would do with the choices as they stand (a dry run),
     /// for the `asked`-th of them: or why it would not.
@@ -62,9 +66,12 @@ pub(super) struct NewProject {
     asked: u64,
     /// What aiball did: or why it did not.
     outcome: Option<Result<InitDone, String>>,
-    /// The folder aiball was last asked about, and the `.aiball.yaml` that
-    /// applies there, if any (aiball's answer: tvty reads no such file).
-    found: Option<(PathBuf, Option<String>)>,
+    /// The folder aiball was last asked about, and its configuration as
+    /// aiball resolves it (tvty reads no `.aiball.yaml` itself).
+    found: Option<(PathBuf, ProjectSettings)>,
+    /// That configuration, as the choices were filled from it: a choice
+    /// still as it says wears the "imported" colour.
+    imported: Option<ProjectSettings>,
 }
 
 /// What the folder typed is, for aiball.
@@ -81,7 +88,7 @@ enum Folder {
     Fresh { git: bool },
 }
 
-fn folder_of(typed: &str, found: Option<&(PathBuf, Option<String>)>) -> Folder {
+fn folder_of(typed: &str, found: Option<&(PathBuf, ProjectSettings)>) -> Folder {
     let typed = typed.trim();
     if typed.is_empty() {
         return Folder::Empty;
@@ -94,8 +101,8 @@ fn folder_of(typed: &str, found: Option<&(PathBuf, Option<String>)>) -> Folder {
         return Folder::NotADirectory;
     }
     match found.filter(|(asked, _)| *asked == path) {
-        Some((_, Some(file))) => Folder::Configured(file.clone()),
-        Some((_, None)) => Folder::Fresh { git: path.join(".git").exists() },
+        Some((_, ProjectSettings { file: Some(file), .. })) => Folder::Configured(file.clone()),
+        Some(_) => Folder::Fresh { git: path.join(".git").exists() },
         None => Folder::Checking,
     }
 }
@@ -120,6 +127,62 @@ fn name_from(folder: &Path) -> String {
         .file_name()
         .map(|n| n.to_string_lossy().chars().map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '-' }).collect())
         .unwrap_or_default()
+}
+
+/// The choices a folder's configuration fills in: what it sets (its
+/// `.aiball.yaml`, the machine's config), else names from the folder
+/// (`fallback`) and aiball's defaults.
+#[derive(Debug, PartialEq)]
+struct Filled {
+    project: String,
+    agent: String,
+    crew: bool,
+    on_host: bool,
+    remote_control: bool,
+}
+
+impl Filled {
+    fn of(settings: &ProjectSettings, fallback: &str) -> Filled {
+        let consumer = &settings.consumer;
+        let project = if consumer.project.set() { consumer.project.value.clone() } else { fallback.to_string() };
+        let agent = if consumer.agent.set() { consumer.agent.value.clone() } else { format!("{project}-claude") };
+        Filled {
+            crew: consumer.role.value.as_deref() == Some("crew"),
+            on_host: settings.session.value != "tmux",
+            remote_control: remote_control_on(&settings.remote_control),
+            project,
+            agent,
+        }
+    }
+}
+
+/// Remote Control on: `true`, or the name its Claude is found by.
+fn remote_control_on(setting: &Setting<serde_json::Value>) -> bool {
+    match &setting.value {
+        serde_json::Value::Bool(on) => *on,
+        serde_json::Value::String(name) => !name.is_empty(),
+        _ => false,
+    }
+}
+
+/// The Remote Control chosen, as it goes in the file: as imported while its
+/// tick is (a name stays a name), else on or off.
+fn remote_control_of(imported: &ProjectSettings, on: bool) -> serde_json::Value {
+    if on == remote_control_on(&imported.remote_control) && imported.remote_control.set() {
+        imported.remote_control.value.clone()
+    } else {
+        serde_json::Value::Bool(on)
+    }
+}
+
+/// What to write in the folder's `.aiball.yaml` once it is set up: where
+/// its loops run and its Remote Control, only where the choice differs from
+/// what aiball resolves there (`now`: after the set up, which may have
+/// written a file of the folder's own, hiding a parent's).
+fn to_write(now: &ProjectSettings, on_host: bool, remote_control: serde_json::Value) -> (Option<&'static str>, Option<serde_json::Value>) {
+    let session = (on_host != (now.session.value != "tmux")).then_some(if on_host { "host" } else { "tmux" });
+    let remote_control = (remote_control != now.remote_control.value).then_some(remote_control);
+    (session, remote_control)
 }
 
 /// What aiball's dry run says it did to a file, as what it will do.
@@ -167,11 +230,14 @@ impl Shell {
             crew: false,
             private: false,
             no_claim: false,
+            on_host: true,
+            remote_control: false,
             running: false,
             preview: None,
             asked: 0,
             outcome: None,
             found: None,
+            imported: None,
         });
         cx.notify();
     }
@@ -207,8 +273,9 @@ impl Shell {
         .detach();
     }
 
-    /// Asks aiball which `.aiball.yaml` applies to the folder typed (none:
-    /// not set up); the answer for the folder still typed only is kept.
+    /// Asks aiball how the folder typed is configured (which `.aiball.yaml`
+    /// applies, if any, and what it says); the answer for the folder still
+    /// typed only is kept.
     fn ask_folder(&mut self, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_ref() else { return };
         let path = expand(wizard.folder.read(cx).value().trim());
@@ -218,14 +285,14 @@ impl Shell {
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let cwd = path.display().to_string();
-            let file = cx.background_executor().spawn(async move { aiball.project_file(&cwd) }).await;
+            let settings = cx.background_executor().spawn(async move { aiball.project_settings(&cwd) }).await;
             let _ = this.update(cx, |shell, cx| {
                 let Some(wizard) = shell.new_project.as_mut() else { return };
                 if expand(wizard.folder.read(cx).value().trim()) != path {
                     return;
                 }
-                match file {
-                    Ok(file) => wizard.found = Some((path, file)),
+                match settings {
+                    Ok(settings) => wizard.found = Some((path, settings)),
                     Err(error) => log::warn!("new project: {} {error:#}", path.display()),
                 }
                 cx.notify();
@@ -234,29 +301,27 @@ impl Shell {
         .detach();
     }
 
-    /// The project already set up where `file` applies, as aiball knows its
-    /// agents: one working under the file's folder.
-    fn project_of_file(&self, file: &str) -> Option<String> {
-        let root = Path::new(file).parent()?;
-        self.board.homes.iter().find_map(|(_, project, cwd)| project.clone().filter(|_| Path::new(cwd).starts_with(root)))
-    }
-
-    /// From the folder to who works in it: the names proposed from the
-    /// folder (or the project already set up there), unless already typed.
+    /// From the folder to who works in it: the choices filled from the
+    /// folder's configuration (what its `.aiball.yaml` says, else aiball's
+    /// defaults, else names from the folder), unless already made for this
+    /// folder.
     fn to_identity(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(wizard) = self.new_project.as_ref() else { return };
-        let typed = wizard.folder.read(cx).value().to_string();
-        let proposed = match folder_of(&typed, wizard.found.as_ref()) {
-            Folder::Configured(file) => self.project_of_file(&file).unwrap_or_else(|| name_from(&expand(typed.trim()))),
-            Folder::Fresh { .. } => name_from(&expand(typed.trim())),
-            _ => return,
-        };
         let Some(wizard) = self.new_project.as_mut() else { return };
-        if wizard.name.read(cx).value().trim().is_empty() {
-            wizard.name.update(cx, |n, cx| n.set_value(proposed.clone(), window, cx));
+        let typed = wizard.folder.read(cx).value().to_string();
+        if !matches!(folder_of(&typed, wizard.found.as_ref()), Folder::Configured(_) | Folder::Fresh { .. }) {
+            return;
         }
-        if wizard.agent.read(cx).value().trim().is_empty() {
-            wizard.agent.update(cx, |a, cx| a.set_value(format!("{proposed}-claude"), window, cx));
+        let settings = wizard.found.as_ref().map(|(_, s)| s.clone()).unwrap_or_default();
+        // The same folder again (back, then next): the choices made stay.
+        if wizard.imported.as_ref() != Some(&settings) {
+            let fallback = name_from(&expand(typed.trim()));
+            let filled = Filled::of(&settings, &fallback);
+            wizard.name.update(cx, |n, cx| n.set_value(filled.project.clone(), window, cx));
+            wizard.agent.update(cx, |a, cx| a.set_value(filled.agent.clone(), window, cx));
+            wizard.crew = filled.crew;
+            wizard.on_host = filled.on_host;
+            wizard.remote_control = filled.remote_control;
+            wizard.imported = Some(settings);
         }
         wizard.step = Step::Identity;
         self.preview_init(cx);
@@ -306,11 +371,34 @@ impl Shell {
             return;
         }
         let ask = Self::init_ask(wizard, cx);
+        let (on_host, remote_control) = (wizard.on_host, remote_control_of(&wizard.imported.clone().unwrap_or_default(), wizard.remote_control));
         wizard.running = true;
         cx.notify();
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
-            let said = cx.background_executor().spawn(async move { aiball.project_init(&ask, false).map_err(|e| format!("{e:#}")) }).await;
+            let said = cx
+                .background_executor()
+                .spawn(async move {
+                    let mut done = aiball.project_init(&ask, false).map_err(|e| format!("{e:#}"))?;
+                    // Then where its loops run and its Remote Control, in the
+                    // file that now applies: only what differs from it.
+                    let unsaved = |e: anyhow::Error| format!("set up, but where its loops run and its Remote Control were not saved: {e:#}");
+                    let now = aiball.project_settings(&ask.cwd).map_err(unsaved)?;
+                    let (session, remote_control) = to_write(&now, on_host, remote_control);
+                    if session.is_some() || remote_control.is_some() {
+                        aiball
+                            .project_settings_set(&ask.cwd, session, remote_control.as_ref())
+                            .map_err(unsaved)?;
+                        // Said with what aiball did.
+                        let mut set = Vec::new();
+                        set.extend(session.map(|s| format!("claude_loop.session: {s}")));
+                        set.extend(remote_control.map(|rc| format!("claude.remote_control: {rc}")));
+                        let file = now.file.clone().unwrap_or_default();
+                        done.steps.push(crate::aiball::InitStep { message: format!("set {} in {file}", set.join(", ")), action: "patched".into(), file });
+                    }
+                    Ok(done)
+                })
+                .await;
             let _ = this.update(cx, |shell, cx| {
                 if let Some(wizard) = shell.new_project.as_mut() {
                     wizard.running = false;
@@ -324,7 +412,7 @@ impl Shell {
         .detach();
     }
 
-    /// Its first session, on aiball's host; the wizard closes.
+    /// Its first session, where the folder now says; the wizard closes.
     fn start_first_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_ref() else { return };
         let start = Start {
@@ -336,7 +424,7 @@ impl Shell {
             mode: None,
         };
         self.close_new_project(window, cx);
-        self.start_on_host(start, cx);
+        self.start_loop(start, cx);
     }
 
     /// Back to an earlier step (the stepper's), never forward past what
@@ -434,8 +522,9 @@ impl Shell {
     fn folder_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let typed = wizard.folder.read(cx).value().to_string();
         let folder = folder_of(&typed, wizard.found.as_ref());
+        // The project the folder's file names (not a default).
         let project = match &folder {
-            Folder::Configured(file) => self.project_of_file(file),
+            Folder::Configured(_) => wizard.found.as_ref().map(|(_, s)| &s.consumer.project).filter(|p| p.set()).map(|p| p.value.clone()),
             _ => None,
         };
         let (said, colour) = match &folder {
@@ -444,8 +533,8 @@ impl Shell {
             Folder::NotADirectory => ("This is a file, not a folder.".to_string(), p().danger),
             Folder::Checking => ("Asking aiball…".to_string(), p().muted),
             Folder::Configured(file) => match &project {
-                Some(name) => (format!("Already an aiball project: {name} ({file}). Next sets it up again."), p().warning),
-                None => (format!("Already set up for aiball ({file}). Next sets it up again."), p().warning),
+                Some(name) => (format!("Already an aiball project: {name} ({file}). Next shows what it says, to set it up again."), p().warning),
+                None => (format!("Already set up for aiball ({file}). Next shows what it says, to set it up again."), p().warning),
             },
             Folder::Fresh { git: true } => ("A git repository: ready.".to_string(), p().success),
             Folder::Fresh { git: false } => ("Ready (not a git repository).".to_string(), p().success),
@@ -494,17 +583,35 @@ impl Shell {
                 _ => None,
             }
         };
-        let field = |label: &'static str, input: &Entity<InputState>| {
-            div().flex().items_center().gap_3().child(div().w(px(90.)).flex_none().text_sm().text_color(p().muted).child(label)).child(div().flex_1().child(Input::new(input)))
+        // A choice still as the folder's configuration sets it wears the
+        // "imported" colour, and says where it comes from; changed, or at
+        // aiball's default, it is plain.
+        let was = wizard.imported.clone().unwrap_or_default();
+        let filled = Filled::of(&was, "");
+        let imported = crate::theme::imported();
+        let origin = |said: Option<&str>| said.map(|said| div().flex_none().text_xs().text_color(imported).child(said.to_string()));
+        let field = |label: &'static str, input: &Entity<InputState>, said: Option<&str>| {
+            div()
+                .flex()
+                .items_center()
+                .gap_3()
+                .child(div().w(px(90.)).flex_none().text_sm().text_color(if said.is_some() { imported } else { p().muted }).child(label))
+                .child(div().flex_1().child(Input::new(input)))
+                .children(origin(said))
         };
-        let tick = |id: &'static str, on: bool, label: &'static str, about: &'static str, flip: fn(&mut NewProject)| {
+        let tick = |id: &'static str, on: bool, label: &'static str, about: &'static str, said: Option<&str>, flip: fn(&mut NewProject)| {
             div()
                 .flex()
                 .flex_col()
                 .child(
-                    buttons::link(id, if on { "☑" } else { "☐" })
-                        .text_color(p().text)
-                        .child(label)
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_3()
+                        .child(
+                            buttons::link(id, if on { "☑" } else { "☐" })
+                                .text_color(if said.is_some() { imported } else { p().text })
+                                .child(label)
                         .on_click(cx.listener(move |shell, _, _, cx| {
                             if let Some(wizard) = shell.new_project.as_mut() {
                                 flip(wizard);
@@ -512,9 +619,22 @@ impl Shell {
                             shell.preview_init(cx);
                             cx.notify();
                         })),
+                        )
+                        .children(origin(said)),
                 )
                 .child(div().pl_6().text_xs().text_color(p().muted).child(about))
         };
+        let kept = |set: bool, same: bool, said: &str| (set && same).then(|| said.to_string());
+        let project_from = kept(was.consumer.project.set(), name == filled.project, was.consumer.project.said());
+        let agent_from = kept(was.consumer.agent.set(), agent == filled.agent, was.consumer.agent.said());
+        let crew_from = kept(was.consumer.role.set(), wizard.crew == filled.crew, was.consumer.role.said());
+        let host_from = kept(was.session.set(), wizard.on_host == filled.on_host, was.session.said());
+        let rc_from = kept(was.remote_control.set(), wizard.remote_control == filled.remote_control, was.remote_control.said());
+        // What will be written after: against the folder's file, or, when
+        // the set up makes one of the folder's own, aiball's defaults.
+        let new_file = matches!(&wizard.preview, Some(Ok(done)) if done.steps.iter().any(|s| s.action == "created" && s.file.ends_with(".aiball.yaml")));
+        let against = if new_file { ProjectSettings { session: Setting { value: "host".into(), from: "default".into() }, ..Default::default() } } else { was.clone() };
+        let (session_write, rc_write) = to_write(&against, wizard.on_host, remote_control_of(&was, wizard.remote_control));
         // What aiball would do: each file, and whether the project is new.
         let plan = match &wizard.preview {
             Some(Ok(done)) => done.steps.iter().map(|step| format!("{} {}", will(&step.action), step.file)).collect::<Vec<_>>().join(" · "),
@@ -527,11 +647,29 @@ impl Shell {
             .flex()
             .flex_col()
             .gap_3()
-            .child(field("project", &wizard.name))
-            .child(field("agent", &wizard.agent))
-            .child(tick("new-project-crew", wizard.crew, "a crew agent", "Beside the project's lead, on the tickets it is given; unticked: the lead.", |w| w.crew = !w.crew))
-            .child(tick("new-project-private", wizard.private, "a private project", "aiball serves it its private kit (no public tickets, no followers).", |w| w.private = !w.private))
-            .child(tick("new-project-noclaim", wizard.no_claim, "no claiming", "The agent works only on the tickets assigned to it, never takes one from the pool.", |w| w.no_claim = !w.no_claim))
+            // The file the choices were filled from.
+            .children(was.file.as_ref().map(|file| div().text_xs().text_color(imported).child(format!("Filled from {file}: change anything, what is here is what gets set up."))))
+            .child(field("project", &wizard.name, project_from.as_deref()))
+            .child(field("agent", &wizard.agent, agent_from.as_deref()))
+            .child(tick("new-project-crew", wizard.crew, "a crew agent", "Beside the project's lead, on the tickets it is given; unticked: the lead.", crew_from.as_deref(), |w| w.crew = !w.crew))
+            .child(tick(
+                "new-project-host",
+                wizard.on_host,
+                "its loops on aiball's host",
+                "Where the loops started in this folder run; unticked: in tmux.",
+                host_from.as_deref(),
+                |w| w.on_host = !w.on_host,
+            ))
+            .child(tick(
+                "new-project-rc",
+                wizard.remote_control,
+                "Remote Control",
+                "Its Claude can be reached from claude.ai and the Claude app.",
+                rc_from.as_deref(),
+                |w| w.remote_control = !w.remote_control,
+            ))
+            .child(tick("new-project-private", wizard.private, "a private project", "aiball serves it its private kit (no public tickets, no followers).", None, |w| w.private = !w.private))
+            .child(tick("new-project-noclaim", wizard.no_claim, "no claiming", "The agent works only on the tickets assigned to it, never takes one from the pool.", None, |w| w.no_claim = !w.no_claim))
             .child(
                 div()
                     .flex()
@@ -551,7 +689,19 @@ impl Shell {
                     .when(joins && problem.is_none(), |d| {
                         d.child(div().text_color(p().info).child(format!("{name} is on the board already: this folder joins it (another folder, or a crew agent).")))
                     })
-                    .child(".mcp.json: aiball's MCP server for Claude Code · .aiball.yaml: project, agent, role."),
+                    // Then, where its loops run and its Remote Control, when
+                    // they change what the folder had.
+                    .when(problem.is_none() && (session_write.is_some() || rc_write.is_some()), |d| {
+                        let mut said = Vec::new();
+                        if let Some(session) = session_write {
+                            said.push(format!("claude_loop.session: {session}"));
+                        }
+                        if let Some(rc) = &rc_write {
+                            said.push(format!("claude.remote_control: {rc}"));
+                        }
+                        d.child(div().text_color(p().text).child(format!("then sets {} in .aiball.yaml", said.join(", "))))
+                    })
+                    .child(".mcp.json: aiball's MCP server for Claude Code · .aiball.yaml: project, agent, role, where its loops run."),
             );
         let footer = div()
             .flex()
@@ -613,7 +763,7 @@ impl Shell {
             .child(item(
                 "1",
                 "Start the agent".into(),
-                format!("\"Start its first session\" starts {agent}'s Claude Code on aiball's host, in the project's folder; its terminal opens here, its tickets beside."),
+                format!("\"Start its first session\" starts {agent}'s Claude Code {}, in the project's folder; its terminal opens here, its tickets beside.", if wizard.on_host { "on aiball's host" } else { "in tmux" }),
             ))
             .child(item(
                 "2",
@@ -646,8 +796,15 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
-    use super::{Folder, folder_of, name_from, name_ok};
+    use super::{Filled, Folder, folder_of, name_from, name_ok, remote_control_of, to_write};
+    use crate::aiball::{ProjectSettings, Setting};
+    use serde_json::json;
     use std::path::Path;
+
+    /// `project.settings` as aiball answers it.
+    fn settings(answer: serde_json::Value) -> ProjectSettings {
+        serde_json::from_value(answer).unwrap()
+    }
 
     #[test]
     fn a_folder_says_what_it_is_as_aiball_answers() {
@@ -657,11 +814,11 @@ mod tests {
         assert_eq!(folder_of(&dir.join("nothing").display().to_string(), None), Folder::Missing);
         // A folder: aiball is asked, its answer said.
         assert_eq!(folder_of(&dir.display().to_string(), None), Folder::Checking);
-        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), None))), Folder::Fresh { git: false });
-        let file = Some("/w/.aiball.yaml".to_string());
-        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), file.clone()))), Folder::Configured("/w/.aiball.yaml".into()));
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), ProjectSettings::default()))), Folder::Fresh { git: false });
+        let set = ProjectSettings { file: Some("/w/.aiball.yaml".to_string()), ..Default::default() };
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), set.clone()))), Folder::Configured("/w/.aiball.yaml".into()));
         // An answer about another folder is not this one's.
-        assert_eq!(folder_of(&dir.display().to_string(), Some(&(Path::new("/elsewhere").to_path_buf(), file))), Folder::Checking);
+        assert_eq!(folder_of(&dir.display().to_string(), Some(&(Path::new("/elsewhere").to_path_buf(), set))), Folder::Checking);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
@@ -688,5 +845,46 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn a_configured_folder_fills_the_choices_and_a_bare_one_its_names() {
+        let configured = settings(json!({
+            "file": "/w/app/.aiball.yaml", "configured": true,
+            "consumer": { "project": { "value": "app", "from": "file" }, "agent": { "value": "app-dev", "from": "file" }, "role": { "value": "crew", "from": "file" } },
+            "session": { "value": "tmux", "from": "file" }, "remote_control": { "value": "app-rc", "from": "file" }
+        }));
+        let filled = Filled::of(&configured, "folder");
+        assert_eq!((filled.project.as_str(), filled.agent.as_str()), ("app", "app-dev"));
+        assert!(filled.crew && !filled.on_host && filled.remote_control);
+        assert!(configured.session.set() && configured.session.said() == "from .aiball.yaml");
+        // aiball's defaults: the folder's names, on the host, no Remote Control.
+        let bare = settings(json!({
+            "file": null, "configured": false,
+            "consumer": { "project": { "value": "x", "from": "default" }, "agent": { "value": "x", "from": "default" }, "role": { "value": null, "from": "default" } },
+            "session": { "value": "host", "from": "default" }, "remote_control": { "value": false, "from": "default" }
+        }));
+        let filled = Filled::of(&bare, "my-app");
+        assert_eq!((filled.project.as_str(), filled.agent.as_str()), ("my-app", "my-app-claude"));
+        assert!(!filled.crew && filled.on_host && !filled.remote_control && !bare.session.set());
+        // The machine's config sets where loops run too.
+        let global = Setting { value: "tmux".to_string(), from: "global".into() };
+        assert!(global.set() && global.said() == "from aiball's global config");
+    }
+
+    #[test]
+    fn only_what_differs_from_the_folder_is_written() {
+        let named = settings(json!({ "session": { "value": "tmux", "from": "file" }, "remote_control": { "value": "app-rc", "from": "file" } }));
+        // A named Remote Control, still on, stays as it is named.
+        assert_eq!(remote_control_of(&named, true), json!("app-rc"));
+        assert_eq!(remote_control_of(&named, false), json!(false));
+        // As the folder says: nothing to write.
+        assert_eq!(to_write(&named, false, json!("app-rc")), (None, None));
+        assert_eq!(to_write(&named, true, json!(false)), (Some("host"), Some(json!(false))));
+        // A sub-folder given a file of its own, which hides the parent's:
+        // what was imported from the parent is written in it.
+        let bare = settings(json!({ "session": { "value": "host", "from": "default" }, "remote_control": { "value": false, "from": "default" } }));
+        assert_eq!(to_write(&bare, false, remote_control_of(&named, true)), (Some("tmux"), Some(json!("app-rc"))));
+        assert_eq!(to_write(&bare, true, json!(false)), (None, None));
     }
 }
