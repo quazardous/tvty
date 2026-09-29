@@ -197,7 +197,7 @@ impl Updater {
             Some(State::Unknown) => Some(("Update", Gesture::Update(program))),
             _ => None,
         };
-        let rollback = program == Program::Tvty && tvty_updater::previous_dir().join("tvty").exists();
+        let rollback = program == Program::Tvty && tvty_updater::has_previous();
         div()
             .flex()
             .items_center()

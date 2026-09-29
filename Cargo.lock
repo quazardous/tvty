@@ -7641,11 +7641,13 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "embed-resource",
  "env_logger",
  "futures",
  "gpui-kit",
  "image",
  "log",
+ "resvg 0.46.0",
  "rust-embed",
  "serde",
  "serde_json",
@@ -7685,9 +7687,11 @@ version = "0.4.0-beta.1"
 dependencies = [
  "anyhow",
  "axoupdater",
+ "embed-resource",
  "gpui-kit",
  "serde_json",
  "tokio",
+ "tvty-config",
 ]
 
 [[package]]

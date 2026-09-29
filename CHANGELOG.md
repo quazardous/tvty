@@ -24,6 +24,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A Windows build in each release, with a PowerShell installer; the updater
+  puts Terminal Velocity in the Start menu and installs aiball its Windows
+  way. Early days.
+- tvty reaches an aiball of the same machine without any token to set up,
+  through aiball's machine secret; on Windows, with an aiball that has it,
+  that is what lets tvty list, restart and wake the loops.
+
 ### Fixed
 
 - The updater shows its window buttons: close, minimize, maximize.

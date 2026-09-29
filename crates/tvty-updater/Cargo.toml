@@ -18,8 +18,13 @@ anyhow = "1"
 axoupdater = { version = "0.10", features = ["blocking"] }
 gpui-kit = "0.6"
 serde_json = "1"
+tvty-config = { path = "../tvty-config" }
 tokio = { version = "1", features = ["rt"] }
 
 # Released beside tvty, by dist.
 [package.metadata.dist]
 dist = true
+
+# Terminal Velocity's icon in the .exe.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"

@@ -45,6 +45,14 @@ tungstenite = "0.30.0"
 [target.'cfg(windows)'.dependencies]
 rust-embed = { version = "8", features = ["debug-embed"] }
 
+# The Windows programs' icon (assets/tvty.ico), in the .exe.
+[target.'cfg(windows)'.build-dependencies]
+embed-resource = "3"
+
+[dev-dependencies]
+# Already built for GPUI: draws assets/tvty.ico (examples/windows_icon.rs).
+resvg = "0.46"
+
 # Full debug info makes target/debug weigh ~8 GB (GPUI is large). Line tables
 # keep backtraces readable at a fraction of the size.
 [profile.dev]
