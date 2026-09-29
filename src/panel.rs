@@ -100,6 +100,10 @@ enum Editing {
     Project,
 }
 
+/// A ticket's intents and priorities, as aiball takes them.
+const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
+const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
+
 /// What the full-screen detail offers to choose from, per project.
 #[derive(Clone, Default)]
 struct Catalog {
@@ -389,6 +393,8 @@ impl TicketPanel {
                 (agents(&first), ticket.map(|t| t.by_agent))
             }
             Editing::Assignee => (agents(&catalog.own), ticket.and_then(|t| t.assignee)),
+            Editing::Intent => (INTENTS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.intent)),
+            Editing::Priority => (PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.priority)),
             _ => (Vec::new(), None),
         }
     }
@@ -411,6 +417,8 @@ impl TicketPanel {
                 self.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
             }
             (Editing::Assignee, None) => self.change("unassigned", |aiball, ticket| aiball.assign(ticket, None), window, cx),
+            (Editing::Intent, Some(v)) => self.change(format!("intent {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
+            (Editing::Priority, Some(v)) => self.change(format!("priority {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
             _ => {}
         }
     }
@@ -423,6 +431,8 @@ impl TicketPanel {
             Editing::Tags => ("add a tag", "a tag…"),
             Editing::Milestone => ("none", "a milestone…"),
             Editing::Owner => ("the reporter", "an agent, or you…"),
+            Editing::Intent => ("intent", "an intent…"),
+            Editing::Priority => ("priority", "a priority…"),
             _ => ("nobody", "an agent…"),
         };
         let clearable = matches!(editing, Editing::Milestone | Editing::Assignee);
@@ -436,7 +446,7 @@ impl TicketPanel {
             self.editing = Some(editing);
             self.move_to = None;
             self.field_combo = None;
-            if matches!(editing, Editing::Tags | Editing::Owner | Editing::Assignee | Editing::Project | Editing::Milestone) {
+            if matches!(editing, Editing::Tags | Editing::Owner | Editing::Assignee | Editing::Project | Editing::Milestone | Editing::Intent | Editing::Priority) {
                 let (choices, selected) = self.field_choices(editing);
                 let state = combo::new(choices, selected.as_deref(), window, cx);
                 cx.subscribe_in(&state, window, move |panel: &mut Self, _, event: &ComboEvent<combo::Choices>, window, cx| {
@@ -1812,14 +1822,17 @@ impl TicketPanel {
         // ── Fields ──
         col = col.child(group("Fields"));
         let fields: [(&'static str, &'static str, Option<String>, &'static str, Editing, &'static [&'static str]); 4] = [
-            ("inv-intent", "intent", ticket.intent.clone(), "intent", Editing::Intent, &["request", "question", "fyi", "feature", "panic"]),
-            ("inv-priority", "priority", ticket.priority.clone(), "priority", Editing::Priority, &["urgent", "high", "normal", "low"]),
+            ("inv-intent", "intent", ticket.intent.clone(), "intent", Editing::Intent, INTENTS),
+            ("inv-priority", "priority", ticket.priority.clone(), "priority", Editing::Priority, PRIORITIES),
             ("inv-level", "level", ticket.level.clone(), "level", Editing::Level, &["task", "milestone", "roadmap"]),
             ("inv-scope", "scope", ticket.scope.clone(), "scope", Editing::Scope, &["internal", "default", "broadcast"]),
         ];
         for (id, text, value, field, edit, values) in fields {
             col = col.child(row(id, text, value.clone().unwrap_or_else(|| "—".into()), Some(edit), cx));
-            if editing == Some(edit) {
+            // Intent and priority: the combo, as the long fields.
+            if editing == Some(edit) && matches!(edit, Editing::Intent | Editing::Priority) {
+                col = col.child(self.field_combo_view(edit, cx));
+            } else if editing == Some(edit) {
                 let mut list = choices();
                 for v in values {
                     let v: &'static str = v;

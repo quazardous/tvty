@@ -42,6 +42,8 @@ const LEVELS: &[&str] = &["task", "milestone", "roadmap"];
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Pick {
     Project,
+    Intent,
+    Priority,
     Tag,
     Milestone,
     Assignee,
@@ -93,7 +95,7 @@ pub struct NewTicketForm {
     parent_input: Entity<InputState>,
     catalog: Catalog,
     /// Each long field's combo: a dropdown searched as it is typed.
-    combos: [(Pick, Entity<ComboState>); 4],
+    combos: [(Pick, Entity<ComboState>); 6],
     busy: bool,
     error: Option<String>,
     mentions: Vec<String>,
@@ -162,7 +164,7 @@ impl NewTicketForm {
             .detach();
         }
         let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
-        let combos = [Pick::Project, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
+        let combos = [Pick::Project, Pick::Intent, Pick::Priority, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
             let state = combo::new(Vec::new(), None, window, cx);
             // A choice takes it; a milestone or an assignee cleared drops it.
             cx.subscribe_in(&state, window, move |form: &mut Self, _, event: &ComboEvent<combo::Choices>, window, cx| {
@@ -289,6 +291,8 @@ impl NewTicketForm {
         let catalog = &self.catalog;
         match pick {
             Pick::Project => catalog.projects.iter().map(Choice::plain).collect(),
+            Pick::Intent => INTENTS.iter().map(|v| Choice::plain(*v)).collect(),
+            Pick::Priority => PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(),
             Pick::Tag => catalog.tags.iter().filter(|t| !self.tags.contains(t)).map(Choice::plain).collect(),
             Pick::Milestone => catalog.milestones.iter().map(|(id, title)| Choice::new(id.to_string(), title.clone())).collect(),
             Pick::Assignee => catalog
@@ -303,6 +307,8 @@ impl NewTicketForm {
     fn selected(&self, pick: Pick) -> Option<String> {
         match pick {
             Pick::Project => (!self.project.is_empty()).then(|| self.project.clone()),
+            Pick::Intent => Some(self.intent.to_string()),
+            Pick::Priority => Some(self.priority.to_string()),
             Pick::Tag => None,
             Pick::Milestone => self.milestone.as_ref().map(|(id, _)| id.to_string()),
             Pick::Assignee => self.assignee.clone(),
@@ -320,6 +326,8 @@ impl NewTicketForm {
     fn pick(&mut self, pick: Pick, value: String, window: &mut Window, cx: &mut Context<Self>) {
         match pick {
             Pick::Project => self.set_project(value, window, cx),
+            Pick::Intent => self.intent = INTENTS.iter().copied().find(|v| *v == value).unwrap_or(self.intent),
+            Pick::Priority => self.priority = PRIORITIES.iter().copied().find(|v| *v == value).unwrap_or(self.priority),
             Pick::Tag => {
                 if !self.tags.contains(&value) {
                     self.tags.push(value);
@@ -468,7 +476,7 @@ impl NewTicketForm {
     /// A choice dropped: a tag, the milestone, the assignee.
     fn unpick(&mut self, pick: Pick, value: &str, window: &mut Window, cx: &mut Context<Self>) {
         match pick {
-            Pick::Project => {}
+            Pick::Project | Pick::Intent | Pick::Priority => {}
             Pick::Tag => self.tags.retain(|t| t != value),
             Pick::Milestone => self.milestone = None,
             Pick::Assignee => self.assignee = None,
@@ -483,6 +491,8 @@ impl NewTicketForm {
         let id = format!("{pick:?}").to_lowercase();
         let (placeholder, search) = match pick {
             Pick::Project => ("a project", "a project…"),
+            Pick::Intent => ("intent", "an intent…"),
+            Pick::Priority => ("priority", "a priority…"),
             Pick::Tag => ("add a tag", "a tag…"),
             Pick::Milestone => ("none", "a milestone…"),
             Pick::Assignee => ("nobody", "an agent…"),
@@ -552,10 +562,11 @@ impl NewTicketForm {
         col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, cx)));
 
         // ── Fields: every choice in sight ──
-        col = col.child(group("Fields"));
-        let fixed: [(&'static str, &'static str, &'static [&'static str], fn(&mut Self, &'static str)); 4] = [
-            ("intent", self.intent, INTENTS, |f, v| f.intent = v),
-            ("priority", self.priority, PRIORITIES, |f, v| f.priority = v),
+        col = col
+            .child(group("Fields"))
+            .child(field("intent", self.picker_field(Pick::Intent, cx)))
+            .child(field("priority", self.picker_field(Pick::Priority, cx)));
+        let fixed: [(&'static str, &'static str, &'static [&'static str], fn(&mut Self, &'static str)); 2] = [
             ("level", self.level, LEVELS, |f, v| f.level = v),
             ("scope", self.scope, SCOPES, |f, v| f.scope = v),
         ];
