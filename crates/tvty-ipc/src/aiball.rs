@@ -32,8 +32,8 @@ impl fmt::Display for LocateError {
             Self::Endpoint(var, error) => write!(f, "{var}: {error}"),
             Self::NoToken { endpoint, cli_env } => write!(
                 f,
-                "aiball is at {endpoint}, which needs a token: none in AIBALL_TOKEN nor in {} \
-                 (aiball writes it when its first human is set up)",
+                "aiball is at {endpoint}, which needs a token: none in AIBALL_TOKEN, no machine-secret \
+                 beside {} (a recent aiball writes it when it starts), and none in that file",
                 cli_env.display()
             ),
         }
@@ -100,7 +100,9 @@ pub fn locate() -> Result<Location, LocateError> {
 /// 1. `AIBALL_SOCK` when set — set but empty forces TCP;
 /// 2. on Unix, `$AIBALL_HOME/sock` when it is a socket;
 /// 3. TCP: `AIBALL_URL`, else `http://127.0.0.1:$AIBALL_PORT` (7777), with
-///    `AIBALL_TOKEN`, else the token in `$AIBALL_HOME/cli-env`.
+///    `AIBALL_TOKEN`; else, on the loopback, `$AIBALL_HOME/machine-secret`
+///    (aiball then treats tvty as it treats its socket's callers); else the
+///    token in `$AIBALL_HOME/cli-env`.
 pub fn locate_in(sources: &dyn Sources) -> Result<Location, LocateError> {
     let home = home(sources);
     match sources.var("AIBALL_SOCK") {
@@ -125,14 +127,26 @@ pub fn locate_in(sources: &dyn Sources) -> Result<Location, LocateError> {
         }
     };
     let cli_env = home.join("cli-env");
+    let loopback = matches!(endpoint, Endpoint::Tcp(addr) if addr.ip().is_loopback());
     let token = sources
         .var("AIBALL_TOKEN")
         .filter(|t| !t.trim().is_empty())
+        // Never sent off this machine: it proves "same user here", nothing
+        // anywhere else.
+        .or_else(|| loopback.then(|| sources.read(&home.join("machine-secret")).and_then(|text| machine_secret(&text))).flatten())
         .or_else(|| sources.read(&cli_env).and_then(|text| env_file_var(&text, "AIBALL_TOKEN")));
     match token {
         Some(token) => Ok(Location { endpoint, credentials: Credentials::Bearer(token.trim().to_string()) }),
         None => Err(LocateError::NoToken { endpoint, cli_env }),
     }
+}
+
+/// aiball's machine secret, as its daemon writes it (`aiball-machine-` and
+/// 64 hex digits, one line); anything else is not one.
+fn machine_secret(text: &str) -> Option<String> {
+    let secret = text.trim();
+    let hex = secret.strip_prefix("aiball-machine-")?;
+    (hex.len() == 64 && hex.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))).then(|| secret.to_string())
 }
 
 /// A variable of an env file, read as aiball's launcher reads `cli-env`:
@@ -245,6 +259,49 @@ mod tests {
             Err(LocateError::NoToken { cli_env, .. }) => assert_eq!(cli_env, aiball_home().join("cli-env")),
             other => panic!("{other:?}"),
         }
+    }
+
+    const SECRET: &str = "aiball-machine-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn the_machine_secret_wins_over_cli_env_on_the_loopback() {
+        let fake = Fake {
+            files: HashMap::from([
+                (aiball_home().join("machine-secret"), "aiball-machine-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"),
+                (aiball_home().join("cli-env"), "export AIBALL_TOKEN=from-file\n"),
+            ]),
+            ..Default::default()
+        };
+        assert_eq!(locate_in(&fake).unwrap().credentials, Credentials::Bearer(SECRET.into()));
+    }
+
+    #[test]
+    fn the_machine_secret_never_leaves_the_machine() {
+        let fake = Fake {
+            vars: HashMap::from([("AIBALL_URL", "http://10.0.0.2:7777")]),
+            files: HashMap::from([(aiball_home().join("machine-secret"), SECRET)]),
+            ..Default::default()
+        };
+        assert!(matches!(locate_in(&fake), Err(LocateError::NoToken { .. })));
+    }
+
+    #[test]
+    fn the_environment_token_wins_over_the_machine_secret() {
+        let fake = Fake {
+            vars: HashMap::from([("AIBALL_TOKEN", "from-env")]),
+            files: HashMap::from([(aiball_home().join("machine-secret"), SECRET)]),
+            ..Default::default()
+        };
+        assert_eq!(locate_in(&fake).unwrap().credentials, Credentials::Bearer("from-env".into()));
+    }
+
+    #[test]
+    fn a_malformed_machine_secret_is_not_one() {
+        let fake = Fake {
+            files: HashMap::from([(aiball_home().join("machine-secret"), "aiball-machine-short")]),
+            ..Default::default()
+        };
+        assert!(matches!(locate_in(&fake), Err(LocateError::NoToken { .. })));
     }
 
     #[test]

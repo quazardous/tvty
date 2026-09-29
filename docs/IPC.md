@@ -68,7 +68,9 @@ so that tvty and the `aiball` command never disagree:
    socket exists.
 2. Otherwise, on Unix, `$AIBALL_HOME/sock` when it is a socket.
 3. Otherwise TCP: `AIBALL_URL`, else `http://127.0.0.1:$AIBALL_PORT`
-   (7777), with the token `AIBALL_TOKEN`, else the one in
+   (7777), with the token `AIBALL_TOKEN`; else, when that address is this
+   machine's loopback, aiball's machine secret
+   (`$AIBALL_HOME/machine-secret`); else the token in
    `$AIBALL_HOME/cli-env` (`export AIBALL_TOKEN=…`, read as aiball's
    launcher reads it).
 
@@ -76,10 +78,13 @@ so that tvty and the `aiball` command never disagree:
 Windows). The token found in `cli-env` belongs to the human who set aiball
 up: tvty acts as that human.
 
-Over TCP aiball refuses some calls even to the human (it reserves them to
-its socket): `loop.list`, `loop.restart`, `loop.wake`, `project.init`,
-`project.settings`, `session.host`, `daemon.reload`. On Windows those
-features of tvty wait for aiball to change that.
+The machine secret is TCP's counterpart of the socket, where there is none
+(Windows): only the same user can read it, so a call bearing it from the
+loopback is a call of this machine, and aiball grants it what it grants its
+socket (`loop.list`, `loop.restart`, `loop.wake`, `project.init`,
+`session.host`…), the identity in `x-aiball-consumer`. tvty never sends it
+to another address. With a token instead, over TCP, aiball refuses those
+calls even to the human.
 
 ## One tvty per state directory
 
