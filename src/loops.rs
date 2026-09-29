@@ -75,31 +75,6 @@ impl KnownLoop {
     }
 }
 
-/// The loops of this machine; none when aiball does not answer (said in
-/// the log, once until it changes: the list is asked every few seconds).
-pub fn known(aiball: &Aiball) -> Vec<KnownLoop> {
-    static SAID: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-    let answer = aiball.call::<Vec<KnownLoop>>("loop.list", json!({}));
-    let error = answer.as_ref().err().map(|e| format!("{e:#}"));
-    if let Ok(mut said) = SAID.lock()
-        && *said != error
-    {
-        match &error {
-            Some(error) => log::warn!("loops: {error}"),
-            None if said.is_some() => log::info!("loops: listed again"),
-            None => {}
-        }
-        *said = error;
-    }
-    match answer {
-        Ok(mut loops) => {
-            loops.sort_by(|a, b| a.name.cmp(&b.name));
-            loops
-        }
-        Err(_) => Vec::new(),
-    }
-}
-
 /// Starts a loop in its directory, where its folder says (or `mode`) — or,
 /// `again`, starts a known one again where it ran. Answers the session to
 /// open.

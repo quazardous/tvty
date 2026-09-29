@@ -228,7 +228,8 @@ pub struct Shell {
     /// The board as aiball pushes it on the bus.
     live: crate::live::Live,
     /// The tmux sessions and the loops of this machine, as last listed.
-    local: (Vec<(String, String)>, Vec<crate::loops::KnownLoop>),
+    /// The tmux sessions of this machine (the loops come over the bus).
+    local: Vec<(String, String)>,
     /// The board is to be built again shortly.
     rebuild_pending: bool,
     /// Shells closed from their tab, until the host says they are gone:
@@ -830,17 +831,17 @@ impl Shell {
         shell
     }
 
-    /// Lists the tmux sessions and the loops of this machine every few
-    /// seconds, or at once when asked, and builds the board again when they
-    /// changed. What aiball says comes on its own, over the bus.
+    /// Lists the tmux sessions of this machine every few seconds, or at once
+    /// when asked, and builds the board again when they changed. What aiball
+    /// says — its loops too (`loop.*.state`) — comes on its own, over the
+    /// bus.
     fn local_loop(mut wake: futures::channel::mpsc::UnboundedReceiver<()>, cx: &mut Context<Self>) {
         cx.spawn(async move |this, cx| {
             use futures::{FutureExt as _, StreamExt as _};
             loop {
-                let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { break };
                 let local = cx
                     .background_executor()
-                    .spawn(async move { (sessions::tmux_sessions(), crate::loops::known(&aiball)) })
+                    .spawn(async move { sessions::tmux_sessions() })
                     .await;
                 let alive = this.update(cx, |shell, cx| {
                     if !shell.local_seen {
@@ -906,7 +907,7 @@ impl Shell {
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         // Who the user is, from the humans aiball knows; the bus runs as them.
         self.aiball.find_user(&self.live.consumers());
-        let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
+        let mut board = sessions::build(&self.live, self.local.clone(), self.live.known_loops());
         self.forget_stopping(&mut board);
         self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);

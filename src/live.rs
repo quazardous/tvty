@@ -32,6 +32,8 @@ enum Kind {
     /// Every message of the board, as aiball's web UI follows it: a
     /// proposal to decide is said even when its ping does not come.
     Board,
+    /// The loops of this machine, running or not, as `loop.list` has them.
+    Loops,
 }
 
 impl Kind {
@@ -44,6 +46,7 @@ impl Kind {
             Kind::Sessions => "session.*.state".into(),
             Kind::Config => "config.changed".into(),
             Kind::Board => "board.events".into(),
+            Kind::Loops => "loop.*.state".into(),
         }
     }
 }
@@ -102,6 +105,8 @@ pub struct Live {
     registry: crate::kernel::subscriptions::Registry<Kind>,
     /// The host's sessions, by name, as `session.*.state` has them.
     sessions: BTreeMap<String, Value>,
+    /// The machine's loops, by name, as `loop.*.state` has them.
+    loops: BTreeMap<String, Value>,
     /// Subscriptions by id.
     subscriptions: HashMap<String, Kind>,
     /// Events whose subscription's answer is not in yet.
@@ -141,6 +146,8 @@ impl Live {
         if !user.is_empty() {
             kinds.push(Kind::Pings);
             kinds.push(Kind::Board);
+            // A human's on this machine, as `loop.list`.
+            kinds.push(Kind::Loops);
         }
         self.calls(kinds)
     }
@@ -150,6 +157,11 @@ impl Live {
     pub fn retry_plan(&mut self, now: std::time::Instant) -> Option<Plan> {
         let due = self.registry.due(now);
         (!due.is_empty()).then(|| self.calls(due))
+    }
+
+    /// The machine's loops, as `loop.list` gives them, by name.
+    pub fn known_loops(&self) -> Vec<crate::loops::KnownLoop> {
+        self.loops.values().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect()
     }
 
     /// A ticket out of the open lists, known closed: `true` if one had it.
@@ -306,6 +318,10 @@ impl Live {
             }
             // No value: config.managed is the whole read.
             Kind::Config => Vec::new(),
+            Kind::Loops => {
+                self.loops = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
+                Vec::new()
+            }
             // A feed: no state of its own.
             Kind::Board => Vec::new(),
         }
@@ -410,6 +426,17 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Config => vec![Update::Config],
+            Kind::Loops => {
+                // The loop's whole view; `null` once it is forgotten.
+                let name = middle(subject).or_else(|| data.get("name").and_then(Value::as_str).map(str::to_string));
+                let Some(name) = name else { return Vec::new() };
+                if data.is_null() {
+                    self.loops.remove(&name);
+                } else {
+                    self.loops.insert(name, data.clone());
+                }
+                vec![Update::Board]
+            }
             Kind::Board if data.get("type").and_then(Value::as_str) == Some("project_standing_changed") => data
                 .get("data")
                 .and_then(|view| serde_json::from_value::<crate::aiball::Standing>(view.clone()).ok())
@@ -622,7 +649,7 @@ static FAULTS: std::sync::Mutex<Vec<Kind>> = std::sync::Mutex::new(Vec::new());
 /// The next subscribing to the kind named so fails once; `false` for a
 /// name that is no kind.
 pub fn fail_next(name: &str) -> bool {
-    let kinds = [Kind::Tickets, Kind::State, Kind::Bar, Kind::Pings, Kind::Sessions, Kind::Config, Kind::Board];
+    let kinds = [Kind::Tickets, Kind::State, Kind::Bar, Kind::Pings, Kind::Sessions, Kind::Config, Kind::Board, Kind::Loops];
     let Some(kind) = kinds.into_iter().find(|k| format!("{k:?}").eq_ignore_ascii_case(name)) else { return false };
     if let Ok(mut faults) = FAULTS.lock() {
         faults.push(kind);
@@ -645,6 +672,26 @@ mod tests {
     fn row(id: u64, status: &str) -> serde_json::Value {
         json!({ "id": id, "project": "demo", "title": format!("t{id}"), "status": status, "by_agent": "demo-crew",
                 "priority": "normal", "claimant": null, "assignee": null })
+    }
+
+    /// The machine's loops come over the bus: whole, then each change, and
+    /// a loop forgotten goes.
+    #[test]
+    fn the_loops_follow_loop_state() {
+        let mut live = Live::default();
+        let plan = live.plan("david");
+        let loops_at = plan.calls.iter().position(|(_, p)| p["subject"] == "loop.*.state").expect("subscribed as a human");
+        let loop_view = |name: &str, running: bool| json!({ "name": name, "cwd": "/w", "agent": "demo-crew", "mode": "tmux", "running": running, "tmux": name });
+        let mut answers: Vec<anyhow::Result<serde_json::Value>> =
+            (0..plan.calls.len()).map(|i| Ok(json!({ "id": format!("s{i}"), "epoch": "e1", "seq": 1, "replayed": false, "value": null }))).collect();
+        answers[loops_at] = Ok(json!({ "id": "l", "epoch": "e1", "seq": 1, "replayed": false, "value": { "cl-a": loop_view("cl-a", true) } }));
+        live.subscribed(plan, answers);
+        assert_eq!(live.known_loops().iter().map(|l| (l.name.as_str(), l.running)).collect::<Vec<_>>(), vec![("cl-a", true)]);
+        live.event(&json!({ "subscription": "l", "subject": "loop.cl-a.state", "seq": 2, "data": loop_view("cl-a", false) }));
+        live.event(&json!({ "subscription": "l", "subject": "loop.cl-b.state", "seq": 3, "data": loop_view("cl-b", true) }));
+        assert_eq!(live.known_loops().iter().map(|l| (l.name.as_str(), l.running)).collect::<Vec<_>>(), vec![("cl-a", false), ("cl-b", true)]);
+        live.event(&json!({ "subscription": "l", "subject": "loop.cl-a.state", "seq": 4, "data": null }));
+        assert_eq!(live.known_loops().iter().map(|l| l.name.as_str()).collect::<Vec<_>>(), vec!["cl-b"]);
     }
 
     /// A reconnection where the tickets' subscription fails while the
