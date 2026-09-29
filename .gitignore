@@ -34,3 +34,6 @@ __pycache__/
 *.swp
 *~
 .DS_Store
+
+# dist's copy of packaging/windows/tvty-setup.ps1, made by its build.
+/tvty-setup.ps1

@@ -38,3 +38,10 @@ libvulkan-dev = "*"
 libfontconfig-dev = "*"
 libfreetype-dev = "*"
 libasound2-dev = "*"
+
+# The Windows setup script (packaging/windows/tvty-setup.ps1), beside the
+# installers: `irm …/tvty-setup.ps1 | iex` installs what is missing, then
+# tvty, its updater and aiball.
+[[dist.extra-artifacts]]
+artifacts = ["tvty-setup.ps1"]
+build = ["cp", "packaging/windows/tvty-setup.ps1", "tvty-setup.ps1"]
