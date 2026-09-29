@@ -60,6 +60,18 @@ PY
 for _ in $(seq 1 20); do grep -q "window: background Blurred" "$LOG" && break; sleep 0.5; done
 check "it asks for a blurred background" 'grep -q "window: background Blurred" "$LOG"'
 
+# A failure says what the desktop and tvty saw, while they are still up: the
+# compositor's windows, tvty's log, a screenshot (the CI keeps it).
+if [[ $failed != 0 ]]; then
+    echo "::group::the compositor's windows"
+    ctl windows
+    echo "::endgroup::"
+    echo "::group::tvty.log (its last 120 lines)"
+    tail -n 120 "$LOG" 2>/dev/null || echo "(no log at $LOG)"
+    echo "::endgroup::"
+    ctl shot --name desktop-check-failed >/dev/null 2>&1 && echo "screenshot: dev/tvty-wbox/screenshots/desktop-check-failed.png"
+fi
+
 # The known limit: a second launch while another window has the focus.
 if command -v xterm >/dev/null; then
     (DISPLAY=:2 xterm -e sh -c 'sleep 20' >/dev/null 2>&1 &)

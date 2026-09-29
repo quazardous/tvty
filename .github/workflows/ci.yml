@@ -58,3 +58,13 @@ jobs:
         env:
           TVTY_NO_AIBALL: "1"
         run: scripts/desktop-check
+      # What a failed check saw: its screenshot, tvty's log.
+      - name: What the check saw
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-check
+          path: |
+            dev/tvty-wbox/screenshots/desktop-check-failed.png
+            dev/tvty-wbox/state/tvty/tvty.log
+          if-no-files-found: ignore
