@@ -503,6 +503,23 @@ group, what it says, its kind and bounds — `crates/tvty-config`), and a
 change from a page, a shortcut or a hand edit of the file goes the same way:
 into the store, which writes the file and puts it in force.
 
+## Tips
+
+"Did you know?": a small card, bottom left (bottom right over a full
+page, where the notifications take the left), never in the way. One
+comes 5 s after start, and one the first time a page is opened (the full
+list, a ticket full screen, the gallery, the options…). A tip says one
+thing, with its key as the keymap in force has it; the tip of a command
+already used is not shown, nor one shown in the last day.
+
+- **Got it**: that tip never comes back; **Next tip**: another one for
+  the same page; **✕**: not now; **Turn tips off**: none any more, until
+  Options > Layout > Tips turns them back on.
+- The menu's **Tips…** goes through them all (‹ Previous, Next ›), and
+  **Show them all again** forgets which ones were understood.
+- The tips are files, `tips/<id>.md`: a header (`id`, `surface` — a key
+  context —, `command`) and one short text, `{key}` for the command's key.
+
 ## The wheel
 
 A notch moves about three ticket rows in the lists and the threads (GPUI's
@@ -584,7 +601,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | ctrl+shift+k | next colour theme |
 | ctrl+, | options |
 | F11 | the window full screen, or back |
-| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, what's new, GitHub, report an issue, aiball (its web UI at the local address aiball gives, as its GNOME extension opens it) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
+| F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, the tips, what's new, GitHub, report an issue, aiball (its web UI at the local address aiball gives, as its GNOME extension opens it) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
 | drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |

@@ -158,6 +158,18 @@ pub fn current(cx: &App) -> Keymap {
     keymap
 }
 
+/// The keymap with its defaults only.
+#[cfg(test)]
+pub fn current_defaults() -> Keymap {
+    Keymap::new(COMMANDS, CONTEXTS)
+}
+
+/// The name of the action a command dispatches, as a keystroke's event
+/// gives it.
+pub fn action_name(command: &str) -> Option<&'static str> {
+    action(command).map(|a| a.name())
+}
+
 /// Binds again: the kit's bindings, then tvty's in force.
 fn apply(cx: &mut App) {
     let kit = cx.global::<KitBindings>().0.clone();

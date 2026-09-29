@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Tips: "Did you know?" once after start and on first opening a page, never for what you already use; Got it, Next, off, and Tips… in the menu to see them all.
+
 ### Fixed
 
 - The updater shows its window buttons: close, minimize, maximize.

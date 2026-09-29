@@ -21,6 +21,7 @@ enum Entry {
     FullScreen,
     Documentation,
     Shortcuts,
+    Tips,
     WhatsNew,
     Repository,
     Issue,
@@ -30,12 +31,13 @@ enum Entry {
 }
 
 impl Entry {
-    const ALL: [Entry; 11] = [
+    const ALL: [Entry; 12] = [
         Entry::About,
         Entry::NewProject,
         Entry::FullScreen,
         Entry::Documentation,
         Entry::Shortcuts,
+        Entry::Tips,
         Entry::WhatsNew,
         Entry::Repository,
         Entry::Issue,
@@ -51,6 +53,7 @@ impl Entry {
             Entry::FullScreen => "Full screen",
             Entry::Documentation => "Documentation",
             Entry::Shortcuts => "Keyboard shortcuts",
+            Entry::Tips => "Tips…",
             Entry::WhatsNew => "What's new",
             Entry::Repository => "GitHub",
             Entry::Issue => "Report an issue",
@@ -70,7 +73,7 @@ impl Entry {
             Entry::Aiball => "the board ↗".into(),
             // A newer release, when one is known.
             Entry::Updates => crate::updates::newer(cx).map(|v| format!("{v} is out ↑")).unwrap_or_default(),
-            Entry::Shortcuts | Entry::NewProject => String::new(),
+            Entry::Shortcuts | Entry::NewProject | Entry::Tips => String::new(),
             Entry::Restart => "sessions kept".into(),
         }
     }
@@ -129,6 +132,7 @@ impl Shell {
             Entry::About => self.open_options_page(Section::About, None, window, cx),
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(window, cx),
+            Entry::Tips => self.browse_tips(cx),
             Entry::NewProject => self.open_new_project(window, cx),
             Entry::FullScreen => window.toggle_fullscreen(),
             Entry::Updates => {

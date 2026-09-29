@@ -28,6 +28,20 @@ pub struct Preferences {
     pub tickets: Tickets,
     pub sessions: Sessions,
     pub updates: Updates,
+    pub tips: Tips,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Tips {
+    /// "Did you know?" once after start and on first entering a surface.
+    pub show: bool,
+}
+
+impl Default for Tips {
+    fn default() -> Self {
+        Self { show: true }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -233,6 +247,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: true, on: "check", off: "never" },
     },
     Setting {
+        key: "tips.show",
+        page: "Layout",
+        group: "Tips",
+        label: "Show tips",
+        about: "\"Did you know?\": a short tip once after start, and the first time a page is opened; never one for what you already use. The menu's Tips… shows them all.",
+        kind: Kind::Toggle { default: true, on: "show", off: "never" },
+    },
+    Setting {
         key: "sessions.recent_first",
         page: "Layout",
         group: "Sessions",
@@ -297,6 +319,7 @@ impl Stored for Preferences {
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
             sessions: Sessions::default(),
             updates: Updates::default(),
+            tips: Tips::default(),
         })
     }
 }

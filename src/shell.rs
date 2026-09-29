@@ -36,6 +36,7 @@ mod loopstabs;
 mod quit;
 mod stacks;
 mod tabs;
+mod tips;
 use tabs::Restoring;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
@@ -264,6 +265,10 @@ pub struct Shell {
     decorations_said: Option<String>,
     /// The window's title as last given to the system.
     os_title: String,
+    /// The tip on screen, and the surface last drawn (its first entry
+    /// offers one).
+    tip: Option<tips::TipCard>,
+    tip_surface: Option<&'static str>,
     theme_menu_terminal: bool,
 
     focus: FocusHandle,
@@ -720,6 +725,8 @@ impl Shell {
             new_project: None,
             decorations_said: None,
             os_title: String::new(),
+            tip: None,
+            tip_surface: None,
             theme_menu_terminal: false,
 
             focus: cx.focus_handle(),
@@ -727,6 +734,7 @@ impl Shell {
             refresh_now,
         };
         shell.wire = Some(wire);
+        shell.start_tips(cx);
         shell.follow_wire(wire_notices, cx);
         // aiball not running: start it (detached), or say it is missing.
         cx.spawn(async move |_, cx| {
@@ -4234,6 +4242,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.surface_drawn(cx);
         // Who draws the frame, as the compositor settled it: tvty asks to
         // draw its own (client); a server frame would double it.
         let decorations = match window.window_decorations() {
@@ -4626,6 +4635,7 @@ impl Render for Shell {
             } else {
                 FOLDED_WIDTH
             }))
+            .children(self.tip_view(cx))
             .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
