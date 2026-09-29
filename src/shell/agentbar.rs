@@ -70,8 +70,9 @@ fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>) -> 
     }
     let in_force = match (presence, armed) {
         (Some("loop"), _) => Some(("▶", Tone::Green)),
-        // Held until let go (not AFK, for good): stopped, as the folded list says it.
-        (Some("wait"), Some("wait_inf")) => Some(("■", Tone::Red)),
+        // Held until let go (not AFK, for good): stopped, as the folded list
+        // says it — typing does not make it a pause (stop > pause).
+        (Some("wait") | Some("stop"), Some("wait_inf")) => Some(("■", Tone::Red)),
         (Some("wait") | Some("stop"), _) => Some(("‖", Tone::Orange)),
         _ => None,
     };
@@ -868,6 +869,8 @@ mod tests {
         assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).armed, Some(("웃∞".into(), Tone::Red)));
         // Held until let go: stopped, not paused.
         assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).in_force, Some(("■", Tone::Red)));
+        // Typing in a loop held until let go: still stopped, not paused.
+        assert_eq!(afk_marks(Some("stop"), Some("wait_inf"), None).in_force, Some(("■", Tone::Red)));
         // Typing holds and arms nothing (its ⌨ is by the prompt, once).
         let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600));
         assert_eq!((typing.in_force, typing.arming), (Some(("‖", Tone::Orange)), false));
