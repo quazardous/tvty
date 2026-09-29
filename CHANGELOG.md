@@ -34,12 +34,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The updater shows its window buttons: close, minimize, maximize.
 - The answers of every dialog and form are buttons of one size.
+- The quit and restart dialogs scroll their list of sessions, with a scrollbar, when they are many.
 - While a loop boots, the agent bar's "… boot" is no longer squashed.
 - The agent bar shows ⌨ once while a human types, by the prompt.
 - The "Where it stands" summary and the thread's words can be selected and copied with the mouse.
 - Preview (a new ticket, a reply) draws the pictures pasted into the text.
 - A loop held until let go stays ■ while a human types in it, in the agent bar and the list: a stop is not a pause.
-- The agent bar's RC chip is gone for now: it could not tell a session put in Remote Control by hand.
+- The agent bar's RC chip says whether its Claude really is in Remote Control, `/rc` typed by hand included.
 - The slider and the gallery are no longer covered by notifications: those that come meanwhile show once they close.
 
 ## [0.4.0-beta.1] - 2026-09-28

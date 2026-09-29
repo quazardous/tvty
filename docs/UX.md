@@ -364,7 +364,10 @@ where its loop runs (`host`: aiball's session host, `tmux`: claude-loop in
 tmux) — for a loop of this machine, a click offers to **move** it to the
 other (a confirmation over the bar, which says when Claude works; aiball
 restarts it there — `loop.restart` —, resuming its conversation, and the terminal comes back
-on the new session, "moving…" meanwhile); whether this terminal has the **controls** or is a **copy** (a
+on the new session, "moving…" meanwhile); **RC**, lit while its Claude is in
+Remote Control, whatever turned it on — its folder's setting or `/rc` typed —
+as its loop reads it on the screen (said, not set: none from a loop too old
+to say it); whether this terminal has the **controls** or is a **copy** (a
 click switches: the terminal leaves and comes back in the other mode, its
 Claude goes on); its name and where it works. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
@@ -620,11 +623,6 @@ back, to go on typing.
 Everything else goes to the terminal.
 
 ## Open points
-
-- **RC** (Remote Control) left the agent bar for now: it said the Remote
-  Control the loop forces from its folder, not a `/rc` typed in the
-  session, which the loop's bar does not tell. It comes back once it can
-  say both.
 
 - **Where the ticket detail opens.** Proposed, and what tvty does for now: in
   the panel itself, replacing the list, with a back arrow. Not done: widening

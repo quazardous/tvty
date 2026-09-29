@@ -185,6 +185,15 @@ pub struct AgentBar {
     /// says it, and as a date when it could be read.
     #[serde(default)]
     pub limit_resets: Option<LimitResets>,
+    /// Whether its Claude is in Remote Control, whatever turned it on (its
+    /// folder's setting, or `/rc` typed): none from an older loop.
+    #[serde(default)]
+    pub remote_control: Option<BarRemoteControl>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarRemoteControl {
+    pub on: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

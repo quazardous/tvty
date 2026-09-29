@@ -59,6 +59,7 @@ tip_files![
     "bulk",
     "afk",
     "controls",
+    "remote-control",
     "move-loop",
     "critical",
     "references",
