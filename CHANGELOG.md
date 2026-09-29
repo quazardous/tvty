@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - The updater shows its window buttons: close, minimize, maximize.
 - The answers of every dialog and form are buttons of one size.
+- Who tvty acts as on aiball's board is in the title bar, after ⚙, no longer in the ticket panel's header.
 - A ticket open in the panel: the header stays as the list has it (project, badges); "← Tickets" sits above the ticket's title.
 - The agent bar keeps its controls in sight when short: its folder, then its name, give way.
 - In the sessions list, a new session goes last in its project; the others keep their place, across restarts too.

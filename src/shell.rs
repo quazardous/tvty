@@ -4690,6 +4690,17 @@ impl Render for Shell {
                             .mr_2()
                             .text_sm()
                             .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
+                    )
+                    // Who tvty acts as on aiball's board.
+                    .child(
+                        div()
+                            .id("title-user")
+                            .flex_none()
+                            .mr_2()
+                            .text_sm()
+                            .text_color(p().muted)
+                            .child(self.aiball.user.clone())
+                            .tip("who tvty acts as on aiball's board"),
                     ),
             )
             .child(body)

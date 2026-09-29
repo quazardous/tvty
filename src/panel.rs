@@ -2298,12 +2298,6 @@ impl Render for TicketPanel {
             })
             .child(div().flex_1())
             .child(
-                div()
-                    .text_xs()
-                    .text_color(p().muted)
-                    .child(format!("as {}", self.aiball.user)),
-            )
-            .child(
                 buttons::chip("new-ticket", "+ New")
                     .text_xs()
                     .text_color(p().accent)
