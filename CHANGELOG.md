@@ -39,6 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A ticket closed while tvty missed the bus's news no longer stays in the list: a subscription that failed is tried again and read whole, and a ticket opened that reads closed leaves the list.
 - Assign ▾ lists the project's agents at once, read ahead when the project changes. In its list, whoever holds the ticket is marked, and unassigning is a crossed-out person whose tip says what it does (no more "release").
 - A ticket's reply field starts at four lines in full screen (two in the panel).
 - A zoomed image stays over the notifications; they wait under it.

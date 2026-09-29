@@ -153,7 +153,12 @@ hope for:
 - `tvty-ctl state` — the page, the terminal, the panel (project, ticket,
   field being edited, menu open), the bus and its subscriptions;
 - `tvty-ctl inspector` — GPUI's inspector (debug builds; its key is
-  ctrl+alt+shift+i): pick an element, read its id and where it is made.
+  ctrl+alt+shift+i): pick an element, read its id and where it is made;
+- failure paths, provoked: `tvty-ctl bus-reconnect` drops the bus and
+  connects again; `tvty-ctl fault Tickets` makes that subscription's next
+  asking fail once — `state` then shows it failed, its retry, and live
+  again (a failed subscription is read whole, never resumed on another's
+  cursor).
 
 The screenshot stays the proof of what is seen; this is how to get there,
 and how to read what a screenshot does not say.

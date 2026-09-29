@@ -208,6 +208,8 @@ pub struct Shell {
     /// Sessions whose controls the user took: never opened as a copy on
     /// their own, whoever else is attached.
     pub(super) controls_taken: HashSet<String>,
+    /// Bumped by each subscribing: a retry planned before it gives up.
+    retry_generation: u64,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -580,6 +582,12 @@ impl Shell {
         cx.subscribe_in(&bus::bus(cx), window, |shell, _, signal: &Signal, window, cx| match signal {
             // A gesture moved the board: aiball pushes what changed.
             Signal::BoardChanged => {}
+            Signal::TicketClosed(ticket) => {
+                if shell.live.drop_ticket(*ticket) {
+                    log::info!("board: #{ticket} read closed, yet listed open: dropped from the list");
+                    shell.rebuild(cx);
+                }
+            }
             Signal::Notices => cx.notify(),
             Signal::Copied => shell.show_copied(cx),
             Signal::OpenNotice(notice) => shell.open_notice(notice.clone(), window, cx),
@@ -707,6 +715,7 @@ impl Shell {
             restarts_asked: HashMap::new(),
             copies: HashSet::new(),
             controls_taken: HashSet::new(),
+            retry_generation: 0,
             project_shown: None,
             ask: None,
             remember: false,
@@ -971,6 +980,9 @@ impl Shell {
                         let text = |key: &str| notice.params.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
                         let user = if text("kind") == "human" { text("consumer") } else { String::new() };
                         let planned = this.update(cx, |shell, _| {
+                            // A greeting subscribes to everything: the retries
+                            // planned before it are moot.
+                            shell.retry_generation += 1;
                             let plan = shell.live.plan(&user);
                             // Another user's board is coming: what waits
                             // starts again from it.
@@ -1001,6 +1013,7 @@ impl Shell {
                             shell.wire_whoami = Some(said);
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
+                            shell.retry_failed(cx);
                             // Once the user is known: what came while tvty was closed.
                             if !user.is_empty() && shell.missed_checked.as_deref() != Some(user.as_str()) {
                                 shell.missed_checked = Some(user.clone());
@@ -1018,6 +1031,36 @@ impl Shell {
                     break;
                 }
             }
+        })
+        .detach();
+    }
+
+    /// Tries the failed subscriptions again when they are due, on the
+    /// connection that runs, until they are live; a greeting (a
+    /// reconnection) plans them all again and stops these.
+    fn retry_failed(&mut self, cx: &mut Context<Self>) {
+        let Some(at) = self.live.next_retry() else { return };
+        self.retry_generation += 1;
+        let generation = self.retry_generation;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(at.saturating_duration_since(std::time::Instant::now())).await;
+            let planned = this.update(cx, |shell, _| {
+                (shell.retry_generation == generation).then(|| (shell.wire.clone(), shell.live.retry_plan(std::time::Instant::now())))
+            });
+            let Ok(Some((Some(wire), Some(plan)))) = planned else { return };
+            let (plan, answers) = cx
+                .background_executor()
+                .spawn(async move {
+                    let answers = crate::live::subscribe(&wire, &plan);
+                    (plan, answers)
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                let updates = shell.live.subscribed(plan, answers);
+                shell.take_updates(updates, cx);
+                shell.retry_failed(cx);
+                cx.notify();
+            });
         })
         .detach();
     }

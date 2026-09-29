@@ -20,6 +20,7 @@ mod icons;
 mod images;
 mod instance;
 mod inspect;
+mod kernel;
 mod keymap;
 mod links;
 mod loops;

@@ -10,6 +10,8 @@
     scripts/tvty-ctl wait ID [MS]       until ID is on screen (5000 ms at most)
     scripts/tvty-ctl state              the page, the terminal, the panel, the bus
     scripts/tvty-ctl inspector          GPUI's inspector, on or off (debug builds)
+    scripts/tvty-ctl bus-reconnect      the bus dropped and connected again
+    scripts/tvty-ctl fault KIND         KIND's next subscribing fails once (Tickets…)
 
 tvty listens only when TVTY_DEBUG_CONTROL is set, as scripts/test-env sets
 it: a test tvty, never the user's. The socket is in tvty's state directory
@@ -56,6 +58,8 @@ def main(argv):
         command["keys"] = rest[0]
     elif cmd == "type":
         command["text"] = " ".join(rest)
+    elif cmd == "fault":
+        command["subscribe"] = rest[0]
     elif cmd == "wait":
         command["id"] = rest[0]
         if len(rest) > 1:

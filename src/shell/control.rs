@@ -7,7 +7,9 @@
 //! · `{"cmd": "where", "id": …}` · `{"cmd": "click", "id": …}` ·
 //! `{"cmd": "hover", "id": …}` · `{"cmd": "key", "keys": "ctrl-enter"}` ·
 //! `{"cmd": "type", "text": …}` · `{"cmd": "wait", "id": …, "ms": 5000}` ·
-//! `{"cmd": "state"}` · `{"cmd": "inspector"}`.
+//! `{"cmd": "state"}` · `{"cmd": "inspector"}` · and failure paths,
+//! provoked: `{"cmd": "bus-reconnect"}`, `{"cmd": "fault", "subscribe":
+//! "Tickets"}` (its next subscribing fails once).
 
 use std::time::Duration;
 
@@ -43,7 +45,7 @@ impl Shell {
             "open_terminals": self.terminals.keys().collect::<Vec<_>>(),
             "panel": self.panel.read(cx).said(),
             "bus": self.wire.as_ref().and_then(|w| w.hello()).is_some(),
-            "subscriptions": self.live.subscriptions(),
+            "subscriptions": self.live.subscriptions_said(),
             "place_bar": self.move_asked,
         })
     }
@@ -111,8 +113,27 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "state" => this.update(cx, |shell, cx| shell.said(cx)).map_err(|e| format!("{e:#}")),
+        // Failure paths, provoked: the bus dropped, a subscription refused.
+        "bus-reconnect" => this
+            .update(cx, |shell, _| match &shell.wire {
+                Some(wire) => {
+                    wire.reconnect();
+                    Ok(json!({ "reconnect": "asked" }))
+                }
+                None => Err("no bus".to_string()),
+            })
+            .map_err(|e| format!("{e:#}"))
+            .and_then(|r| r),
+        "fault" => {
+            let kind = command.get("subscribe").and_then(Value::as_str).unwrap_or_default();
+            if crate::live::fail_next(kind) {
+                Ok(json!({ "fails_once": kind }))
+            } else {
+                Err(format!("{kind:?}: no such subscription (Tickets, State, Bar, Pings, Sessions, Config, Board)"))
+            }
+        }
         "inspector" => toggle_inspector(cx),
-        other => Err(format!("{other:?}: no such command (tree, query, where, click, hover, key, type, wait, state, inspector)")),
+        other => Err(format!("{other:?}: no such command (tree, query, where, click, hover, key, type, wait, state, inspector, bus-reconnect, fault)")),
     };
     match answer {
         Ok(value) => json!({ "ok": value }),

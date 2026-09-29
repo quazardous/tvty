@@ -39,7 +39,7 @@ pub fn mark(id: impl Into<String>) -> impl IntoElement {
             if let Ok(mut marks) = MARKS.lock() {
                 // One place per id: the last painted wins (a list's rows
                 // carry distinct ids).
-                marks.retain(|(m, _, at)| *m != id && at + 1 >= frame);
+                marks.retain(|(m, _, at)| *m != id && *at == frame);
                 marks.push((id.clone(), bounds, frame));
             }
         },
@@ -55,12 +55,13 @@ pub fn mark_if(id: impl Into<String>) -> Option<impl IntoElement> {
     enabled().then(|| mark(id))
 }
 
-/// What was painted in this frame or the last, in paint order.
+/// What the last frame painted, in paint order: read between frames (on
+/// the UI thread), the last one is whole — what it did not paint is gone.
 pub fn marks() -> Vec<(String, Bounds<Pixels>)> {
     let frame = FRAME.load(Ordering::Relaxed);
     MARKS
         .lock()
-        .map(|marks| marks.iter().filter(|(_, _, at)| at + 1 >= frame).map(|(id, b, _)| (id.clone(), *b)).collect())
+        .map(|marks| marks.iter().filter(|(_, _, at)| *at == frame).map(|(id, b, _)| (id.clone(), *b)).collect())
         .unwrap_or_default()
 }
 

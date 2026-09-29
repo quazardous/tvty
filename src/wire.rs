@@ -85,6 +85,12 @@ impl Wire {
         }
     }
 
+    /// Drops the connection and connects again, as a drop would: for a test
+    /// (the debug control's `bus-reconnect`).
+    pub fn reconnect(&self) {
+        let _ = self.outgoing.send(Outgoing::Reconnect);
+    }
+
     /// Who the connection runs as, once the daemon greeted it.
     pub fn hello(&self) -> Option<Hello> {
         self.hello.lock().ok().and_then(|h| h.clone())

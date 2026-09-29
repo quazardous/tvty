@@ -681,6 +681,11 @@ impl TicketPanel {
                             if grew && !newest_first {
                                 detail.scroll.scroll_to_bottom();
                             }
+                            // Closed, yet listed open (its removal missed):
+                            // the list lets it go.
+                            if thread.ticket.closed && panel.tickets.iter().any(|t| t.id == ticket) {
+                                crate::bus::emit(cx, crate::bus::Signal::TicketClosed(ticket));
+                            }
                             detail.thread = Some(thread);
                             detail.error = None;
                         }
