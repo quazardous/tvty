@@ -4691,7 +4691,11 @@ impl Render for Shell {
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
                                 buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
                             )
-                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                            .on_click(cx.listener(|shell, _, _, cx| {
+                                // The bar's own double click (maximize) is not its.
+                                cx.stop_propagation();
+                                shell.toggle_help_menu(cx)
+                            })),
                         )
                         .flex_none()
                         .mr_1(),
@@ -4716,6 +4720,8 @@ impl Render for Shell {
                             .rounded_md()
                             .bg(p().hover)
                             .tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g")
+                            // A double click selects in it: it does not maximize.
+                            .on_click(|_, _, cx| cx.stop_propagation())
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
@@ -4723,7 +4729,10 @@ impl Render for Shell {
                             "title.theme",
                             buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
                                 .text_xs()
-                                .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                                .on_click(cx.listener(|shell, _, _, cx| {
+                                    cx.stop_propagation();
+                                    shell.toggle_theme_menu(cx)
+                                })),
                         )
                         .flex_none()
                         .mr_2(),
@@ -4732,13 +4741,19 @@ impl Render for Shell {
                     .child(
                         buttons::icon("message-all", crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.), "A message to every running agent: send, send & hold, release holds")
                             .mr_1()
-                            .on_click(cx.listener(|shell, _, window, cx| shell.open_message_all(window, cx))),
+                            .on_click(cx.listener(|shell, _, window, cx| {
+                                cx.stop_propagation();
+                                shell.open_message_all(window, cx)
+                            })),
                     )
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
                             .mr_2()
                             .text_sm()
-                            .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
+                            .on_click(cx.listener(|shell, _, window, cx| {
+                                cx.stop_propagation();
+                                shell.toggle_options(window, cx)
+                            })),
                     )
                     // Who tvty acts as on aiball's board.
                     .child(

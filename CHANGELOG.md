@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A double click on the title bar's buttons (menu, theme, message, ⚙, the ticket box) no longer maximizes the window; on the title it still does.
 - The sessions list's IDLE no longer shows an agent that runs, nor the same agent twice: aiball keeps the loops it had before, under other names.
 - A project's 📢 changed elsewhere (aiball's page, another tvty) shows at once, and a wake focus ending at its date lets go by itself.
 
