@@ -1,0 +1,57 @@
+#!/usr/bin/env bash
+# proxy-stack — aiball on two machines, in containers, to test tvty behind a
+# proxy node (dev/proxy-stack/compose.yaml).
+#
+#   scripts/proxy-stack up [--loop]   the hub (with the demo project) and a
+#                                     node in proxy mode; --loop: a real
+#                                     claude-loop on fake-claude behind the node
+#   scripts/proxy-stack down          all of it stopped, its data removed
+#   scripts/proxy-stack logs          the daemons' logs, followed
+#   scripts/proxy-stack env           the socket a test tvty uses
+#
+# The test tvty on the node: TVTY_AIBALL=proxy make wbox-up.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+STACK="$ROOT/dev/proxy-stack"
+RUN="$STACK/run"
+export AIBALL_SRC="${AIBALL_SRC:-$(cd "$ROOT/.." && pwd)/aiball}"
+export UID GID
+GID="$(id -g)"
+compose() { nice -n 10 docker compose -f "$STACK/compose.yaml" "$@"; }
+
+case "${1:-}" in
+    up)
+        [[ -f $AIBALL_SRC/tests/Dockerfile ]] || { echo "no aiball checkout at $AIBALL_SRC (AIBALL_SRC)" >&2; exit 1; }
+        mkdir -p "$RUN"/{hub,node}/{data,config/aiball,sock} "$RUN/demo/lead" "$RUN/demo/crew"
+        compose up -d --build --wait hub
+        # The node token, issued on the hub, and the node's config naming it.
+        token=$(compose exec -T hub /app/bin/aiball auth issue --node --label node-b |
+            awk '/^NODE token issued/ { getline; getline; print $1; exit }')
+        [[ -n $token ]] || { echo "no node token from the hub" >&2; exit 1; }
+        printf 'proxy:\n  url: http://hub:7777\n  token: %s\n  node:\n    label: node-b\n' "$token" \
+            >"$RUN/node/config/aiball/config.yaml"
+        # The demo board, seeded through the hub's socket.
+        python3 "$ROOT/scripts/fake-aiball-seed.py" "$RUN/hub/sock/sock" "$RUN/demo" >/dev/null
+        if [[ ${2:-} == --loop ]]; then
+            compose --profile loop up -d --build --wait node loop
+        else
+            compose up -d --wait node
+        fi
+        echo "proxy stack up — the node: AIBALL_SOCK=$RUN/node/sock/sock (hub on 127.0.0.1:17797, node on :17798)"
+        ;;
+    down)
+        compose --profile loop down --remove-orphans
+        rm -rf "$RUN"
+        echo "proxy stack down"
+        ;;
+    logs)
+        compose --profile loop logs -f
+        ;;
+    env)
+        echo "AIBALL_SOCK=$RUN/node/sock/sock"
+        ;;
+    *)
+        sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'
+        exit 1
+        ;;
+esac

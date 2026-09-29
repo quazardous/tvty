@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down
+.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -26,6 +26,8 @@ help:
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
 	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
+	@echo "make proxy-up / proxy-down / proxy-logs   aiball on two machines in docker, a hub and a proxy node:"
+	@echo "                          TVTY_AIBALL=proxy make wbox-up runs the test tvty behind the node"
 	@echo ""
 	@echo "the README's pictures, from a fictional demo world (demo/run):"
 	@echo "make readme-up / readme-shots / readme-down"
@@ -104,6 +106,15 @@ fake-down:
 # ── a throwaway aiball ───────────────────────────────────────────────────────
 aiball-up:
 	scripts/fake-aiball up
+
+proxy-up:
+	scripts/proxy-stack up
+
+proxy-down:
+	scripts/proxy-stack down
+
+proxy-logs:
+	scripts/proxy-stack logs
 
 aiball-down:
 	scripts/fake-aiball down

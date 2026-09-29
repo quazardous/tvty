@@ -13,6 +13,8 @@ __pycache__/
 /dev/tvty-wbox/*
 !/dev/tvty-wbox/config.yaml
 !/dev/tvty-wbox/scripts/
+!/dev/proxy-stack/
+/dev/proxy-stack/run/
 
 # ── Local agent wiring ───────────────────────────────────────────────
 # How this working copy is plugged into its tools — aiball (the agent's

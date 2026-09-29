@@ -1,0 +1,98 @@
+# The proxy test stack: aiball on two machines, in containers — a hub (the
+# core, with the demo project) and a node in proxy mode, which relays /api
+# and the bus to the hub over the compose network, with a node token, as a
+# machine B would. The test tvty plugs into the node's socket.
+#
+# Run through scripts/proxy-stack (make proxy-up / proxy-down / proxy-logs):
+# it issues the node token on the hub and writes the node's config. The
+# images are aiball's own (tests/Dockerfile, tests/Dockerfile.agent), built
+# from the aiball checkout beside tvty (AIBALL_SRC), its source mounted
+# read-only. Everything the stack writes is under ./run, as the user's uid.
+name: tvty-proxy
+
+x-daemon: &daemon
+  build:
+    context: ${AIBALL_SRC:?set by scripts/proxy-stack}
+    dockerfile: tests/Dockerfile
+  image: tvty-proxy-aiball
+  user: "${UID:?}:${GID:?}"
+  cpus: 2
+  healthcheck:
+    test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:7777/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    interval: 2s
+    timeout: 3s
+    retries: 30
+
+services:
+  # Machine A: the core daemon, where the board lives.
+  hub:
+    <<: *daemon
+    environment:
+      HOME: /tmp
+      AIBALL_HOME: /data
+      AIBALL_HOST: 0.0.0.0
+      AIBALL_PORT: "7777"
+      # Its socket, for the stack's own gestures (seeding the demo).
+      AIBALL_SOCK: /sock/sock
+      XDG_CONFIG_HOME: /config
+    volumes:
+      - ${AIBALL_SRC}:/app:ro
+      - /app/node_modules
+      - /app/frontend/node_modules
+      - ./run/hub/data:/data
+      - ./run/hub/config:/config
+      - ./run/hub/sock:/sock
+    ports:
+      - "127.0.0.1:17797:7777"
+
+  # Machine B: a node in proxy mode (its config.yaml has a `proxy:` block
+  # naming the hub and a node token). The test tvty talks to its socket.
+  node:
+    <<: *daemon
+    depends_on:
+      hub:
+        condition: service_healthy
+    environment:
+      HOME: /tmp
+      AIBALL_HOME: /data
+      AIBALL_HOST: 0.0.0.0
+      AIBALL_PORT: "7777"
+      AIBALL_SOCK: /sock/sock
+      XDG_CONFIG_HOME: /config
+    volumes:
+      - ${AIBALL_SRC}:/app:ro
+      - /app/node_modules
+      - /app/frontend/node_modules
+      - ./run/node/data:/data
+      - ./run/node/config:/config
+      - ./run/node/sock:/sock
+    ports:
+      - "127.0.0.1:17798:7777"
+
+  # A real claude-loop on fake-claude, on machine B: its agent reaches the
+  # board through the node. Started by `scripts/proxy-stack up --loop`.
+  loop:
+    profiles: ["loop"]
+    build:
+      context: ${AIBALL_SRC}
+      dockerfile: tests/Dockerfile.agent
+    image: tvty-proxy-agent
+    # As the others: it writes in the hub's database, which the hub must
+    # still own.
+    user: "${UID}:${GID}"
+    cpus: 2
+    depends_on:
+      node:
+        condition: service_healthy
+    environment:
+      HOME: /tmp
+      AIBALL_URL: http://node:7777
+      AGENT_CONSUMER: proxy-claude
+      AGENT_PROJECT: demo
+      AGENT_NAME: proxy-loop
+      AGENT_SCENARIO: quick-prompt
+    volumes:
+      - ${AIBALL_SRC}:/app:ro
+      - /app/node_modules
+      # The entrypoint mints the agent's token in the hub's database.
+      - ./run/hub/data:/data
