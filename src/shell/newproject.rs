@@ -109,7 +109,7 @@ fn folder_of(typed: &str, found: Option<&(PathBuf, ProjectSettings)>) -> Folder 
 
 /// `~/…` as the home's.
 fn expand(typed: &str) -> PathBuf {
-    match (typed.strip_prefix("~/"), std::env::var_os("HOME")) {
+    match (typed.strip_prefix("~/").or_else(|| typed.strip_prefix("~\\")), tvty_config::home()) {
         (Some(rest), Some(home)) => Path::new(&home).join(rest),
         _ => PathBuf::from(typed),
     }

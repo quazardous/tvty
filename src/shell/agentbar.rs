@@ -14,6 +14,7 @@ use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::*;
 
 use super::Shell;
+use super::loopstabs::home_short;
 use crate::ui::buttons;
 use crate::ui::chipbar::{self, Edge};
 use crate::aiball::AgentBar;
@@ -780,14 +781,6 @@ fn bar_times(bar: &AgentBar) -> impl Iterator<Item = String> {
     .flatten()
     .map(ago);
     hold.into_iter().chain(others)
-}
-
-/// A path with the home directory as `~`.
-fn home_short(path: &str) -> String {
-    match std::env::var("HOME") {
-        Ok(home) if !home.is_empty() && path.starts_with(&home) => format!("~{}", &path[home.len()..]),
-        _ => path.to_string(),
-    }
 }
 
 /// An error, short enough for the bar: aiball's message, not the route.

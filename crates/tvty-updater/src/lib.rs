@@ -73,17 +73,22 @@ pub fn older(a: &str, b: &str) -> bool {
 }
 
 fn home() -> PathBuf {
-    PathBuf::from(std::env::var_os("HOME").unwrap_or_default())
+    tvty_config::home().unwrap_or_default()
 }
 
-/// Where the installers put the programs.
+/// Where the installers put the programs (`~/.local/bin`, on Windows too).
 pub fn bin_dir() -> PathBuf {
-    home().join(".local/bin")
+    home().join(".local").join("bin")
+}
+
+/// `name`'s file: `name.exe` on Windows.
+fn exe(name: &str) -> String {
+    format!("{name}{}", std::env::consts::EXE_SUFFIX)
 }
 
 /// A program in `bin_dir`, else as the PATH finds it.
-fn program(name: &str) -> PathBuf {
-    let local = bin_dir().join(name);
+pub fn program(name: &str) -> PathBuf {
+    let local = bin_dir().join(exe(name));
     if local.exists() { local } else { PathBuf::from(name) }
 }
 
@@ -129,9 +134,9 @@ fn said_of(error: &str) -> String {
 /// Installs or updates Terminal Velocity from its latest release, the one
 /// in place kept aside to go back to; then its launcher and icon.
 pub fn update_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
-    let installed = bin_dir().join("tvty");
+    let installed = bin_dir().join(exe("tvty"));
     if installed.exists() {
-        let kept = previous_dir().join("tvty");
+        let kept = previous_dir().join(exe("tvty"));
         std::fs::create_dir_all(previous_dir())?;
         std::fs::copy(&installed, &kept).with_context(|| format!("keeping {}", installed.display()))?;
         say(format!("kept the version in place, to go back to: {}", kept.display()));
@@ -159,18 +164,23 @@ pub fn update_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
 
 /// Puts back the version kept by the last update.
 pub fn rollback_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
-    let kept = previous_dir().join("tvty");
+    let kept = previous_dir().join(exe("tvty"));
     if !kept.exists() {
         bail!("no earlier version kept");
     }
-    std::fs::copy(&kept, bin_dir().join("tvty"))?;
+    std::fs::copy(&kept, bin_dir().join(exe("tvty")))?;
     say("the earlier version is back".into());
     Ok(())
 }
 
-/// The version kept aside, if any.
+/// Where the version replaced by the last update is kept.
 pub fn previous_dir() -> PathBuf {
-    home().join(".local/lib/tvty/previous")
+    home().join(".local").join("lib").join("tvty").join("previous")
+}
+
+/// An earlier version is kept, to go back to.
+pub fn has_previous() -> bool {
+    previous_dir().join(exe("tvty")).exists()
 }
 
 const DESKTOP: &str = include_str!("../../../packaging/linux/tvty.desktop");
@@ -179,10 +189,47 @@ pub const ICON: &[u8] = include_bytes!("../../../assets/tvty.svg");
 const UPDATER_DESKTOP: &str = include_str!("../packaging/tvty-updater.desktop");
 
 /// Terminal Velocity's launcher and icon, and the updater's own, where the
-/// desktop finds them.
+/// desktop finds them: the Start menu on Windows, the applications' folder
+/// elsewhere.
 pub fn install_launcher(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+    if cfg!(windows) {
+        let programs = PathBuf::from(std::env::var_os("APPDATA").context("no APPDATA")?).join(r"Microsoft\Windows\Start Menu\Programs");
+        return shortcuts_in(&programs, &bin_dir(), say);
+    }
     let data = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".local/share"));
     launchers_in(&data, &bin_dir(), say)
+}
+
+/// The Start menu's shortcuts, made by PowerShell (a .lnk is a COM
+/// object's file); their icon is the one in each .exe.
+fn shortcuts_in(programs: &Path, bin: &Path, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+    let script = shortcuts_script(programs, bin);
+    let out = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().context("powershell")?;
+    if !out.status.success() {
+        bail!("the Start menu's shortcuts: {}", String::from_utf8_lossy(&out.stderr).trim());
+    }
+    say(format!("Terminal Velocity and its updater are in the Start menu ({})", programs.display()));
+    Ok(())
+}
+
+fn shortcuts_script(programs: &Path, bin: &Path) -> String {
+    // PowerShell's single quotes take everything literally but a quote, doubled.
+    let quoted = |text: &str| format!("'{}'", text.replace('\'', "''"));
+    let path = |p: &Path| quoted(&p.display().to_string());
+    let mut script = String::from("$shell = New-Object -ComObject WScript.Shell\n");
+    for (name, program, what) in [
+        ("Terminal Velocity", "tvty.exe", "Your AI agents' terminals, grouped by project, with their tickets"),
+        ("Terminal Velocity Updater", "tvty-updater.exe", "Install and update Terminal Velocity and aiball"),
+    ] {
+        script.push_str(&format!(
+            "$l = $shell.CreateShortcut({}); $l.TargetPath = {}; $l.WorkingDirectory = {}; $l.Description = {}; $l.Save()\n",
+            path(&programs.join(format!("{name}.lnk"))),
+            path(&bin.join(program)),
+            path(&home()),
+            quoted(what),
+        ));
+    }
+    script
 }
 
 fn launchers_in(data: &Path, bin: &Path, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
@@ -218,7 +265,7 @@ pub const AIBALL_URL: &str = AIBALL_REPO;
 /// the daemon's running, and the latest release.
 pub fn aiball_status() -> Status {
     let mut status = Status::default();
-    let out = match Command::new(program("aiball")).args(["--json", "version"]).output() {
+    let out = match aiball().args(["--json", "version"]).output() {
         Ok(out) => out,
         Err(_) => return status,
     };
@@ -240,10 +287,23 @@ fn read_aiball_version(v: &serde_json::Value, status: &mut Status) {
 
 /// Updates aiball its own way (`aiball update`).
 pub fn update_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
-    run(Command::new(program("aiball")).arg("update"), say)
+    run(aiball().arg("update"), say)
 }
 
-/// Installs aiball: its latest tag cloned, then its own `install.sh`.
+/// The `aiball` command: on Windows a `.cmd`, which only `cmd` runs.
+fn aiball() -> Command {
+    let aiball = program("aiball");
+    if cfg!(windows) && aiball.extension().is_none() {
+        let mut command = Command::new("cmd");
+        command.args(["/c", "aiball"]);
+        command
+    } else {
+        Command::new(aiball)
+    }
+}
+
+/// Installs aiball: its latest tag cloned, then its own installer
+/// (`install.sh`, or `install.ps1` on Windows).
 pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let tag = latest_aiball_tag()?;
     let dir = home().join(".local/src/aiball");
@@ -255,7 +315,12 @@ pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         std::fs::create_dir_all(dir.parent().expect("a parent"))?;
         run(Command::new("git").args(["clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
     }
-    run(Command::new("bash").arg("./install.sh").current_dir(&dir), say)
+    if cfg!(windows) {
+        // PowerShell 7 (`pwsh`), as aiball's Windows install says.
+        run(Command::new("pwsh").args(["-NoProfile", "-File", "install.ps1"]).current_dir(&dir), say)
+    } else {
+        run(Command::new("bash").arg("./install.sh").current_dir(&dir), say)
+    }
 }
 
 fn latest_aiball_tag() -> anyhow::Result<String> {
@@ -349,6 +414,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(windows))]
     fn launchers_point_at_the_installed_programs() {
         let dir = std::env::temp_dir().join(format!("tvty-updater-launchers-{}", std::process::id()));
         let bin = std::path::Path::new("/opt/x/bin");
@@ -357,6 +423,27 @@ mod tests {
         let updater = std::fs::read_to_string(dir.join("applications/tvty-updater.desktop")).unwrap();
         assert!(tvty.contains("Exec=/opt/x/bin/tvty\n") && updater.contains("Exec=/opt/x/bin/tvty-updater\n"));
         assert!(dir.join("icons/hicolor/scalable/apps/tvty.svg").exists());
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_start_menu_shortcuts_point_at_the_installed_programs() {
+        let script = super::shortcuts_script(std::path::Path::new("P"), std::path::Path::new("B"));
+        let target = |p: &str| std::path::Path::new("B").join(p).display().to_string();
+        assert!(script.contains(&format!("TargetPath = '{}'", target("tvty.exe"))));
+        assert!(script.contains(&format!("TargetPath = '{}'", target("tvty-updater.exe"))));
+        // A quote is doubled, not the end of the string.
+        assert!(script.contains("'Your AI agents'' terminals"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn the_start_menu_shortcuts_are_made() {
+        let dir = std::env::temp_dir().join(format!("tvty-updater-shortcuts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        super::shortcuts_in(&dir, std::path::Path::new(r"C:\tvty-bin"), &mut |_| {}).unwrap();
+        assert!(dir.join("Terminal Velocity.lnk").exists());
+        assert!(dir.join("Terminal Velocity Updater.lnk").exists());
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

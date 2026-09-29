@@ -7641,17 +7641,21 @@ dependencies = [
  "anyhow",
  "base64 0.22.1",
  "chrono",
+ "embed-resource",
  "env_logger",
  "futures",
  "gpui-kit",
  "image",
  "log",
+ "resvg 0.46.0",
+ "rust-embed",
  "serde",
  "serde_json",
  "swash",
  "toml 0.8.23",
  "tungstenite",
  "tvty-config",
+ "tvty-ipc",
  "tvty-keys",
  "tvty-updater",
 ]
@@ -7664,6 +7668,10 @@ dependencies = [
  "serde_json",
  "toml 0.8.23",
 ]
+
+[[package]]
+name = "tvty-ipc"
+version = "0.1.0"
 
 [[package]]
 name = "tvty-keys"
@@ -7679,9 +7687,11 @@ version = "0.5.0-beta.1"
 dependencies = [
  "anyhow",
  "axoupdater",
+ "embed-resource",
  "gpui-kit",
  "serde_json",
  "tokio",
+ "tvty-config",
 ]
 
 [[package]]

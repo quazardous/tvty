@@ -26,6 +26,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A Windows build in each release, with a PowerShell installer; the updater
+  puts Terminal Velocity in the Start menu and installs aiball its Windows
+  way. Early days.
+- tvty reaches an aiball of the same machine without any token to set up,
+  through aiball's machine secret; on Windows, with an aiball that has it,
+  that is what lets tvty list, restart and wake the loops.
+- `TVTY_MUX_SERVER=name` points tvty at another tmux or psmux server than
+  yours (`-L name`); a test tvty on Windows uses it, and no longer sees
+  your own loops.
 - A dot before your name in the title bar when the link to aiball is not right: red while its bus is down, yellow while a list's subscription fails; back on the bus, the ticket open and the 📢 are read again.
 - In a debug build, ctrl+alt+shift+i opens GPUI's inspector: pick an element, read its id and where it is made.
 
@@ -44,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - tvty no longer starts a loop in another project's agent's folder, where it would resume that agent's conversation: the sessions list marks it "⚠ AGENT's folder" and IDLE picks the agent's loop in its own folder.
+- On Windows, tvty keeps its settings, layout and log in the usual Windows
+  folders (`%APPDATA%`, `%LOCALAPPDATA%`), and finds your home folder even
+  when started from the Start menu.
 - A ticket closed while tvty missed the bus's news no longer stays in the list: a subscription that failed is tried again and read whole, and a ticket opened that reads closed leaves the list.
 - Assign ▾ lists the project's agents at once, read ahead when the project changes. In its list, whoever holds the ticket is marked, and unassigning is a crossed-out person whose tip says what it does (no more "release").
 - A ticket's reply field starts at four lines in full screen (two in the panel).
