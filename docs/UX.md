@@ -98,7 +98,7 @@ without stopping Claude.
 **Quitting tvty** with Claude Code loops of this machine running asks
 whether to stop them too (through aiball: they stay restartable) or
 keep them running — or cancel; "Remember this choice" keeps the answer
-(Options > Layout > Sessions > On quit). The dialog lists the sessions
+(Settings > Layout > Sessions > On quit). The dialog lists the sessions
 by project, each with its mark (▶ on its own, ‖ held for now, ■ held
 until let go), in a box that scrolls when they are many. The loops tvty
 stopped are kept in its workspace with their hold: at the next start it
@@ -141,7 +141,7 @@ project's tickets meanwhile; the loop shows under idle.
 - **One order everywhere**: the projects' list, the slider and the gallery
   lay the groups out alike — by default the group used last first, as
   ctrl+tab goes (the groups never used after, alphabetical), or
-  alphabetical: **⇅** in the list's header, or Options > Layout. The
+  alphabetical: **⇅** in the list's header, or Settings > Layout. The
   projects' list takes that order once, when the work left last time is
   back, and keeps it: a click never moves a project under the pointer
   (projects that come later go last; ⇅ takes it afresh); the slider and
@@ -394,7 +394,7 @@ screen (the options, the full list, a ticket or a new ticket full screen)
 covers the terminal, out of its way — above everything (full screens and
 gallery included), a little translucent. They stack from their corner, the
 newest in it, at most five; each goes after six seconds, unless the pointer is on it (both
-set in Options > Appearance). While one is up, its ticket **shines** in
+set in Settings > Appearance). While one is up, its ticket **shines** in
 every list shown, in the notification's colour. A click, or ctrl+enter for the newest, brings that
 agent's terminal (it slides in when the project changes — a tab of the same project shows at once) and opens the ticket in the panel; × lets
 it go. No switch happens on its own: the user may be typing elsewhere.
@@ -402,7 +402,7 @@ What came while tvty was closed comes at start as one notification — the
 last ping said, the others counted ("· and 2 more while tvty was
 closed"); a dropped connection replays what it missed, one by one.
 The user's own gestures come the same way, once aiball has them — "#12
-closed", "decision accepted", "filed", in green (Options: hide them) — and
+closed", "decision accepted", "filed", in green (Settings: hide them) — and
 a gesture aiball refuses always does, in red. One place makes them all
 (`src/activity.rs`): the views publish what happened on the internal bus,
 never a notification themselves.
@@ -448,7 +448,7 @@ unfolds it. Both states are remembered.
 ## Colour themes
 
 **Terminal opacity** (a slider under the title bar's theme menu, and in
-Options > Appearance > Colours; 100 % by default):
+Settings > Appearance > Colours; 100 % by default):
 below 100 %, the desktop shows through the terminals' background, live —
 the compositor blends it at every frame, on Wayland and X11. What a program
 colours itself, the lists, the tickets and the full pages stay opaque; the
@@ -468,7 +468,7 @@ theme. By default they follow the window's.
 
 ## Sizes
 
-Two sizes, in Options > Appearance, kept in `settings.toml`: the terminals'
+Two sizes, in Settings > Appearance, kept in `settings.toml`: the terminals'
 font (8 to 32 px, 14 by default; ctrl+shift+= / ctrl+shift+− / ctrl+shift+0
 too — shift so that no key is taken from the programs in the terminal) and
 the window's text (12 to 22 px, 16 by default: the kit's size, which sets
@@ -476,7 +476,7 @@ everything else). A new terminal size applies at once: each grid is laid
 out again, and its PTY — the tmux session — resized once it settles. The
 cards keep their size: they fit the screen to themselves.
 
-## Options
+## Settings
 
 A full page (⚙ in the title bar, or ctrl+,): on the left, in the full
 pages' side column (its border dragged, double click: back to default), a search box
@@ -538,7 +538,7 @@ already used is not shown, nor one shown in the last day.
 
 - **Got it**: that tip never comes back; **Next tip**: another one for
   the same page; **✕**: not now; **Turn tips off**: none any more, until
-  Options > Layout > Tips turns them back on.
+  Settings > Layout > Tips turns them back on.
 - The menu's **Tips…** goes through them all (‹ Previous, Next ›), and
   **Show them all again** forgets which ones were understood.
 - The tips are files, `tips/<id>.md`: a header (`id`, `surface` — a key
@@ -579,7 +579,7 @@ a new ticket's body, the sessions' filter): a click, or the pointer moving
 over it, as a window manager's focus follows the mouse. By default tvty
 does as the system does — GNOME's `focus-mode` (`sloppy` and `mouse` are
 the pointer's), KDE's `FocusPolicy`, else a click — and follows GNOME's
-changes; Options > Appearance > Mouse > Focus says what it read, and can
+changes; Settings > Appearance > Mouse > Focus says what it read, and can
 choose click or hover instead (`focus` under `[mouse]`). Following the
 pointer, the keyboard moves only into the terminal or a box to write in,
 never while a button is held (a selection, a drag), nor through what lies
@@ -632,11 +632,11 @@ goes on to the terminal's program. `keymap.toml`, beside `settings.toml`,
 overrides the defaults below — a `[Window]`, `[Workspace]` or `[Terminal]` section, and in
 it `ctrl-alt-t = "theme.next"`: a key bound to a command by its name, or
 `ctrl-c = false` to give it back to what has the focus. A key may be
-written as Options shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is
+written as Settings shows it (`"Ctrl+Alt+T"`), modifiers in any order. It is
 read again once saved; a wrong one is said in a notification and changes
 nothing.
 
-Options > Keyboard shortcuts edits the same file: a key clicked listens for
+Settings > Keyboard shortcuts edits the same file: a key clicked listens for
 its replacement (every shortcut is off meanwhile, so that Ctrl+Tab is heard,
 not run; Esc gives up), + adds a key, × removes one (a default key is then
 given back), Default puts a command's keys back, Reset all every one. A key

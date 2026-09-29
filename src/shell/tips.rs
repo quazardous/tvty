@@ -150,7 +150,7 @@ impl Shell {
     fn tips_off(&mut self, cx: &mut Context<Self>) {
         self.tip = None;
         self.set_pref("tips.show", Value::Toggle(false), cx);
-        activity::publish(cx, Activity::news("tvty", Kind::Info, None, "Tips are off: Options > Layout > Tips turns them back on"));
+        activity::publish(cx, Activity::news("tvty", Kind::Info, None, "Tips are off: Settings > Layout > Tips turns them back on"));
     }
 
     fn tips_again(&mut self, cx: &mut Context<Self>) {

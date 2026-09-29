@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The app menu opens the settings ("Settings…", Ctrl+,), and Options is now called Settings.
 - A ticket sunk in the agent's backlog shows the time left before its loop brings it up again, then an alarm's zzz.
 - A ticket's assignee is an "Assign ▾" button beside Snooze (it names the assignee), its list of the project's agents right under it; Snooze's choices open under it too, and the priority's ("high ▾") right under its chip.
 

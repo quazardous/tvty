@@ -472,7 +472,7 @@ impl Shell {
                             .text_sm()
                             .text_color(p().text)
                             .child("Remember this choice")
-                            .tip("Options > Layout > Sessions changes it")
+                            .tip("Settings > Layout > Sessions changes it")
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 shell.remember = !shell.remember;
                                 cx.notify();

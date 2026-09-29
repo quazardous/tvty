@@ -2527,7 +2527,7 @@ impl Shell {
             .gap_2()
             .p_3()
             .bg(p().surface)
-            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
+            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Settings"))
             .child(self.options_scope())
             .child(Input::new(&self.options_search).cleanable(true))
             .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
@@ -4062,7 +4062,7 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its options: where its loops run, Remote Control, its board config")
+                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its settings: where its loops run, Remote Control, its board config")
                                 .text_xs()
                                 .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                         )
@@ -4747,7 +4747,7 @@ impl Render for Shell {
                             })),
                     )
                     .child(
-                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
+                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle"))
                             .mr_2()
                             .text_sm()
                             .on_click(cx.listener(|shell, _, window, cx| {

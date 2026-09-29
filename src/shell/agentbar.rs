@@ -350,7 +350,7 @@ impl Shell {
                 .tip(if rc.on {
                     "Remote Control is on: this Claude can be taken up from claude.ai and the mobile app"
                 } else {
-                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's options"
+                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's settings"
                 })
         });
         // The model its Claude ran its last turn on; a newer one of its
