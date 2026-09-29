@@ -24,6 +24,8 @@
 
 use std::collections::HashMap;
 use std::ops::Range;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use gpui_kit::*;
 use serde::{Deserialize, Serialize};
@@ -40,6 +42,9 @@ pub struct Tip {
     pub command: Option<String>,
     /// The text, with its marks and `{key}`s.
     pub text: String,
+    /// The element it is about, as [`target`] names it: the card sits beside
+    /// it, the element haloed. None: the card keeps its corner.
+    pub target: Option<String>,
 }
 
 macro_rules! tip_files {
@@ -97,6 +102,7 @@ fn parse(file: &str) -> Result<Tip, String> {
         id: field("id").ok_or("no id")?,
         surface: field("surface").ok_or("no surface")?,
         command: field("command"),
+        target: field("target"),
         text: text.trim().to_string(),
     })
 }
@@ -159,6 +165,74 @@ fn marks(marked: &str) -> (String, Vec<(Range<usize>, Mark)>) {
         rest = &rest[token.len()..];
     }
     (text, ranges)
+}
+
+// ── The elements tips are about ──────────────────────────────────────
+
+/// Where each target was last painted, and in which frame.
+static TARGETS: Mutex<Vec<(&'static str, Bounds<Pixels>, u64)>> = Mutex::new(Vec::new());
+/// The window's frames, counted as the shell draws: a target painted in the
+/// last one is on screen.
+static FRAME: AtomicU64 = AtomicU64::new(0);
+/// The target of the tip on screen: haloed.
+static ACTIVE: Mutex<Option<String>> = Mutex::new(None);
+
+/// A new frame of the window (the shell's render).
+pub fn next_frame() {
+    FRAME.fetch_add(1, Ordering::Relaxed);
+}
+
+/// The target of the tip shown, if any: its element draws a halo.
+pub fn set_active(target: Option<String>) {
+    if let Ok(mut active) = ACTIVE.lock() {
+        *active = target;
+    }
+}
+
+fn is_active(id: &str) -> bool {
+    ACTIVE.lock().is_ok_and(|a| a.as_deref() == Some(id))
+}
+
+/// Where `id` is on screen: painted in this frame or the last.
+pub fn bounds_of(id: &str) -> Option<Bounds<Pixels>> {
+    let frame = FRAME.load(Ordering::Relaxed);
+    TARGETS.lock().ok()?.iter().find(|(t, _, at)| *t == id && at + 1 >= frame).map(|(_, b, _)| *b)
+}
+
+/// `element`, as the target `id` of a tip: where it is painted is kept, and
+/// while its tip is up it wears a halo in the tips' colour.
+pub fn target(id: &'static str, element: impl IntoElement) -> Div {
+    let halo = is_active(id).then(|| {
+        let colour = crate::theme::tip();
+        div()
+            .absolute()
+            .top(px(-3.))
+            .left(px(-3.))
+            .right(px(-3.))
+            .bottom(px(-3.))
+            .rounded_md()
+            .border_2()
+            .border_color(colour)
+            .shadow(vec![BoxShadow { color: colour.opacity(0.45), offset: point(px(0.), px(0.)), blur_radius: px(10.), spread_radius: px(1.), inset: false }])
+    });
+    div()
+        .relative()
+        .child(element)
+        .child(
+            canvas(
+                move |bounds, _, _| {
+                    let frame = FRAME.load(Ordering::Relaxed);
+                    if let Ok(mut targets) = TARGETS.lock() {
+                        targets.retain(|(t, _, _)| *t != id);
+                        targets.push((id, bounds, frame));
+                    }
+                },
+                |_, _, _, _| {},
+            )
+            .absolute()
+            .size_full(),
+        )
+        .children(halo)
 }
 
 // ── What was shown, understood, used ─────────────────────────────────
@@ -272,7 +346,7 @@ mod tests {
     use super::{FILES, Mark, REST, Seen, Tip, all, parse, pick, shown};
 
     fn tip(id: &str, surface: &str, command: Option<&str>) -> Tip {
-        Tip { id: id.into(), surface: surface.into(), command: command.map(Into::into), text: String::new() }
+        Tip { id: id.into(), surface: surface.into(), command: command.map(Into::into), text: String::new(), target: None }
     }
 
     #[test]
@@ -304,6 +378,17 @@ mod tests {
             }
         }
         assert_eq!(all().len(), FILES.len(), "every tip reads");
+    }
+
+    #[test]
+    fn every_target_is_one_the_code_marks() {
+        let src = |path: &str| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
+        let code: String = ["src/composer.rs", "src/panel.rs", "src/shell.rs", "src/shell/agentbar.rs"].iter().map(|p| src(p)).collect();
+        for tip in all() {
+            if let Some(target) = &tip.target {
+                assert!(code.contains(&format!("tips::target(\"{target}\"")) || code.contains(&format!("\"{target}\",")), "{}: no element marked {target}", tip.id);
+            }
+        }
     }
 
     #[test]

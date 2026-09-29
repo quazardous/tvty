@@ -29,7 +29,8 @@ pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set:
                 .on_click(cx.listener(move |view, _, _, cx| set(view, to, cx))),
         );
     }
-    tabs
+    // What the Write / Preview tip is about.
+    crate::tips::target("composer.tabs", tabs)
 }
 
 /// The `@name` being typed at the end of `text`, lowercase.

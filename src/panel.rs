@@ -1335,9 +1335,13 @@ impl TicketPanel {
                             })),
                     )
                     .child(
-                        buttons::primary("send", "Reply")
-                            .loading(detail.busy)
-                            .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
+                        crate::tips::target(
+                            "panel.reply",
+                            buttons::primary("send", "Reply")
+                                .loading(detail.busy)
+                                .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
+                        )
+                        .flex_none(),
                     ),
             );
 

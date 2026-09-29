@@ -3944,7 +3944,7 @@ impl Shell {
                             .py_1p5()
                             .border_b_1()
                             .border_color(p().border)
-                            .child(Input::new(&self.sessions_filter).small().cleanable(true)),
+                            .child(crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full()),
                     )
                     .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
@@ -4599,13 +4599,17 @@ impl Render for Shell {
                     // The app's icon, first: its menu (about, help, restart),
                     // as a desktop's application menu.
                     .child(
-                        buttons::icon(
-                            "help-button",
-                            img(crate::icons::APP).size(px(20.)).flex_none(),
-                            buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                        crate::tips::target(
+                            "menu.icon",
+                            buttons::icon(
+                                "help-button",
+                                img(crate::icons::APP).size(px(20.)).flex_none(),
+                                buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                            )
+                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
                         )
-                        .mr_1()
-                        .on_click(cx.listener(|shell, _, _, cx| shell.toggle_help_menu(cx))),
+                        .flex_none()
+                        .mr_1(),
                     )
                     .child(
                         div()
@@ -4630,10 +4634,14 @@ impl Render for Shell {
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
                     )
                     .child(
-                        buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
-                            .mr_2()
-                            .text_xs()
-                            .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                        crate::tips::target(
+                            "title.theme",
+                            buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
+                                .text_xs()
+                                .on_click(cx.listener(|shell, _, _, cx| shell.toggle_theme_menu(cx))),
+                        )
+                        .flex_none()
+                        .mr_2(),
                     )
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Options", "options.toggle"))
@@ -4655,7 +4663,7 @@ impl Render for Shell {
             } else {
                 FOLDED_WIDTH
             }))
-            .children(self.tip_view(cx))
+            .children(self.tip_view(window, cx))
             .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))

@@ -261,6 +261,14 @@ fn terminal_of(theme: &Theme) -> TerminalColours {
 }
 
 /// Readable text on a `background`: dark on light colours, light on dark.
+/// The tips' own colour: a violet — not the accent's blue, nor a state's
+/// green, yellow, orange or red. Fixed rather than a theme's magenta, which
+/// some terminal themes wash out to a grey; lighter on a dark window,
+/// darker on a light one.
+pub fn tip() -> Hsla {
+    if p().bg.l < 0.5 { hsla(270. / 360., 0.75, 0.74, 1.) } else { hsla(270. / 360., 0.6, 0.45, 1.) }
+}
+
 pub fn on(background: Hsla) -> Hsla {
     let c = background.to_rgb();
     let luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;

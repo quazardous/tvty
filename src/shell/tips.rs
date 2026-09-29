@@ -6,6 +6,7 @@
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
+use gpui_kit::component::button::{ButtonCustomVariant, ButtonVariants as _};
 use gpui_kit::*;
 
 use super::Shell;
@@ -15,6 +16,10 @@ use crate::theme::p;
 use crate::tips::{self, Mark};
 use crate::ui::buttons;
 use tvty_config::Value;
+
+/// The card's width, and the room it needs under its target.
+const CARD_WIDTH: f32 = 380.;
+const CARD_ROOM: f32 = 190.;
 
 /// The start's own tip comes once the work is on screen.
 const AFTER_START: Duration = Duration::from_secs(5);
@@ -53,6 +58,16 @@ impl Shell {
 
     /// The surface shown, as drawn: its first entry offers its tip.
     pub(super) fn surface_drawn(&mut self, cx: &mut Context<Self>) {
+        // A frame: where the targets are painted from now on, and which one
+        // wears the halo (set before they are built).
+        tips::next_frame();
+        let target = self
+            .tip
+            .as_ref()
+            .filter(|_| self.ask.is_none())
+            .and_then(|card| tips::all().iter().find(|t| t.id == card.id))
+            .and_then(|t| t.target.clone());
+        tips::set_active(target);
         let surface = self.page_shown(cx).unwrap_or("Workspace");
         if self.tip_surface == Some(surface) {
             return;
@@ -146,7 +161,7 @@ impl Shell {
     }
 
     /// The card, bottom left.
-    pub(super) fn tip_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn tip_view(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         // A dialog asks: the tip waits.
         if self.ask.is_some() {
             return None;
@@ -168,10 +183,12 @@ impl Shell {
             Some(at) => format!("Tips · {} / {}", at + 1, tips::all().len()),
             None => "Did you know?".to_string(),
         };
+        // The tips' own colour (not the accent's blue, which says other things).
+        let violet = crate::theme::tip();
         let head = div()
             .flex()
             .items_center()
-            .child(div().flex_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().accent).child(title))
+            .child(div().flex_1().text_xs().font_weight(FontWeight::BOLD).text_color(violet).child(title))
             .child(buttons::remove("tip-close", "✕", "Not now").px_1().on_click(cx.listener(|shell, _, _, cx| shell.tip_close(cx))));
         let actions = match card.browsing {
             Some(_) => div()
@@ -186,7 +203,11 @@ impl Shell {
                 .flex()
                 .items_center()
                 .gap_3()
-                .child(buttons::primary("tip-got", "Got it").on_click(cx.listener(|shell, _, _, cx| shell.tip_got(cx))))
+                .child(
+                    buttons::answer("tip-got", "Got it")
+                        .custom(ButtonCustomVariant::new(cx).color(violet).foreground(crate::theme::on(violet)).hover(violet.opacity(0.85)).active(violet.opacity(0.7)))
+                        .on_click(cx.listener(|shell, _, _, cx| shell.tip_got(cx))),
+                )
                 .child(buttons::link("tip-next", "Next tip").on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
                 .child(div().flex_1())
                 .child(
@@ -196,33 +217,56 @@ impl Shell {
                         .on_click(cx.listener(|shell, _, _, cx| shell.tips_off(cx))),
                 ),
         };
-        // Bottom left; over a full page, where the notifications take that
-        // corner, bottom right.
+        let body = div()
+            .id("tip-card")
+            .occlude()
+            .w(px(CARD_WIDTH))
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_3()
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(violet.opacity(0.6))
+            .shadow_lg()
+            .text_sm()
+            .text_color(p().muted)
+            .child(head)
+            .child(StyledText::new(text).with_highlights(highlights))
+            .child(actions);
+        // Beside its target when it has one on screen: under it, or above
+        // when there is no room below; a little pointer towards it.
+        if let Some(target) = tip.target.as_deref().and_then(tips::bounds_of) {
+            let viewport = window.viewport_size();
+            let room_below = viewport.height - target.bottom() > px(CARD_ROOM);
+            // Its left edge under the target, kept inside the window; the
+            // pointer under the target's middle.
+            let (width, margin) = (px(CARD_WIDTH), px(8.));
+            let left = target.left().max(margin).min((viewport.width - width - margin).max(margin));
+            let offset = (target.center().x - left - px(6.)).max(px(10.)).min(width - px(20.));
+            let pointer = |glyph: &'static str| div().pl(offset).h(px(10.)).line_height(px(10.)).text_color(violet).child(glyph);
+            let (at, anchor, card) = if room_below {
+                (point(left, target.bottom() + px(6.)), gpui_kit::gpui::Anchor::TopLeft, div().flex().flex_col().child(pointer("▲")).child(body))
+            } else {
+                (point(left, target.top() - px(6.)), gpui_kit::gpui::Anchor::BottomLeft, div().flex().flex_col().child(body).child(pointer("▼")))
+            };
+            return Some(
+                deferred(anchored().position(at).anchor(anchor).snap_to_window_with_margin(px(8.)).child(card))
+                    .with_priority(2)
+                    .into_any_element(),
+            );
+        }
+        // Else bottom left; over a full page, where the notifications take
+        // that corner, bottom right.
         let page = self.page_shown(cx).is_some();
         Some(
             div()
-                .id("tip-card")
-                .occlude()
                 .absolute()
                 .when(page, |d| d.right(px(12.)))
                 .when(!page, |d| d.left(px(12.)))
                 .bottom(px(44.))
-                .w(px(380.))
-                .max_w(relative(0.9))
-                .flex()
-                .flex_col()
-                .gap_2()
-                .p_3()
-                .rounded_md()
-                .bg(p().surface)
-                .border_1()
-                .border_color(p().accent.opacity(0.5))
-                .shadow_lg()
-                .text_sm()
-                .text_color(p().muted)
-                .child(head)
-                .child(StyledText::new(text).with_highlights(highlights))
-                .child(actions)
+                .child(body)
                 .into_any_element(),
         )
     }

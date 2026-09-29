@@ -370,7 +370,7 @@ impl Shell {
                 .border_color(p().border)
                 .text_xs()
                 .text_color(ink(p().muted))
-                .child(afk)
+                .child(crate::tips::target("agent.afk", afk).flex_none())
                 .children(afk_choices)
                 .child(sep())
                 .child(if online {
@@ -467,10 +467,10 @@ impl Shell {
                 })
                 .child(div().flex_1())
                 // Where its loop runs: on aiball's host, or in tmux.
-                .child(mode_chip)
-                .children(rc_chip)
+                .child(crate::tips::target("agent.place", mode_chip).flex_none())
+                .children(rc_chip.map(|chip| crate::tips::target("agent.rc", chip).flex_none()))
                 // Copy or controls: whether this terminal types into it.
-                .child({
+                .child(crate::tips::target("agent.controls", {
                     let session = terminal.session.clone();
                     let copy = self.copies.contains(&session);
                     let tone = if copy { p().warning } else { p().muted };
@@ -484,7 +484,7 @@ impl Shell {
                         } else {
                             "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
                         })
-                })
+                }).flex_none())
                 .child(item().text_color(ink(p().text)).child(agent.clone()))
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))

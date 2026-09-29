@@ -28,7 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - When an agent's Claude hits its usage limit (weekly, session, monthly spend…), tvty says so: a notification, the agent bar in red with when it resets, and the reason on its ■.
 - Quitting and restarting remember each session's hold: restart them as they were (a held one held again) or fresh; the dialogs list the sessions by project, scrolling when they are many.
-- Tips: "Did you know?" once after start and on first opening a page, never for what you already use; Got it, Next, off, and Tips… in the menu to see them all.
+- Tips: "Did you know?" once after start and on first opening a page, never for what you already use; Got it, Next, off, and Tips… in the menu to see them all. A tip about an element sits beside it, the element haloed, in the tips' own violet.
 
 ### Fixed
 
