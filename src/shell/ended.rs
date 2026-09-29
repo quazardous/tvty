@@ -36,8 +36,10 @@ impl Shell {
     pub(super) fn set_copy(&mut self, session: String, copy: bool, window: &mut Window, cx: &mut Context<Self>) {
         if copy {
             self.copies.insert(session.clone());
+            self.controls_taken.remove(&session);
         } else {
             self.copies.remove(&session);
+            self.controls_taken.insert(session.clone());
         }
         self.terminals.remove(&session);
         self.select(session, window, cx);

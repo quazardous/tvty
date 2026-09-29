@@ -41,6 +41,9 @@ pub struct Status {
     pub cwd: Option<String>,
     /// Its counters, as the daemon computes them.
     pub counters: Option<crate::aiball::AgentCounters>,
+    /// The clients attached to its session, and those with the controls.
+    pub clients: Option<u32>,
+    pub interactive: Option<u32>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -230,6 +233,8 @@ fn status_of(c: &Consumer) -> Option<Status> {
         unseen: c.ping_unseen.unwrap_or(0),
         cwd: c.cwd.clone(),
         counters: c.counters.clone(),
+        clients: c.session.as_ref().and_then(|s| s.clients),
+        interactive: c.session.as_ref().and_then(|s| s.interactive),
     })
 }
 
@@ -368,6 +373,8 @@ mod tests {
             unseen: 0,
             cwd: None,
             counters: None,
+            clients: None,
+            interactive: None,
         };
         let bar: crate::aiball::BarRead = serde_json::from_value(serde_json::json!({
             "stale": false,

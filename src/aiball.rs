@@ -148,6 +148,12 @@ pub struct HostedSession {
     /// Its loop's tmux session, when it runs in claude-loop's tmux.
     #[serde(default)]
     pub tmux: Option<String>,
+    /// The clients attached to it: terminals, tvty's included.
+    #[serde(default)]
+    pub clients: Option<u32>,
+    /// Those of them with the controls (a tmux loop's; a host does not say).
+    #[serde(default)]
+    pub interactive: Option<u32>,
 }
 
 /// Where a client attaches: a socket on this machine, or none (`reason`).

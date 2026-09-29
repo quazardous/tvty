@@ -488,16 +488,34 @@ impl Shell {
                     let session = terminal.session.clone();
                     let copy = self.copies.contains(&session);
                     let tone = if copy { p().warning } else { p().muted };
-                    buttons::chip("agent-controls", if copy { "copy" } else { "controls" })
+                    // Who else is attached: claude-loop's terminal, another tvty.
+                    let attached = self.attached(&session).filter(|a| a.others > 0);
+                    let label = match attached {
+                        Some(a) => format!("{} · +{}", if copy { "copy" } else { "controls" }, a.others),
+                        None => (if copy { "copy" } else { "controls" }).to_string(),
+                    };
+                    let others = attached.map(|a| {
+                        format!(
+                            " {} other client{} attached ({} with the controls).",
+                            a.others,
+                            if a.others == 1 { "" } else { "s" },
+                            a.typing
+                        )
+                    });
+                    buttons::chip("agent-controls", label)
                         .px_1()
                         .border_color(ink(if copy { p().warning } else { p().border }))
                         .text_color(ink(tone))
                         .on_click(cx.listener(move |shell, _, window, cx| shell.set_copy(session.clone(), !copy, window, cx)))
-                        .tip(if copy {
-                            "a copy: you watch; nothing you type reaches its Claude, and the session keeps its size. A click takes the controls"
-                        } else {
-                            "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches"
-                        })
+                        .tip(format!(
+                            "{}{}",
+                            if copy {
+                                "a copy: you watch; nothing you type reaches its Claude, and the session keeps its size. A click takes the controls."
+                            } else {
+                                "you have the controls, shared with any other client (claude-loop's terminal too): the size follows who types last. A click leaves them for a copy, which only watches."
+                            },
+                            others.unwrap_or_default()
+                        ))
                 }).flex_none())
                 // Its folder, then its name, give way when the bar is short (the
                 // tab says its name too): the controls stay.

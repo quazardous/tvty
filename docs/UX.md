@@ -95,6 +95,13 @@ typed. A copy only watches: nothing typed reaches Claude, and it never
 resizes the session — it is drawn at the session's size. Either leaves
 without stopping Claude.
 
+Who else is attached is aiball's word (its session's `clients` and
+`interactive`): the chip says it (`copy · +1`), and so does the session's
+row in the list, before it is opened (`+1`, yellow while another client has
+the controls). A tmux loop another terminal types into opens **as a copy**;
+a click on the chip takes the controls, and tvty keeps them for that
+session.
+
 **Quitting tvty** with Claude Code loops of this machine running asks
 whether to stop them too (through aiball: they stay restartable) or
 keep them running — or cancel; "Remember this choice" keeps the answer

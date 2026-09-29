@@ -204,6 +204,9 @@ pub struct Shell {
     /// Sessions open as a copy: watched, never typed into nor resized.
     /// The others have the controls (shared with any other client).
     pub(super) copies: HashSet<String>,
+    /// Sessions whose controls the user took: never opened as a copy on
+    /// their own, whoever else is attached.
+    pub(super) controls_taken: HashSet<String>,
     /// The selected session ended: the end screen stands in its place.
     ended: Option<ended::EndedSession>,
     /// A thread's image, over the whole window.
@@ -702,6 +705,7 @@ impl Shell {
             open_when_running: None,
             restarts_asked: HashMap::new(),
             copies: HashSet::new(),
+            controls_taken: HashSet::new(),
             project_shown: None,
             ask: None,
             remember: false,
@@ -1443,6 +1447,18 @@ impl Shell {
         cx.notify();
     }
 
+    /// Who else is attached to `session`, as aiball counts its clients:
+    /// tvty's own left out.
+    pub(super) fn attached(&self, session: &str) -> Option<Attached> {
+        let status = self.terminal_of(session)?.1.status.as_ref()?;
+        let open = self.terminals.contains_key(session);
+        let typing_here = open && !self.copies.contains(session);
+        Some(Attached {
+            others: status.clients?.saturating_sub(open as u32),
+            typing: status.interactive.unwrap_or(0).saturating_sub(typing_here as u32),
+        })
+    }
+
     fn terminal_of(&self, session: &str) -> Option<(&str, &Terminal)> {
         self.board.projects.iter().find_map(|p| {
             p.terminals
@@ -1722,6 +1738,12 @@ impl Shell {
         // more), nothing to open.
         if socket.is_none() && session.starts_with(sessions::HOSTED_PREFIX) {
             return None;
+        }
+        // A tmux loop another terminal types into (claude-loop's): opened
+        // as a copy, as claude-loop joins one; the bar's chip takes the
+        // controls.
+        if socket.is_none() && !self.controls_taken.contains(session) && self.attached(session).is_some_and(|a| a.typing > 0) {
+            self.copies.insert(session.to_string());
         }
         let copy = self.copies.contains(session);
         let terminal = cx.new(|cx| match (&socket, copy) {
@@ -4084,6 +4106,8 @@ impl Shell {
                 let selected = self.selected.as_deref() == Some(session.as_str());
                 let aimed = target.as_deref() == Some(session.as_str());
                 let open = self.terminals.contains_key(&session);
+                // Others attached to it: seen before it is opened.
+                let attached = self.attached(&session).filter(|a| a.others > 0);
                 let counts = self.counts_of(&project.name, terminal);
                 let state = terminal.status.as_ref().and_then(|s| s.colour());
                 let restart = terminal
@@ -4146,6 +4170,22 @@ impl Shell {
                                                     .text_color(p().muted)
                                                     .child("⇄")
                                                     .tip("its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                            )
+                                        })
+                                        .when_some(attached, |d, a| {
+                                            d.child(
+                                                div()
+                                                    .id("attached")
+                                                    .text_xs()
+                                                    .text_color(if a.typing > 0 { p().warning } else { p().muted })
+                                                    .child(format!("+{}", a.others))
+                                                    .tip(format!(
+                                                        "{} other client{} attached (claude-loop's terminal, another tvty), {} with the controls{}",
+                                                        a.others,
+                                                        if a.others == 1 { "" } else { "s" },
+                                                        a.typing,
+                                                        if a.typing > 0 { ": opened here as a copy" } else { "" }
+                                                    )),
                                             )
                                         })
                                         // A shell the host holds, without Claude.
@@ -4789,6 +4829,13 @@ impl Render for Shell {
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }
+}
+
+/// The other clients of a session: attached, and typing into it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) struct Attached {
+    pub others: u32,
+    pub typing: u32,
 }
 
 /// What a side's edge carries while dragged.
