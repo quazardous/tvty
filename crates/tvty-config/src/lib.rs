@@ -14,6 +14,6 @@ pub mod files;
 pub mod items;
 pub mod schema;
 
-pub use files::{LogTee, Place, Stored, dir, modified, parse, path, read, render, write_atomic};
+pub use files::{LogTee, Place, Stored, dir, home, modified, parse, path, read, render, write_atomic};
 pub use items::{Item, Provider, Query, format_duration, parse_duration, search};
 pub use schema::{Kind, Schema, Setting, Value};

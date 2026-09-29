@@ -20,19 +20,43 @@ pub enum Place {
     Data,
 }
 
-/// `app`'s directory in `place`: the XDG variable, else its usual default
-/// under `$HOME`.
+/// `app`'s directory in `place`: the XDG variable, else its usual default —
+/// under `$HOME` on Unix; on Windows in `%APPDATA%` (settings, which follow
+/// a roaming profile) and `%LOCALAPPDATA%` (the rest).
 pub fn dir(app: &str, place: Place) -> Option<PathBuf> {
-    let (variable, default) = match place {
-        Place::Config => ("XDG_CONFIG_HOME", ".config"),
-        Place::State => ("XDG_STATE_HOME", ".local/state"),
-        Place::Data => ("XDG_DATA_HOME", ".local/share"),
+    dir_in(app, place, cfg!(windows), &|name| std::env::var_os(name))
+}
+
+/// The user's home folder: `$HOME` on Unix, `%USERPROFILE%` on Windows
+/// (where `HOME` is only set by Unix-like shells).
+pub fn home() -> Option<PathBuf> {
+    let variable = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
+    std::env::var_os(variable).filter(|v| !v.is_empty()).map(PathBuf::from)
+}
+
+fn dir_in(app: &str, place: Place, windows: bool, var: &dyn Fn(&str) -> Option<std::ffi::OsString>) -> Option<PathBuf> {
+    let var = |name: &str| var(name).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let xdg = match place {
+        Place::Config => "XDG_CONFIG_HOME",
+        Place::State => "XDG_STATE_HOME",
+        Place::Data => "XDG_DATA_HOME",
     };
-    let base = std::env::var_os(variable)
-        .filter(|v| !v.is_empty())
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(default)))?;
-    Some(base.join(app))
+    if let Some(base) = var(xdg) {
+        return Some(base.join(app));
+    }
+    if windows {
+        return match place {
+            Place::Config => Some(var("APPDATA")?.join(app)),
+            Place::State => Some(var("LOCALAPPDATA")?.join(app).join("state")),
+            Place::Data => Some(var("LOCALAPPDATA")?.join(app).join("data")),
+        };
+    }
+    let default = match place {
+        Place::Config => ".config",
+        Place::State => ".local/state",
+        Place::Data => ".local/share",
+    };
+    Some(var("HOME")?.join(default).join(app))
 }
 
 /// A set of settings, kept in a file.
@@ -151,8 +175,29 @@ impl std::io::Write for LogTee {
 
 #[cfg(test)]
 mod tests {
-    use super::{Place, Stored, parse, render, write_atomic};
+    use super::{Place, Stored, dir_in, parse, render, write_atomic};
     use serde::{Deserialize, Serialize};
+    use std::path::PathBuf;
+
+    fn env(pairs: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<std::ffi::OsString> {
+        move |name| pairs.iter().find(|(k, _)| *k == name).map(|(_, v)| v.into())
+    }
+
+    #[test]
+    fn the_folders_follow_the_platform() {
+        let unix = env(&[("HOME", "/srv/u")]);
+        assert_eq!(dir_in("t", Place::Config, false, &unix), Some(PathBuf::from("/srv/u/.config/t")));
+        assert_eq!(dir_in("t", Place::State, false, &unix), Some(PathBuf::from("/srv/u/.local/state/t")));
+        let windows = env(&[("HOME", "/c/Users/u"), ("APPDATA", "R"), ("LOCALAPPDATA", "L")]);
+        assert_eq!(dir_in("t", Place::Config, true, &windows), Some(PathBuf::from("R").join("t")));
+        assert_eq!(dir_in("t", Place::State, true, &windows), Some(PathBuf::from("L").join("t").join("state")));
+        assert_eq!(dir_in("t", Place::Data, true, &windows), Some(PathBuf::from("L").join("t").join("data")));
+        // XDG wins everywhere; an empty one does not count.
+        let xdg = env(&[("XDG_CONFIG_HOME", "X"), ("XDG_STATE_HOME", ""), ("APPDATA", "R"), ("LOCALAPPDATA", "L")]);
+        assert_eq!(dir_in("t", Place::Config, true, &xdg), Some(PathBuf::from("X").join("t")));
+        assert_eq!(dir_in("t", Place::State, true, &xdg), Some(PathBuf::from("L").join("t").join("state")));
+        assert_eq!(dir_in("t", Place::Config, false, &env(&[])), None);
+    }
 
     #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
     #[serde(default)]

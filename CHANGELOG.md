@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The updater shows its window buttons: close, minimize, maximize.
+- On Windows, tvty keeps its settings, layout and log in the usual Windows
+  folders (`%APPDATA%`, `%LOCALAPPDATA%`), and finds your home folder even
+  when started from the Start menu.
 
 ## [0.4.0-beta.1] - 2026-09-28
 
