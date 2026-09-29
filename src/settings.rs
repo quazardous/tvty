@@ -68,8 +68,9 @@ pub struct Sessions {
     /// `keep` them running; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_quit: Option<String>,
-    /// At start, the loops stopped when tvty quit: `restart` them, `leave`
-    /// them; none: ask.
+    /// At start, the loops stopped when tvty quit: `restart` them as they
+    /// were (their hold put back), restart them `fresh` (on their own),
+    /// `leave` them; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_start: Option<String>,
 }
@@ -275,7 +276,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Layout",
         group: "Sessions",
         label: "On start",
-        about: "The loops tvty stopped when it quit: ask whether to restart them, restart them (resuming their conversation), or leave them stopped.",
+        about: "The loops tvty stopped when it quit: ask, restart them as they were (resuming their conversation, a held one held again), restart them fresh (booting, then on their own), or leave them stopped.",
         kind: Kind::Choice,
     },
     Setting {
@@ -411,6 +412,10 @@ pub struct Workspace {
     /// The loops tvty stopped when it quit: offered to restart at start.
     #[serde(default)]
     pub stopped_on_quit: Vec<String>,
+    /// Their AFK mode then (`off`, `wait_10m`, `wait_inf`), by loop: put
+    /// back when they restart as they were.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub holds_on_quit: HashMap<String, String>,
 }
 
 impl Stored for Workspace {
@@ -425,6 +430,7 @@ impl Stored for Workspace {
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
             pings_seen: None,
             stopped_on_quit: Vec::new(),
+            holds_on_quit: HashMap::new(),
         })
     }
 }

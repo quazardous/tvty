@@ -2948,7 +2948,7 @@ impl Shell {
         // A short list of its own (what to do with the loops), else themes.
         let fixed: Option<&[(&str, &str)]> = match key {
             "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
-            "sessions.on_start" => Some(&[("restart", "Restart them"), ("leave", "Leave them stopped")]),
+            "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
             _ => None,
         };
         let (chosen, default) = match key {

@@ -98,11 +98,15 @@ without stopping Claude.
 **Quitting tvty** with Claude Code loops of this machine running asks
 whether to stop them too (through aiball: they stay restartable) or
 keep them running — or cancel; "Remember this choice" keeps the answer
-(Options > Layout > Sessions > On quit). The loops tvty stopped are kept
-in its workspace: at the next start it asks whether to restart them
-(aiball's `loop.restart`, each where it ran, its conversation
-resumed), with its own remembered choice (On start). tvty quits once they
-stopped, 15 s at most. Loops of another machine are never touched.
+(Options > Layout > Sessions > On quit). The dialog lists the sessions
+by project, each with its mark (▶ on its own, ‖ held for now, ■ held
+until let go), in a box that scrolls when they are many. The loops tvty
+stopped are kept in its workspace with their hold: at the next start it
+asks whether to restart them (aiball's `loop.restart`, each where it
+ran, its conversation resumed) **as they were** — a held one held again
+(`consumer.afk`) — or **fresh**, each booting then running on its own,
+or not now; with its own remembered choice (On start). tvty quits once
+they stopped, 15 s at most. Loops of another machine are never touched.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
@@ -532,7 +536,7 @@ fast wheel no longer lags behind. A touchpad scrolls as it did, by pixels.
 ## Buttons
 
 Everything that acts, and is not a row of a list (a ticket, a session, a
-tab, a menu item), is one of four kinds (`src/ui/buttons.rs`):
+tab, a menu item), is one of five kinds (`src/ui/buttons.rs`):
 
 - **link**: an action in words, in the accent colour, no border ("+
   terminal", "← Tickets", "⇅ recent", "✕ Esc");
@@ -542,7 +546,10 @@ tab, a menu item), is one of four kinds (`src/ui/buttons.rs`):
 - **chip**: a bordered label, for an option or a state to change ("+ New",
   a choice among several, the agent bar's chips); a chosen one has the
   chosen row's background and an accent border;
-- **primary**: the main answer of a form or a dialog.
+- **answers** of a form or a dialog, all the same size whatever their
+  kind: **primary** the main one, **secondary** (outlined) the others —
+  Cancel, Not now, Back —, or a colour of their own for a decision
+  (Approve, Reject, Move). Never a chip nor a link beside them.
 
 Under the pointer each gets a light background (an icon's glyph
 brightens), pressed a stronger one, and the hand pointer; one with

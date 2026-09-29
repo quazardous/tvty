@@ -1,9 +1,12 @@
 //! Quitting tvty with Claude Code loops of this machine running: stop them
 //! (claude-loop stop: they stay restartable) or keep them, as asked — or as
 //! the user's remembered choice says (Options > Layout > Sessions). The
-//! loops tvty stopped are kept in the workspace; at the next start, tvty
-//! offers to restart them (claude-loop restart --resume), asked or not.
+//! loops tvty stopped are kept in the workspace, with their AFK hold; at
+//! the next start, tvty offers to restart them, resuming their
+//! conversation — as they were (a held one held again) or fresh (on their
+//! own) — asked or not.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -12,6 +15,7 @@ use tvty_config::Value;
 
 use super::Shell;
 use crate::theme::p;
+use crate::tip::Tip as _;
 use crate::ui::buttons;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
@@ -22,8 +26,46 @@ const STOP_WAIT: Duration = Duration::from_secs(15);
 pub(super) enum Ask {
     /// Quitting: stop these loops too?
     Quit(Vec<String>),
-    /// At start: restart the loops stopped when tvty quit?
-    Restart(Vec<String>),
+    /// At start: restart the loops stopped when tvty quit? With their AFK
+    /// mode then, by loop.
+    Restart(Vec<String>, HashMap<String, String>),
+}
+
+/// A dialog's answer.
+#[derive(Clone, Copy, PartialEq)]
+enum Answer {
+    /// Stop them too; restart them as they were.
+    Yes,
+    /// Restart them fresh: on their own, no hold.
+    Fresh,
+    /// Keep them running; leave them stopped.
+    No,
+}
+
+/// The AFK action that puts a loop back as it was: held until let go,
+/// held again ten minutes, or on its own.
+fn afk_action(mode: Option<&str>) -> &'static str {
+    match mode {
+        Some("wait_inf") => "arm_inf",
+        Some("wait_10m") => "arm_10m",
+        _ => "off",
+    }
+}
+
+/// A session's mark, as the lists say it: ▶ on its own, ‖ held for now,
+/// ■ held until let go.
+fn hold_mark(presence: Option<&str>, mode: Option<&str>) -> (&'static str, Hsla) {
+    match (presence, mode) {
+        (_, Some("wait_inf")) => ("■", p().danger),
+        (Some("wait") | Some("stop"), _) | (_, Some("wait_10m")) => ("‖", p().warning),
+        (Some("loop"), _) => ("▶", p().success),
+        _ => ("·", p().muted),
+    }
+}
+
+/// "1 session", "3 sessions".
+fn count(n: usize, what: &str) -> String {
+    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
 impl Shell {
@@ -128,6 +170,15 @@ impl Shell {
         cx.notify();
         let aiball = self.aiball.clone();
         let known: Vec<crate::loops::KnownLoop> = self.board.known.iter().filter(|l| loops.contains(&l.name)).cloned().collect();
+        // Their hold as it is: put back when they restart as they were.
+        let holds: HashMap<String, String> = known
+            .iter()
+            .filter_map(|l| {
+                let bar = self.board.bars.get(l.agent()?).filter(|b| !b.stale)?;
+                let mode = bar.bar.afk.mode.clone();
+                (!mode.is_empty()).then(|| (l.name.clone(), mode))
+            })
+            .collect();
         cx.spawn(async move |this, cx| {
             let (done, wait) = futures::channel::oneshot::channel();
             std::thread::spawn(move || {
@@ -153,6 +204,7 @@ impl Shell {
                 }
             };
             let _ = this.update(cx, |shell, cx| {
+                shell.settings.workspace.holds_on_quit = holds.into_iter().filter(|(name, _)| stopped.contains(name)).collect();
                 shell.settings.workspace.stopped_on_quit = stopped;
                 shell.quit_now(cx);
             });
@@ -172,39 +224,74 @@ impl Shell {
             .into_iter()
             .filter(|n| self.board.known.iter().any(|l| l.name == *n) && !running.contains(n))
             .collect();
+        let holds = std::mem::take(&mut self.settings.workspace.holds_on_quit);
         self.settings.save(cx);
         if names.is_empty() {
             return;
         }
         match self.applied.sessions.on_start.as_deref() {
-            Some("restart") => self.restart_loops(names, cx),
+            Some("restart") => self.restart_loops(names, holds, true, cx),
+            Some("fresh") => self.restart_loops(names, holds, false, cx),
             Some("leave") => {}
             _ => {
-                self.ask = Some(Ask::Restart(names));
+                self.ask = Some(Ask::Restart(names, holds));
                 self.remember = false;
                 cx.notify();
             }
         }
     }
 
-    fn restart_loops(&mut self, names: Vec<String>, cx: &mut Context<Self>) {
+    /// Restarts `names`, resuming their conversation; then puts each back
+    /// on hold as it was (`as_they_were`), or frees them all.
+    fn restart_loops(&mut self, names: Vec<String>, holds: HashMap<String, String>, as_they_were: bool, cx: &mut Context<Self>) {
         self.ask = None;
         cx.notify();
         let aiball = self.aiball.clone();
+        let agents: HashMap<String, String> =
+            self.board.known.iter().filter_map(|l| Some((l.name.clone(), l.agent()?.to_string()))).collect();
         cx.spawn(async move |this, cx| {
             let count = names.len();
+            let executor = cx.background_executor().clone();
             let failed = cx
                 .background_executor()
                 .spawn(async move {
-                    names
-                        .into_iter()
-                        .filter_map(|name| crate::loops::restart(&aiball, &name).err().map(|e| format!("{e:#}")))
-                        .collect::<Vec<_>>()
+                    let mut failed = Vec::new();
+                    let mut started = Vec::new();
+                    for name in names {
+                        match crate::loops::restart(&aiball, &name) {
+                            Ok(_) => started.push(name),
+                            Err(error) => failed.push(format!("{error:#}")),
+                        }
+                    }
+                    // Its hold, once the loop answers (it boots first).
+                    for name in started {
+                        let Some(agent) = agents.get(&name) else { continue };
+                        let action = if as_they_were { afk_action(holds.get(&name).map(String::as_str)) } else { "off" };
+                        let mut tries = 0;
+                        loop {
+                            match aiball.afk(agent, action) {
+                                Ok(()) => {
+                                    log::info!("restart: {name} put back {action}");
+                                    break;
+                                }
+                                Err(error) if tries >= 15 => {
+                                    failed.push(format!("{name}: its hold ({action}): {error:#}"));
+                                    break;
+                                }
+                                Err(_) => {
+                                    tries += 1;
+                                    executor.timer(Duration::from_secs(2)).await;
+                                }
+                            }
+                        }
+                    }
+                    failed
                 })
                 .await;
             let _ = this.update(cx, |shell, cx| {
+                let how = if as_they_were { "as they were" } else { "fresh" };
                 let activity = match failed.first() {
-                    None => crate::activity::Activity::done(None, format!("{count} session(s) restarted, resuming their conversation")),
+                    None => crate::activity::Activity::done(None, format!("{} restarted {how}, resuming their conversation", count_of(count))),
                     Some(error) => crate::activity::Activity::failed(None, "restart of the stopped sessions", error.clone()),
                 };
                 crate::activity::publish(cx, activity);
@@ -214,23 +301,29 @@ impl Shell {
         .detach();
     }
 
-    /// The answer: `yes` stops (or restarts) them; remembered if asked.
-    fn answer(&mut self, yes: bool, cx: &mut Context<Self>) {
+    /// The answer, remembered if asked.
+    fn answer(&mut self, answer: Answer, cx: &mut Context<Self>) {
         let Some(ask) = self.ask.take() else { return };
         let remember = self.remember;
         match ask {
             Ask::Quit(loops) => {
+                let yes = answer == Answer::Yes;
                 if remember {
                     self.set_pref("sessions.on_quit", Value::Choice(Some(if yes { "stop" } else { "keep" }.into())), cx);
                 }
                 if yes { self.stop_and_quit(loops, cx) } else { self.quit_now(cx) }
             }
-            Ask::Restart(names) => {
+            Ask::Restart(names, holds) => {
                 if remember {
-                    self.set_pref("sessions.on_start", Value::Choice(Some(if yes { "restart" } else { "leave" }.into())), cx);
+                    let choice = match answer {
+                        Answer::Yes => "restart",
+                        Answer::Fresh => "fresh",
+                        Answer::No => "leave",
+                    };
+                    self.set_pref("sessions.on_start", Value::Choice(Some(choice.into())), cx);
                 }
-                if yes {
-                    self.restart_loops(names, cx);
+                if answer != Answer::No {
+                    self.restart_loops(names, holds, answer == Answer::Yes, cx);
                 }
             }
         }
@@ -248,46 +341,124 @@ impl Shell {
             return Some(dialog(div().child("Stopping the Claude Code sessions, then quitting…")).into_any_element());
         }
         let ask = self.ask.as_ref()?;
-        let (title, loops, yes, no, cancel) = match ask {
-            Ask::Quit(loops) => ("Stop the Claude Code sessions too?", loops, "Quit and stop them", "Quit, keep them running", true),
-            Ask::Restart(loops) => ("Restart the sessions stopped when tvty quit?", loops, "Restart them", "Not now", false),
+        let (title, loops) = match ask {
+            Ask::Quit(loops) => ("Stop the Claude Code sessions too?", loops),
+            Ask::Restart(loops, _) => ("Restart the sessions stopped when tvty quit?", loops),
         };
-        let list = loops.iter().map(|name| {
+        // The sessions by project, each with its mark: live when quitting,
+        // as it was when restarting.
+        let mut projects: Vec<(String, Vec<AnyElement>)> = Vec::new();
+        let mut names: Vec<&String> = loops.iter().collect();
+        let project_of = |name: &str| self.board.known.iter().find(|l| l.name == name).and_then(|l| l.project.clone()).unwrap_or_default();
+        names.sort_by_key(|name| (project_of(name), name.to_string()));
+        for name in names {
             let known = self.board.known.iter().find(|l| l.name == *name);
-            let who = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
-            let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
+            let agent = known.and_then(|l| l.agent().map(str::to_string));
+            let (glyph, colour) = match ask {
+                Ask::Quit(_) => {
+                    let bar = agent.as_ref().and_then(|a| self.board.bars.get(a)).filter(|b| !b.stale).map(|b| &b.bar);
+                    hold_mark(bar.map(|b| b.presence.as_str()), bar.map(|b| b.afk.mode.as_str()))
+                }
+                Ask::Restart(_, holds) => {
+                    let mode = holds.get(name).map(String::as_str);
+                    hold_mark(mode.map(|m| if m == "off" { "loop" } else { "wait" }), mode)
+                }
+            };
             let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
-            div().flex().gap_2().child(div().text_color(p().text).child(who)).child(div().text_color(p().muted).child(format!("{project} · {place}")))
-        });
+            let row = div()
+                .flex()
+                .items_center()
+                .gap_2()
+                .pl_2()
+                .child(div().w(px(14.)).text_color(colour).child(glyph))
+                .child(div().text_color(p().text).child(agent.unwrap_or_else(|| name.clone())))
+                .child(div().text_xs().text_color(p().muted).child(place))
+                .into_any_element();
+            let project = project_of(name);
+            match projects.last_mut() {
+                Some((last, rows)) if *last == project => rows.push(row),
+                _ => projects.push((project, vec![row])),
+            }
+        }
+        let summary = match ask {
+            Ask::Quit(_) => format!(
+                "{} of {} still {} on this machine.",
+                count_of(loops.len()),
+                count(projects.len(), "project"),
+                if loops.len() == 1 { "runs" } else { "run" }
+            ),
+            Ask::Restart(..) => format!(
+                "{} of {}; {} its conversation.",
+                count_of(loops.len()),
+                count(projects.len(), "project"),
+                if loops.len() == 1 { "it resumes" } else { "each resumes" }
+            ),
+        };
+        let mut list = div().id("quit-list").flex().flex_col().gap_2().max_h(px(240.)).overflow_y_scroll().p_2().rounded_md().border_1().border_color(p().border).bg(p().bg).text_sm();
+        for (project, rows) in projects {
+            list = list.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }))
+                    .children(rows),
+            );
+        }
         let remember = self.remember;
+        let answers = match ask {
+            Ask::Quit(_) => div()
+                .flex()
+                .gap_2()
+                .ml_auto()
+                .child(buttons::secondary("quit-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| shell.cancel_ask(cx))))
+                .child(buttons::secondary("quit-no", "Quit, keep them running").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
+                .child(buttons::primary("quit-yes", "Quit and stop them").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx)))),
+            Ask::Restart(..) => div()
+                .flex()
+                .gap_2()
+                .ml_auto()
+                .child(buttons::secondary("quit-no", "Not now").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
+                .child(buttons::secondary("quit-fresh", "Restart fresh").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Fresh, cx))))
+                .child(buttons::primary("quit-yes", "Restart as they were").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx)))),
+        };
         let body = div()
             .flex()
             .flex_col()
             .gap_3()
-            .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
-            .child(div().flex().flex_col().gap_1().text_sm().children(list))
             .child(
-                buttons::link("quit-remember", if remember { "☑" } else { "☐" })
-                    .gap_2()
-                    .text_sm()
-                    .text_color(p().text)
-                    .child("Remember this choice (Options > Layout > Sessions)")
-                    .on_click(cx.listener(|shell, _, _, cx| {
-                        shell.remember = !shell.remember;
-                        cx.notify();
-                    })),
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
+                    .child(div().text_sm().text_color(p().muted).child(summary)),
             )
+            .child(list)
+            .when(matches!(ask, Ask::Restart(..)), |d| {
+                d.child(div().text_xs().text_color(p().muted).child("As they were: a held session is held again. Fresh: each boots, then runs on its own."))
+            })
+            .child(div().h(px(1.)).bg(p().border))
             .child(
                 div()
                     .flex()
                     .flex_wrap()
-                    .gap_2()
-                    .justify_end()
-                    .when(cancel, |d| {
-                        d.child(buttons::chip("quit-cancel", "Cancel").px_3().py_1().on_click(cx.listener(|shell, _, _, cx| shell.cancel_ask(cx))))
-                    })
-                    .child(buttons::chip("quit-no", no).px_3().py_1().on_click(cx.listener(|shell, _, _, cx| shell.answer(false, cx))))
-                    .child(buttons::primary("quit-yes", yes).on_click(cx.listener(|shell, _, _, cx| shell.answer(true, cx)))),
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        buttons::link("quit-remember", if remember { "☑" } else { "☐" })
+                            .flex_1()
+                            .gap_2()
+                            .text_sm()
+                            .text_color(p().text)
+                            .child("Remember this choice")
+                            .tip("Options > Layout > Sessions changes it")
+                            .on_click(cx.listener(|shell, _, _, cx| {
+                                shell.remember = !shell.remember;
+                                cx.notify();
+                            })),
+                    )
+                    .child(answers),
             );
         Some(dialog(body).into_any_element())
     }
@@ -296,7 +467,7 @@ impl Shell {
     pub(super) fn escape_ask(&mut self, cx: &mut Context<Self>) -> bool {
         match self.ask {
             Some(Ask::Quit(_)) => self.cancel_ask(cx),
-            Some(Ask::Restart(_)) => self.answer(false, cx),
+            Some(Ask::Restart(..)) => self.answer(Answer::No, cx),
             None => return false,
         }
         true
@@ -310,6 +481,11 @@ fn own_binary() -> Result<std::path::PathBuf, String> {
     let text = exe.to_string_lossy();
     let path = std::path::PathBuf::from(text.strip_suffix(" (deleted)").unwrap_or(&text));
     if path.is_file() { Ok(path) } else { Err(format!("{} is gone", path.display())) }
+}
+
+/// "1 session", "3 sessions".
+fn count_of(n: usize) -> String {
+    count(n, "session")
 }
 
 /// A card over a dimmed window, which takes every click.
