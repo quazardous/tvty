@@ -261,6 +261,8 @@ pub struct Shell {
     new_project: Option<newproject::NewProject>,
     /// The project the options are scoped to, its folders' settings.
     project_opts: Option<projectopts::ProjectOpts>,
+    /// The options' scope list, while they are open.
+    scope_select: Option<Entity<projectopts::ScopeSelect>>,
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
     decorations_said: Option<String>,
@@ -613,6 +615,10 @@ impl Shell {
         cx.observe_global::<crate::sidecol::SideWidth>(|shell, cx| {
             shell.settings.layout.fields_width = crate::sidecol::width(cx);
             shell.settings.save(cx);
+            // The options' column follows it.
+            if shell.options.is_some() {
+                cx.notify();
+            }
         })
         .detach();
         cx.subscribe_in(&panel, window, |shell, _, _: &OpenFullList, window, cx| {
@@ -724,6 +730,7 @@ impl Shell {
             help_menu: false,
             new_project: None,
             project_opts: None,
+            scope_select: None,
             decorations_said: None,
             os_title: String::new(),
             tip: None,
@@ -2297,6 +2304,7 @@ impl Shell {
             theme::load(cx);
             self.load_remote(cx);
             self.load_project_settings(cx);
+            self.new_scope_select(window, cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.
             let focus = self.options_search.read(cx).focus_handle(cx);
             window.focus(&focus, cx);
@@ -2491,19 +2499,15 @@ impl Shell {
                 );
             }
         }
-        let nav = div()
+        // The full pages' side column: its width dragged by its border.
+        let nav = crate::sidecol::column(cx)
             .flex()
             .flex_col()
             .gap_2()
-            .w(px(240.))
-            .flex_none()
-            .h_full()
             .p_3()
             .bg(p().surface)
-            .border_r_1()
-            .border_color(p().border)
             .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
-            .child(self.options_scope(cx))
+            .child(self.options_scope())
             .child(Input::new(&self.options_search).cleanable(true))
             .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
             .child(tree);
@@ -2540,15 +2544,20 @@ impl Shell {
             .flex()
             .bg(p().bg)
             .text_color(p().text)
-            .child(nav)
             .child(
-                div()
-                    .relative()
-                    .flex_1()
-                    .min_w_0()
-                    .h_full()
-                    .child(content)
-                    .child(div().absolute().inset_0().child(Scrollbar::new(&self.options_scroll).axis(ScrollbarAxis::Vertical))),
+                crate::sidecol::row()
+                    .size_full()
+                    .child(nav)
+                    .child(crate::sidecol::edge("options-edge"))
+                    .child(
+                        div()
+                            .relative()
+                            .flex_1()
+                            .min_w_0()
+                            .h_full()
+                            .child(content)
+                            .child(div().absolute().inset_0().child(Scrollbar::new(&self.options_scroll).axis(ScrollbarAxis::Vertical))),
+                    ),
             )
     }
 
@@ -2633,27 +2642,6 @@ impl Shell {
             self.load_remote(cx);
             cx.notify();
         }
-    }
-
-    /// What the options are scoped to, atop them: Global (tvty's own and
-    /// the board's config) or a project (its page, its layer of the
-    /// board's config).
-    fn options_scope(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut scopes = div().flex().flex_wrap().items_center().gap_1().px_1();
-        let names = std::iter::once(None).chain(self.board.projects.iter().filter(|p| p.on_board).map(|p| Some(p.name.clone())));
-        for scope in names {
-            let on = self.remote_layer == scope;
-            let label: SharedString = scope.clone().unwrap_or_else(|| "Global".into()).into();
-            scopes = scopes.child(
-                buttons::chip(SharedString::from(format!("options-layer-{label}")), label)
-                    .px_2()
-                    .py_0p5()
-                    .text_sm()
-                    .chosen(on)
-                    .on_click(cx.listener(move |shell, _, _, cx| shell.scope_options(scope.clone(), cx))),
-            );
-        }
-        scopes
     }
 
     /// The head of aiball's page: which layer is shown, and how it reads.
@@ -2776,10 +2764,7 @@ impl Shell {
                         .py_0p5()
                         .border_color(p().accent.opacity(0.6))
                         .text_color(p().accent)
-                        .on_click(cx.listener(|shell, _, _, cx| {
-                            shell.options_scroll.set_offset(point(px(0.), px(0.)));
-                            shell.show_layer(None, cx)
-                        })),
+                        .on_click(cx.listener(|shell, _, window, cx| shell.scope_options(None, window, cx))),
                 )
             })
     }

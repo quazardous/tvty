@@ -478,7 +478,8 @@ cards keep their size: they fit the screen to themselves.
 
 ## Options
 
-A full page (⚙ in the title bar, or ctrl+,): on the left a search box
+A full page (⚙ in the title bar, or ctrl+,): on the left, in the full
+pages' side column (its border dragged, double click: back to default), a search box
 (focused at once: ctrl+, then type) and a tree, each page unfolded into its
 groups — a click on a group brings it up, the one in view is lit. A search
 finds settings and shortcuts together, by name, text, key
@@ -501,7 +502,8 @@ shows at once), About (version,
 aiball's socket, who tvty acts as, the live feed, where settings and
 themes live).
 
-**Scope.** Atop the tree, Global or a project of the board. Global: the
+**Scope.** Atop the tree, a list: Global or a project of the board, typed
+to be found. Global: the
 pages above. A project (or its ⚙ in the sessions list): a **Project** page
 comes first, and the aiball page shows that project's layer. The Project
 page has two groups. *Folder*: what the folder's `.aiball.yaml` sets, as

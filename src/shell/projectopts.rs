@@ -4,6 +4,8 @@
 //! `project.settings_set`: tvty reads no such file), and the keys of the
 //! board's config the project overrides.
 
+use gpui_kit::component::IndexPath;
+use gpui_kit::component::select::{SearchableVec, Select, SelectEvent, SelectState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::{Value as Json, json};
@@ -22,6 +24,13 @@ pub(super) struct ProjectOpts {
     folders: Vec<(String, Option<Result<ProjectSettings, String>>)>,
     chosen: usize,
 }
+
+/// The scope list atop the options: Global, then the board's projects,
+/// typed to be found.
+pub(super) type ScopeSelect = SelectState<SearchableVec<SharedString>>;
+
+/// The scope that is not a project.
+const GLOBAL: &str = "Global";
 
 /// A project's folders, as aiball knows its agents and loops: each once.
 fn folders_of(project: &str, homes: &[(String, Option<String>, String)], known: &[crate::loops::KnownLoop]) -> Vec<String> {
@@ -55,10 +64,41 @@ fn short_folders(folders: &[String]) -> Vec<String> {
 }
 
 impl Shell {
+    /// The scope list, made as the options open: Global and the board's
+    /// projects, the scope shown chosen.
+    pub(super) fn new_scope_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut names: Vec<SharedString> = vec![GLOBAL.into()];
+        names.extend(self.board.projects.iter().filter(|p| p.on_board).map(|p| SharedString::from(p.name.clone())));
+        let shown: SharedString = self.remote_layer.clone().unwrap_or_else(|| GLOBAL.into()).into();
+        let at = names.iter().position(|n| *n == shown).map(|row| IndexPath::default().row(row));
+        let state = cx.new(|cx| ScopeSelect::new(SearchableVec::new(names), at, window, cx).searchable(true));
+        cx.subscribe_in(&state, window, |shell, _, event: &SelectEvent<SearchableVec<SharedString>>, window, cx| {
+            let SelectEvent::Confirm(Some(name)) = event else { return };
+            let project = (name.as_ref() != GLOBAL).then(|| name.to_string());
+            shell.scope_options(project, window, cx);
+        })
+        .detach();
+        self.scope_select = Some(state);
+    }
+
+    /// The scope list, atop the options.
+    pub(super) fn options_scope(&self) -> impl IntoElement + use<> {
+        div().px_1().children(
+            self.scope_select
+                .as_ref()
+                .map(|state| Select::new(state).id("options-scope").search_placeholder("a project…").menu_max_h(px(360.)).w_full()),
+        )
+    }
+
     /// The options scoped to `project` (none: Global); the Project page
     /// comes and goes with it.
-    pub(super) fn scope_options(&mut self, project: Option<String>, cx: &mut Context<Self>) {
+    pub(super) fn scope_options(&mut self, project: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         let to_project = project.is_some();
+        // The list says it, wherever the scope was chosen (a project's ⚙).
+        if let Some(state) = self.scope_select.clone() {
+            let name: SharedString = project.clone().unwrap_or_else(|| GLOBAL.into()).into();
+            state.update(cx, |state, cx| state.set_selected_value(&name, window, cx));
+        }
         self.show_layer(project.clone(), cx);
         match project {
             Some(project) => {
@@ -86,7 +126,7 @@ impl Shell {
         if self.options.is_none() {
             self.toggle_options(window, cx);
         }
-        self.scope_options(Some(project), cx);
+        self.scope_options(Some(project), window, cx);
         self.open_options_page(Section::Project, None, window, cx);
     }
 
