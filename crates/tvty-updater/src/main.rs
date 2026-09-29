@@ -287,7 +287,9 @@ impl Render for Updater {
                                             .child(link("link-tvty", "Terminal Velocity on GitHub ↗", tvty_updater::TVTY_URL, &theme))
                                             .child(link("link-aiball", "aiball on GitHub ↗", tvty_updater::AIBALL_URL, &theme))
                                             .child(link("link-licence", "MIT licence ↗", &format!("{}/blob/main/LICENSE", tvty_updater::TVTY_URL), &theme)),
-                                    ),
+                                    )
+                                    // Whose work it is, the years running to this one.
+                                    .child(div().pt_1().text_xs().text_color(theme.muted_foreground).child(tvty_config::legal::copyright())),
                             ),
                     )
                     .child(self.row(Program::Aiball, cx))

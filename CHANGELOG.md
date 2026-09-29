@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- About (tvty's and the updater's) says whose work it is: "Copyright (c) 2026 David Berlioz", its years running on by themselves.
+
 ## [0.6.0-beta.1] - 2026-09-30
 
 ### Added

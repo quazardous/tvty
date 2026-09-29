@@ -3364,6 +3364,9 @@ impl Shell {
                 .child(buttons::link("about-github", "GitHub ↗").on_click(|_, _, cx| cx.open_url(help::REPOSITORY)))
                 .child(buttons::link("about-aiball", "aiball on GitHub ↗").on_click(|_, _, cx| cx.open_url(help::AIBALL_REPOSITORY)))
                 .child(buttons::link("about-license", "MIT licence ↗").on_click(|_, _, cx| cx.open_url(&format!("{}/blob/main/LICENSE", help::REPOSITORY)))),
+        )
+        // Whose work it is, the years running to this one.
+        .child(div().pb_3().text_sm().text_color(p().muted).child(tvty_config::legal::copyright()),
         );
         for (label, value) in rows {
             table = table.child(

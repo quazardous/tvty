@@ -8,10 +8,12 @@
 //!   by its key, and check a file edited by hand;
 //! - [`items`]: every setting a page lists, whoever provides it, in one
 //!   shape — for one tree, one search, one "modified" mark — and durations
-//!   as people write them (`1h30m`).
+//!   as people write them (`1h30m`);
+//! - [`legal`]: the copyright line the programs' "About" says.
 
 pub mod files;
 pub mod items;
+pub mod legal;
 pub mod schema;
 
 pub use files::{LogTee, Place, Stored, dir, home, modified, parse, path, read, render, write_atomic};
