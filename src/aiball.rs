@@ -1352,6 +1352,32 @@ pub struct ProjectSettings {
     /// Its Claude's Remote Control: `false`, `true` or a name.
     #[serde(default)]
     pub remote_control: Setting<Value>,
+    /// Every setting of the folder a client may show and change, described:
+    /// a key aiball adds shows with no code of tvty's own.
+    #[serde(default)]
+    pub settings: Vec<FolderSetting>,
+}
+
+/// A folder setting as aiball describes it: its key in `.aiball.yaml`, its
+/// type (`enum`: one of `options`; `boolean_or_name`: true, false or a
+/// name), its default and value, where the value comes from.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct FolderSetting {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub default: Value,
+    #[serde(default)]
+    pub value: Value,
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub description: String,
 }
 
 /// The identity a loop started in the folder takes.

@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Quitting and restarting remember each session's hold: restart them as they were (a held one held again) or fresh; the dialogs list the sessions by project, scrolling when they are many.
 - Tips: "Did you know?" once after start and on first opening a page, never for what you already use; Got it, Next, off, and Tips… in the menu to see them all. A tip about an element sits beside it, the element haloed, in the tips' own violet.
 - The new-project wizard starts from what a folder already has (a subfolder of a project included): its project, agent, role, where its loops run and its Remote Control are filled in, in their own colour with where they come from; it also sets where the loops run and the Remote Control.
-- Options can be scoped to a project (a list top left, typed to find it, or ⚙ on the project in the sessions list): a Project page sets where its loops run and its Remote Control, folder by folder, and shows the board settings it overrides.
+- Options can be scoped to a project (a list top left, typed to find it, or ⚙ on the project in the sessions list): a Project page sets its folders' settings as aiball describes them (where its loops run, Remote Control…), folder by folder, and shows the board settings it overrides.
 - The options' left column is resized by dragging its border, as a full ticket's fields.
 - The pointer can give the keyboard: over the terminal or a box to write in, as the system's focus follows the mouse (GNOME, KDE), or as chosen in Options > Appearance > Mouse > Focus.
 - In the ticket list, the tickets sunk in the shown agent's backlog (its loop won't bring them up for a while) step back, a ⤓ saying until when.

@@ -11,7 +11,7 @@ use gpui_kit::*;
 use serde_json::{Value as Json, json};
 
 use super::{Away, Shell, option_group, option_note, reset_button, setting_frame};
-use crate::aiball::{ProjectSettings, Setting};
+use crate::aiball::{FolderSetting, ProjectSettings, Setting};
 use crate::activity::{self, Activity};
 use crate::options::Section;
 use crate::theme::p;
@@ -152,13 +152,16 @@ impl Shell {
 
     /// Writes one key in the shown folder's `.aiball.yaml` (null: removed),
     /// then reads every folder again (a file may serve several).
-    fn write_project_setting(&mut self, key: &'static str, value: Json, cx: &mut Context<Self>) {
+    fn write_project_setting(&mut self, key: String, value: Json, cx: &mut Context<Self>) {
         let Some(opts) = self.project_opts.as_ref() else { return };
         let Some((cwd, _)) = opts.folders.get(opts.chosen) else { return };
         let cwd = cwd.clone();
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
-            let done = cx.background_executor().spawn(async move { aiball.project_settings_set(&cwd, json!({ key: value })) }).await;
+            let done = {
+                let key = key.clone();
+                cx.background_executor().spawn(async move { aiball.project_settings_set(&cwd, json!({ "key": key, "value": value })) }).await
+            };
             let _ = this.update(cx, |shell, cx| {
                 if let Err(error) = done {
                     activity::publish(cx, Activity::failed(None, "project settings", format!("{key}: {error:#}")));
@@ -233,63 +236,50 @@ impl Shell {
         if !shared.is_empty() {
             out = out.child(div().text_sm().text_color(p().warning).child(format!("It also serves {}: a change here is theirs too.", shared.join(", "))));
         }
-        out.child(self.session_row(&settings.session, cx)).child(self.remote_control_row(&settings.remote_control, cx))
-    }
-
-    /// Where the folder's loops run: on aiball's session host or in tmux.
-    fn session_row(&self, session: &Setting<String>, cx: &mut Context<Self>) -> Div {
-        let on_host = session.value != "tmux";
-        let away = (session.from == "file").then(|| Away { back: "Unset", value: "the machine's global config, else the session host".into() });
-        let mut choices = div().flex().gap_1().flex_none();
-        for (value, label) in [("host", "session host"), ("tmux", "tmux")] {
-            choices = choices.child(
-                buttons::chip(SharedString::from(format!("options-session-{value}")), label)
-                    .py_0p5()
-                    .text_sm()
-                    .chosen(on_host == (value == "host"))
-                    .on_click(cx.listener(move |shell, _, _, cx| shell.write_project_setting("session", json!(value), cx))),
-            );
+        // Each setting as aiball describes it.
+        for setting in &settings.settings {
+            out = out.child(self.folder_row(setting, cx));
         }
-        setting_frame(
-            "claude_loop.session".into(),
-            label("Where its loops run", session),
-            "A loop started in this folder runs on aiball's session host (tvty shows it, it survives tvty) or in a tmux session. A loop already started keeps its own: move it with the host / tmux chip of its bar.".into(),
-            away.as_ref(),
-        )
-        .child(choices)
-        .child(reset_button("session", away.as_ref(), cx.listener(|shell, _, _, cx| shell.write_project_setting("session", Json::Null, cx))))
+        out
     }
 
-    /// Its Claude's Remote Control: off, on (found by its agent's name), or
-    /// found by a name of its own.
-    fn remote_control_row(&self, remote_control: &Setting<Json>, cx: &mut Context<Self>) -> Div {
-        let named = remote_control.value.as_str().filter(|n| !n.is_empty()).map(str::to_string);
-        let on = remote_control.value.as_bool() == Some(true) || named.is_some();
-        let away = (remote_control.from == "file").then(|| Away::default("off"));
-        let mut choices = div().flex().gap_1().flex_none();
-        for (wanted, text) in [(false, "off"), (true, "on")] {
-            // On with a name: that name, chosen; "on" would drop it.
-            let text = match (&named, wanted) {
-                (Some(name), true) => format!("on: {name}"),
-                _ => text.to_string(),
-            };
-            let chosen = on == wanted;
-            choices = choices.child(
-                buttons::chip(SharedString::from(format!("options-rc-{wanted}")), text)
+    /// One folder setting, drawn from its description: an `enum` as its
+    /// choices, a `boolean_or_name` as off / on (on with a name: that name).
+    /// Set in the file: ↺ removes it, back to the layer below.
+    fn folder_row(&self, setting: &FolderSetting, cx: &mut Context<Self>) -> Div {
+        let key: SharedString = setting.key.clone().into();
+        let away = (setting.from == "file").then(|| Away::default(value_said(&setting.default)));
+        let mut chips = Vec::new();
+        let mut choice = |id: String, text: String, chosen: bool, wanted: Json| {
+            let key = setting.key.clone();
+            chips.push(
+                buttons::chip(SharedString::from(format!("options-folder-{id}")), text)
                     .py_0p5()
                     .text_sm()
                     .chosen(chosen)
-                    .when(!chosen, |d| d.on_click(cx.listener(move |shell, _, _, cx| shell.write_project_setting("remote_control", json!(wanted), cx)))),
+                    .when(!chosen, |d| d.on_click(cx.listener(move |shell, _, _, cx| shell.write_project_setting(key.clone(), wanted.clone(), cx)))),
             );
+        };
+        match setting.kind.as_str() {
+            "boolean_or_name" => {
+                let named = setting.value.as_str().filter(|n| !n.is_empty()).map(str::to_string);
+                let on = setting.value.as_bool() == Some(true) || named.is_some();
+                choice(format!("{}-off", setting.key), "off".into(), !on, Json::Bool(false));
+                choice(format!("{}-on", setting.key), named.map_or("on".into(), |n| format!("on: {n}")), on, Json::Bool(true));
+            }
+            _ => {
+                for option in &setting.options {
+                    choice(format!("{}-{option}", setting.key), option.clone(), setting.value.as_str() == Some(option.as_str()), Json::String(option.clone()));
+                }
+            }
         }
-        setting_frame(
-            "claude.remote_control".into(),
-            label("Remote Control", remote_control),
-            "Its Claude can be reached from claude.ai and the Claude app, by its agent's name (or the name the file gives). Taken at the loop's next start.".into(),
-            away.as_ref(),
-        )
-        .child(choices)
-        .child(reset_button("remote_control", away.as_ref(), cx.listener(|shell, _, _, cx| shell.write_project_setting("remote_control", Json::Null, cx))))
+        let reset = {
+            let key = setting.key.clone();
+            cx.listener(move |shell, _, _, cx| shell.write_project_setting(key.clone(), Json::Null, cx))
+        };
+        setting_frame(key.clone(), label(&setting.label, &setting.from), setting.description.clone().into(), away.as_ref())
+            .child(div().flex().flex_wrap().gap_1().flex_none().children(chips))
+            .child(reset_button(&key, away.as_ref(), reset))
     }
 
     /// The board's config keys this project sets over the board's values.
@@ -330,13 +320,24 @@ impl Shell {
 }
 
 /// A setting's name and where its value comes from.
-fn label(name: &'static str, setting: &Setting<impl Sized>) -> Div {
+fn label(name: &str, from: &str) -> Div {
+    let from = Setting { value: (), from: from.to_string() };
     div()
         .flex()
         .items_center()
         .gap_2()
-        .child(name)
-        .child(div().text_xs().font_weight(FontWeight::NORMAL).text_color(if setting.set() { crate::theme::imported() } else { p().muted }).child(setting.said().to_string()))
+        .child(name.to_string())
+        .child(div().text_xs().font_weight(FontWeight::NORMAL).text_color(if from.set() { crate::theme::imported() } else { p().muted }).child(from.said().to_string()))
+}
+
+/// A setting's value as said: `off`, `on`, a name, an option.
+fn value_said(value: &Json) -> String {
+    match value {
+        Json::Bool(true) => "on".into(),
+        Json::Bool(false) | Json::Null => "off".into(),
+        Json::String(text) => text.clone(),
+        other => other.to_string(),
+    }
 }
 
 #[cfg(test)]
