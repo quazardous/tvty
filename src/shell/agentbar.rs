@@ -24,6 +24,11 @@ use crate::tip::Tip as _;
 pub const BAR_HEIGHT: f32 = 24.;
 
 /// What the AFK chip offers: aiball's action, and its label.
+/// The RC chip, hidden for now: it says the Remote Control the loop forces
+/// (its folder's setting), not a `/rc` typed in the session, which the bar
+/// does not tell — a session in Remote Control showed "off".
+const SHOW_RC: bool = false;
+
 const AFK_ACTIONS: &[(&str, &str)] = &[("off", "auto"), ("arm_10m", "hold 10 min"), ("arm_inf", "hold")];
 
 /// An agent's backlog, open over the bar: whose, and what aiball answered.
@@ -511,7 +516,7 @@ impl Shell {
                 .child(div().flex_1())
                 // Where its loop runs: on aiball's host, or in tmux.
                 .child(mode_chip)
-                .child(rc_chip)
+                .when(SHOW_RC, |d| d.child(rc_chip))
                 // Copy or controls: whether this terminal types into it.
                 .child({
                     let session = terminal.session.clone();
@@ -532,7 +537,7 @@ impl Shell {
                 .children(cwd.map(|cwd| item().min_w_0().truncate().child(cwd)))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .children(move_confirm)
-                .children(rc_confirm)
+                .children(rc_confirm.filter(|_| SHOW_RC))
                 .into_any_element(),
         )
     }

@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The answers of every dialog and form are buttons of one size.
 - While a loop boots, the agent bar's "… boot" is no longer squashed.
 - The agent bar shows ⌨ once while a human types, by the prompt.
+- The agent bar's RC chip is gone for now: it could not tell a session put in Remote Control by hand.
 - The slider and the gallery are no longer covered by notifications: those that come meanwhile show once they close.
 
 ## [0.4.0-beta.1] - 2026-09-28
