@@ -25,8 +25,13 @@ use crate::tip::Tip as _;
 /// The bar's height: the terminal gives it that much, once.
 pub const BAR_HEIGHT: f32 = 24.;
 
-/// What the AFK chip offers: aiball's action, and its label.
-const AFK_ACTIONS: &[(&str, &str)] = &[("off", "auto"), ("arm_10m", "hold 10 min"), ("arm_inf", "hold")];
+/// What the AFK chip offers: aiball's action, its label, the bar's glyph
+/// for it (▶ runs, ‖ paused, ■ stopped) and the armed mode it sets.
+const AFK_ACTIONS: &[(&str, &str, &str, Tone, &str)] = &[
+    ("off", "auto", "▶", Tone::Green, "off"),
+    ("arm_10m", "hold 10 min", "‖", Tone::Orange, "wait_10m"),
+    ("arm_inf", "hold", "■", Tone::Red, "wait_inf"),
+];
 
 /// An agent's backlog, open over the bar: whose, in which project (the
 /// backlogs' store keeps it, `crate::kernel::backlog`).
@@ -177,10 +182,14 @@ impl Shell {
             }));
         let afk_choices = self.afk_menu.then(|| {
             let mut row = chipbar::line("agent-afk-bar", p().accent);
-            for (action, label) in AFK_ACTIONS {
-                let (action, target) = (*action, agent.clone());
+            let armed = bar.as_ref().map(|b| b.afk.mode.clone());
+            for &(action, label, glyph, t, mode) in AFK_ACTIONS {
+                let target = agent.clone();
+                let label = div().flex().items_center().gap_1().child(crate::icons::loop_glyph(glyph, tone(t), 9.)).child(label);
                 row = row.child(
-                    buttons::chip(SharedString::from(format!("agent-afk-{action}")), *label)
+                    buttons::chip(SharedString::from(format!("agent-afk-{action}")), label)
+                        // The mode armed now.
+                        .when(armed.as_deref() == Some(mode), |d| d.bg(p().active).border_color(tone(t)))
                         .on_click(cx.listener(move |shell, _, _, cx| shell.set_afk(target.clone(), action, cx))),
                 );
             }
