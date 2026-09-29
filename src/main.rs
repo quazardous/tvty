@@ -19,6 +19,7 @@ mod images;
 mod instance;
 mod keymap;
 mod loops;
+mod mux;
 mod newticket;
 mod notify;
 mod options;

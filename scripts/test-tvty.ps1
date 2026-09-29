@@ -5,6 +5,9 @@
 #   written;
 # - never the user's aiball: AIBALL_SOCK points at a socket that is not
 #   there (no throwaway aiball on Windows yet);
+# - its own psmux server (TVTY_MUX_SERVER, psmux's -L): the user's loops are
+#   not even listed, so never attached nor resized. psmux ignores
+#   TMUX_TMPDIR, which does it on Linux;
 # - one more tvty, whatever else runs (TVTY_NEW_INSTANCE).
 # Arguments go to tvty (a session to open).
 $ErrorActionPreference = 'Stop'
@@ -19,6 +22,7 @@ $env:XDG_CONFIG_HOME = Join-Path $dev 'config'
 $env:XDG_STATE_HOME = Join-Path $dev 'state'
 $env:XDG_DATA_HOME = Join-Path $dev 'data'
 $env:AIBALL_SOCK = Join-Path $dev 'no-aiball\sock'
+$env:TVTY_MUX_SERVER = 'tvty-test'
 $env:TVTY_NEW_INSTANCE = '1'
 $env:TVTY_STATS = Join-Path $dev 'log\tvty-stats.log'
 foreach ($dir in 'config\tvty', 'state\tvty', 'data\tvty', 'log') {

@@ -32,6 +32,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - tvty reaches an aiball of the same machine without any token to set up,
   through aiball's machine secret; on Windows, with an aiball that has it,
   that is what lets tvty list, restart and wake the loops.
+- `TVTY_MUX_SERVER=name` points tvty at another tmux or psmux server than
+  yours (`-L name`); a test tvty on Windows uses it, and no longer sees
+  your own loops.
 
 ### Fixed
 

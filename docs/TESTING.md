@@ -57,8 +57,8 @@ shaders compiled at build time (`Cargo.toml`), which needs the Windows
 SDK's `fxc.exe` at build time.
 
 `scripts/test-tvty.ps1` runs a test tvty on the desktop instead, apart from
-the user's (its own settings, never their aiball), for when the sandbox is
-not there.
+the user's (its own settings, never their aiball, its own psmux server), for
+when the sandbox is not there.
 
 For now tvty there has no aiball (its socket is Unix only), no session
 host and no multiplexer: the window, its settings and its panels.
@@ -87,7 +87,10 @@ never shows in — nor touches — the user's own tvty:
 - **its own tmux server** (`TMUX_TMPDIR=dev/tmux`): the fake sessions and
   the demo loops run there, so the user's tvty does not list them, and a
   test tvty cannot even see a real agent's loop — let alone attach it,
-  which would resize it for every client, the user's own included;
+  which would resize it for every client, the user's own included. psmux
+  (Windows) ignores `TMUX_TMPDIR`: there `scripts/test-tvty.ps1` sets
+  `TVTY_MUX_SERVER=tvty-test`, and tvty then passes `-L tvty-test` to every
+  psmux call (`psmux -L tvty-test ls` to look at it);
 - **its own settings** (`XDG_CONFIG_HOME=dev/tvty-wbox/config`) **and
   memory** (`XDG_STATE_HOME=dev/tvty-wbox/state`, the projects' list
   folded to start with): the user's `settings.toml`, `keymap.toml`, layout
