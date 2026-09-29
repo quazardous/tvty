@@ -4,6 +4,9 @@
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Section {
+    /// A project's own settings (its folders' `.aiball.yaml`, the board
+    /// keys it overrides): shown when the options are scoped to a project.
+    Project,
     Appearance,
     Layout,
     TicketList,
@@ -14,7 +17,8 @@ pub enum Section {
 }
 
 impl Section {
-    pub const ALL: [Section; 6] = [
+    pub const ALL: [Section; 7] = [
+        Section::Project,
         Section::Appearance,
         Section::Layout,
         Section::TicketList,
@@ -25,6 +29,7 @@ impl Section {
 
     pub fn title(self) -> &'static str {
         match self {
+            Section::Project => "Project",
             Section::Appearance => "Appearance",
             Section::Layout => "Layout",
             Section::TicketList => "Ticket list",

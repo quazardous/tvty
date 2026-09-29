@@ -386,9 +386,14 @@ impl Shell {
                     let now = aiball.project_settings(&ask.cwd).map_err(unsaved)?;
                     let (session, remote_control) = to_write(&now, on_host, remote_control);
                     if session.is_some() || remote_control.is_some() {
-                        aiball
-                            .project_settings_set(&ask.cwd, session, remote_control.as_ref())
-                            .map_err(unsaved)?;
+                        let mut patch = serde_json::json!({});
+                        if let Some(session) = session {
+                            patch["session"] = serde_json::json!(session);
+                        }
+                        if let Some(remote_control) = &remote_control {
+                            patch["remote_control"] = remote_control.clone();
+                        }
+                        aiball.project_settings_set(&ask.cwd, patch).map_err(unsaved)?;
                         // Said with what aiball did.
                         let mut set = Vec::new();
                         set.extend(session.map(|s| format!("claude_loop.session: {s}")));

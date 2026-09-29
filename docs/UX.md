@@ -494,12 +494,24 @@ Appearance (sizes, notifications, the wheel's speed, the window's and the
 terminals' colour themes, the terminals' opacity), Layout (the sides: folded or not, their widths,
 reset), Ticket list (the thread's order, the list's legend), Keyboard
 shortcuts (all of them, edited in place — see Keys), aiball (the board's
-config, read and written through aiball: a layer chosen at its head,
-Global or a project; a project's value overrides the board's, ↺ clears it
+config, read and written through aiball, in the scope chosen: Global or a
+project; a project's value overrides the board's, ↺ clears it
 there; 🔒 on the keys only a human may change; a change made elsewhere
 shows at once), About (version,
 aiball's socket, who tvty acts as, the live feed, where settings and
 themes live).
+
+**Scope.** Atop the tree, Global or a project of the board. Global: the
+pages above. A project (or its ⚙ in the sessions list): a **Project** page
+comes first, and the aiball page shows that project's layer. The Project
+page has two groups. *Folder*: what the folder's `.aiball.yaml` sets, as
+aiball resolves and writes it (tvty never opens that file) — where the
+loops started there run (session host or tmux) and its Claude's Remote
+Control, each saying where its value comes from (the file, the machine's
+global config, the default), ↺ removing it from the file; a project with
+several folders (a lead's, a crew's) shows one at a time, and says which
+other folders the same file serves. *Board*: the board's keys the project
+sets over the board's values, and a link to all of them.
 
 The settings' pages are built from the settings themselves: each is
 declared once in `src/settings.rs` (its key in `settings.toml`, its page and

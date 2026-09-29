@@ -32,6 +32,7 @@ mod ended;
 mod frame;
 mod help;
 mod newproject;
+mod projectopts;
 mod loopstabs;
 mod quit;
 mod stacks;
@@ -258,6 +259,8 @@ pub struct Shell {
     help_menu: bool,
     /// The "New project" wizard, while open.
     new_project: Option<newproject::NewProject>,
+    /// The project the options are scoped to, its folders' settings.
+    project_opts: Option<projectopts::ProjectOpts>,
     /// The decorations the compositor granted, as last logged: said once,
     /// and again when they change (a desktop check reads them).
     decorations_said: Option<String>,
@@ -720,6 +723,7 @@ impl Shell {
             theme_menu: false,
             help_menu: false,
             new_project: None,
+            project_opts: None,
             decorations_said: None,
             os_title: String::new(),
             tip: None,
@@ -2292,6 +2296,7 @@ impl Shell {
             self.options = Some(Section::Appearance);
             theme::load(cx);
             self.load_remote(cx);
+            self.load_project_settings(cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.
             let focus = self.options_search.read(cx).focus_handle(cx);
             window.focus(&focus, cx);
@@ -2312,6 +2317,7 @@ impl Shell {
             Section::TicketList => named(schema("Ticket list").into_iter().chain(["Legend"]).collect()),
             Section::Shortcuts => named(vec!["Window", "Workspace", "Terminal", "Fixed keys"]),
             Section::Aiball => self.remote_layout().into_iter().map(|(group, _)| group.into()).collect(),
+            Section::Project => self.project_groups(),
             Section::About => Vec::new(),
         }
     }
@@ -2355,6 +2361,7 @@ impl Shell {
                 sections.extend(self.remote_sections(None, &[], cx));
                 sections
             }
+            Section::Project => self.project_sections(cx),
             Section::About => vec![(None, self.options_about(cx).into_any_element())],
         }
     }
@@ -2449,7 +2456,9 @@ impl Shell {
             .flex_1()
             .min_h_0()
             .overflow_y_scroll();
-        for page in Section::ALL.into_iter().filter(|p| page_hit(*p)) {
+        // The Project page is a project's: only scoped to one.
+        let scoped = self.remote_layer.is_some();
+        for page in Section::ALL.into_iter().filter(|p| page_hit(*p) && (*p != Section::Project || scoped)) {
             let chosen = !searching && page == section;
             tree = tree.child(
                 div()
@@ -2494,6 +2503,7 @@ impl Shell {
             .border_r_1()
             .border_color(p().border)
             .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Options"))
+            .child(self.options_scope(cx))
             .child(Input::new(&self.options_search).cleanable(true))
             .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
             .child(tree);
@@ -2625,36 +2635,39 @@ impl Shell {
         }
     }
 
-    /// The head of aiball's page: which layer is shown, and how it reads.
-    fn remote_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let mut layers = div().flex().flex_wrap().items_center().gap_1();
+    /// What the options are scoped to, atop them: Global (tvty's own and
+    /// the board's config) or a project (its page, its layer of the
+    /// board's config).
+    fn options_scope(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let mut scopes = div().flex().flex_wrap().items_center().gap_1().px_1();
         let names = std::iter::once(None).chain(self.board.projects.iter().filter(|p| p.on_board).map(|p| Some(p.name.clone())));
-        for layer in names {
-            let on = self.remote_layer == layer;
-            let label: SharedString = layer.clone().unwrap_or_else(|| "Global".into()).into();
-            layers = layers.child(
+        for scope in names {
+            let on = self.remote_layer == scope;
+            let label: SharedString = scope.clone().unwrap_or_else(|| "Global".into()).into();
+            scopes = scopes.child(
                 buttons::chip(SharedString::from(format!("options-layer-{label}")), label)
-                    .px_3()
-                    .py_1()
+                    .px_2()
+                    .py_0p5()
+                    .text_sm()
                     .chosen(on)
-                    .on_click(cx.listener(move |shell, _, _, cx| shell.show_layer(layer.clone(), cx))),
+                    .on_click(cx.listener(move |shell, _, _, cx| shell.scope_options(scope.clone(), cx))),
             );
         }
+        scopes
+    }
+
+    /// The head of aiball's page: which layer is shown, and how it reads.
+    fn remote_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let _ = cx;
         let note: SharedString = match (&self.remote_error, &self.remote, &self.remote_layer) {
-            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the layer again to try again.").into(),
+            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the scope again, top left, to try again.").into(),
             (None, None, _) => "Reading aiball's config…".into(),
-            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise.".into(),
+            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise. Choose a project, top left, for its own.".into(),
             (None, Some(_), Some(project)) => {
                 format!("What {project} says over the board's config; ↺ gives a key back to the board's value.").into()
             }
         };
-        div()
-            .flex()
-            .flex_col()
-            .gap_2()
-            .max_w(px(720.))
-            .child(layers)
-            .child(div().text_sm().text_color(p().muted).child(note))
+        div().max_w(px(720.)).text_sm().text_color(p().muted).child(note)
     }
 
     /// aiball's config as sections by group (only `only`'s keys, when
@@ -4015,7 +4028,7 @@ impl Shell {
                     .overflow_hidden()
                     .flex()
                     .items_center()
-                    .gap_2()
+                    .gap_1()
                     .px_3()
                     .pt_2()
                     .pb_1()
@@ -4029,6 +4042,15 @@ impl Shell {
                                 .on_click(cx.listener(move |shell, _, window, cx| {
                                     shell.ask_new_session(name.clone(), window, cx)
                                 })),
+                        )
+                    })
+                    // Its options: its folders' settings, its layer of the board's config.
+                    .when(project.on_board, |d| {
+                        let name = project.name.clone();
+                        d.child(
+                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its options: where its loops run, Remote Control, its board config")
+                                .text_xs()
+                                .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                         )
                     })
                     // A plain shell in the project's folder, listed with it.

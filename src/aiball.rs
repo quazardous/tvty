@@ -756,18 +756,14 @@ impl Aiball {
         self.rpc("project.settings", json!({ "cwd": cwd }))
     }
 
-    /// Sets where the folder's loops run and its Claude's Remote Control, in
-    /// the `.aiball.yaml` they read (`project.settings_set`); the ones left
-    /// `None` are not touched.
-    pub fn project_settings_set(&self, cwd: &str, session: Option<&str>, remote_control: Option<&Value>) -> anyhow::Result<()> {
-        let mut params = json!({ "cwd": cwd });
-        if let Some(session) = session {
-            params["session"] = json!(session);
-        }
-        if let Some(remote_control) = remote_control {
-            params["remote_control"] = remote_control.clone();
-        }
-        self.rpc_do("project.settings_set", params)
+    /// Sets where the folder's loops run (`session`) and its Claude's Remote
+    /// Control (`remote_control`) in the `.aiball.yaml` they read
+    /// (`project.settings_set`): the keys `patch` gives, a null one removed
+    /// (the layer below applies again). Answers the settings as they now are.
+    pub fn project_settings_set(&self, cwd: &str, patch: Value) -> anyhow::Result<ProjectSettings> {
+        let mut params = patch;
+        params["cwd"] = json!(cwd);
+        self.rpc("project.settings_set", params)
     }
 
     /// Makes a folder an aiball project (`.mcp.json`, `.aiball.yaml`), as
