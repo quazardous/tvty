@@ -916,12 +916,12 @@ impl TicketPanel {
     /// (bold when unread), then who spoke last, who holds it, and when.
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement {
         let id = ticket.id;
-        // Sunk in the shown agent's backlog: steps back, a ⤓ pill says how long yet.
+        // Sunk in the shown agent's backlog: steps back, an alarm's zzz says how long yet.
         let sunk = self.sunk.get(&id).and_then(|until| Some((crate::status::resume_short(until)?, left(until)?)));
         let group: SharedString = format!("ticket-row-{id}").into();
         let sunk_mark = sunk.as_ref().map(|(until, left)| {
             let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
-            icons::pill(Icon::Sunk, left.clone(), p().info).id(("sunk", id)).tip(format!(
+            icons::labelled(Icon::Sunk, p().muted, 13., left.clone()).flex_none().id(("sunk", id)).tip(format!(
                 "sunk in {agent}'s backlog until {until} (in {left}): its loop won't bring it up before, unless the thread moves"
             ))
         });
