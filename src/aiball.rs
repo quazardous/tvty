@@ -14,9 +14,6 @@ use tvty_ipc::aiball::{LocateError, Location};
 
 #[derive(Clone, Debug)]
 pub struct Aiball {
-    /// Where aiball is, and the credentials that go with it — or why that
-    /// is not known (said by every call, and by Options > About).
-    at: Result<Location, LocateError>,
     /// Who tvty acts as. Found with [`Aiball::find_user`].
     pub user: String,
 }
@@ -763,11 +760,11 @@ impl Aiball {
         self.rpc::<Value>(method, params).map(drop)
     }
 
-    /// aiball where [`location`] finds it; acting as `$TVTY_USER`, else as
+    /// aiball where [`location`] finds it, at each call; acting as `$TVTY_USER`, else as
     /// the local owner until [`Aiball::find_user`] knows better.
     pub fn from_env() -> Self {
         let user = std::env::var("TVTY_USER").unwrap_or_else(|_| "human".into());
-        Self { at: location(), user }
+        Self { user }
     }
 
     /// The human to act as: `$TVTY_USER` if set, else the named human seen
@@ -1254,7 +1251,10 @@ impl Aiball {
         use std::io::{Read, Write};
         use std::time::Duration;
 
-        let at = self.at.as_ref().map_err(|e| anyhow!("{e}"))?;
+        // Found again at each call: aiball may have come up since (its
+        // socket made by a start tvty asked for), as the bus finds it again
+        // at each reconnection.
+        let at = location().map_err(|e| anyhow!("{e}"))?;
         at.credentials.check(&at.endpoint)?;
         let mut stream = at.endpoint.connect().with_context(|| format!("aiball at {}", at.endpoint))?;
         stream.set_read_timeout(Some(Duration::from_secs(5)))?;

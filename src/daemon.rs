@@ -19,21 +19,25 @@ pub enum Start {
 
 /// Whether aiball answers, and if not, starts it when tvty may.
 pub fn ensure() -> Start {
-    let at = match crate::aiball::location() {
-        Ok(at) => at,
-        Err(error) => return Start::Missing(error.to_string()),
-    };
-    if at.endpoint.connect().is_ok() {
+    // Where aiball is may not be known yet: on a first start, before the
+    // daemon ever ran, there is neither its socket nor its machine secret.
+    // That is no reason not to start it.
+    let at = crate::aiball::location();
+    if at.as_ref().is_ok_and(|at| at.endpoint.connect().is_ok()) {
         return Start::Running;
     }
+    let not_there = match &at {
+        Ok(at) => format!("aiball does not answer at {}", at.endpoint),
+        Err(error) => error.to_string(),
+    };
     let chosen = ["AIBALL_SOCK", "AIBALL_URL"].iter().any(|v| std::env::var(v).is_ok_and(|s| !s.is_empty()));
     match decide(chosen, has_service()) {
         Some(()) => match start_service() {
             Ok(()) => Start::Started,
             Err(error) => Start::Missing(format!("aiball's service did not start: {error}")),
         },
-        None if chosen => Start::Missing(format!("aiball does not answer at {}", at.endpoint)),
-        None => Start::Missing(format!("aiball does not answer at {}, and there is no aiball service to start", at.endpoint)),
+        None if chosen => Start::Missing(not_there),
+        None => Start::Missing(format!("{not_there}; there is no aiball service to start")),
     }
 }
 
