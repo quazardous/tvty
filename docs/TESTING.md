@@ -134,8 +134,9 @@ uid, the source read-only.
 
 ## Driving tvty by name
 
-A test tvty (`scripts/test-env` sets `TVTY_DEBUG_CONTROL=1`; the user's
-tvty never has it) listens on `tvty-control.sock` in its state directory,
+A test tvty — a development build (`debug_assertions`; a release build has
+no such control), with `TVTY_DEBUG_CONTROL=1` as `scripts/test-env` sets it
+(the user's tvty never has it) — listens on `tvty-control.sock` in its state directory,
 and `scripts/tvty-ctl` speaks to it — no coordinates to guess, no sleep to
 hope for:
 

@@ -1,7 +1,8 @@
 //! The debug control: a test drives tvty and reads it by name, not by
-//! pixels — `scripts/tvty-ctl`, docs/TESTING.md. Open only when
-//! `TVTY_DEBUG_CONTROL` is set (the test env does), never in the user's
-//! tvty. One JSON request a line, one JSON answer a line, on a socket in
+//! pixels — `scripts/tvty-ctl`, docs/TESTING.md. In a development build
+//! only (`debug_assertions`: a release build has none, whatever its
+//! environment), and there only when `TVTY_DEBUG_CONTROL` is set (the test
+//! env does), never in the user's tvty. One JSON request a line, one JSON answer a line, on a socket in
 //! the state directory (a test tvty's own, apart from the user's).
 //!
 //! The requests are carried out on the UI thread, by the shell
@@ -34,6 +35,10 @@ pub fn socket() -> Option<std::path::PathBuf> {
 /// Opens the control when `TVTY_DEBUG_CONTROL` asks for it: the requests,
 /// to carry out.
 pub fn start() -> Option<UnboundedReceiver<Request>> {
+    // Never in a release build: it drives the window and fakes failures.
+    if !cfg!(debug_assertions) {
+        return None;
+    }
     std::env::var_os("TVTY_DEBUG_CONTROL").filter(|v| !v.is_empty())?;
     crate::inspect::enable();
     let path = socket()?;
