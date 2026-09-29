@@ -203,7 +203,14 @@ fn read<L: EventListener + Clone>(mut stream: Stream, term: Arc<FairMutex<Term<L
                     size.get("cols").and_then(Value::as_u64).unwrap_or(0) as usize,
                 );
                 if rows > 0 && cols > 0 {
-                    term.lock().resize(TermSize::new(cols, rows));
+                    let mut term = term.lock();
+                    let was = { use alacritty_terminal::grid::Dimensions as _; (term.columns(), term.screen_lines()) };
+                    if kind == SIZE && was != (cols, rows) {
+                        // Another client took the size, or this one did.
+                        log::info!("attach: the session's size is {cols}x{rows} (was {}x{})", was.0, was.1);
+                    }
+                    term.resize(TermSize::new(cols, rows));
+                    drop(term);
                     listener.send_event(Event::Wakeup);
                 }
             }

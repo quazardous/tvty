@@ -56,6 +56,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A host terminal whose size another client took no longer leaves a silent blank at its bottom: it says so, and a click, the wheel or coming back to the window takes the size back.
 - A terminal chosen in the list no longer lets the desktop show through a see-through window while it slides in: it fades in over its own background.
 - A long body edited in a full-screen ticket scrolls in its field instead of running over the fields below.
 - tvty no longer starts a loop in another project's agent's folder, where it would resume that agent's conversation: the sessions list marks it "⚠ AGENT's folder" and IDLE picks the agent's loop in its own folder.

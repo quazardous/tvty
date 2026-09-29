@@ -99,7 +99,11 @@ The controls are shared, as tmux shares them: claude-loop's own terminal
 and tvty both type, and the session's size follows the last one that
 typed. A copy only watches: nothing typed reaches Claude, and it never
 resizes the session — it is drawn at the session's size. Either leaves
-without stopping Claude.
+without stopping Claude. On aiball's host, a terminal with the controls
+whose size another client took (the session smaller than the view) says
+so in the space left, "size taken by another client · click to take it
+back"; a click or the wheel in it, or the window coming back to the
+front, takes it back.
 
 Who else is attached is aiball's word (its session's `clients` and
 `interactive`): the chip says it (`tmux · copy +1`), and so does the session's

@@ -363,6 +363,25 @@ impl TerminalView {
         }
     }
 
+    /// On aiball's host, the session is smaller than this view: another
+    /// client, which typed or took focus last, has its size.
+    pub fn outsized(&self) -> bool {
+        if !matches!(self.backend, Backend::Attach(_)) || !self.sized {
+            return false;
+        }
+        let term = self.term.lock();
+        (term.columns() as u16) < self.grid_size.0 || (term.screen_lines() as u16) < self.grid_size.1
+    }
+
+    /// Its size taken back, when another client had it: a gesture in the
+    /// view is the user's, here.
+    pub fn take_size_back(&self) {
+        if self.outsized() {
+            log::info!("attach: this view takes the session's size back");
+            self.take_size();
+        }
+    }
+
     pub fn focus_handle(&self) -> &FocusHandle {
         &self.focus
     }
@@ -668,6 +687,7 @@ impl TerminalView {
 
     fn on_mouse_down(&mut self, event: &MouseDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         window.focus(&self.focus, cx);
+        self.take_size_back();
         self.menu = None;
         // Ctrl+click on a link opens it (a plain click selects, as ever).
         if event.modifiers.control
@@ -848,6 +868,7 @@ impl TerminalView {
     /// The wheel: to the program when it asked for the mouse, else through
     /// tmux's history (copy mode), else through the terminal's own.
     fn on_scroll(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.take_size_back();
         let (origin, cell) = self.layout;
         let lines = match event.delta {
             ScrollDelta::Lines(delta) => crate::wheel::terminal_lines(delta.y),
@@ -952,6 +973,35 @@ impl Render for TerminalView {
                 status_line: false,
             })
             .children(self.menu.map(|at| self.menu_view(at, cx)))
+            // Another client has the session's size: said under it, a click
+            // takes it back.
+            .children(self.outsized().then(|| {
+                div()
+                    .id("terminal-outsized")
+                    .absolute()
+                    .bottom_2()
+                    .left_0()
+                    .right_0()
+                    .flex()
+                    .justify_center()
+                    .child(
+                        div()
+                            .px_2()
+                            .py_0p5()
+                            .rounded_sm()
+                            .text_xs()
+                            .text_color(crate::theme::p().muted)
+                            .bg(crate::theme::p().surface.opacity(0.8))
+                            .cursor_pointer()
+                            .hover(|d| d.text_color(crate::theme::p().text))
+                            .child("size taken by another client · click to take it back"),
+                    )
+                    .children(crate::inspect::mark_if("terminal-outsized"))
+                    .on_click(cx.listener(|view, _, _, cx| {
+                        view.take_size();
+                        cx.notify();
+                    }))
+            }))
             // A link whose text is not its address (a program's OSC 8 link):
             // the address, just above it.
             .children(self.hover_link.as_ref().filter(|l| l.named).and_then(|link| {

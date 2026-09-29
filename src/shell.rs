@@ -558,6 +558,16 @@ impl Shell {
         // What steers each project (the 📢), followed from aiball's word.
         crate::kernel::standing::init(aiball.clone(), cx);
         cx.observe(&crate::kernel::standing::store(cx), |_, _, cx| cx.notify()).detach();
+        // Back in the window: the terminal shown takes its size back from
+        // the host, if another client took it meanwhile.
+        cx.observe_window_activation(window, |shell: &mut Self, window, cx| {
+            if window.is_window_active()
+                && let Some(terminal) = shell.selected.as_ref().and_then(|s| shell.terminals.get(s))
+            {
+                terminal.read(cx).take_size_back();
+            }
+        })
+        .detach();
         // The agent bar's backlog list, redrawn as its backlog is read.
         cx.observe(&crate::kernel::backlog::store(cx), |_, _, cx| cx.notify()).detach();
         // aiball's bus first: the first read of the board goes through it.
