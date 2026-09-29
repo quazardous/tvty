@@ -8,19 +8,18 @@
 //! The form lives on while hidden: Esc puts it away, the draft kept for the
 //! next time, until it is sent.
 
-use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
-use gpui_kit::component::text::TextView;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::aiball::{Aiball, NewTicket};
-use crate::{composer, field};
 use crate::theme::p;
 use crate::ui::buttons::{self, Look as _};
 use crate::kernel::catalog::{self, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
+use crate::ui::ticket_text::{TicketText, TicketTextEvent};
 
 /// The form puts itself away (Esc, ✕); the draft stays.
 pub struct CloseNewTicket;
@@ -51,9 +50,6 @@ enum Pick {
 }
 
 
-/// The tallest a picture of the preview is drawn.
-const PREVIEW_PICTURE_HEIGHT: f32 = 600.;
-
 pub struct NewTicketForm {
     aiball: Aiball,
     project: String,
@@ -67,9 +63,9 @@ pub struct NewTicketForm {
     parent: Option<u64>,
     /// The parent typed by hand, when no sub-ticket gesture gave one.
     typed_parent: Option<u64>,
-    title: Entity<InputState>,
+    /// Its title and body, as they are written.
+    text: Entity<TicketText>,
     summary: Entity<InputState>,
-    body: Entity<TextareaState>,
     /// A parent typed by hand: its number, with or without a hash.
     parent_input: Entity<InputState>,
     catalog: Catalog,
@@ -77,73 +73,34 @@ pub struct NewTicketForm {
     combos: [(Pick, Entity<ComboState>); 6],
     busy: bool,
     error: Option<String>,
-    mentions: Vec<String>,
-    /// The body shown as it will read (the Preview tab).
-    preview: bool,
-    /// The images of the body, read for its preview.
-    images: crate::images::Cache,
 }
 
 impl EventEmitter<CloseNewTicket> for NewTicketForm {}
 impl EventEmitter<Created> for NewTicketForm {}
 
 impl NewTicketForm {
-    /// The body as it will read: its words, and its pictures alone on their
-    /// line drawn at the column's width (never beyond their size), as the
-    /// thread draws them; those not read yet say so.
-    fn preview_view(&self, text: &str) -> Div {
-        use crate::images::Segment;
-        let text = crate::images::preview(text, &self.images, false);
-        let mut col = div().flex().flex_col().gap_2();
-        for (i, segment) in crate::images::segments(&text, &self.images).into_iter().enumerate() {
-            col = match segment {
-                Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("new-body-preview-{i}")), md).selectable(true)),
-                Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
-                Segment::Pictures(pictures) => col.children(pictures.into_iter().map(|picture| {
-                    let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
-                    div()
-                        .w_full()
-                        .max_w(px(width.min(PREVIEW_PICTURE_HEIGHT * width / height)))
-                        .aspect_ratio(width / height)
-                        .rounded_sm()
-                        .overflow_hidden()
-                        .border_1()
-                        .border_color(p().border)
-                        .child(img(ImageSource::Image(picture.image.clone())).size_full())
-                })),
-            };
-        }
-        col
-    }
-
     pub fn new(aiball: Aiball, project: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // The fields column's width, dragged here or on another full page.
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
         // A catalog read in: the combos told.
         cx.observe_in(&catalog::store(cx), window, |form: &mut Self, _, window, cx| form.take_catalog(window, cx)).detach();
-        let title = cx.new(|cx| InputState::new(window, cx).placeholder("Title"));
-        let summary = cx.new(|cx| InputState::new(window, cx).placeholder("Summary, one line (optional)"));
-        let body = cx.new(|cx| {
-            TextareaState::new(window, cx)
-                .placeholder("What it is about… (@ to mention, ctrl+v pastes an image)")
-                .auto_grow(10, 40)
-        });
-        // @-mentions are offered as the body is typed; Ctrl+Enter files.
-        cx.subscribe_in(&body, window, |form: &mut Self, _, event: &InputEvent, window, cx| match event {
-            InputEvent::Change => cx.notify(),
-            InputEvent::PressEnter { secondary: true, .. } => form.submit(window, cx),
-            _ => {}
+        let text = cx.new(|cx| TicketText::new(aiball.clone(), "new", (10, 40), window, cx));
+        cx.subscribe_in(&text, window, |form: &mut Self, _, event: &TicketTextEvent, window, cx| match event {
+            TicketTextEvent::Submit => form.submit(window, cx),
+            TicketTextEvent::Failed(error) => {
+                form.error = Some(error.clone());
+                cx.notify();
+            }
         })
         .detach();
-        // Ctrl+Enter files from the title and the summary too.
-        for input in [&title, &summary] {
-            cx.subscribe_in(input, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
-                if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
-                    form.submit(window, cx);
-                }
-            })
-            .detach();
-        }
+        let summary = cx.new(|cx| InputState::new(window, cx).placeholder("Summary, one line (optional)"));
+        // Ctrl+Enter files from the summary too.
+        cx.subscribe_in(&summary, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
+            if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
+                form.submit(window, cx);
+            }
+        })
+        .detach();
         let parent_input = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let combos = [Pick::Project, Pick::Intent, Pick::Priority, Pick::Tag, Pick::Milestone, Pick::Assignee].map(|pick| {
             let state = combo::new(Vec::new(), None, window, cx);
@@ -166,14 +123,6 @@ impl NewTicketForm {
             }
         })
         .detach();
-        let reader = aiball.clone();
-        cx.spawn(async move |this, cx| {
-            let mentions = cx.background_executor().spawn(async move { reader.mention_suggestions() }).await;
-            if let Ok(mentions) = mentions {
-                let _ = this.update(cx, |form, _| form.mentions = mentions);
-            }
-        })
-        .detach();
         let mut form = Self {
             aiball,
             project: String::new(),
@@ -186,17 +135,13 @@ impl NewTicketForm {
             milestone: None,
             parent: None,
             typed_parent: None,
-            title,
+            text,
             summary,
-            body,
             parent_input,
             catalog: Catalog::default(),
             combos,
             busy: false,
             error: None,
-            mentions: Vec::new(),
-            preview: false,
-            images: Default::default(),
         };
         form.set_project(project, window, cx);
         form
@@ -205,7 +150,7 @@ impl NewTicketForm {
     /// Opens on a project and a parent: a new draft takes them; one already
     /// begun keeps its own, save a parent asked for (a sub-ticket).
     pub fn prefill(&mut self, project: Option<String>, parent: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
-        let begun = !self.title.read(cx).value().trim().is_empty() || !self.body.read(cx).value().trim().is_empty();
+        let begun = self.text.read(cx).begun(cx);
         if let Some(project) = project.filter(|_| !begun || parent.is_some()) {
             self.set_project(project, window, cx);
         }
@@ -213,7 +158,7 @@ impl NewTicketForm {
             self.parent = parent;
         }
         self.error = None;
-        self.title.update(cx, |input, cx| input.focus(window, cx));
+        self.text.update(cx, |text, cx| text.focus_title(window, cx));
         cx.notify();
     }
 
@@ -308,53 +253,15 @@ impl NewTicketForm {
         cx.notify();
     }
 
-    fn complete_mention(&mut self, name: String, window: &mut Window, cx: &mut Context<Self>) {
-        let (before, _) = field::around_cursor(&self.body, cx);
-        let Some(start) = composer::mention_start(&before) else { return };
-        field::replace_range(&self.body, start..before.len(), &format!("@{name} "), window, cx);
-        cx.notify();
-    }
-
-    /// Ctrl+V with an image: uploaded, its link put in the body.
-    fn paste_image(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
-        let Some((bytes, content_type, name)) = composer::clipboard_image(cx) else {
-            return false;
-        };
-        let aiball = self.aiball.clone();
-        let window_handle = window.window_handle();
-        self.busy = true;
-        cx.spawn(async move |this, cx| {
-            let uploaded = cx
-                .background_executor()
-                .spawn(async move { aiball.upload(&bytes, &content_type, &name) })
-                .await;
-            let _ = cx.update_window(window_handle, |_, window, cx| {
-                let _ = this.update(cx, |form, cx| {
-                    form.busy = false;
-                    match uploaded {
-                        Ok(url) => {
-                            let (before, after) = field::around_cursor(&form.body, cx);
-                            field::insert_at_cursor(&form.body, &composer::image_snippet(&before, &after, &url), window, cx);
-                        }
-                        Err(error) => form.error = Some(format!("{error:#}")),
-                    }
-                    cx.notify();
-                });
-            });
-        })
-        .detach();
-        true
-    }
-
     /// Files the ticket, then what follows it; opens it once filed.
     fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy {
+        if self.busy || self.text.read(cx).uploading() {
             return;
         }
-        let title = self.title.read(cx).value().trim().to_string();
+        let title = self.text.read(cx).title(cx).trim().to_string();
         if title.is_empty() {
             self.error = Some("A title first.".into());
-            self.title.update(cx, |input, cx| input.focus(window, cx));
+            self.text.update(cx, |text, cx| text.focus_title(window, cx));
             cx.notify();
             return;
         }
@@ -368,7 +275,7 @@ impl NewTicketForm {
             project: self.project.clone(),
             title,
             summary: self.summary.read(cx).value().to_string(),
-            body: self.body.read(cx).value().to_string(),
+            body: self.text.read(cx).body(cx),
             intent: self.intent.into(),
             priority: self.priority.into(),
             scope: self.scope.into(),
@@ -410,11 +317,8 @@ impl NewTicketForm {
 
     /// A fresh draft, on the same project.
     fn clear(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        for input in [&self.title, &self.summary] {
-            input.update(cx, |input, cx| input.set_value("", window, cx));
-        }
-        self.body.update(cx, |body, cx| body.set_value("", window, cx));
-        self.preview = false;
+        self.summary.update(cx, |input, cx| input.set_value("", window, cx));
+        self.text.update(cx, |text, cx| text.set("", "", window, cx));
         (self.intent, self.priority, self.level, self.scope) = ("request", "normal", "task", "default");
         self.typed_parent = None;
         self.parent_input.update(cx, |input, cx| input.set_value("", window, cx));
@@ -589,12 +493,7 @@ impl NewTicketForm {
 
 impl Render for NewTicketForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let busy = self.busy;
-        let mentions = composer::typed_mention(&field::around_cursor(&self.body, cx).0).map(|typed| {
-            composer::mention_chips(&self.mentions, &typed, "new-mention", cx, |form: &mut Self, name, window, cx| {
-                form.complete_mention(name, window, cx)
-            })
-        });
+        let busy = self.busy || self.text.read(cx).uploading();
         let words = div()
             .flex_1()
             .min_w_0()
@@ -603,64 +502,9 @@ impl Render for NewTicketForm {
             .flex_col()
             .gap_2()
             .p_4()
-            // A paste with an image goes to aiball, its link to the body.
-            .capture_action(cx.listener(|form, _: &Paste, window, cx| {
-                if form.paste_image(window, cx) {
-                    cx.stop_propagation();
-                }
-            }))
-            .child(crate::focusmode::on_hover(div().child(Input::new(&self.title)), self.title.read(cx).focus_handle(cx)))
-            // The body, written or previewed; the names that fit an `@`
-            // right under the words. (No summary: aiball's agents write
-            // one; a person's title says enough.)
-            .child(composer::write_tabs("new-body", self.preview, cx, |form: &mut Self, on, cx| {
-                form.preview = on;
-                if on {
-                    // Its pictures, read once; the preview draws them when they came.
-                    let text = form.body.read(cx).value().to_string();
-                    let (aiball, images) = (form.aiball.clone(), form.images.clone());
-                    cx.spawn(async move |this, cx| {
-                        let came = cx.background_executor().spawn(async move { crate::images::load(&text, &aiball, &images) }).await;
-                        if came {
-                            let _ = this.update(cx, |_, cx| cx.notify());
-                        }
-                    })
-                    .detach();
-                }
-                cx.notify();
-            }))
-            .child(if self.preview {
-                let text = self.body.read(cx).value().to_string();
-                // Its own height, the button right under it; shrunk, and
-                // scrolled, when the page is short.
-                div()
-                    .id("new-body-preview")
-                    .min_h_0()
-                    .overflow_y_scroll()
-                    .p_3()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(p().border)
-                    .child(if text.trim().is_empty() {
-                        div().text_color(p().muted).child("Nothing to preview yet.").into_any_element()
-                    } else {
-                        self.preview_view(&text).into_any_element()
-                    })
-                    .into_any_element()
-            } else {
-                // A composer: Ctrl+Enter files it (keymap's ComposerSend), no
-                // new line put in.
-                div()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .key_context(crate::keymap::COMPOSER)
-                    .on_action(cx.listener(|form, _: &crate::keymap::ComposerSend, window, cx| form.submit(window, cx)))
-                    .child(crate::focusmode::on_hover(div().child(Textarea::new(&self.body)), self.body.read(cx).focus_handle(cx)))
-                    .children(mentions)
-                    .into_any_element()
-            })
+            // Its words; no summary: aiball's agents write one, a person's
+            // title says enough.
+            .child(self.text.clone())
             .when_some(self.error.clone(), |d, error| d.child(div().text_color(p().danger).child(error)))
             .child(
                 div()

@@ -18,6 +18,7 @@ use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::ticketref;
+use crate::ui::ticket_text::{TicketText, TicketTextEvent};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
 use crate::thread;
@@ -88,7 +89,6 @@ enum Menu {
 /// Full screen, the invariant being changed in the left column.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Editing {
-    Content,
     Intent,
     Priority,
     Level,
@@ -136,8 +136,11 @@ pub struct TicketPanel {
     /// A project chosen for the ticket, moved once confirmed.
     move_to: Option<String>,
     catalog: Option<Catalog>,
-    edit_title: Entity<InputState>,
-    edit_body: Entity<TextareaState>,
+    /// Full screen, the ticket's title and body edited in place, with
+    /// the new ticket's editor; `text_error`: why a save failed.
+    edit_text: Entity<TicketText>,
+    editing_text: bool,
+    text_error: Option<String>,
     relation_target: Entity<InputState>,
     /// Full screen, a comment's ⋯ menu, the one being edited, the one
     /// whose deletion waits for a confirming click.
@@ -174,8 +177,15 @@ impl TicketPanel {
             }
         })
         .detach();
-        let edit_title = cx.new(|cx| InputState::new(window, cx));
-        let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
+        let edit_text = cx.new(|cx| TicketText::new(aiball.clone(), "edit", (6, 24), window, cx));
+        cx.subscribe_in(&edit_text, window, |panel: &mut Self, _, event: &TicketTextEvent, window, cx| {
+            match event {
+                TicketTextEvent::Submit => panel.save_text(window, cx),
+                TicketTextEvent::Failed(error) => panel.text_error = Some(error.clone()),
+            }
+            cx.notify();
+        })
+        .detach();
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
         // A catalog read in by the store.
@@ -225,8 +235,9 @@ impl TicketPanel {
             field_combo: None,
             move_to: None,
             catalog: None,
-            edit_title,
-            edit_body,
+            edit_text,
+            editing_text: false,
+            text_error: None,
             relation_target,
             comment_menu: None,
             comment_editing: None,
@@ -292,6 +303,7 @@ impl TicketPanel {
         if self.full != full {
             self.full = full;
             self.editing = None;
+            self.editing_text = false;
             // Full screen, the reply starts at four lines; in the panel, two.
             let (min, max) = if full { (4, 16) } else { (2, 8) };
             self.reply.update(cx, |reply, cx| reply.set_auto_grow(min, max, cx));
@@ -452,13 +464,6 @@ impl TicketPanel {
                 .detach();
                 self.field_combo = Some(state);
             }
-            if editing == Editing::Content {
-                let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
-                if let Some(ticket) = ticket {
-                    self.edit_title.update(cx, |input, cx| input.set_value(ticket.title.clone(), window, cx));
-                    self.edit_body.update(cx, |input, cx| input.set_value(ticket.body.clone().unwrap_or_default(), window, cx));
-                }
-            }
         }
         cx.notify();
     }
@@ -482,13 +487,81 @@ impl TicketPanel {
         );
     }
 
-    fn save_content(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let title = self.edit_title.read(cx).value().trim().to_string();
-        let body = self.edit_body.read(cx).value().to_string();
-        if title.is_empty() {
+    /// Full screen: the title and body edited where they read, or put back.
+    fn edit_text(&mut self, on: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.editing_text = on;
+        self.text_error = None;
+        if on {
+            let ticket = self.detail.as_ref().and_then(|d| d.thread.as_ref()).map(|t| t.ticket.clone());
+            if let Some(ticket) = ticket {
+                self.edit_text.update(cx, |text, cx| text.set(&ticket.title, ticket.body.as_deref().unwrap_or_default(), window, cx));
+                self.edit_text.update(cx, |text, cx| text.focus_title(window, cx));
+            }
+        }
+        cx.notify();
+    }
+
+    /// Full screen, the title and body being edited, in the title's place:
+    /// the new ticket's editor, Cancel and Save under it.
+    fn text_editor(&self, id: u64, busy: bool, cx: &mut Context<Self>) -> AnyElement {
+        let busy = busy || self.edit_text.read(cx).uploading();
+        div()
+            .id("text-editor")
+            .flex()
+            .flex_col()
+            .gap_2()
+            .max_h(px(560.))
+            .overflow_y_scroll()
+            .child(div().text_sm().text_color(p().muted).child(format!("Editing #{id}")))
+            .child(self.edit_text.clone())
+            .when_some(self.text_error.clone(), |d, error| d.child(div().text_sm().text_color(p().danger).child(error)))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter saves · esc puts it back"))
+                    .child(buttons::secondary("text-cancel", "Cancel").on_click(cx.listener(|panel, _, window, cx| panel.edit_text(false, window, cx))))
+                    .child(
+                        buttons::primary("text-save", "Save")
+                            .loading(busy)
+                            .disabled(busy)
+                            .on_click(cx.listener(|panel, _, window, cx| panel.save_text(window, cx))),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    /// The title and body being edited: Esc puts them back first.
+    pub fn editing_text(&self) -> bool {
+        self.editing_text && self.full
+    }
+
+    pub fn cancel_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.edit_text(false, window, cx);
+    }
+
+    fn save_text(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if !self.editing_text || self.edit_text.read(cx).uploading() || self.detail.as_ref().is_some_and(|d| d.busy) {
             return;
         }
-        self.change("title and body edited", move |aiball, ticket| aiball.edit(ticket, json!({ "title": title, "body": body })), window, cx);
+        let title = self.edit_text.read(cx).title(cx).trim().to_string();
+        let body = self.edit_text.read(cx).body(cx);
+        if title.is_empty() {
+            self.text_error = Some("A title first.".into());
+            self.edit_text.update(cx, |text, cx| text.focus_title(window, cx));
+            cx.notify();
+            return;
+        }
+        let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) else { return };
+        self.gesture(
+            "title and body edited".into(),
+            String::new(),
+            move |aiball| aiball.edit(ticket, json!({ "title": title, "body": body })),
+            |panel, _, _| panel.editing_text = false,
+            window,
+            cx,
+        );
     }
 
     fn add_relation(&mut self, kind: &'static str, window: &mut Window, cx: &mut Context<Self>) {
@@ -595,6 +668,10 @@ impl TicketPanel {
 
     /// Opens a ticket of `project` (`None`: the panel's own).
     pub fn open_in(&mut self, project: Option<String>, ticket: u64, cx: &mut Context<Self>) {
+        // Another ticket: the one edited is let go.
+        if self.detail.as_ref().is_none_or(|d| d.ticket != ticket) {
+            self.editing_text = false;
+        }
         self.detail = Some(Detail {
             ticket,
             project,
@@ -1118,6 +1195,16 @@ impl TicketPanel {
             .items_center()
             .when_some(glyph, |d, glyph| d.child(icons::icon(icons::of_glyph(glyph), glyph_colour(glyph, yours), 20.)))
             .child(div().flex_1().min_w_0().child(format!("#{} {}", ticket.id, ticket.title)))
+            // Full screen, the title and body are edited where they read.
+            .when(self.full, |d| {
+                d.child(
+                    buttons::link("text-edit", "✎ edit")
+                        .text_xs()
+                        .font_weight(FontWeight::NORMAL)
+                        .tip("Edit the title and the body")
+                        .on_click(cx.listener(|panel, _, window, cx| panel.edit_text(true, window, cx))),
+                )
+            })
             .child(
                 buttons::link("thread-order", if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
                     .text_xs()
@@ -1660,7 +1747,7 @@ impl TicketPanel {
                     .py_2()
                     .border_b_1()
                     .border_color(p().border)
-                    .child(title),
+                    .child(if self.editing_text { self.text_editor(ticket.id, detail.busy, cx) } else { title.into_any_element() }),
             )
             .child(
                 crate::sidecol::row()
@@ -1779,41 +1866,6 @@ impl TicketPanel {
             .child(div().pt_1().child(chips))
             .child(row("inv-lifecycle", "lifecycle", lifecycle, None, cx))
             .children(ticket.postponed_until.as_deref().map(|until| row("inv-snoozed", "snoozed", format!("until {}", date(until)), None, cx)));
-
-        // ── Content ──
-        col = col.child(group("Content")).child(row(
-            "inv-content",
-            "title, body",
-            if editing == Some(Editing::Content) { "editing…".into() } else { "edit".into() },
-            Some(Editing::Content),
-            cx,
-        ));
-        if editing == Some(Editing::Content) {
-            col = col.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .pb_2()
-                    .child(Input::new(&self.edit_title))
-                    .child(Textarea::new(&self.edit_body))
-                    .child(
-                        div()
-                            .flex()
-                            .gap_2()
-                            .justify_end()
-                            .child(
-                                buttons::secondary("content-cancel", "Cancel")
-                                    .on_click(cx.listener(|panel, _, window, cx| panel.start_editing(Editing::Content, window, cx))),
-                            )
-                            .child(
-                                buttons::primary("content-save", "Save")
-                                    .loading(busy)
-                                    .on_click(cx.listener(|panel, _, window, cx| panel.save_content(window, cx))),
-                            ),
-                    ),
-            );
-        }
 
         // ── Fields ──
         col = col.child(group("Fields"));

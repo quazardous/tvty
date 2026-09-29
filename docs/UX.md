@@ -324,8 +324,10 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   is linked to, its tokens — each changeable in place: a click on a row
   offers its values (intent, priority, level, scope, milestone, tags, the
   reporter, the assignee or release, a relation to add or undo, the
-  project to move to), the title and body open an editor; no reply goes
-  with these; on the rest the talk at a readable width, whole — each
+  project to move to); no reply goes with these. "✎ edit" beside the title
+  edits the title and body in its place, with the new ticket's editor
+  (Write / Preview, @-mentions, Ctrl+V pastes an image): Ctrl+Enter saves,
+  Esc puts them back; on the rest the talk at a readable width, whole — each
   comment with a ⋯ menu: edit, delete (a second click confirms), classify
   as a plan, a resolution, closing without a fix or an escalation (one way,
   the four kinds; accepting stays with the decision card), no decision, a

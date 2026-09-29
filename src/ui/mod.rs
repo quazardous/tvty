@@ -2,4 +2,5 @@
 
 pub mod buttons;
 pub mod combo;
+pub mod ticket_text;
 pub mod ticketref;

@@ -2222,6 +2222,8 @@ impl Shell {
             cx.notify();
         } else if key == "escape" && self.new_ticket_shown {
             self.close_new_ticket(window, cx);
+        } else if key == "escape" && self.panel.read(cx).editing_text() {
+            self.panel.update(cx, |panel, cx| panel.cancel_text(window, cx));
         } else if key == "escape" && self.panel.read(cx).is_full() {
             self.panel.update(cx, |panel, cx| panel.set_full(false, cx));
         } else if key == "escape" && self.full_list_shown && self.full_list.as_ref().is_some_and(|l| l.read(cx).selecting()) {
