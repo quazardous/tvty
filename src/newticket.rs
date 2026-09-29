@@ -19,6 +19,7 @@ use crate::aiball::{Aiball, NewTicket};
 use crate::{composer, field};
 use crate::theme::p;
 use crate::ui::buttons::{self, Look as _};
+use crate::kernel::catalog::{self, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 
 /// The form puts itself away (Esc, ✕); the draft stays.
@@ -49,28 +50,6 @@ enum Pick {
     Assignee,
 }
 
-
-/// What the left column offers: the board's projects and agents, and the
-/// chosen project's tags and milestones.
-#[derive(Clone, Default)]
-struct Catalog {
-    project: String,
-    projects: Vec<String>,
-    agents: Vec<String>,
-    /// The agents working on this project.
-    own: Vec<String>,
-    tags: Vec<String>,
-    milestones: Vec<(u64, String)>,
-}
-
-impl Catalog {
-    /// Every agent, the project's own first: (name, whether it is).
-    fn agents_by_project(&self) -> Vec<(String, bool)> {
-        let mut all: Vec<(String, bool)> = self.own.iter().map(|a| (a.clone(), true)).collect();
-        all.extend(self.agents.iter().filter(|a| !self.own.contains(a)).map(|a| (a.clone(), false)));
-        all
-    }
-}
 
 /// The tallest a picture of the preview is drawn.
 const PREVIEW_PICTURE_HEIGHT: f32 = 600.;
@@ -140,6 +119,8 @@ impl NewTicketForm {
     pub fn new(aiball: Aiball, project: String, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // The fields column's width, dragged here or on another full page.
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
+        // A catalog read in: the combos told.
+        cx.observe_in(&catalog::store(cx), window, |form: &mut Self, _, window, cx| form.take_catalog(window, cx)).detach();
         let title = cx.new(|cx| InputState::new(window, cx).placeholder("Title"));
         let summary = cx.new(|cx| InputState::new(window, cx).placeholder("Summary, one line (optional)"));
         let body = cx.new(|cx| {
@@ -239,47 +220,28 @@ impl NewTicketForm {
     /// The project the ticket goes to: its tags and milestones are read
     /// again, and a milestone of the other project dropped.
     fn set_project(&mut self, project: String, window: &mut Window, cx: &mut Context<Self>) {
-        if project == self.project && self.catalog.project == project {
+        if project == self.project && self.catalog.project == project && !self.catalog.projects.is_empty() {
             return;
         }
         if project != self.project {
             self.milestone = None;
         }
         self.project = project.clone();
-        self.fill_combos(window, cx);
-        let aiball = self.aiball.clone();
-        cx.spawn_in(window, async move |this, cx| {
-            let catalog = cx
-                .background_executor()
-                .spawn(async move {
-                    let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
-                    let own = aiball
-                        .consumers()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|c| c.kind != "human" && c.project.as_deref() == Some(project.as_str()))
-                        .map(|c| c.consumer_id)
-                        .collect();
-                    Catalog {
-                        own,
-                        tags: aiball.tag_catalog(&project).unwrap_or_default(),
-                        milestones: aiball.milestones(&project).unwrap_or_default(),
-                        projects,
-                        agents,
-                        project,
-                    }
-                })
-                .await;
-            let _ = this.update_in(cx, |form, window, cx| {
-                if catalog.project == form.project {
-                    form.catalog = catalog;
-                    form.fill_combos(window, cx);
-                    cx.notify();
-                }
-            });
-        })
-        .detach();
+        // The store reads it once for every view; its read comes in by
+        // `take_catalog`.
+        catalog::request(cx, &project);
+        self.take_catalog(window, cx);
         cx.notify();
+    }
+
+    /// The project's catalog, as the store has it now: the combos told.
+    fn take_catalog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let read = catalog::get(cx, &self.project).unwrap_or_else(|| Catalog { project: self.project.clone(), ..Default::default() });
+        if read != self.catalog {
+            self.catalog = read;
+            self.fill_combos(window, cx);
+            cx.notify();
+        }
     }
 
     fn combo(&self, pick: Pick) -> &Entity<ComboState> {

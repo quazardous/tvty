@@ -549,6 +549,8 @@ impl AgentCounts {
 impl Shell {
     pub fn new(selected: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let aiball = Aiball::from_env();
+        // The projects' catalogs, read once for every view that needs one.
+        crate::kernel::catalog::init(aiball.clone(), cx);
         // aiball's bus first: the first read of the board goes through it.
         let (notices, wire_notices) = futures::channel::mpsc::unbounded::<crate::wire::Notification>();
         let wire = crate::aiball::start_wire(&aiball.user, notices);

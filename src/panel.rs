@@ -13,6 +13,7 @@ use gpui_kit::component::Disableable as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
+use crate::kernel::catalog::{self as catalogs, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
@@ -104,18 +105,6 @@ enum Editing {
 const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"];
 const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
 
-/// What the full-screen detail offers to choose from, per project.
-#[derive(Clone, Default)]
-struct Catalog {
-    project: String,
-    tags: Vec<String>,
-    milestones: Vec<(u64, String)>,
-    agents: Vec<String>,
-    /// The project's own agents, as aiball knows them.
-    own: Vec<String>,
-    projects: Vec<String>,
-}
-
 pub struct TicketPanel {
     aiball: Aiball,
     scope: Option<Scope>,
@@ -191,6 +180,8 @@ impl TicketPanel {
         let edit_body = cx.new(|cx| TextareaState::new(window, cx).auto_grow(4, 16));
         let relation_target = cx.new(|cx| InputState::new(window, cx).placeholder("#ticket"));
         let edit_comment = cx.new(|cx| TextareaState::new(window, cx).auto_grow(3, 16));
+        // A catalog read in by the store.
+        cx.observe(&catalogs::store(cx), |panel: &mut Self, _, cx| panel.take_catalog(cx)).detach();
         // The rows a notification is about shine while it is up.
         cx.subscribe(&crate::bus::bus(cx), |panel: &mut Self, _, signal: &crate::bus::Signal, cx| {
             use crate::bus::Signal;
@@ -199,11 +190,9 @@ impl TicketPanel {
                 Signal::Notices => cx.notify(),
                 // Back on the bus: the ticket open may have moved meanwhile.
                 Signal::Bus(BusSignal::Reconnected { .. }) => panel.reload_open(cx),
-                // aiball restarted: what was read of it is stale.
-                Signal::Bus(BusSignal::EpochChanged) => {
-                    panel.catalog = None;
-                    panel.reload_open(cx);
-                }
+                // aiball restarted: the ticket open may have moved (the
+                // catalogs' store reads its part again).
+                Signal::Bus(BusSignal::EpochChanged) => panel.reload_open(cx),
                 _ => {}
             }
         })
@@ -348,44 +337,24 @@ impl TicketPanel {
             .or_else(|| self.scope.as_ref().map(|s| s.project.clone()))
     }
 
-    /// Reads what the left column offers to choose from.
+    /// What the left column offers to choose from: asked of the store,
+    /// which reads it once for every view; its read comes in by
+    /// `take_catalog`.
     fn read_catalog(&mut self, cx: &mut Context<Self>) {
         let Some(project) = self.project() else { return };
-        if self.catalog.as_ref().is_some_and(|c| c.project == project) {
-            return;
-        }
-        let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
-            let catalog = cx
-                .background_executor()
-                .spawn(async move {
-                    let (projects, agents) = aiball.projects_and_agents().unwrap_or_default();
-                    let mut own: Vec<String> = aiball
-                        .consumers()
-                        .unwrap_or_default()
-                        .into_iter()
-                        .filter(|c| c.kind != "human" && c.project.as_deref() == Some(project.as_str()))
-                        .map(|c| c.consumer_id)
-                        .collect();
-                    own.sort();
-                    Catalog {
-                        own,
-                        tags: aiball.tag_catalog(&project).unwrap_or_default(),
-                        milestones: aiball.milestones(&project).unwrap_or_default(),
-                        agents,
-                        projects,
-                        project,
-                    }
-                })
-                .await;
-            let _ = this.update(cx, |panel, cx| {
-                panel.catalog = Some(catalog);
-                cx.notify();
-            });
-        })
-        .detach();
+        catalogs::request(cx, &project);
+        self.take_catalog(cx);
     }
 
+    /// The project's catalog, as the store has it now.
+    fn take_catalog(&mut self, cx: &mut Context<Self>) {
+        let Some(project) = self.project() else { return };
+        let read = catalogs::get(cx, &project);
+        if read.is_some() && read != self.catalog {
+            self.catalog = read;
+            cx.notify();
+        }
+    }
 
     /// A long field's choices and what it holds: the project's own agents
     /// first, the others greyed.
