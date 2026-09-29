@@ -76,7 +76,7 @@ struct Detail {
     menu: Option<Menu>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Menu {
     Snooze,
     Priority,
@@ -85,7 +85,7 @@ enum Menu {
 }
 
 /// Full screen, the invariant being changed in the left column.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Editing {
     Content,
     Intent,
@@ -272,6 +272,20 @@ impl TicketPanel {
         self.on_comment("comment edited", move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
     }
 
+    /// What the panel shows, said for the debug control: its project and
+    /// agent, the ticket open, the field being edited, the menu open.
+    pub fn said(&self) -> serde_json::Value {
+        serde_json::json!({
+            "project": self.scope.as_ref().map(|s| s.project.clone()),
+            "agent": self.scope.as_ref().and_then(|s| s.agent.clone()),
+            "tickets": self.tickets.len(),
+            "ticket": self.detail.as_ref().map(|d| d.ticket),
+            "full": self.is_full(),
+            "editing": self.editing.map(|e| format!("{e:?}")),
+            "menu": self.detail.as_ref().and_then(|d| d.menu).map(|m| format!("{m:?}")),
+        })
+    }
+
     pub fn is_full(&self) -> bool {
         self.full && self.detail.is_some()
     }
@@ -436,7 +450,11 @@ impl TicketPanel {
             _ => ("nobody", "an agent…"),
         };
         let clearable = matches!(editing, Editing::Milestone | Editing::Assignee);
-        div().w(px(220.)).child(combo::view(state, "field-combo", placeholder, search).cleanable(clearable)).into_any_element()
+        div()
+            .w(px(220.))
+            .child(combo::view(state, "field-combo", placeholder, search).cleanable(clearable))
+            .children(crate::inspect::mark_if("field-combo"))
+            .into_any_element()
     }
 
     fn start_editing(&mut self, editing: Editing, window: &mut Window, cx: &mut Context<Self>) {
@@ -1036,6 +1054,7 @@ impl TicketPanel {
 
         div()
             .id(("ticket", id))
+            .children(crate::inspect::mark_if(format!("ticket-{id}")))
             .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()

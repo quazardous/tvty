@@ -213,6 +213,7 @@ impl Shell {
             bar = bar.child(
                 div()
                     .id(SharedString::from(format!("tab-{session}")))
+                    .children(crate::inspect::mark_if(format!("tab-{session}")))
                     .flex()
                     .flex_none()
                     .items_center()

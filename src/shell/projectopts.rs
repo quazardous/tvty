@@ -81,7 +81,7 @@ impl Shell {
 
     /// The scope list, atop the options.
     pub(super) fn options_scope(&self) -> impl IntoElement + use<> {
-        div().px_1().children(
+        div().px_1().children(crate::inspect::mark_if("options-scope")).children(
             self.scope_select
                 .as_ref()
                 .map(|state| combo::view(state, "options-scope", GLOBAL, "a project…").menu_max_h(px(360.)).w_full()),

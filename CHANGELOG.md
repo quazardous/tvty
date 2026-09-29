@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- In a debug build, ctrl+alt+shift+i opens GPUI's inspector: pick an element, read its id and where it is made.
+
 ### Changed
 
 - The agent bar has one chip for where a loop runs and who types into it ("tmux · controls +1"); a click opens one line to take or leave the controls — taking them makes claude-loop's terminal a copy — or to move the loop.

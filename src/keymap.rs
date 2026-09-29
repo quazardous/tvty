@@ -59,6 +59,7 @@ actions!(
         NewTicket,
         FullList,
         NextTheme,
+        ToggleInspector,
         TerminalCopy,
         TerminalPaste,
         SendTab,
@@ -121,6 +122,7 @@ commands! {
     "project.megaphone", WINDOW, ["ctrl-shift-m"], "The 📢 of the shown project: its standing instruction and its wake focus", Megaphone;
     "list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList;
     "theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme;
+    "debug.inspector", WINDOW, ["ctrl-alt-shift-i"], "GPUI's inspector: pick an element, see its id and where it is made (debug builds)", ToggleInspector;
     "terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection", TerminalCopy;
     "terminal.paste", TERMINAL, ["ctrl-shift-v", "shift-insert"], "Paste the clipboard", TerminalPaste;
     "terminal.tab", TERMINAL, ["tab"], "Tab, to the program (not the focus to the next element)", SendTab;

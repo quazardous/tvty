@@ -28,6 +28,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod control;
 mod ended;
 mod frame;
 mod help;
@@ -799,6 +800,10 @@ impl Shell {
                 }
                 shell.focus_home(window, cx)
             }
+        }
+        // A test's debug control (TVTY_DEBUG_CONTROL): tvty read and driven by id.
+        if let Some(requests) = crate::control::start() {
+            Self::serve_control(requests, window, cx);
         }
         shell
     }
@@ -1608,6 +1613,7 @@ impl Shell {
         let name = project.to_string();
         div()
             .id(SharedString::from(format!("heading-{project}")))
+            .children(crate::inspect::mark_if(format!("heading-{project}")))
             .flex_1()
             .min_w_0()
             .truncate()
@@ -4119,6 +4125,7 @@ impl Shell {
                 list = list.child(
                     div()
                         .id(SharedString::from(format!("terminal-{session}")))
+                        .children(crate::inspect::mark_if(format!("terminal-{session}")))
                         .h(px(height))
                         .flex_none()
                         .overflow_hidden()
@@ -4382,6 +4389,7 @@ impl Shell {
 
 impl Render for Shell {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        crate::inspect::next_frame();
         self.surface_drawn(cx);
         // The slider and the gallery above the notifications: none drawn
         // while they are up.
@@ -4690,6 +4698,7 @@ impl Render for Shell {
             }))
             .on_action(cx.listener(|shell, _: &keymap::AfkCycle, _, cx| shell.afk_cycle(cx)))
             .on_action(cx.listener(|shell, _: &keymap::ToggleOptions, window, cx| shell.toggle_options(window, cx)))
+            .on_action(cx.listener(|_, _: &keymap::ToggleInspector, window, cx| control::toggle_inspector_here(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::Megaphone, window, cx| shell.open_megaphone(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
             .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))

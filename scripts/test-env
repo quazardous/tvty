@@ -28,6 +28,8 @@ export AIBALL_HOME="${XDG_RUNTIME_DIR:-/tmp}/tvty-fake-aiball-$(id -u)"
 # Loops a test starts: their state apart, fake-claude instead of claude.
 export CLAUDE_LOOP_STATE_ROOT="$TVTY_ROOT/dev/claude-loop"
 export CL_CLAUDE_CMD="$(cd "$TVTY_ROOT/.." && pwd)/aiball/bin/fake-claude"
+# The debug control (scripts/tvty-ctl): a test tvty is read and driven by id.
+export TVTY_DEBUG_CONTROL=1
 unset TMUX
 mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty" "$XDG_STATE_HOME/tvty" "$CLAUDE_LOOP_STATE_ROOT"
 # The projects' list starts folded: nothing to click by accident (unless an

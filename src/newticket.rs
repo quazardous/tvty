@@ -523,7 +523,12 @@ impl NewTicketForm {
             }
         }
         let clearable = matches!(pick, Pick::Milestone | Pick::Assignee);
-        row.child(div().w(px(220.)).child(combo::view(self.combo(pick), SharedString::from(format!("new-{id}")), placeholder, search).cleanable(clearable)))
+        row.child(
+            div()
+                .w(px(220.))
+                .child(combo::view(self.combo(pick), SharedString::from(format!("new-{id}")), placeholder, search).cleanable(clearable))
+                .children(crate::inspect::mark_if(format!("new-{id}"))),
+        )
     }
 
     /// The left third: what the ticket is. The short fields show their

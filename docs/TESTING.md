@@ -132,6 +132,32 @@ fake-claude behind the node (the image of aiball's full-stack tests).
 removes its data (`dev/proxy-stack/run`). The containers run as the user's
 uid, the source read-only.
 
+## Driving tvty by name
+
+A test tvty (`scripts/test-env` sets `TVTY_DEBUG_CONTROL=1`; the user's
+tvty never has it) listens on `tvty-control.sock` in its state directory,
+and `scripts/tvty-ctl` speaks to it — no coordinates to guess, no sleep to
+hope for:
+
+- `tvty-ctl tree [PREFIX]` — what is on screen, by id, with where it is
+  painted: every button, chip and link (`ui::buttons` marks them), the
+  sessions' rows (`terminal-NAME`), the tabs (`tab-NAME`), the projects'
+  headings (`heading-NAME`), the tickets' rows (`ticket-N`), the combos
+  (`new-intent`, `field-combo`, `options-scope`). An element worth
+  reaching gets `.children(crate::inspect::mark_if(id))`;
+- `tvty-ctl click ID`, `hover ID`, `key KEYS` (`ctrl-enter`, `escape`),
+  `type TEXT` — put in through the window, as the user's would: the same on
+  Windows, where wbox is not; `where ID` gives the middle, for wbox's real
+  pointer when the platform must see it (a tooltip);
+- `tvty-ctl wait ID [MS]` — until ID is painted;
+- `tvty-ctl state` — the page, the terminal, the panel (project, ticket,
+  field being edited, menu open), the bus and its subscriptions;
+- `tvty-ctl inspector` — GPUI's inspector (debug builds; its key is
+  ctrl+alt+shift+i): pick an element, read its id and where it is made.
+
+The screenshot stays the proof of what is seen; this is how to get there,
+and how to read what a screenshot does not say.
+
 ## Gestures wbox has no tool for
 
 `scripts/wbox_ctl.py` adds them (`make help` for the make side):
