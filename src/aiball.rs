@@ -839,6 +839,20 @@ impl Aiball {
         self.rpc("project.standing_prompt", json!({ "project": project }))
     }
 
+    /// Every project's standing, in one call (`project.list { detailed }`):
+    /// its instruction and whether a focus applies, as said — not the
+    /// focus's tickets nor its end, which [`Aiball::standing`] gives.
+    pub fn standings(&self) -> anyhow::Result<Vec<Standing>> {
+        #[derive(Deserialize)]
+        struct Row {
+            name: String,
+            #[serde(flatten)]
+            standing: Standing,
+        }
+        let rows: Vec<Row> = self.rpc("project.list", json!({ "detailed": true }))?;
+        Ok(rows.into_iter().map(|r| Standing { project: r.name, ..r.standing }).collect())
+    }
+
     /// Sets a project's standing instruction (none: cleared) and its wake
     /// focus: the tickets (none: cleared) and until when (an ISO date).
     pub fn set_standing(&self, project: &str, prompt: Option<&str>, focus: Option<&str>, until: Option<&str>) -> anyhow::Result<Standing> {
@@ -1444,6 +1458,8 @@ impl<T> Setting<T> {
 /// agents) and its wake focus (only these tickets wake them).
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct Standing {
+    #[serde(default)]
+    pub project: String,
     #[serde(default)]
     pub standing_prompt: Option<String>,
     #[serde(default)]

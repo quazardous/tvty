@@ -916,6 +916,7 @@ impl Shell {
                 Update::Board => self.board_moved(cx),
                 Update::Filed(filed) => self.announce_filed(filed, cx),
                 Update::Ping(ping) => self.announce_ping(ping, cx),
+                Update::Standing(standing) => self.standing_changed(standing, cx),
                 Update::Config => {
                     if self.options.is_some() {
                         self.load_remote(cx);

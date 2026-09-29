@@ -563,8 +563,9 @@ steers it in its tip. The **standing instruction** (read at the head of
 every wake of its agents; the ones given last are a click away) and the
 **wake focus** (only these tickets wake them — `123, 456`, `!789`,
 `123+`, `123++`, `+123`, `123~` — until a date if one is given; aiball's
-own reading of it said under the box). tvty reads every project's again
-each minute and after its own changes.
+own reading of it said under the box). tvty reads them all at start, then
+follows aiball's word of each change; a focus lapsing at its end, which
+aiball says nothing of, is read again then.
 
 A **message to every agent** loop running is the whole board's: its
 button in the title bar (by ⚙), or the menu's "Message every agent…" —

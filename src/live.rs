@@ -61,6 +61,8 @@ pub enum Update {
     Config,
     /// An agent's Claude hit its usage limit: what the bar says of it.
     Limit(String, String),
+    /// A project's standing instruction or wake focus changed.
+    Standing(crate::aiball::Standing),
 }
 
 /// A ticket filed, from the row that brought it.
@@ -365,6 +367,12 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Config => vec![Update::Config],
+            Kind::Board if data.get("type").and_then(Value::as_str) == Some("project_standing_changed") => data
+                .get("data")
+                .and_then(|view| serde_json::from_value::<crate::aiball::Standing>(view.clone()).ok())
+                .map(Update::Standing)
+                .into_iter()
+                .collect(),
             Kind::Board => self.proposal(data).map(Update::Ping).into_iter().collect(),
         }
     }
