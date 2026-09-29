@@ -732,6 +732,12 @@ impl Shell {
         };
         shell.wire = Some(wire);
         shell.start_tips(cx);
+        // Once the work is back, the list's order settles (see stack_terminals).
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(3500)).await;
+            let _ = this.update(cx, |shell, cx| shell.rebuild(cx));
+        })
+        .detach();
         shell.follow_wire(wire_notices, cx);
         // aiball not running: start it (detached), or say it is missing.
         cx.spawn(async move |_, cx| {
@@ -851,6 +857,7 @@ impl Shell {
         self.aiball.find_user(&self.live.consumers());
         let mut board = sessions::build(&self.live, self.local.0.clone(), self.local.1.clone());
         self.forget_stopping(&mut board);
+        self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);
         self.keep_sidebar_order(&board);
         if self.board != board {
@@ -1727,6 +1734,28 @@ impl Shell {
                     }
                 }
             }
+        }
+    }
+
+    /// Within each project, the sessions in the order they came: a new one
+    /// last, the others in their place (aiball lists them its own way). Kept
+    /// in the workspace; nothing dropped until the work is back at start.
+    fn stack_terminals(&mut self, board: &mut sessions::Board, cx: &mut Context<Self>) {
+        let settled = self.live.ready() && self.restoring.is_none() && self.began.elapsed() > std::time::Duration::from_secs(3);
+        let mut changed = false;
+        for project in &mut board.projects {
+            let order = self.settings.workspace.terminal_order.entry(project.name.clone()).or_default();
+            changed |= sessions::stack(&mut project.terminals, order, settled);
+        }
+        // The groups gone (a folder's, while its loop joined its project)
+        // are forgotten once the work is back.
+        if settled {
+            let before = self.settings.workspace.terminal_order.len();
+            self.settings.workspace.terminal_order.retain(|name, _| board.projects.iter().any(|p| p.name == *name));
+            changed |= self.settings.workspace.terminal_order.len() != before;
+        }
+        if changed && settled {
+            self.settings.save(cx);
         }
     }
 
