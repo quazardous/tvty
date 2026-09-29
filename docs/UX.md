@@ -511,10 +511,11 @@ into the store, which writes the file and puts it in force.
 
 "Did you know?": a small card in the tips' own colour, a violet (not the
 accent's blue nor a state's colour), never in the way. A tip about an
-element of the window sits beside it — under it, or above when there is no
-room — with a small pointer, the element wearing a violet halo; when that
-element is not on screen, and for a tip about a key, the card keeps its
-corner: bottom left (bottom right over a full page, where the notifications
+element of the window sits beside it, never over it — under it, or above
+when there is no room, 24 px away so that the element and what is around it
+stay in sight —, the element wearing a violet halo; when that element is not
+on screen, when there is no room either way, and for a tip about a key, the
+card keeps its corner: bottom left (bottom right over a full page, where the notifications
 take the left). One
 comes 5 s after start, and one the first time a page is opened (the full
 list, a ticket full screen, the gallery, the options…). A tip says one

@@ -17,9 +17,12 @@ use crate::tips::{self, Mark};
 use crate::ui::buttons;
 use tvty_config::Value;
 
-/// The card's width, and the room it needs under its target.
+/// The card's width, and the room it needs beside its target.
 const CARD_WIDTH: f32 = 380.;
 const CARD_ROOM: f32 = 190.;
+/// The least room between the card and its target: the target, and what is
+/// around it, stay in sight.
+const TARGET_GAP: f32 = 24.;
 
 /// The start's own tip comes once the work is on screen.
 const AFTER_START: Duration = Duration::from_secs(5);
@@ -161,7 +164,7 @@ impl Shell {
     }
 
     /// The card, bottom left.
-    pub(super) fn tip_view(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
+    pub(super) fn tip_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         // A dialog asks: the tip waits.
         if self.ask.is_some() {
             return None;
@@ -237,25 +240,25 @@ impl Shell {
             .child(actions);
         // Beside its target when it has one on screen: under it, or above
         // when there is no room below; a little pointer towards it.
-        if let Some(target) = tip.target.as_deref().and_then(tips::bounds_of) {
-            let viewport = window.viewport_size();
-            let room_below = viewport.height - target.bottom() > px(CARD_ROOM);
-            // Its left edge under the target, kept inside the window; the
-            // pointer under the target's middle.
-            let (width, margin) = (px(CARD_WIDTH), px(8.));
-            let left = target.left().max(margin).min((viewport.width - width - margin).max(margin));
-            let offset = (target.center().x - left - px(6.)).max(px(10.)).min(width - px(20.));
-            let pointer = |glyph: &'static str| div().pl(offset).h(px(10.)).line_height(px(10.)).text_color(violet).child(glyph);
-            let (at, anchor, card) = if room_below {
-                (point(left, target.bottom() + px(6.)), gpui_kit::gpui::Anchor::TopLeft, div().flex().flex_col().child(pointer("▲")).child(body))
+        // Beside its target when it has one on screen, never over it: under
+        // it or above, at a distance that leaves the target and what is
+        // around it in sight. No room either way: its corner. Placed in the
+        // shell's root, from where the root and the target were painted.
+        let root = tips::bounds_of(tips::ROOT);
+        let placed = tip.target.as_deref().and_then(tips::bounds_of).zip(root).and_then(|(target, root)| {
+            let (width, margin, gap, room) = (px(CARD_WIDTH), px(8.), px(TARGET_GAP), px(CARD_ROOM));
+            let left = (target.left() - root.left()).max(margin).min((root.size.width - width - margin).max(margin));
+            let (top, bottom) = (target.top() - root.top(), target.bottom() - root.top());
+            if root.size.height - bottom - gap >= room {
+                Some(div().absolute().left(left).top(bottom + gap))
+            } else if top - gap >= room {
+                Some(div().absolute().left(left).bottom(root.size.height - top + gap))
             } else {
-                (point(left, target.top() - px(6.)), gpui_kit::gpui::Anchor::BottomLeft, div().flex().flex_col().child(body).child(pointer("▼")))
-            };
-            return Some(
-                deferred(anchored().position(at).anchor(anchor).snap_to_window_with_margin(px(8.)).child(card))
-                    .with_priority(2)
-                    .into_any_element(),
-            );
+                None
+            }
+        });
+        if let Some(place) = placed {
+            return Some(place.child(body).into_any_element());
         }
         // Else bottom left; over a full page, where the notifications take
         // that corner, bottom right.

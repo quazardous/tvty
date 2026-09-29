@@ -4663,7 +4663,9 @@ impl Render for Shell {
             } else {
                 FOLDED_WIDTH
             }))
-            .children(self.tip_view(window, cx))
+            // Where the root is painted: the tips' cards are placed in it.
+            .child(crate::tips::root_mark())
+            .children(self.tip_view(cx))
             .children(self.quit_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))

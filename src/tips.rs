@@ -199,6 +199,28 @@ pub fn bounds_of(id: &str) -> Option<Bounds<Pixels>> {
     TARGETS.lock().ok()?.iter().find(|(t, _, at)| *t == id && at + 1 >= frame).map(|(_, b, _)| *b)
 }
 
+/// Where the shell's root is painted, measured as the targets are: the card
+/// is placed in the root, from positions measured the same way.
+pub fn root_mark() -> impl IntoElement {
+    canvas(
+        |bounds, _, _| {
+            let frame = FRAME.load(Ordering::Relaxed);
+            if let Ok(mut targets) = TARGETS.lock() {
+                targets.retain(|(t, _, _)| *t != ROOT);
+                targets.push((ROOT, bounds, frame));
+            }
+        },
+        |_, _, _, _| {},
+    )
+    // Pinned to its parent's corner: an absolute element without offsets
+    // sits where it would in the flow, below what comes before it.
+    .absolute()
+    .inset_0()
+}
+
+/// The shell's root, as [`root_mark`] measures it.
+pub const ROOT: &str = "shell.root";
+
 /// `element`, as the target `id` of a tip: where it is painted is kept, and
 /// while its tip is up it wears a halo in the tips' colour.
 pub fn target(id: &'static str, element: impl IntoElement) -> Div {
@@ -229,8 +251,9 @@ pub fn target(id: &'static str, element: impl IntoElement) -> Div {
                 },
                 |_, _, _, _| {},
             )
+            // Pinned to the element's corner (see root_mark).
             .absolute()
-            .size_full(),
+            .inset_0(),
         )
         .children(halo)
 }
