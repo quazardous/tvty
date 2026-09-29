@@ -116,7 +116,7 @@ impl Shell {
         let online = bar.is_some() || status.as_ref().is_some_and(|s| s.online);
         let item = || div().flex().items_center().gap_1().flex_none();
         let sep = || div().text_color(p().border).child("│");
-        let loud = |text: &'static str| {
+        let loud = |text: SharedString| {
             div()
                 .flex_none()
                 .px_1p5()
@@ -424,11 +424,12 @@ impl Shell {
                 .children(dialog.map(|_| item().text_color(ink(p().warning)).child("waits for an answer")))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
-                    d.when(a.trust_dialog, |d| d.child(loud("trust this folder?")))
-                        .when(a.not_logged_in, |d| d.child(loud("not logged in")))
-                        .when(a.api_unreachable, |d| d.child(loud("API unreachable")))
-                        .when(a.link_down, |d| d.child(loud("loop link down")))
-                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable")))
+                    d.when_some(b.limit_said(), |d, limit| d.child(loud(limit.into())))
+                        .when(a.trust_dialog, |d| d.child(loud("trust this folder?".into())))
+                        .when(a.not_logged_in, |d| d.child(loud("not logged in".into())))
+                        .when(a.api_unreachable, |d| d.child(loud("API unreachable".into())))
+                        .when(a.link_down, |d| d.child(loud("loop link down".into())))
+                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable".into())))
                         .when(b.prompt.visible, |d| {
                             d.child(
                                 item()

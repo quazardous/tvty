@@ -181,6 +181,26 @@ pub struct AgentBar {
     pub counters: Option<BarCounters>,
     pub next_wake_at: Option<String>,
     pub boot: Option<BarBoot>,
+    /// While its usage limit is reached: when it resets, as Claude Code
+    /// says it, and as a date when it could be read.
+    #[serde(default)]
+    pub limit_resets: Option<LimitResets>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct LimitResets {
+    pub text: String,
+    pub at: Option<String>,
+}
+
+impl AgentBar {
+    /// "usage limit reached", and when it resets if said.
+    pub fn limit_said(&self) -> Option<String> {
+        self.alerts.limit_reached.then(|| match &self.limit_resets {
+            Some(resets) if !resets.text.is_empty() => format!("usage limit reached · resets {}", resets.text),
+            _ => "usage limit reached".to_string(),
+        })
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -218,6 +238,10 @@ pub struct BarAlerts {
     /// A restart was asked and waits for its Claude's next idle.
     #[serde(default)]
     pub restart_pending: bool,
+    /// Its Claude hit a usage limit (weekly, session, monthly spend…): the
+    /// loop holds it until let go.
+    #[serde(default)]
+    pub limit_reached: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

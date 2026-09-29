@@ -897,6 +897,21 @@ impl Shell {
                         self.load_remote(cx);
                     }
                 }
+                // The loop holds it until let go: the user is told, with
+                // the way to its terminal.
+                Update::Limit(agent, said) => {
+                    let session = self
+                        .board
+                        .projects
+                        .iter()
+                        .flat_map(|p| &p.terminals)
+                        .find(|t| t.agent.as_deref() == Some(agent.as_str()))
+                        .map(|t| t.session.clone());
+                    activity::publish(
+                        cx,
+                        Activity::news(agent.clone(), Kind::Error, None, format!("{said}: its loop is held until you let it go")).on(session),
+                    );
+                }
             }
         }
     }
@@ -3765,7 +3780,12 @@ impl Shell {
                 let bar = self.board.bars.get(agent).filter(|b| !b.stale).map(|b| &b.bar);
                 let presence = bar.map(|b| b.presence.as_str()).unwrap_or(status.driver.as_str());
                 let (glyph, said) = loop_mark(&status.state, presence, bar.map(|b| b.afk.mode.as_str()));
-                Some(Mark { colour, glyph, tip: Some(format!("{agent}: {said}")) })
+                // Why it is held, when a usage limit holds it.
+                let tip = match bar.and_then(|b| b.limit_said()) {
+                    Some(limit) => format!("{agent}: {said} — {limit}"),
+                    None => format!("{agent}: {said}"),
+                };
+                Some(Mark { colour, glyph, tip: Some(tip) })
             })
             .collect()
     }

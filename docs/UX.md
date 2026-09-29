@@ -351,8 +351,10 @@ its Claude Code installed an update, **⟳ update** — a click has its loop
 restart it as soon as it is idle ("⟳ restart pending" meanwhile, an
 offer turned into a state), and the terminal comes back
 on its own; "waits for an answer" when a
-dialog is up; the alerts in red (trust this folder?, not logged in, API
-unreachable, loop link down, aiball unreachable); the prompt ❯ (bright when
+dialog is up; the alerts in red (usage limit reached · resets …, trust
+this folder?, not logged in, API unreachable, loop link down, aiball
+unreachable) — a usage limit also comes as a notification, the loop held
+until let go (■); the prompt ❯ (bright when
 it holds text), ⌨ while a human types, ⇄ the proxy; its counters in
 claude-loop's terms and full words — `all:` the project's open tickets,
 `backlog:`, `events:` (claude-loop's a: b: e:) — then the tickets it holds;
