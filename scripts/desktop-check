@@ -69,6 +69,9 @@ if [[ $failed != 0 ]]; then
     echo "::group::tvty.log (its last 120 lines)"
     tail -n 120 "$LOG" 2>/dev/null || echo "(no log at $LOG)"
     echo "::endgroup::"
+    echo "::group::tvty's errors and how it ended"
+    tail -n 80 dev/tvty-wbox/log/tvty-stderr.log 2>/dev/null || echo "(nothing)"
+    echo "::endgroup::"
     ctl shot --name desktop-check-failed >/dev/null 2>&1 && echo "screenshot: dev/tvty-wbox/screenshots/desktop-check-failed.png"
 fi
 

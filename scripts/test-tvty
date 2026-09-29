@@ -15,4 +15,12 @@ elif [[ -z ${TVTY_NO_AIBALL:-} ]]; then
     "$TVTY_ROOT/scripts/fake-aiball" up >/dev/null
 fi
 export TVTY_STATS="${TVTY_STATS-$TVTY_ROOT/dev/tvty-wbox/log/tvty-stats.log}"
-exec "$TVTY_ROOT/target/debug/tvty" "$@"
+# Its errors (a panic, with its backtrace) and how it ended, kept: a
+# window gone without a word says why here (scripts/desktop-check prints it).
+STDERR_LOG="$TVTY_ROOT/dev/tvty-wbox/log/tvty-stderr.log"
+mkdir -p "$(dirname "$STDERR_LOG")"
+echo "$(date -Is) tvty starts" >>"$STDERR_LOG"
+code=0
+RUST_BACKTRACE="${RUST_BACKTRACE-1}" "$TVTY_ROOT/target/debug/tvty" "$@" 2> >(tee -a "$STDERR_LOG" >&2) || code=$?
+echo "$(date -Is) tvty ended, code $code" >>"$STDERR_LOG"
+exit $code
