@@ -177,7 +177,7 @@ impl TicketPanel {
             }
         })
         .detach();
-        let edit_text = cx.new(|cx| TicketText::new(aiball.clone(), "edit", (6, 24), window, cx));
+        let edit_text = cx.new(|cx| TicketText::new(aiball.clone(), "edit", (6, 14), window, cx));
         cx.subscribe_in(&edit_text, window, |panel: &mut Self, _, event: &TicketTextEvent, window, cx| {
             match event {
                 TicketTextEvent::Submit => panel.save_text(window, cx),

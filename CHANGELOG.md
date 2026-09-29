@@ -52,6 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- A long body edited in a full-screen ticket scrolls in its field instead of running over the fields below.
 - tvty no longer starts a loop in another project's agent's folder, where it would resume that agent's conversation: the sessions list marks it "⚠ AGENT's folder" and IDLE picks the agent's loop in its own folder.
 - On Windows, tvty keeps its settings, layout and log in the usual Windows
   folders (`%APPDATA%`, `%LOCALAPPDATA%`), and finds your home folder even
