@@ -89,6 +89,8 @@ tip_files![
 
 /// A tip's file read: its header, then its text.
 fn parse(file: &str) -> Result<Tip, String> {
+    // A Windows checkout gives the files CRLF line ends (git's autocrlf).
+    let file = file.replace("\r\n", "\n");
     let rest = file.strip_prefix("---\n").ok_or("no header")?;
     let (header, text) = rest.split_once("\n---\n").ok_or("the header does not end")?;
     let mut fields: HashMap<&str, &str> = HashMap::new();
@@ -385,6 +387,12 @@ mod tests {
             let tip = parse(file).unwrap_or_else(|e| panic!("{id}: {e}"));
             assert_eq!(tip.id, *id, "a tip's id is its file's name");
         }
+    }
+
+    #[test]
+    fn a_tip_reads_with_windows_line_ends() {
+        let tip = parse("---\r\nid: x\r\nsurface: Workspace\r\n---\r\nSome text.\r\n").unwrap();
+        assert_eq!((tip.id.as_str(), tip.surface.as_str(), tip.text.as_str()), ("x", "Workspace", "Some text."));
     }
 
     #[test]
