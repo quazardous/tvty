@@ -482,6 +482,7 @@ impl NewTicketForm {
         self.error = None;
     }
 
+    /// Ctrl+Enter files it, from the title too (the body is a composer).
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         if keystroke.modifiers.control && keystroke.key == "enter" {
@@ -707,7 +708,19 @@ impl Render for NewTicketForm {
                     })
                     .into_any_element()
             } else {
-                div().flex_1().min_h_0().flex().flex_col().gap_1().child(Textarea::new(&self.body)).children(mentions).into_any_element()
+                // A composer: Ctrl+Enter files it (keymap's ComposerSend), no
+                // new line put in.
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .gap_1()
+                    .key_context(crate::keymap::COMPOSER)
+                    .on_action(cx.listener(|form, _: &crate::keymap::ComposerSend, window, cx| form.submit(window, cx)))
+                    .child(Textarea::new(&self.body))
+                    .children(mentions)
+                    .into_any_element()
             })
             .when_some(self.error.clone(), |d, error| d.child(div().text_color(p().danger).child(error)))
             .child(
@@ -736,7 +749,7 @@ impl Render for NewTicketForm {
             .flex_col()
             .bg(p().bg)
             .text_color(p().text)
-            .on_key_down(cx.listener(Self::on_key))
+            .capture_key_down(cx.listener(Self::on_key))
             .child(
                 div()
                     .flex()

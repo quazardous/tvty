@@ -159,12 +159,12 @@ impl TicketPanel {
                 .placeholder("Reply… (ctrl+enter sends)")
                 .auto_grow(2, 8)
         });
-        // Reject waits for a reason: redraw as the reason is typed.
-        // Ctrl+Enter sends it (the box has put in the new line first).
-        cx.subscribe_in(&reply, window, |panel, _, event: &InputEvent, window, cx| match event {
-            InputEvent::Change => cx.notify(),
-            InputEvent::PressEnter { secondary: true, .. } => panel.send_reply(window, cx),
-            _ => {}
+        // Reject waits for a reason: redraw as the reason is typed. (Ctrl+Enter
+        // sends: the reply is a composer, see keymap's ComposerSend.)
+        cx.subscribe_in(&reply, window, |_, _, event: &InputEvent, _, cx| {
+            if let InputEvent::Change = event {
+                cx.notify()
+            }
         })
         .detach();
         let edit_title = cx.new(|cx| InputState::new(window, cx));
@@ -1288,7 +1288,13 @@ impl TicketPanel {
                     })
                     .into_any_element()
             } else {
-                Textarea::new(&self.reply).into_any_element()
+                // A composer: Ctrl+Enter sends (keymap's ComposerSend), no
+                // new line put in.
+                div()
+                    .key_context(crate::keymap::COMPOSER)
+                    .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(window, cx)))
+                    .child(Textarea::new(&self.reply))
+                    .into_any_element()
             })
             .children(mentions)
             .when(!detail.answers.is_empty(), |d| {

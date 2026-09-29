@@ -62,8 +62,13 @@ actions!(
         TerminalPaste,
         SendTab,
         SendBackTab,
+        ComposerSend,
     ]
 );
+
+/// A box to write to aiball in (a reply, a new ticket's body): its key
+/// context, around the kit's `Input`.
+pub const COMPOSER: &str = "Composer";
 
 /// The key context of the window's content (the shell): everywhere.
 pub const WINDOW: &str = "Window";
@@ -177,6 +182,10 @@ fn apply(cx: &mut App) {
     cx.clear_key_bindings();
     cx.bind_keys(kit);
     cx.bind_keys(bindings);
+    // Ctrl+Enter sends what a composer holds: bound over the kit's box, which
+    // would put a new line in first (and after the window's Ctrl+Enter,
+    // which stays the newest notification everywhere else).
+    cx.bind_keys([KeyBinding::new("ctrl-enter", ComposerSend, Some("Composer > Input"))]);
 }
 
 /// Binds the defaults and `keymap.toml` over them — once the kit has bound
