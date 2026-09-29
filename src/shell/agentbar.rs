@@ -45,7 +45,7 @@ enum Tone {
 /// What the agent bar shows of who drives the loop, as claude-loop's bar:
 /// the mode in force (▶ the loop runs on its own, ‖ held a while, ■ held
 /// until let go — typing holds
-/// too), ⌨ while a human types, and the little man with the mode armed by
+/// too; its ⌨ is further on, by the prompt), and the little man with the mode armed by
 /// F9 (grey: away, so auto; the seconds of a ten-minute hold; ∞). F9 moves
 /// the little man at once and the mode in force 3 s after the last press:
 /// while they differ, it is arming.
@@ -55,14 +55,13 @@ struct AfkMarks {
     in_force: Option<(&'static str, Tone)>,
     /// A word instead, while the loop boots: text at the bar's size.
     word: Option<(&'static str, Tone)>,
-    typing: bool,
     armed: Option<(String, Tone)>,
     arming: bool,
 }
 
-fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typing: bool) -> AfkMarks {
+fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>) -> AfkMarks {
     if presence == Some("boot") {
-        return AfkMarks { in_force: None, word: Some(("… boot", Tone::Boot)), typing: false, armed: None, arming: false };
+        return AfkMarks { in_force: None, word: Some(("… boot", Tone::Boot)), armed: None, arming: false };
     }
     let in_force = match (presence, armed) {
         (Some("loop"), _) => Some(("▶", Tone::Green)),
@@ -83,7 +82,7 @@ fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>, typ
         Some("wait_10m") | Some("wait_inf") => presence == Some("loop"),
         _ => false,
     };
-    AfkMarks { in_force, word: None, typing: typing || presence == Some("stop"), armed: man, arming }
+    AfkMarks { in_force, word: None, armed: man, arming }
 }
 
 /// Seconds from now to an ISO time: `None` when past or unreadable.
@@ -135,7 +134,6 @@ impl Shell {
             presence.as_deref(),
             bar.as_ref().map(|b| b.afk.mode.as_str()),
             bar.as_ref().and_then(|b| until(b.afk.expires_at.as_deref())),
-            bar.as_ref().is_some_and(|b| b.human_typing),
         );
         let tone = |t: Tone| match t {
             Tone::Green => p().success,
@@ -154,7 +152,6 @@ impl Shell {
             .when(self.afk_menu, |d| d.bg(p().active))
             .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
             .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(word)))
-            .when(marks.typing, |d| d.child(div().text_color(p().danger).child("⌨")))
             .children(marks.armed.map(|(man, t)| {
                 div()
                     .flex()
@@ -166,7 +163,7 @@ impl Shell {
             .tip(if marks.arming {
                 "armed: the little man shows the mode chosen with F9, in force 3 s after the last press — ▶ or ‖ says the one in force until then"
             } else {
-                "who drives the loop: ▶ on its own, ‖ held for you, ⌨ you are typing; the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
+                "who drives the loop: ▶ on its own, ‖ held for you (or while you type); the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
             })
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
@@ -852,30 +849,30 @@ mod tests {
     #[test]
     fn f9_arms_a_mode_before_it_is_in_force() {
         // Auto, and nothing armed: ▶ and a grey little man.
-        let auto = afk_marks(Some("loop"), Some("off"), None, false);
-        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), word: None, typing: false, armed: Some(("웃".into(), Tone::Grey)), arming: false });
+        let auto = afk_marks(Some("loop"), Some("off"), None);
+        assert_eq!(auto, AfkMarks { in_force: Some(("▶", Tone::Green)), word: None, armed: Some(("웃".into(), Tone::Grey)), arming: false });
         // F9 once: 10 min armed, still ▶ in force — arming.
-        let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599), false);
+        let armed = afk_marks(Some("loop"), Some("wait_10m"), Some(599));
         assert_eq!((armed.armed, armed.arming), (Some(("웃599s".into(), Tone::Orange)), true));
         // In force 3 s later: ⏸ and the countdown, no longer arming.
-        let held = afk_marks(Some("wait"), Some("wait_10m"), Some(596), false);
+        let held = afk_marks(Some("wait"), Some("wait_10m"), Some(596));
         assert_eq!((held.in_force, held.arming), (Some(("‖", Tone::Orange)), false));
         // F9 twice more from there: ∞ then off armed while ⏸ holds — arming;
         // david's "held" was this: ⏸ in force, the grey man armed.
-        assert!(afk_marks(Some("wait"), Some("off"), None, false).arming);
-        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).armed, Some(("웃∞".into(), Tone::Red)));
+        assert!(afk_marks(Some("wait"), Some("off"), None).arming);
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).armed, Some(("웃∞".into(), Tone::Red)));
         // Held until let go: stopped, not paused.
-        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None, false).in_force, Some(("■", Tone::Red)));
-        // Typing holds, marks ⌨, arms nothing.
-        let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600), true);
-        assert_eq!((typing.in_force, typing.typing, typing.arming), (Some(("‖", Tone::Orange)), true, false));
+        assert_eq!(afk_marks(Some("wait"), Some("wait_inf"), None).in_force, Some(("■", Tone::Red)));
+        // Typing holds and arms nothing (its ⌨ is by the prompt, once).
+        let typing = afk_marks(Some("stop"), Some("wait_10m"), Some(600));
+        assert_eq!((typing.in_force, typing.arming), (Some(("‖", Tone::Orange)), false));
         // Booting: the boot alone, as a word — never in a glyph's box.
-        let boot = afk_marks(Some("boot"), Some("off"), None, false);
+        let boot = afk_marks(Some("boot"), Some("off"), None);
         assert_eq!((boot.in_force, boot.word), (None, Some(("… boot", Tone::Boot))));
         // Whatever the state, the glyph's box gets a glyph alone.
         for presence in [None, Some("boot"), Some("loop"), Some("wait"), Some("stop")] {
             for armed in [None, Some("off"), Some("wait_10m"), Some("wait_inf")] {
-                if let Some((glyph, _)) = afk_marks(presence, armed, Some(30), false).in_force {
+                if let Some((glyph, _)) = afk_marks(presence, armed, Some(30)).in_force {
                     assert_eq!(glyph.chars().count(), 1, "{glyph:?} is not a glyph alone");
                 }
             }
