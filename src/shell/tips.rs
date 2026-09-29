@@ -58,6 +58,10 @@ impl Shell {
             return;
         }
         self.tip_surface = Some(surface);
+        // A page's tip goes with the page (not one browsed from the menu).
+        if self.tip.as_ref().is_some_and(|t| t.browsing.is_none() && t.surface != surface) {
+            self.tip = None;
+        }
         // The workspace's comes after start; a page's, the first time.
         if surface != "Workspace" && tips::entered(cx, surface) {
             self.offer_tip(surface, cx);
