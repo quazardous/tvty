@@ -2193,10 +2193,11 @@ impl Render for TicketPanel {
                 buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
-            // A ticket open: its project's badges first, where the list has
-            // them, then the way back.
-            .when(self.detail.is_some() && self.scope.is_some(), |d| {
-                d.child(crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title"))
+            // A ticket open: its project's name and badges first, as the list
+            // has them, then the way back.
+            .when(self.detail.is_some(), |d| {
+                d.children(self.scope.as_ref().map(|s| div().font_weight(FontWeight::BOLD).child(s.project.clone())))
+                    .children(self.scope.is_some().then(|| crate::shell::Alerts::of(self.tickets.iter(), self.critical).badges("panel-title")))
             })
             .when(self.detail.is_some(), |d| {
                 d.child(
