@@ -232,12 +232,25 @@ def down(name):
     except OSError:
         pass
     bare = tmux("kill-session", "-t", f"={bare_session(project)}").returncode == 0
+    # Asked until its session is gone: a loop stopped while it still boots
+    # may answer that it is, and go on.
     stopped = None
-    try:
-        call(USER, "consumer.stop_loop", {"consumer_id": name})
-        stopped = True
-    except BusError as error:
-        stopped = str(error)
+    for _ in range(5):
+        try:
+            call(USER, "consumer.stop_loop", {"consumer_id": name})
+        except BusError as error:
+            stopped = str(error)
+            break
+        for _ in range(10):
+            sessions = call(USER, "session.list", {}) or []
+            if not any(session.get("agent") == name for session in sessions):
+                stopped = True
+                break
+            time.sleep(0.3)
+        if stopped:
+            break
+    else:
+        stopped = "asked five times, its session is still there"
     return {"agent": name, "loop_stopped": stopped, "bare_session_ended": bare, "presence_let_go": let_go(name)}
 
 
