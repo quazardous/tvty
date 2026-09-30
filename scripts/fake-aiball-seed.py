@@ -63,7 +63,7 @@ call("david", "project.create", {"name": PROJECT, "created_by": "david"})
 for agent, sub in (("demo-claude", "lead"), ("demo-crew", "crew")):
     call("david", "consumer.upsert", {"consumer_id": agent, "kind": "agent"})
     call(agent, "consumer.push_state",
-         {"consumer_id": agent, "state": "idle", "cwd": f"{DEMO}/{sub}", "project": PROJECT})
+         {"consumer_id": agent, "state": "idle", "cwd": str(Path(DEMO) / sub), "project": PROJECT})
 
 t1 = ticket("Render box-drawing characters as quads",
             "The `│` of a frame does not meet the next row at a line height of 1.3.",

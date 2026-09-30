@@ -440,14 +440,14 @@ impl Shell {
             let free: Vec<usize> = indexes.iter().copied().filter(|i| !picker.rows[*i].fixed).collect();
             let ticked = free.iter().filter(|i| picker.rows[**i].checked).count();
             let all = !free.is_empty() && ticked == free.len();
+            // The group's own switch: on when all of it is; how many are, when
+            // only some, is said after its name.
+            let some = (!all && ticked > 0).then(|| format!("{ticked} of {}", free.len()));
             let head = div()
                 .flex()
                 .items_center()
                 .gap_2()
                 .when(!free.is_empty(), |d| {
-                    // The group's own switch: on when all of it is, and how
-                    // many are when only some.
-                    let some = (!all && ticked > 0).then(|| format!("{ticked} of {}", free.len()));
                     d.child(
                         buttons::switch(
                             format!("pick-group-{project}"),
@@ -464,9 +464,9 @@ impl Shell {
                         )
                         .tip("the whole group"),
                     )
-                    .children(some.map(|some| div().text_xs().text_color(p().muted).child(some)))
                 })
-                .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }));
+                .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }))
+                .children(some.map(|some| div().text_xs().text_color(p().muted).child(some)));
             let mut group = div().flex().flex_col().gap_0p5().child(head);
             for i in indexes {
                 let row = &picker.rows[i];
