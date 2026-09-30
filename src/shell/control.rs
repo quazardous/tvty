@@ -44,6 +44,7 @@ impl Shell {
         json!({
             "page": self.page_shown(cx),
             "terminal": self.selected,
+            "terminal_frozen": self.selected.as_ref().and_then(|s| self.terminals.get(s)).is_some_and(|t| t.read(cx).frozen()),
             "copies": self.copies.iter().collect::<Vec<_>>(),
             "open_terminals": self.terminals.keys().collect::<Vec<_>>(),
             "panel": self.panel.read(cx).said(),

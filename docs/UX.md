@@ -728,7 +728,7 @@ keeps only what differs from the defaults (`crates/tvty-keys`).
 | F1 | the menu under the app's icon, at the title bar's left: about Terminal Velocity (version, build), a new project, full screen, the documentation, the shortcuts, the tips, what's new, GitHub, report an issue, aiball (its web UI at the local address aiball gives, as its GNOME extension opens it) — and **Restart tvty**: the window only, the Claude Code sessions and the terminals run on and come back |
 | ctrl+enter | go to the newest notification: the agent's terminal, its ticket open |
 | ctrl+shift+c / ctrl+shift+v, shift+insert | copy the selection / paste the clipboard (bracketed when the program asks) |
-| drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection, and kept even when the program draws over it |
+| drag, double click, triple click | select text, a word, a line — whatever the program, tmux with its mouse on too; copied at once to the primary selection. While there is a selection the screen is **held still** (a mark in its corner says so): the session goes on, its output waits, and what is copied is what is seen. Esc (not sent to the program), a plain click, the mark, or a key typed lets it go, and the live screen is back |
 | middle click | paste the primary selection |
 | right click | a menu: Copy, Paste — on a link, Open link and Copy link too (Esc closes it) |
 | ctrl+click on a link | opens it (the pointer over a link underlines it; a program's OSC 8 link shows where it goes) |
