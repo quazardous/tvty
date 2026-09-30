@@ -15,6 +15,10 @@
     scripts/tvty-ctl wait ID [MS]       until ID is on screen (5000 ms at most)
     scripts/tvty-ctl state              the page, the terminal, the panel, the bus, what is open in the views
     scripts/tvty-ctl ready [MS]         until the control answers, after a launch (20000 ms at most)
+    scripts/tvty-ctl shot [--region ID] [--no-tips] NAME
+                                        a capture taken once tvty has drawn again: never an old
+                                        frame; --region: only ID's box (a margin around);
+                                        --no-tips: the pointer put away first, no tooltip on it
     scripts/tvty-ctl paste-image FILE   FILE put in the test compositor's clipboard, then Ctrl+V
     scripts/tvty-ctl inspector          GPUI's inspector, on or off (debug builds)
     scripts/tvty-ctl bus-reconnect      the bus dropped and connected again
@@ -98,10 +102,16 @@ USAGE = {
     "state": "",
     "ready": "[MS]",
     "paste-image": "FILE",
+    "shot": "NAME",
     "inspector": "",
     "bus-reconnect": "",
     "fault": "KIND",
 }
+
+
+# The flags a command takes, before its arguments.
+FLAGS = {"tree": "[--text]", "shot": "[--region ID] [--no-tips]"}
+USAGE["tree"] = "[PREFIX]"
 
 
 class Misused(Exception):
@@ -109,7 +119,7 @@ class Misused(Exception):
 
 
 def usage(cmd):
-    return f"usage: tvty-ctl {cmd} {USAGE[cmd]}".rstrip()
+    return " ".join(word for word in ("usage: tvty-ctl", cmd, FLAGS.get(cmd, ""), USAGE[cmd]) if word)
 
 
 def check(cmd, rest):
@@ -183,6 +193,58 @@ def paste_image(file):
     return answer
 
 
+REPO = Path(__file__).resolve().parent.parent
+WBOX_CONFIG = REPO / "dev" / "tvty-wbox" / "config.yaml"
+# Around a region, so that its edge shows.
+REGION_MARGIN = 8
+
+
+def wbox_python():
+    """wbox's own interpreter (it lives in its own venv), as the Makefile finds it."""
+    if os.environ.get("WBOX_PYTHON"):
+        return os.environ["WBOX_PYTHON"]
+    launcher = shutil.which("wbox-mcp")
+    if launcher:
+        first = Path(launcher).read_text(errors="replace").splitlines()[0]
+        if first.startswith("#!"):
+            return first[2:].strip()
+    return None
+
+
+def shot(name, region, no_tips):
+    """A capture of the test compositor once tvty has drawn again."""
+    python = wbox_python()
+    if python is None:
+        return {"error": "shot needs wbox (wbox-mcp on the PATH, or WBOX_PYTHON)"}
+    box = None
+    if region:
+        found = [e for e in request({"cmd": "query", "id": region}).get("ok", {}).get("elements", []) if e["id"] == region]
+        if not found:
+            return {"error": f"{region}: not on screen"}
+        box = found[-1]
+    frame = request({"cmd": "frame", "park": no_tips})
+    if "error" in frame:
+        return frame
+    began = time.time()
+    taken = subprocess.run([python, str(REPO / "scripts" / "wbox_ctl.py"), "shot", str(WBOX_CONFIG), "--name", name], cwd=REPO, capture_output=True, text=True, timeout=30)
+    path = REPO / "dev" / "tvty-wbox" / "screenshots" / f"{name}.png"
+    if taken.returncode or not path.is_file():
+        return {"error": f"wbox took no capture: {(taken.stderr or taken.stdout).strip()[-300:]}"}
+    # The file is this capture's, not one of the same name left from before.
+    if path.stat().st_mtime < began - 1:
+        return {"error": f"{path}: older than this capture — wbox did not write it"}
+    answer = {"path": str(path)}
+    if box:
+        cropper = shutil.which("magick") or shutil.which("convert")
+        if cropper is None:
+            return {"error": "shot --region needs ImageMagick (magick) to crop"}
+        x, y = max(0, int(box["x"]) - REGION_MARGIN), max(0, int(box["y"]) - REGION_MARGIN)
+        w, h = int(box["w"]) + 2 * REGION_MARGIN, int(box["h"]) + 2 * REGION_MARGIN
+        subprocess.run([cropper, str(path), "-crop", f"{w}x{h}+{x}+{y}", "+repage", str(path)], check=True, timeout=30)
+        answer["region"] = {"id": region, "x": x, "y": y, "w": w, "h": h}
+    return {"ok": answer}
+
+
 def run(cmd, rest):
     """The command carried out: tvty's answer."""
     command = {"cmd": cmd}
@@ -208,6 +270,8 @@ def run(cmd, rest):
         return ready(number(cmd, rest[0]) if rest else 20000)
     elif cmd == "paste-image":
         return paste_image(rest[0])
+    elif cmd == "shot":
+        return shot(rest[0], run.region, run.no_tips)
     return request(command)
 
 
@@ -218,6 +282,18 @@ def main(argv):
     cmd, rest = argv[0], argv[1:]
     texts = cmd == "tree" and "--text" in rest
     rest = [r for r in rest if r != "--text"]
+    # shot's flags, wherever they stand.
+    run.no_tips = cmd == "shot" and "--no-tips" in rest
+    run.region = None
+    if cmd == "shot":
+        rest = [r for r in rest if r != "--no-tips"]
+        if "--region" in rest:
+            at = rest.index("--region")
+            if at + 1 >= len(rest):
+                print(usage(cmd), file=sys.stderr)
+                return 2
+            run.region = rest[at + 1]
+            del rest[at:at + 2]
     try:
         check(cmd, rest)
         answer = run(cmd, rest)

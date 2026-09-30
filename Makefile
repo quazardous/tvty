@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
+.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down fake-agents readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -25,6 +25,7 @@ help:
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
 	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
+	@echo "make fake-agents          two more projects on the fake aiball, a loop each (scripts/fake-agent)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
 	@echo "make proxy-up / proxy-down / proxy-logs   aiball on two machines in docker, a hub and a proxy node:"
 	@echo "                          TVTY_AIBALL=proxy make wbox-up runs the test tvty behind the node"
@@ -117,7 +118,15 @@ proxy-logs:
 	scripts/proxy-stack logs
 
 aiball-down:
+	-scripts/fake-agent down other-claude
+	-scripts/fake-agent down third-claude
 	scripts/fake-aiball down
+
+# Two projects more than `demo`, an agent each with its loop on fake-claude:
+# for what shows several groups (the sessions' list, workspaces, the picker).
+fake-agents:
+	scripts/fake-agent up other-claude
+	scripts/fake-agent up third-claude
 
 readme-up:
 	demo/run up

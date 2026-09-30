@@ -157,6 +157,26 @@ scripts/aiball-call session.start "{\"cwd\":\"$PWD/dev/fake-aiball/demo/crew\",\
 scripts/aiball-call consumer.afk '{"name":"demo-crew","action":"arm_10m"}'
 ```
 
+**More agents, in one command** — `scripts/fake-agent`, on the fake aiball
+only (it refuses any other socket):
+
+```bash
+scripts/fake-agent up other-claude            # project `other`, its folder, a loop on the host (fake-claude)
+scripts/fake-agent up alpha-claude --bare     # no loop: fake-claude alone in a tmux session (cl-alpha-lead)
+scripts/fake-agent present alpha-claude phase=busy afk=wait_inf restart_needed=true model="Opus 5.5"
+scripts/fake-agent down alpha-claude          # loop stopped, bare session ended, presence let go
+```
+
+`up` makes the project, the agent and its folder with a `.aiball.yaml` of
+its own (a loop refuses a folder whose `.aiball.yaml` is another agent's),
+and has the daemon start the loop — never this shell, which may carry a
+real loop's variables. `present` keeps the agent present (a bar is stale
+unless its agent holds its events' subscription) and pushes the bar said:
+the way to see each chip of the agent bar — the state, the hold, the model,
+`⟳ update` — on a `--bare` agent, whose bar nothing else pushes. `make
+fake-agents` starts two more projects than `demo`, a loop each: what shows
+several groups (the sessions' list, workspaces, the picker).
+
 The test tvty points at it already (`AIBALL_SOCK`: the API and its live
 feed). To open a session at
 start:
@@ -240,6 +260,15 @@ hope for:
   the agent bar's line (`place`, `afk`, `update`), the sessions' picker
   (what for, how many rows, how many ticked), a dialog, a menu, the
   megaphone, the new ticket's form;
+- `tvty-ctl shot [--region ID] [--no-tips] NAME` — a capture by wbox,
+  taken once tvty has drawn again: what a click just changed is on it. It
+  answers the PNG's path, and fails rather than hand back a file of the
+  same name left from before. `--region ID`: only that element's box, a
+  margin around (ImageMagick crops) — a capture to post on a ticket.
+  `--no-tips`: the pointer is put outside the window first, so that no
+  tooltip and no hover covers what is shown. It waits for tvty's frame,
+  not for what is still to come from aiball: wait for that first (`wait`,
+  `wait-text`);
 - `tvty-ctl paste-image FILE` — FILE put in the clipboard of the
   compositor the test tvty draws on (tvty says which, in `state`), then
   Ctrl+V: an image pasted in a ticket's text. It refuses when that display

@@ -10,6 +10,7 @@
 //! `{"cmd": "type", "text": …}` · `{"cmd": "wait", "id": …, "ms": 5000}` ·
 //! `{"cmd": "text", "id": …}` (what it says) · `{"cmd": "wait-text", "id":
 //! …, "text": …, "ms": 5000}` (until it says so) ·
+//! `{"cmd": "frame", "park": true}` (until the window has drawn again) ·
 //! `{"cmd": "state"}` · `{"cmd": "inspector"}` · and failure paths,
 //! provoked: `{"cmd": "bus-reconnect"}`, `{"cmd": "fault", "subscribe":
 //! "Tickets"}` (its next subscribing fails once).
@@ -26,6 +27,8 @@ use crate::inspect;
 
 /// How often `wait` looks again.
 const WAIT_STEP: Duration = Duration::from_millis(50);
+/// How long `frame` waits for the window to draw.
+const FRAME_WAIT: Duration = Duration::from_millis(3000);
 
 impl Shell {
     /// Takes the debug control's requests, while the shell lives.
@@ -193,6 +196,39 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
                 cx.background_executor().timer(WAIT_STEP).await;
             }
         }
+        // Until the window has drawn again: what changed so far is on
+        // screen, a capture taken now shows it. `park`: the pointer is put
+        // outside the window first, so that no tooltip covers anything.
+        "frame" => {
+            let park = command.get("park").and_then(Value::as_bool).unwrap_or(false);
+            let (drawn, was_drawn) = futures::channel::oneshot::channel::<()>();
+            let asked = cx.update(|window, cx| {
+                if park {
+                    let away = MouseMoveEvent { position: point(px(-10.), px(-10.)), pressed_button: None, modifiers: Modifiers::default() };
+                    window.dispatch_event(PlatformInput::MouseMove(away), cx);
+                }
+                // Two frames: the first draws what changed, the second's
+                // start says the first is done.
+                window.refresh();
+                window.on_next_frame(move |window, _| {
+                    window.refresh();
+                    window.on_next_frame(move |_, _| {
+                        let _ = drawn.send(());
+                    });
+                });
+            });
+            match asked {
+                Ok(()) => {
+                    let late = cx.background_executor().timer(FRAME_WAIT);
+                    let in_time = futures::future::select(was_drawn, Box::pin(late)).await;
+                    match in_time {
+                        futures::future::Either::Left(_) => Ok(json!({ "drawn": true })),
+                        futures::future::Either::Right(_) => Err(format!("no frame drawn in {} ms (a window not shown draws none)", FRAME_WAIT.as_millis())),
+                    }
+                }
+                Err(error) => Err(format!("{error:#}")),
+            }
+        }
         "state" => this.update(cx, |shell, cx| shell.said(cx)).map_err(|e| format!("{e:#}")),
         // Failure paths, provoked: the bus dropped, a subscription refused.
         "bus-reconnect" => this
@@ -214,7 +250,7 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "inspector" => toggle_inspector(cx),
-        other => Err(format!("{other:?}: no such command (tree, query, text, where, click, hover, press, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
+        other => Err(format!("{other:?}: no such command (tree, query, frame, text, where, click, hover, press, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
     };
     match answer {
         Ok(value) => json!({ "ok": value }),
