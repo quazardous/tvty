@@ -12,6 +12,7 @@ use crate::ui::Named as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::Disableable as _;
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -468,7 +469,11 @@ impl Render for NewTicketForm {
                     .gap_2()
                     .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
                     .child(
-                        buttons::secondary("new-ticket-file-exit", "File and exit")
+                        buttons::answer("new-ticket-file-exit", "File and exit")
+                            // Filled in the warning colour, beside the accent of "File the ticket".
+                            .warning()
+                            .bg(p().warning)
+                            .text_color(p().bg)
                             .disabled(busy)
                             .tooltip("Files it without opening it: back to where you were")
                             .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
