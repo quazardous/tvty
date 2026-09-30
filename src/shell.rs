@@ -181,7 +181,7 @@ pub struct Shell {
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
     /// The sessions list's sections' scrolls: live, idle, shut.
-    session_scrolls: [ScrollHandle; 3],
+    session_scrolls: [ScrollHandle; 4],
     new_session: Option<loopstabs::NewSession>,
     starting: Option<String>,
     open_when_running: Option<String>,
@@ -233,6 +233,12 @@ pub struct Shell {
     wire: Option<crate::wire::Wire>,
     /// What aiball's bus says the connection is (`bus.whoami`).
     wire_whoami: Option<String>,
+    /// This machine, as aiball names it (`bus.whoami`): `hub`, or
+    /// `node:<label>` behind a proxy node. None until it says.
+    pub(super) machine: Option<String>,
+    /// The hub's agent shown in the terminal's place (behind a node): its
+    /// session is read from here, not opened.
+    pub(super) hub_shown: Option<String>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -772,6 +778,8 @@ impl Shell {
             viewer: None,
             wire: None,
             wire_whoami: None,
+            machine: None,
+            hub_shown: None,
             new_ticket: None,
             new_ticket_shown: false,
             live: Default::default(),
@@ -935,7 +943,7 @@ impl Shell {
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         // Who the user is, from the humans aiball knows; the bus runs as them.
         self.aiball.find_user(&self.live.consumers());
-        let mut board = sessions::build(&self.live, self.local.clone(), self.live.known_loops());
+        let mut board = sessions::build(&self.live, self.local.clone(), self.live.known_loops(), self.machine.as_deref());
         self.forget_stopping(&mut board);
         self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);
@@ -1060,6 +1068,7 @@ impl Shell {
                                 (plan, answers, whoami)
                             })
                             .await;
+                        let machine = whoami.as_ref().ok().and_then(|v| v["machine"].as_str().map(str::to_string));
                         let said = match whoami {
                             Ok(v) => format!(
                                 "{} ({}) over {}",
@@ -1071,6 +1080,7 @@ impl Shell {
                         };
                         this.update(cx, |shell, cx| {
                             shell.wire_whoami = Some(said);
+                            shell.machine = machine;
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
                             shell.subscriptions_said(cx);
@@ -1789,9 +1799,71 @@ impl Shell {
     /// Shows `project`'s tickets in the panel, with no session of it open;
     /// the terminal shown stays.
     pub(super) fn show_project(&mut self, project: String, cx: &mut Context<Self>) {
+        self.hub_shown = None;
         self.project_shown = Some(project);
         self.sync_panel(cx);
         cx.notify();
+    }
+
+    /// This machine reaches aiball through a proxy node (or any way but on
+    /// the hub itself): the hub is another machine.
+    pub(super) fn away_from_hub(&self) -> bool {
+        self.machine.as_deref().is_some_and(|m| m != sessions::HUB)
+    }
+
+    /// The hub's agents listed here: behind a node, when the user asked.
+    pub(super) fn hub_agents(&self) -> &[sessions::HubAgent] {
+        if self.away_from_hub() && self.applied.sessions.show_hub { &self.board.hub } else { &[] }
+    }
+
+    /// The hub's agent shown, while it is still listed.
+    pub(super) fn hub_agent_shown(&self) -> Option<&sessions::HubAgent> {
+        let shown = self.hub_shown.as_deref()?;
+        self.hub_agents().iter().find(|h| h.agent == shown)
+    }
+
+    /// Shows a session of the hub: its page in the terminal's place, its
+    /// project's tickets in the panel. Nothing is attached.
+    pub(super) fn show_hub_agent(&mut self, agent: String, cx: &mut Context<Self>) {
+        let project = self.board.hub.iter().find(|h| h.agent == agent).and_then(|h| h.project.clone());
+        self.hub_shown = Some(agent);
+        self.project_shown = project;
+        self.sync_panel(cx);
+        cx.notify();
+    }
+
+    /// The page in the terminal's place for a session of the hub: whose it
+    /// is, how it is doing, and that it is not opened from here.
+    fn hub_view(&self, hub: &sessions::HubAgent) -> AnyElement {
+        div()
+            .saying("hub-session", format!("{} — on hub", hub.agent))
+            .size_full()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .gap_3()
+            // Where a terminal would be: as see-through as one.
+            .bg(p().bg.opacity(crate::terminal::opacity()))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .text_lg()
+                    .child(div().font_weight(FontWeight::BOLD).child(hub.agent.clone()))
+                    .child(hub_pill()),
+            )
+            .children(hub.project.clone().map(|project| div().text_sm().text_color(p().muted).child(project)))
+            .children(hub.status.as_ref().map(|status| status.line(None)))
+            .child(
+                div()
+                    .max_w(px(420.))
+                    .text_sm()
+                    .text_color(p().muted)
+                    .child("This session runs on aiball's hub, another machine: it cannot be opened from this one. Its tickets are in the panel."),
+            )
+            .into_any_element()
     }
 
     /// Points the panel at the selected terminal's project and agent — or
@@ -1853,6 +1925,7 @@ impl Shell {
         self.ended = None;
         // A terminal chosen: the panel follows it again.
         self.project_shown = None;
+        self.hub_shown = None;
         let Some(terminal) = self.open_terminal(&session, window, cx) else { return };
         let focus = terminal.read(cx).focus_handle().clone();
         window.focus(&focus, cx);
@@ -4608,8 +4681,11 @@ impl Render for Shell {
         let bar = self.agent_bar(cx);
         let tabs = self.tab_bar(cx);
         let ended = self.ended_shown().map(|e| self.ended_view(e, cx));
+        // A session of the hub shown: its page, in the terminal's place.
+        let on_hub = self.hub_agent_shown().map(|hub| self.hub_view(hub));
+        let tabs = tabs.filter(|_| on_hub.is_none());
         let tabbed = tabs.is_some() && ended.is_none();
-        let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)).filter(|_| ended.is_none()) {
+        let center = match self.selected.as_ref().and_then(|s| self.terminals.get(s)).filter(|_| ended.is_none() && on_hub.is_none()) {
             // The terminal slides in on every switch. A relative offset, not a
             // margin: the terminal keeps its size, so tmux is not resized.
             // Under it, its agent's bar, which does not slide.
@@ -4649,6 +4725,7 @@ impl Render for Shell {
                 )
                 .children(bar)
                 .into_any_element(),
+            None if on_hub.is_some() => on_hub.unwrap_or_else(|| div().into_any_element()),
             None if ended.is_some() => ended.unwrap_or_else(|| div().into_any_element()),
             // Where a terminal would be: as see-through as one.
             None => div()
@@ -4765,9 +4842,14 @@ impl Render for Shell {
         .size_0();
         let gallery = self.gallery.as_ref().map(|g| self.gallery_view(g, cx));
 
-        let title = match self.selected.as_deref().and_then(|s| self.terminal_of(s)) {
-            Some((project, terminal)) => format!("{NAME} — {project} · {}", terminal.label),
-            None => NAME.to_string(),
+        let title = match (self.hub_agent_shown(), self.selected.as_deref().and_then(|s| self.terminal_of(s))) {
+            // Not this machine's: said first of all.
+            (Some(hub), _) => match &hub.project {
+                Some(project) => format!("{NAME} — {project} · {} · on hub", hub.agent),
+                None => format!("{NAME} — {} · on hub", hub.agent),
+            },
+            (None, Some((project, terminal))) => format!("{NAME} — {project} · {}", terminal.label),
+            (None, None) => NAME.to_string(),
         };
         // The system's too (task bar, Alt+Tab), said when it changes.
         if self.os_title != title {
@@ -4994,8 +5076,9 @@ impl Render for Shell {
                         .flex_none()
                         .mr_2(),
                     )
-                    // A message to every running agent: the whole board's.
-                    .child(
+                    // A message to every running agent: the whole board's —
+                    // not from behind a proxy node, where aiball refuses it.
+                    .children((!self.away_from_hub()).then(||
                         // An SVG keeps its own colour: brightened with the
                         // button under the pointer, as the ⚙ beside it.
                         buttons::icon(
@@ -5009,7 +5092,7 @@ impl Render for Shell {
                                 cx.stop_propagation();
                                 shell.open_message_all(window, cx)
                             })),
-                    )
+                    ))
                     .child(
                         buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle"))
                             .mr_2()
@@ -5290,6 +5373,20 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
 }
 
 /// `text` with the words searched for marked.
+/// The mark of what runs on aiball's hub, seen from another machine: in
+/// the warning colour — it is not this machine's.
+pub(super) fn hub_pill() -> Div {
+    div()
+        .flex_none()
+        .px_1p5()
+        .rounded_sm()
+        .text_xs()
+        .font_weight(FontWeight::NORMAL)
+        .bg(p().warning)
+        .text_color(crate::theme::on(p().warning))
+        .child("on hub")
+}
+
 fn marked(text: &str, words: &[String]) -> StyledText {
     let lower = text.to_lowercase();
     let mut ranges: Vec<std::ops::Range<usize>> = Vec::new();

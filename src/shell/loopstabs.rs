@@ -9,6 +9,7 @@
 use crate::ui::Named as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use super::Shell;
@@ -120,13 +121,66 @@ impl Shell {
             .collect()
     }
 
-    /// The three sections, each folded or not as the user left it.
+    /// The hub's agents the filter finds.
+    fn hub_found(&self, words: &[String]) -> Vec<crate::sessions::HubAgent> {
+        self.hub_agents().iter().filter(|h| crate::sessions::found(words, &[h.project.as_deref().unwrap_or(""), &h.agent])).cloned().collect()
+    }
+
+    /// The hub's sessions, by project: read from here, never opened — no
+    /// start, no stop. A click shows one in the terminal's place.
+    fn hub_list(&self, found: &[crate::sessions::HubAgent], words: &[String], cx: &mut Context<Self>) -> AnyElement {
+        let mut list = div().flex().flex_col();
+        if found.is_empty() {
+            list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No session on the hub" } else { "No session found on the hub" }));
+        }
+        let mut last: Option<String> = None;
+        for hub in found {
+            let project = hub.project.clone().unwrap_or_else(|| "No project".into());
+            if last.as_deref() != Some(project.as_str()) {
+                list = list.child(div().flex().px_3().pt_2().pb_1().text_xs().text_color(p().muted).child(project.to_uppercase()));
+                last = Some(project);
+            }
+            let shown = self.hub_shown.as_deref() == Some(hub.agent.as_str());
+            let agent = hub.agent.clone();
+            list = list.child(
+                div()
+                    .saying(SharedString::from(format!("hub-{}", hub.agent)), hub.agent.clone())
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .px_3()
+                    .py_1()
+                    .cursor_pointer()
+                    .when(shown, |d| d.bg(p().active))
+                    .when(!shown, |d| d.hover(|d| d.bg(p().hover)))
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().flex_1().min_w_0().truncate().child(super::marked(&hub.agent, words)))
+                            .child(super::hub_pill()),
+                    )
+                    .children(hub.status.as_ref().map(|status| status.line(None)))
+                    .on_click(cx.listener(move |shell, _, _, cx| shell.show_hub_agent(agent.clone(), cx))),
+            );
+        }
+        list.into_any_element()
+    }
+
+    /// The sections, each folded or not as the user left it.
     pub(super) fn sessions_list(&self, cx: &mut Context<Self>) -> AnyElement {
         let words = self.filter_words(cx);
         let running: usize = self.live_found(&words).iter().map(|(_, t)| t.len()).sum();
-        let groups = [("live", running), ("idle", self.inactive(&words).len()), ("shut", self.closed(&words).len())];
+        let on_hub = self.hub_found(&words);
+        let mut groups = vec![("live", running), ("idle", self.inactive(&words).len()), ("shut", self.closed(&words).len())];
+        // Behind a proxy node, when asked: the hub's sessions, apart.
+        if self.away_from_hub() && self.applied.sessions.show_hub {
+            groups.push(("on hub", on_hub.len()));
+        }
+        let sections = groups.len();
         let mut list = crate::accordion::list("sessions").pb_1();
-        for (i, (word, count)) in groups.into_iter().enumerate() {
+        for (i, &(word, count)) in groups.iter().enumerate() {
             // A folded section with something the filter found opens while
             // it is typed.
             let folded = self.settings.layout.sessions_folded.iter().any(|f| f == word) && (words.is_empty() || count == 0);
@@ -134,19 +188,20 @@ impl Shell {
                 (true, _) => Vec::new(),
                 (false, 0) => vec![self.live_list(cx).into_any_element()],
                 (false, 1) => vec![self.other_list(Other::Idle, cx)],
-                (false, _) => vec![self.other_list(Other::Shut, cx)],
+                (false, 2) => vec![self.other_list(Other::Shut, cx)],
+                (false, _) => vec![self.hub_list(&on_hub, &words, cx)],
             };
             let section = crate::accordion::Section {
                 list: "sessions".into(),
                 above: (i > 0).then(|| SharedString::from(format!("sessions-{}", groups[i - 1].0))),
-                last: i + 1 == groups.len(),
-                id: SharedString::from(format!("sessions-{word}")),
+                last: i + 1 == sections,
+                id: SharedString::from(format!("sessions-{}", word.replace(' ', "-"))),
                 title: word.to_string(),
                 count,
                 folded,
                 // Two sessions, or the line saying there is none.
                 keep: (count.min(2) as f32 * 44.).max(24.),
-                scroll: self.session_scrolls[i].clone(),
+                scroll: self.session_scrolls[i.min(self.session_scrolls.len() - 1)].clone(),
                 body,
                 before: 0.,
                 after: 0.,

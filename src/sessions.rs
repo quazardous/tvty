@@ -67,6 +67,77 @@ pub struct Board {
     pub known: Vec<crate::loops::KnownLoop>,
     /// The agents aiball knows, with where they work: (agent, project, cwd).
     pub homes: Vec<(String, Option<String>, String)>,
+    /// Behind a proxy node: the agents whose loop runs on aiball's hub.
+    /// Read from here, never opened.
+    pub hub: Vec<HubAgent>,
+}
+
+/// An agent whose loop runs on aiball's hub, seen from another machine.
+#[derive(Clone, Debug, PartialEq)]
+pub struct HubAgent {
+    pub agent: String,
+    pub project: Option<String>,
+    pub status: Option<Status>,
+}
+
+/// aiball's hub, as it names machines (`node:<label>` for a proxy node).
+pub const HUB: &str = "hub";
+
+/// Where an agent works, seen from this machine.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Place {
+    Here,
+    /// On aiball's hub, this machine being another.
+    Hub,
+    /// On another machine again (a node beside this one; seen from the
+    /// hub, any node).
+    Elsewhere,
+}
+
+/// Where `c` works. `mine` is this machine as aiball names it
+/// (`bus.whoami`), and an agent's `machine` where its loop is connected:
+/// the same, it is here. Without a loop connected an agent says no machine:
+/// on the hub, aiball's `remote` stands (it is the hub's own view); on
+/// another machine it is here when this machine knows a loop of it
+/// (`loop.list` is answered for this machine alone). An aiball that names
+/// no machine: its `remote` stands.
+pub fn place(c: &Consumer, mine: Option<&str>, known: &[crate::loops::KnownLoop]) -> Place {
+    let as_aiball_says = if c.remote == Some(true) { Place::Elsewhere } else { Place::Here };
+    let Some(mine) = mine else { return as_aiball_says };
+    match c.machine.as_deref() {
+        Some(machine) if machine == mine => Place::Here,
+        Some(HUB) => Place::Hub,
+        Some(_) => Place::Elsewhere,
+        None if mine == HUB => as_aiball_says,
+        None if known.iter().any(|l| l.agent.as_deref() == Some(c.consumer_id.as_str())) => Place::Here,
+        None => Place::Elsewhere,
+    }
+}
+
+/// The agents as this machine sees them, and those of the hub apart: an
+/// agent working elsewhere keeps no session here — one another machine
+/// holds cannot be attached from this one — and its folder is not offered.
+fn placed(consumers: Vec<Consumer>, mine: Option<&str>, known: &[crate::loops::KnownLoop]) -> (Vec<Consumer>, Vec<HubAgent>) {
+    let mut hub = Vec::new();
+    let consumers = consumers
+        .into_iter()
+        .map(|mut c| {
+            if c.kind != "agent" {
+                return c;
+            }
+            let place = place(&c, mine, known);
+            if place == Place::Hub {
+                hub.push(HubAgent { agent: c.consumer_id.clone(), project: c.project.clone(), status: status_of(&c) });
+            }
+            c.remote = Some(place != Place::Here);
+            if place != Place::Here {
+                c.session = None;
+            }
+            c
+        })
+        .collect();
+    hub.sort_by(|a, b| (a.project.as_deref().unwrap_or("").to_lowercase(), &a.agent).cmp(&(b.project.as_deref().unwrap_or("").to_lowercase(), &b.agent)));
+    (consumers, hub)
 }
 
 const LOOP_PREFIX: &str = "cl-";
@@ -109,12 +180,13 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 
 /// The board, from what aiball pushed (`live`) and the tmux sessions of this
 /// machine. Cheap: nothing is read from aiball.
-pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
-    let consumers = live.consumers();
+/// `mine`: this machine, as aiball names it ([`place`]).
+pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>, mine: Option<&str>) -> Board {
+    let (consumers, hub) = placed(live.consumers(), mine, &known);
     // Whom each loop's tmux session runs for, as aiball lists its loops.
     let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
-    let mut board = Board { known, homes: homes(&consumers), ..Default::default() };
+    let mut board = Board { known, homes: homes(&consumers), hub, ..Default::default() };
     for project in projects.iter().filter(|p| p.on_board) {
         let tickets = live.tickets().get(&project.name).cloned().unwrap_or_default();
         if let Some(critical) = tickets.iter().find(|t| t.critical.is_some()) {
@@ -269,7 +341,8 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashM
         let agent = session
             .starts_with(LOOP_PREFIX)
             .then(|| {
-                let agents = || consumers.iter().filter(|c| c.kind == "agent");
+                // An agent working on another machine owns no session here.
+                let agents = || consumers.iter().filter(|c| c.kind == "agent" && c.remote != Some(true));
                 agents()
                     .find(|c| c.session.as_ref().and_then(|s| s.tmux.as_deref()) == Some(session.as_str()))
                     .or_else(|| owners.get(&session).and_then(|owner| agents().find(|c| c.consumer_id == *owner)))
@@ -354,7 +427,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, Status, filter_words, found, group, homes, loop_says, project_at};
+    use super::{HOSTED_PREFIX, HUB, Place, Status, filter_words, found, group, homes, loop_says, place, placed, project_at};
     use std::collections::HashMap;
 
     #[test]
@@ -416,6 +489,53 @@ mod tests {
     fn agent(id: &str, cwd: &str, session: serde_json::Value) -> Consumer {
         serde_json::from_value(json!({ "consumer_id": id, "kind": "agent", "cwd": cwd, "project": "demo",
                                         "state": "idle", "session": session })).unwrap()
+    }
+
+    #[test]
+    fn an_agent_is_here_on_the_hub_or_elsewhere_by_the_machine_aiball_names() {
+        let on = |machine: Option<&str>, remote: Option<bool>| {
+            let mut c = agent("a", "/w/a", json!(null));
+            c.machine = machine.map(str::to_string);
+            c.remote = remote;
+            c
+        };
+        let known = [crate::loops::KnownLoop { name: "cl-a".into(), agent: Some("a".into()), ..Default::default() }];
+        let node = Some("node:laptop");
+        // Behind a node: its own, the hub's, a node beside it.
+        assert_eq!(place(&on(Some("node:laptop"), Some(true)), node, &[]), Place::Here);
+        assert_eq!(place(&on(Some(HUB), Some(false)), node, &[]), Place::Hub);
+        assert_eq!(place(&on(Some("node:other"), Some(true)), node, &[]), Place::Elsewhere);
+        // No loop connected: here when this machine knows a loop of it.
+        assert_eq!(place(&on(None, Some(true)), node, &known), Place::Here);
+        assert_eq!(place(&on(None, Some(false)), node, &[]), Place::Elsewhere);
+        // On the hub: a node's agent is elsewhere; without a loop, aiball's
+        // `remote` stands (it is the hub's view).
+        assert_eq!(place(&on(Some(HUB), None), Some(HUB), &[]), Place::Here);
+        assert_eq!(place(&on(Some("node:laptop"), Some(true)), Some(HUB), &[]), Place::Elsewhere);
+        assert_eq!(place(&on(None, Some(true)), Some(HUB), &[]), Place::Elsewhere);
+        assert_eq!(place(&on(None, None), Some(HUB), &[]), Place::Here);
+        // An aiball that names no machine: its `remote` stands.
+        assert_eq!(place(&on(None, Some(true)), None, &known), Place::Elsewhere);
+    }
+
+    #[test]
+    fn behind_a_node_the_hubs_agents_are_apart_and_keep_no_session_here() {
+        let mut hub = agent("hub-agent", "/srv/app", json!({ "running": true, "attach": { "socket": "/h/hub/attach.sock" } }));
+        hub.machine = Some(HUB.into());
+        let mut mine = agent("mine", "/w/app", json!(null));
+        mine.machine = Some("node:laptop".into());
+        mine.remote = Some(true);
+        let mut beside = agent("beside", "C:\\w\\app", json!(null));
+        beside.machine = Some("node:other".into());
+        let (seen, on_hub) = placed(vec![hub, mine, beside], Some("node:laptop"), &[]);
+        assert_eq!(on_hub.iter().map(|h| h.agent.as_str()).collect::<Vec<_>>(), ["hub-agent"], "the hub's alone: not a node beside");
+        assert!(seen[0].session.is_none(), "a session the hub holds cannot be attached from here");
+        assert_eq!(seen.iter().map(|c| c.remote).collect::<Vec<_>>(), [Some(true), Some(false), Some(true)]);
+        // Shown here: this machine's session alone, and its folder.
+        let projects = group(vec![("cl-mine".to_string(), "/w/app".to_string())], &seen, &HashMap::new());
+        let labels: Vec<&str> = projects.iter().flat_map(|p| &p.terminals).map(|t| t.label.as_str()).collect();
+        assert_eq!(labels, ["mine"]);
+        assert_eq!(homes(&seen).iter().map(|h| h.0.as_str()).collect::<Vec<_>>(), ["mine"]);
     }
 
     #[test]

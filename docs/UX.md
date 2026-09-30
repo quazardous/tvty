@@ -74,7 +74,24 @@ and a double click on a title gives the list its shares back): **live** (the ses
 **idle** (the loops this machine knows, as aiball lists them
 (`loop.list`), that are stopped: ▶ start runs one again where it worked, for
 its agent), **shut** (the agents aiball knows with no loop here: ▶ start
-opens one where the agent works). A click on a project's name, in any of
+opens one where the agent works).
+
+**This machine, and the others.** tvty lists and manages the sessions of
+its own machine. aiball names the machine each loop is connected from
+(`hub`, `node:<label>`) and tvty's own (`bus.whoami`): an agent is here
+when the two are the same. Behind a proxy node — aiball's hub being another
+machine — the hub's agents are therefore not this machine's: their sessions
+are not listed, their folders not offered. **Options > Layout > Sessions >
+The hub's sessions** (off by default) lists them in a fourth section, **on
+hub**, each with the "on hub" mark in the warning colour. They are read,
+never opened — a session is attached from its own machine: a click shows,
+in the terminal's place, a page saying whose session it is, how it is doing
+and that it runs on the hub; its project's tickets in the panel; "on hub"
+in the window's title. No start, no stop, no hold is offered on them. The
+sessions of other nodes are never listed. "Message every agent" is not
+offered behind a node (aiball refuses it there).
+
+A click on a project's name, in any of
 the three, shows its tickets in the panel with no session opened ("no
 session open" when none of its sessions is here); choosing a terminal
 brings the panel back to that terminal's project. "+ session" on a project opens a small

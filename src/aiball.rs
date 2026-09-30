@@ -36,6 +36,10 @@ pub struct Consumer {
     /// It works on another machine: its `cwd` is that machine's.
     #[serde(default)]
     pub remote: Option<bool>,
+    /// The machine its loop is connected from, as aiball names them: `hub`,
+    /// `node:<label>`; none without a loop connected.
+    #[serde(default)]
+    pub machine: Option<String>,
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,
