@@ -3380,7 +3380,7 @@ impl Shell {
             .flex()
             .flex_col()
             .gap_2()
-            .max_w(px(640.))
+            .max_w(px(720.))
             .child(option_toggle(
                 "Projects' list",
                 "Over the terminal, on the left. Drag its edge to resize it; its grip folds it.",
@@ -5333,7 +5333,10 @@ fn option_toggle(
                 .child(div().text_sm().text_color(p().muted).child(about)),
         )
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
-        .child(buttons::switch(format!("options-action-{name}"), on, "", flip))
+        // The size of the other settings' switches, not a dialog's small one.
+        .child(div().named(SharedString::from(format!("options-action-{name}"))).flex_none().child(Switch::new(SharedString::from(format!("options-switch-{name}"))).checked(on).on_click(flip)))
+        // The room a setting keeps for its ↺: the switches stand in one column.
+        .child(div().flex_none().w(px(104.)))
 }
 
 /// A setting away from its default: what ↺ puts back (`Default`, or in a
