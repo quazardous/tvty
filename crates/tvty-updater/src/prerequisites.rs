@@ -3,7 +3,8 @@
 //! for, how to install it. The updater checks it first (its window, and
 //! `--install`), says what is missing and how to get it. On Linux it installs
 //! by itself what needs no `sudo` (Claude Code, by its own installer); the
-//! rest is the distribution's package manager's, named to the user.
+//! rest is the distribution's package manager's, named to the user. On
+//! Windows it installs all of it, through winget.
 
 use std::path::{Path, PathBuf};
 
@@ -179,16 +180,67 @@ fn found_in(command: &str, dirs: &[PathBuf], windows: bool) -> bool {
 }
 
 fn is_file(path: &Path) -> bool {
-    path.is_file()
+    // On Windows a program may be an alias `is_file` cannot follow (pwsh's,
+    // from the Store): its own entry, not a folder, is enough.
+    path.is_file() || (cfg!(windows) && path.symlink_metadata().is_ok_and(|entry| !entry.is_dir()))
 }
 
 /// The folders programs are looked for in: the `PATH`, and `~/.local/bin`
 /// (where Claude Code and tvty install themselves — a session started from
-/// the desktop may not have it on its `PATH` yet).
+/// the desktop may not have it on its `PATH` yet). On Windows the `PATH`
+/// the registry holds now comes first: an installer adds its folder there,
+/// which a running program does not see — what winget installed a moment
+/// ago is found at once.
 fn search_dirs() -> Vec<PathBuf> {
-    let mut dirs: Vec<PathBuf> = std::env::var_os("PATH").map(|path| std::env::split_paths(&path).collect()).unwrap_or_default();
+    let mut dirs = registry_path();
+    dirs.extend(std::env::var_os("PATH").map(|path| std::env::split_paths(&path).collect::<Vec<_>>()).unwrap_or_default());
     dirs.push(crate::bin_dir());
     dirs
+}
+
+/// [`search_dirs`] as a `PATH`: what the updater's own tools (git, pwsh,
+/// aiball's command) are found by and run with.
+pub fn search_path() -> std::ffi::OsString {
+    std::env::join_paths(search_dirs().into_iter().filter(|dir| !dir.as_os_str().is_empty())).unwrap_or_default()
+}
+
+/// The machine's and the user's `PATH` as the registry has them (Windows).
+#[cfg(windows)]
+fn registry_path() -> Vec<PathBuf> {
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE};
+    let machine = registry_text(HKEY_LOCAL_MACHINE, r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment", "Path");
+    let user = registry_text(HKEY_CURRENT_USER, "Environment", "Path");
+    [machine, user].into_iter().flatten().flat_map(|path| std::env::split_paths(&path).collect::<Vec<_>>()).collect()
+}
+
+#[cfg(not(windows))]
+fn registry_path() -> Vec<PathBuf> {
+    Vec::new()
+}
+
+/// A text value of the registry, its `%VARIABLES%` expanded.
+#[cfg(windows)]
+fn registry_text(root: windows_sys::Win32::System::Registry::HKEY, key: &str, name: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{RRF_RT_REG_SZ, RegGetValueW};
+    let wide = |text: &str| text.encode_utf16().chain(Some(0)).collect::<Vec<u16>>();
+    let (key, name) = (wide(key), wide(name));
+    let mut bytes: u32 = 0;
+    // SAFETY: plain Win32 calls on buffers that outlive them; the first asks
+    // the size, the second fills a buffer larger than that size.
+    // RRF_RT_REG_SZ also takes a REG_EXPAND_SZ value, expanded.
+    unsafe {
+        if RegGetValueW(root, key.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), std::ptr::null_mut(), &mut bytes) != 0 {
+            return None;
+        }
+        // Expanding may need more room than the size first said.
+        let mut text = vec![0u16; bytes as usize / 2 + 4096];
+        let mut bytes = (text.len() * 2) as u32;
+        if RegGetValueW(root, key.as_ptr(), name.as_ptr(), RRF_RT_REG_SZ, std::ptr::null_mut(), text.as_mut_ptr().cast(), &mut bytes) != 0 {
+            return None;
+        }
+        let end = text.iter().position(|unit| *unit == 0).unwrap_or(text.len());
+        Some(String::from_utf16_lossy(&text[..end]))
+    }
 }
 
 /// What this system needs and does not have.
@@ -198,25 +250,41 @@ pub fn missing() -> Vec<&'static Prerequisite> {
 }
 
 impl Prerequisite {
-    /// The updater installs it by itself on this system: it has an installer
-    /// of its own that asks for no password (Claude Code, on Unix).
+    /// The updater installs it by itself on this system: on Windows through
+    /// winget, when winget is there; on Unix when it has an installer of its
+    /// own that asks for no password (Claude Code).
     pub fn installable(&self) -> bool {
-        !cfg!(windows) && self.script.is_some()
+        if cfg!(windows) { self.winget.is_some() && found_in("winget", &search_dirs(), true) } else { self.script.is_some() }
     }
 
-    /// Installs it by its own installer.
+    /// Installs it: through winget on Windows, by its own installer on Unix.
     pub fn install(&self, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
-        let script = self.script.filter(|_| !cfg!(windows)).ok_or_else(|| anyhow::anyhow!("{}: nothing to install it by here", self.command))?;
-        say(format!("installing {}, for {}…", self.command, self.purpose));
-        crate::run(std::process::Command::new("bash").args(["-c", script]), say)?;
+        let nothing = || anyhow::anyhow!("{}: nothing to install it by here", self.command);
+        if cfg!(windows) {
+            let id = self.winget.ok_or_else(nothing)?;
+            say(format!("installing {} ({id}), for {}…", self.command, self.purpose));
+            crate::run(crate::tool("winget").args(winget_install(id)), say)?;
+        } else {
+            let script = self.script.ok_or_else(nothing)?;
+            say(format!("installing {}, for {}…", self.command, self.purpose));
+            crate::run(std::process::Command::new("bash").args(["-c", script]), say)?;
+        }
         anyhow::ensure!(found_in(self.command, &search_dirs(), cfg!(windows)), "{} is still not found once installed", self.command);
         Ok(())
     }
 }
 
-/// Makes what is missing be there where the updater can (what has an
-/// installer of its own, no password asked), and says the rest, each with
-/// how to install it; answers the commands still missing.
+/// winget's arguments to install `id`, asking nothing. `--source winget`:
+/// the Store's source, asked too by default, fails where there is no Store,
+/// and winget then installs nothing.
+fn winget_install(id: &str) -> [&str; 10] {
+    ["install", "--id", id, "--exact", "--source", "winget", "--silent", "--accept-package-agreements", "--accept-source-agreements", "--disable-interactivity"]
+}
+
+/// Makes what is missing be there where the updater can (winget on
+/// Windows; on Unix what has an installer of its own, no password asked),
+/// and says the rest, each with how to install it; answers the commands
+/// still missing.
 pub fn ensure(say: &mut dyn FnMut(String)) -> Vec<&'static str> {
     for p in missing().into_iter().filter(|p| p.installable()) {
         if let Err(error) = p.install(say) {
@@ -276,6 +344,24 @@ mod tests {
         assert_eq!(named("claude").how(false, Some(Manager::Zypper)), "curl -fsSL https://claude.ai/install.sh | bash");
         // On Windows, winget.
         assert_eq!(named("claude").how(true, None), "winget install --id Anthropic.ClaudeCode --exact --source winget");
+    }
+
+    #[test]
+    fn winget_is_told_its_source_and_asks_nothing() {
+        let args = winget_install("Git.Git");
+        assert_eq!(&args[..3], ["install", "--id", "Git.Git"]);
+        assert!(args.windows(2).any(|pair| pair == ["--source", "winget"]));
+        assert!(args.contains(&"--silent") && args.contains(&"--disable-interactivity"));
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn the_registry_gives_the_path_a_new_session_would_have() {
+        let dirs = registry_path();
+        assert!(!dirs.is_empty(), "the machine's PATH is never empty");
+        // Expanded: no %VARIABLE% left.
+        assert!(dirs.iter().all(|dir| !dir.to_string_lossy().contains('%')), "{dirs:?}");
+        assert!(search_path().to_string_lossy().to_lowercase().contains("system32"));
     }
 
     #[test]

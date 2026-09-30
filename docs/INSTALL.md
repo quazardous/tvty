@@ -76,20 +76,22 @@ installs everything:
 irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 ```
 
-It installs what is missing through winget (Git, Node.js LTS, PowerShell 7,
-psmux, Claude Code), then Terminal Velocity and its updater (into `~\.local\bin`, added
-to your PATH), then aiball through its own `install.ps1`, and puts both
-programs in the Start menu. It says what failed, if anything; run it again
-once that is fixed, it skips what is there. Without winget (Windows
-Sandbox, some LTSC editions) it names what to install by hand.
+It installs Terminal Velocity and its updater (into `~\.local\bin`, added
+to your PATH), and the updater does the rest: what is missing through winget
+(Git, Node.js LTS, PowerShell 7, psmux, Claude Code), then aiball through
+its own `install.ps1`, and both programs in the Start menu. It says what
+failed, if anything; run it again once that is fixed, it skips what is
+there. Without winget (Windows Sandbox, some LTSC editions) it names what to
+install, each with its command.
 
 Everything it says, and everything the installers say, is also kept in
 `%LOCALAPPDATA%\tvty\setup.log` (your home folder written `~`): when it goes
 wrong, that is the file to attach to an
 [issue](https://github.com/quazardous/tvty/issues).
 
-`tvty-updater --install` does its last part alone: aiball when missing,
-Terminal Velocity, the shortcuts. Settings live in `%APPDATA%\tvty`, the
+`tvty-updater --install` does that second part alone, and the updater's
+window does it too: it lists what is missing, an Install button on each
+line. Settings live in `%APPDATA%\tvty`, the
 layout and the log in `%LOCALAPPDATA%\tvty`.
 
 ## Updates

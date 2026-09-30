@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The updater checks what the machine needs before installing (git, Node.js, tmux, Claude Code): its window lists what is missing, each with the command to copy for your distribution, and `tvty-updater --install` no longer ends well without them; `tvty-updater --check` only says. On Linux it installs Claude Code itself (its Install button, or `--install`).
 - Workspaces, the left panel's second tab: a named group of groups (a project's terminals), with how each session runs (on its own, or held). Open starts what is stopped and sets each as kept; Shut stops the sessions of the groups no other workspace has — both ask first, session by session.
 - Quitting tvty asks which sessions to stop, one box each, instead of all or none.
-- The Windows setup installs Claude Code when it is missing (winget), and says to sign in once before starting a loop.
+- On Windows the updater installs what is missing itself, through winget (Git, Node.js, PowerShell 7, psmux, Claude Code): from its window (an Install button on each line) as from `--install`; the setup script no longer has a list of its own.
 - The Windows setup keeps a log of everything it and the installers say (`%LOCALAPPDATA%\tvty\setup.log`, your home folder written `~`), and names it at the end: the file to attach to an issue.
 
 ### Fixed

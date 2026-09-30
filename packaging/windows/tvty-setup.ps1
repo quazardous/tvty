@@ -2,12 +2,12 @@
 #
 #   irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 #
-# 1. What aiball and tvty need, through winget when it is missing: Git,
-#    Node.js (LTS), PowerShell 7, psmux and Claude Code.
-# 2. Terminal Velocity and its updater, from the release (their own
-#    installers, into ~\.local\bin, added to your PATH).
-# 3. The updater, without a window: aiball (its own install.ps1) and the
-#    Start menu's shortcuts.
+# 1. Terminal Velocity and its updater, from the release (their own
+#    installers, into ~\.local\bin, added to your PATH). They need nothing.
+# 2. The updater, without a window (`tvty-updater --install`): what aiball
+#    and tvty need, through winget when it is missing (Git, Node.js LTS,
+#    PowerShell 7, psmux, Claude Code: the updater keeps that list), then
+#    aiball (its own install.ps1) and the Start menu's shortcuts.
 #
 # It tries everything and says what failed; run it again once that is fixed,
 # it skips what is there. Everything it says and everything the installers
@@ -58,7 +58,7 @@
     Say "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), from $from"
     Say "Windows $([Environment]::OSVersion.Version), PowerShell $($PSVersionTable.PSVersion)"
 
-    # The PATH as the registry has it now: what winget just installed shows.
+    # The PATH as the registry has it now: what was just installed shows.
     function Update-Path {
         $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
         $user = [Environment]::GetEnvironmentVariable('Path', 'User')
@@ -76,38 +76,7 @@
         return $to
     }
 
-    # 1. What is needed.
-    $needed = @(
-        @{ Command = 'git';   Id = 'Git.Git';              For = 'aiball (its install clones it)' },
-        @{ Command = 'node';  Id = 'OpenJS.NodeJS.LTS';    For = 'aiball (it runs on Node.js)' },
-        @{ Command = 'pwsh';  Id = 'Microsoft.PowerShell'; For = "aiball's installer" },
-        @{ Command = 'psmux'; Id = 'marlocarlo.psmux';     For = 'the loops in tmux mode' },
-        @{ Command = 'claude'; Id = 'Anthropic.ClaudeCode'; For = 'the agents themselves' }
-    )
-    $winget = Get-Command winget -ErrorAction SilentlyContinue
-    Say "winget: $(if ($winget) { winget --version } else { 'none' })"
-    foreach ($need in $needed) {
-        if (Get-Command $need.Command -ErrorAction SilentlyContinue) {
-            Say "$($need.Command): there"
-            continue
-        }
-        if (-not $winget) {
-            Say "$($need.Command) is missing, for $($need.For), and there is no winget to install it: winget install --id $($need.Id)"
-            $failed += $need.Command
-            continue
-        }
-        Say "installing $($need.Command) ($($need.Id)), for $($need.For)..."
-        # --source winget: the Store's source, asked too by default, fails
-        # where there is no Store, and winget then installs nothing.
-        Invoke-Logged winget 'install', '--id', $need.Id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
-        Update-Path
-        if (-not (Get-Command $need.Command -ErrorAction SilentlyContinue)) {
-            Say "$($need.Command) did not install (winget said $LASTEXITCODE)"
-            $failed += $need.Command
-        }
-    }
-
-    # 2. Terminal Velocity and its updater, by their own installers.
+    # 1. Terminal Velocity and its updater, by their own installers.
     foreach ($app in 'tvty', 'tvty-updater') {
         Say "installing $app..."
         try {
@@ -126,14 +95,14 @@
     }
     Update-Path
 
-    # 3. aiball and the shortcuts, by the updater.
+    # 2. What they need, aiball and the shortcuts, by the updater.
     $updater = Join-Path $bin 'tvty-updater.exe'
     if (Test-Path -LiteralPath $updater) {
-        Say 'installing aiball and the Start menu shortcuts...'
+        Say 'installing what is missing, aiball and the Start menu shortcuts...'
         Invoke-Logged $updater '--install'
-        if ($LASTEXITCODE) { $failed += 'aiball or the shortcuts (the lines above say which)' }
+        if ($LASTEXITCODE) { $failed += 'what the updater installs (the lines above say which)' }
     } else {
-        $failed += 'aiball and the shortcuts (no updater to install them)'
+        $failed += 'what the updater installs (it is not there to do it)'
     }
 
     if ($failed.Count) {
