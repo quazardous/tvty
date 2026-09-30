@@ -336,7 +336,9 @@ Ctrl+enter files it. One call creates it (with the machine's platform tag,
 as every aiball client does); tags, assignee and milestone follow, as
 aiball's web UI does them. A ticket that exists is worth more than one
 perfectly labelled: what does not follow is said on the new ticket, which
-opens full screen. Esc puts the form away and keeps the draft.
+opens full screen. **File and exit** files it without opening it: one is
+back where one was, the terminal or the full list. Esc puts the form away
+and keeps the draft.
 
 ## A ticket's thread
 

@@ -1402,14 +1402,20 @@ impl Shell {
                     shell.settings.workspace.last_ticket_project = Some(created.project.clone());
                     shell.remember_compact(cx);
                     shell.settings.save(cx);
+                    let (project, ticket) = (created.project.clone(), created.ticket);
+                    let quote = crate::thread::excerpt(Some(&created.body), crate::live::EXCERPT);
+                    activity::publish(cx, Activity::done(Some((project.clone(), ticket)), format!("filed — {}", created.title)).quoting(quote));
+                    // Filed and left: back to the terminal, or to the full
+                    // list it was asked from.
+                    if !created.open {
+                        let _ = shell.refresh_now.unbounded_send(());
+                        return shell.close_new_ticket(window, cx);
+                    }
                     shell.new_ticket_shown = false;
                     shell.full_list_shown = false;
                     if !shell.settings.layout.panel_open {
                         shell.toggle_panel(cx);
                     }
-                    let (project, ticket) = (created.project.clone(), created.ticket);
-                    let quote = crate::thread::excerpt(Some(&created.body), crate::live::EXCERPT);
-                    activity::publish(cx, Activity::done(Some((project.clone(), ticket)), format!("filed — {}", created.title)).quoting(quote));
                     shell.panel.update(cx, |panel, cx| {
                         panel.open_in(Some(project.clone()), ticket, cx);
                         panel.set_full(true, cx);

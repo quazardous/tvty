@@ -32,6 +32,8 @@ pub struct Created {
     /// Its title and body, as filed: its notification says them.
     pub title: String,
     pub body: String,
+    /// Whether it is opened once filed; else one is back where one was.
+    pub open: bool,
 }
 
 use crate::ui::fields::{self, INTENTS, LEVELS, PRIORITIES, SCOPES};
@@ -86,7 +88,7 @@ impl NewTicketForm {
         cx.observe_in(&catalog::store(cx), window, |form: &mut Self, _, window, cx| form.take_catalog(window, cx)).detach();
         let text = cx.new(|cx| TicketText::new(aiball.clone(), "new", (10, 40), window, cx));
         cx.subscribe_in(&text, window, |form: &mut Self, _, event: &TicketTextEvent, window, cx| match event {
-            TicketTextEvent::Submit => form.submit(window, cx),
+            TicketTextEvent::Submit => form.submit(true, window, cx),
             TicketTextEvent::Failed(error) => {
                 form.error = Some(error.clone());
                 cx.notify();
@@ -97,7 +99,7 @@ impl NewTicketForm {
         // Ctrl+Enter files from the summary too.
         cx.subscribe_in(&summary, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
-                form.submit(window, cx);
+                form.submit(true, window, cx);
             }
         })
         .detach();
@@ -259,8 +261,9 @@ impl NewTicketForm {
         cx.notify();
     }
 
-    /// Files the ticket, then what follows it; opens it once filed.
-    fn submit(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    /// Files the ticket, then what follows it; once filed it is opened
+    /// (`open`), or one is back where one was.
+    fn submit(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
         if self.busy || self.text.read(cx).uploading() {
             return;
         }
@@ -310,7 +313,7 @@ impl NewTicketForm {
                     match filed {
                         Ok(ticket) => {
                             form.clear(window, cx);
-                            cx.emit(Created { project, ticket, title, body });
+                            cx.emit(Created { project, ticket, title, body, open });
                         }
                         Err(error) => form.error = Some(format!("{error:#}")),
                     }
@@ -340,7 +343,7 @@ impl NewTicketForm {
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         if keystroke.modifiers.control && keystroke.key == "enter" {
-            self.submit(window, cx);
+            self.submit(true, window, cx);
             cx.stop_propagation();
         }
     }
@@ -465,10 +468,16 @@ impl Render for NewTicketForm {
                     .gap_2()
                     .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
                     .child(
+                        buttons::secondary("new-ticket-file-exit", "File and exit")
+                            .disabled(busy)
+                            .tooltip("Files it without opening it: back to where you were")
+                            .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
+                    )
+                    .child(
                         buttons::primary("new-ticket-file", "File the ticket")
                             .loading(busy)
                             .disabled(busy)
-                            .on_click(cx.listener(|form, _, window, cx| form.submit(window, cx))),
+                            .on_click(cx.listener(|form, _, window, cx| form.submit(true, window, cx))),
                     ),
             );
         let title = match self.parent {
