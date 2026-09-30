@@ -145,6 +145,10 @@ impl Shell {
             list = list.child(
                 div()
                     .saying(SharedString::from(format!("hub-{}", hub.agent)), hub.agent.clone())
+                    .relative()
+                    .overflow_hidden()
+                    // Behind the row's text.
+                    .child(super::hub_mark(SharedString::from(format!("hub-{}-mark", hub.agent))))
                     .flex()
                     .flex_col()
                     .gap_0p5()
@@ -158,8 +162,7 @@ impl Shell {
                             .flex()
                             .items_center()
                             .gap_2()
-                            .child(div().flex_1().min_w_0().truncate().child(super::marked(&hub.agent, words)))
-                            .child(super::hub_mark(SharedString::from(format!("hub-{}-mark", hub.agent)))),
+                            .child(div().flex_1().min_w_0().truncate().child(super::marked(&hub.agent, words))),
                     )
                     .children(hub.status.as_ref().map(|status| status.line(None)))
                     .on_click(cx.listener(move |shell, _, _, cx| shell.show_hub_agent(agent.clone(), cx))),
