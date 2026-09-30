@@ -1270,22 +1270,24 @@ impl TicketPanel {
                         .tip("Edit the title and the body")
                         .on_click(cx.listener(|panel, _, window, cx| panel.edit_text(true, window, cx))),
                 )
-            })
-            .child(
-                buttons::link("thread-order", if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
-                    .text_xs()
-                    .font_weight(FontWeight::NORMAL)
-                    .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
-            )
-            .child(
-                buttons::link("thread-full", if self.full { "✕  Esc" } else { "⤢ more" })
-                    .text_xs()
-                    .font_weight(FontWeight::NORMAL)
-                    .on_click(cx.listener(|panel, _, _, cx| {
-                        let full = !panel.full;
-                        panel.set_full(full, cx)
-                    })),
-            );
+            });
+        // The thread's own buttons: its order, and the full screen. Full
+        // screen they end the title's line; in the panel they sit on the
+        // line of the way back, so that the title keeps its whole width.
+        let tools = [
+            buttons::link("thread-order", if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
+                .text_xs()
+                .font_weight(FontWeight::NORMAL)
+                .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
+            buttons::link("thread-full", if self.full { "✕  Esc" } else { "⤢ more" })
+                .text_xs()
+                .font_weight(FontWeight::NORMAL)
+                .on_click(cx.listener(|panel, _, _, cx| {
+                    let full = !panel.full;
+                    panel.set_full(full, cx)
+                })),
+        ];
+        let (title, tools) = if self.full { (title.children(tools), None) } else { (title, Some(tools)) };
         let turn = (!sentence.is_empty()).then(|| {
             let (stripe_kind, colour) = state
                 .as_ref()
@@ -1426,13 +1428,19 @@ impl TicketPanel {
                 .border_b_1()
                 .border_color(p().border)
                 // The way back to the list, above what it leads back from.
+                // On the same line, at its end: the thread's order and the
+                // full screen.
                 .child(
-                    div().flex().child(
-                        buttons::link("back", "← Tickets").text_sm().on_click(cx.listener(|panel, _, _, cx| {
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap_2()
+                        .child(buttons::link("back", "← Tickets").text_sm().on_click(cx.listener(|panel, _, _, cx| {
                             panel.detail = None;
                             cx.notify();
-                        })),
-                    ),
+                        })))
+                        .child(div().flex_1())
+                        .children(tools.into_iter().flatten()),
                 )
                 .child(title)
                 .children(turn)

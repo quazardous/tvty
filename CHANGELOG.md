@@ -24,10 +24,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Fixed
-
-- Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
-
 ### Added
 
 - The updater's console can be copied whole, and is kept in a file (`updater.log`, beside Terminal Velocity's log) whose folder a button opens. An aiball run from its checkout (a development install) is said so, with the command that updates it by hand, and is no longer updated — nor failed — from the updater.
@@ -38,7 +34,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
 - The left panel can no longer be resized narrower than its header: its buttons and the chevron that folds it went out of it (seen on Windows, where the text is wider).
+- In the ticket panel, the thread's order and "more" sit on the line of "← Tickets", and the title keeps its whole width.
 
 ## [0.8.0-beta.1] - 2026-09-30
 
