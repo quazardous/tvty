@@ -38,8 +38,6 @@ pub enum Signal {
     StandingChanged(crate::aiball::Standing),
     /// A project's tickets changed on the board (an event of its list).
     TicketsChanged(String),
-    /// An agent's loop bar changed (a wake recorded, a pause begun…).
-    BarChanged(String),
     /// An agent's backlog changed, as aiball says it (`agent.NAME.backlog`).
     BacklogChanged(String),
     /// tvty's link to aiball changed (`crate::kernel::signals`).

@@ -3,8 +3,9 @@
 //! agent bar's list), and read again when it moves: aiball says so on the
 //! agent's `agent.NAME.backlog` (a wake sank a ticket, a rest ended, a tier
 //! changed), which the store subscribes to for each agent it keeps; one of
-//! the project's tickets changed, the agent's bar changed, the first pause
-//! ended, back on the bus or aiball restarted.
+//! the project's tickets changed, the first pause ended, back on the bus
+//! or aiball restarted. Not when the agent's bar changes: a loop pushes
+//! its bar several times a minute, and the backlog was read as often.
 //!
 //! A view asks with [`request`] and reads with [`get`]; it observes the
 //! store's entity ([`store`]) to hear when a read comes in.
@@ -50,7 +51,9 @@ pub fn init(aiball: Aiball, cx: &mut App) {
     let store = cx.new(|cx| {
         cx.subscribe(&crate::bus::bus(cx), |store: &mut BacklogStore, _, signal: &Signal, cx| match signal {
             Signal::TicketsChanged(project) => store.moved(|(_, p)| p == project, cx),
-            Signal::BarChanged(agent) | Signal::BacklogChanged(agent) => store.moved(|(a, _)| a == agent, cx),
+            // Not the agent's bar: its loop pushes one several times a
+            // minute, and aiball says on its own subject when a backlog moves.
+            Signal::BacklogChanged(agent) => store.moved(|(a, _)| a == agent, cx),
             // Another connection: its subscriptions are to make again.
             Signal::Bus(BusSignal::Reconnected { .. } | BusSignal::EpochChanged) => {
                 store.followed.clear();
