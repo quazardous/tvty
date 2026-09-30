@@ -52,6 +52,18 @@ fn main() -> anyhow::Result<()> {
             break;
         }
     }
+    // Any other read-only method, its whole answer: `-- consumer.list`.
+    if let Some(method) = std::env::args().nth(1) {
+        bus.send(tungstenite::Message::text(format!(r#"{{"jsonrpc":"2.0","id":3,"method":"{method}","params":{{}}}}"#)))?;
+        loop {
+            let message = bus.read()?;
+            let text = message.to_text()?;
+            if text.contains("\"id\":3") {
+                println!("{text}");
+                break;
+            }
+        }
+    }
     let _ = bus.close(None);
     Ok(())
 }

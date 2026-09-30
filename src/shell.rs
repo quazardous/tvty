@@ -233,6 +233,9 @@ pub struct Shell {
     wire: Option<crate::wire::Wire>,
     /// What aiball's bus says the connection is (`bus.whoami`).
     wire_whoami: Option<String>,
+    /// The bus is reached through a proxy node (`bus.whoami` says
+    /// `relayed`): aiball's hub is another machine.
+    through_node: bool,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -772,6 +775,7 @@ impl Shell {
             viewer: None,
             wire: None,
             wire_whoami: None,
+            through_node: false,
             new_ticket: None,
             new_ticket_shown: false,
             live: Default::default(),
@@ -935,7 +939,7 @@ impl Shell {
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         // Who the user is, from the humans aiball knows; the bus runs as them.
         self.aiball.find_user(&self.live.consumers());
-        let mut board = sessions::build(&self.live, self.local.clone(), self.live.known_loops());
+        let mut board = sessions::build(&self.live, self.local.clone(), self.live.known_loops(), self.through_node);
         self.forget_stopping(&mut board);
         self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);
@@ -1060,6 +1064,7 @@ impl Shell {
                                 (plan, answers, whoami)
                             })
                             .await;
+                        let through_node = whoami.as_ref().is_ok_and(|v| v["relayed"].as_bool() == Some(true));
                         let said = match whoami {
                             Ok(v) => format!(
                                 "{} ({}) over {}",
@@ -1071,6 +1076,7 @@ impl Shell {
                         };
                         this.update(cx, |shell, cx| {
                             shell.wire_whoami = Some(said);
+                            shell.through_node = through_node;
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
                             shell.subscriptions_said(cx);

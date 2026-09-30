@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Through a proxy node (aiball's hub on another machine), tvty shows and manages only this machine's sessions: the hub's agents and the sessions its host holds are no longer listed as if they were here.
+
 ## [0.8.0-beta.1] - 2026-09-30
 
 ### Added

@@ -109,8 +109,10 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 
 /// The board, from what aiball pushed (`live`) and the tmux sessions of this
 /// machine. Cheap: nothing is read from aiball.
-pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>) -> Board {
-    let consumers = live.consumers();
+/// `through_node`: tvty reaches aiball through a proxy node (another
+/// machine's hub), which changes who is "here" ([`here`]).
+pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>, through_node: bool) -> Board {
+    let consumers = here(live.consumers(), &known, through_node);
     // Whom each loop's tmux session runs for, as aiball lists its loops.
     let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
@@ -187,6 +189,27 @@ fn project_at<'a>(cwd: &str, folders: &[(&str, &'a str)]) -> Option<&'a str> {
         .filter(|(folder, _)| cwd.starts_with(folder))
         .max_by_key(|(folder, _)| folder.len())
         .map(|(_, project)| *project)
+}
+
+/// The agents as this machine sees them. aiball says `remote` from its
+/// hub: through a proxy node it is the hub's agents that read local, and
+/// this machine's that read remote. There, an agent of this machine is one
+/// the node lists a loop for (`loop.list` is answered by the node, for its
+/// own machine); the others work elsewhere: their sessions are not shown —
+/// a session the hub's host holds cannot be attached from here — nor their
+/// folders offered.
+fn here(mut consumers: Vec<Consumer>, known: &[crate::loops::KnownLoop], through_node: bool) -> Vec<Consumer> {
+    if !through_node {
+        return consumers;
+    }
+    for c in consumers.iter_mut().filter(|c| c.kind == "agent") {
+        let local = known.iter().any(|l| l.agent.as_deref() == Some(c.consumer_id.as_str()));
+        c.remote = Some(!local);
+        if !local {
+            c.session = None;
+        }
+    }
+    consumers
 }
 
 /// The agents aiball knows with a working directory on this machine: an
@@ -269,7 +292,8 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashM
         let agent = session
             .starts_with(LOOP_PREFIX)
             .then(|| {
-                let agents = || consumers.iter().filter(|c| c.kind == "agent");
+                // An agent working on another machine owns no session here.
+                let agents = || consumers.iter().filter(|c| c.kind == "agent" && c.remote != Some(true));
                 agents()
                     .find(|c| c.session.as_ref().and_then(|s| s.tmux.as_deref()) == Some(session.as_str()))
                     .or_else(|| owners.get(&session).and_then(|owner| agents().find(|c| c.consumer_id == *owner)))
@@ -354,7 +378,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, Status, filter_words, found, group, homes, loop_says, project_at};
+    use super::{HOSTED_PREFIX, Status, filter_words, found, group, here, homes, loop_says, project_at};
     use std::collections::HashMap;
 
     #[test]
@@ -469,6 +493,28 @@ mod tests {
         counted.counters = None;
         let projects = group(vec![("cl-crew".to_string(), "/w/crew".to_string())], &[counted], &HashMap::new());
         assert_eq!(projects[0].terminals[0].status.as_ref().unwrap().counters, None);
+    }
+
+    #[test]
+    fn through_a_node_only_this_machines_agents_are_here() {
+        let known = |agent: &str| crate::loops::KnownLoop { name: format!("cl-{agent}"), agent: Some(agent.into()), ..Default::default() };
+        // As the hub says them: its own agent local and hosted, this
+        // machine's remote.
+        let hub = agent("hub", "/srv/hub/app", json!({ "running": true, "attach": { "socket": "/h/hub/attach.sock" } }));
+        let mut mine = agent("mine", "/w/app", json!(null));
+        mine.remote = Some(true);
+        let seen = here(vec![hub.clone(), mine.clone()], &[known("mine")], true);
+        assert_eq!(seen[0].remote, Some(true), "the hub's agent works elsewhere");
+        assert!(seen[0].session.is_none(), "its hosted session cannot be attached from here");
+        assert_eq!(seen[1].remote, Some(false), "the one the node lists a loop for is here");
+        // Shown: this machine's session, not the hub's.
+        let projects = group(vec![("cl-mine".to_string(), "/w/app".to_string())], &seen, &HashMap::from([("cl-mine".to_string(), "mine".to_string())]));
+        let labels: Vec<&str> = projects.iter().flat_map(|p| &p.terminals).map(|t| t.label.as_str()).collect();
+        assert_eq!(labels, ["mine"]);
+        assert_eq!(homes(&seen).iter().map(|h| h.0.as_str()).collect::<Vec<_>>(), ["mine"]);
+        // Straight to aiball, its word stands.
+        let straight = here(vec![hub, mine], &[known("mine")], false);
+        assert_eq!((straight[0].remote, straight[1].remote), (None, Some(true)));
     }
 
     #[test]
