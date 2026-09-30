@@ -44,6 +44,7 @@ impl Shell {
         json!({
             "page": self.page_shown(cx),
             "terminal": self.selected,
+            "terminal_frozen": self.selected.as_ref().and_then(|s| self.terminals.get(s)).is_some_and(|t| t.read(cx).frozen()),
             "copies": self.copies.iter().collect::<Vec<_>>(),
             "open_terminals": self.terminals.keys().collect::<Vec<_>>(),
             "panel": self.panel.read(cx).said(),
@@ -54,6 +55,36 @@ impl Shell {
             "backlogs": crate::kernel::backlog::store(cx).read(cx).said(),
             "standing": crate::kernel::standing::store(cx).read(cx).said(),
             "place_bar": self.move_asked,
+            // What is open in the views, said rather than guessed from the
+            // buttons on screen.
+            "views": {
+                "sidebar_tab": if self.settings.layout.sidebar_tab == "workspaces" { "workspaces" } else { "sessions" },
+                "agent_line": if self.move_asked.is_some() {
+                    Some("place")
+                } else if self.afk_menu {
+                    Some("afk")
+                } else if self.restart_asked.is_some() {
+                    Some("update")
+                } else {
+                    None
+                },
+                "picker": self.picker.as_ref().map(|p| p.said()),
+                "dialog": self.ask.as_ref().map(|_| "restart-loops"),
+                "menu": if self.theme_menu {
+                    Some("theme")
+                } else if self.help_menu {
+                    Some("help")
+                } else {
+                    None
+                },
+                "megaphone": self.megaphone.is_some(),
+                "new_ticket": self.new_ticket.is_some() && self.new_ticket_shown,
+                "workspace_renaming": self.workspace_renaming,
+                "workspace_deleting": self.workspace_deleting,
+            },
+            // The compositor this tvty draws on: a test's clipboard is that
+            // one's, never the desktop's.
+            "wayland_display": std::env::var("WAYLAND_DISPLAY").ok(),
         })
     }
 }

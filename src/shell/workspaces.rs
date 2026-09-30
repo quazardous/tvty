@@ -63,6 +63,17 @@ pub(super) struct Picker {
     rows: Vec<PickRow>,
 }
 
+impl Picker {
+    /// What it asks and of how many sessions, for the debug control.
+    pub(super) fn said(&self) -> serde_json::Value {
+        serde_json::json!({
+            "for": format!("{:?}", self.what),
+            "rows": self.rows.len(),
+            "checked": self.rows.iter().filter(|r| r.checked).count(),
+        })
+    }
+}
+
 /// The height of the picker's list once it scrolls, and the lines it shows
 /// before it does.
 const LIST_HEIGHT: f32 = 300.;

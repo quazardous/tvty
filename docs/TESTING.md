@@ -230,8 +230,23 @@ hope for:
 - `tvty-ctl press ID` — a press never released (let go outside the
   window), and `tvty-ctl selection` — the text selected in the window: a
   stuck selection is provoked and read without a screenshot;
-- `tvty-ctl state` — the page, the terminal, the panel (project, ticket,
-  field being edited, menu open), the bus and its subscriptions;
+- `tvty-ctl ready [MS]` — until the control answers: the first command
+  after a launch, instead of a sleep (tvty opens its control a moment
+  after its window);
+- `tvty-ctl state` — the page, the terminal (and whether its screen is
+  held still under a selection), the panel (project, ticket, field being
+  edited, the text editor open, why a save failed, menu open), the bus and
+  its subscriptions, and under `views` what is open: the left panel's tab,
+  the agent bar's line (`place`, `afk`, `update`), the sessions' picker
+  (what for, how many rows, how many ticked), a dialog, a menu, the
+  megaphone, the new ticket's form;
+- `tvty-ctl paste-image FILE` — FILE put in the clipboard of the
+  compositor the test tvty draws on (tvty says which, in `state`), then
+  Ctrl+V: an image pasted in a ticket's text. It refuses when that display
+  is the calling shell's own — the desktop's clipboard is left alone;
+- a command misused says its usage line and exits 2 (`usage: tvty-ctl wait
+  ID [MS]`); a control that does not answer says whether no tvty runs
+  there or nothing listens yet;
 - `tvty-ctl inspector` — GPUI's inspector (debug builds; its key is
   ctrl+alt+shift+i): pick an element, read its id and where it is made;
 - failure paths, provoked: `tvty-ctl bus-reconnect` drops the bus and

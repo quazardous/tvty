@@ -22,6 +22,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::keymap;
+use crate::tip::Tip as _;
 
 use crate::stats;
 
@@ -129,6 +130,12 @@ pub struct TerminalView {
     /// Lines to scroll tmux's history by (up: positive), to the one thread
     /// that runs tmux for this view; started on the first notch.
     tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
+    /// The screen as it was when the selection began, shown in place of the
+    /// live one while there is a selection: what is being selected does not
+    /// move under the pointer, and what is copied is what is seen. The
+    /// session goes on meanwhile; its screen comes back when the selection
+    /// is let go.
+    frozen: Option<Arc<FairMutex<Term<Listener>>>>,
     /// The left button is down on a selection being made.
     selecting: bool,
     /// The selection being made, kept by tvty during the drag: the
@@ -346,6 +353,7 @@ impl TerminalView {
             layout: (Point::default(), size(px(8.), px(16.))),
             scroll_remainder: 0.,
             tmux_scroll: None,
+            frozen: None,
             selecting: false,
             menu: None,
             dragging: None,
@@ -387,10 +395,41 @@ impl TerminalView {
         &self.focus
     }
 
+    /// The terminal shown: the frozen screen while there is a selection,
+    /// else the live one.
+    fn shown(&self) -> &Arc<FairMutex<Term<Listener>>> {
+        self.frozen.as_ref().unwrap_or(&self.term)
+    }
+
+    /// Whether the screen is held still under a selection.
+    pub fn frozen(&self) -> bool {
+        self.frozen.is_some()
+    }
+
+    /// Holds the screen still: a copy of what is shown now takes its place.
+    fn freeze(&mut self) {
+        if self.frozen.is_none() {
+            self.frozen = Some(Arc::new(FairMutex::new(screen_copy(&self.term.lock()))));
+        }
+    }
+
+    /// The live screen again.
+    fn unfreeze(&mut self, cx: &mut Context<Self>) {
+        if self.frozen.take().is_some() {
+            self.term.lock().selection = None;
+            cx.notify();
+        }
+    }
+
     fn on_event(&mut self, event: Event, cx: &mut Context<Self>) {
         match event {
             Event::Wakeup => {
                 stats::output();
+                // Held still under a selection: the output waits in the live
+                // terminal, nothing is drawn again.
+                if self.frozen.is_some() {
+                    return;
+                }
                 // The program wrote over the selection being dragged: it
                 // stays, until the button is released.
                 if let Some(selection) = self.dragging.clone() {
@@ -528,7 +567,7 @@ impl TerminalView {
     /// to the clipboard — ctrl+c stays the program's ^C.
     fn copy(&mut self, _: &keymap::TerminalCopy, _: &mut Window, cx: &mut Context<Self>) {
         // The selection, or, when the program drew over it, what it held.
-        let text = self.term.lock().selection_to_string().filter(|t| !t.is_empty()).or_else(|| self.selected_text.clone());
+        let text = self.shown().lock().selection_to_string().filter(|t| !t.is_empty()).or_else(|| self.selected_text.clone());
         if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             crate::bus::emit(cx, crate::bus::Signal::Copied);
@@ -555,6 +594,13 @@ impl TerminalView {
             self.menu = None;
             cx.stop_propagation();
             cx.notify();
+            return;
+        }
+        // A selection holds the screen still: Esc lets it go — and is not
+        // sent (it would interrupt the program).
+        if self.frozen.is_some() && keystroke.key == "escape" {
+            self.clear_selection(cx);
+            cx.stop_propagation();
             return;
         }
         let app_cursor = self.term.lock().mode().contains(TermMode::APP_CURSOR);
@@ -600,16 +646,18 @@ impl TerminalView {
     fn clear_selection(&mut self, cx: &mut Context<Self>) {
         self.selected_text = None;
         self.kept = None;
-        let mut term = self.term.lock();
-        if term.selection.take().is_some() {
+        self.dragging = None;
+        self.selecting = false;
+        if self.term.lock().selection.take().is_some() {
             cx.notify();
         }
+        self.unfreeze(cx);
     }
 
     /// The grid cell under a window position, and which half of it.
     fn grid_point(&self, position: Point<Pixels>) -> (GridPoint, Side) {
         let (origin, cell) = self.layout;
-        let term = self.term.lock();
+        let term = self.shown().lock();
         let x = f32::from(position.x - origin.x) / f32::from(cell.width);
         let y = f32::from(position.y - origin.y) / f32::from(cell.height);
         let column = (x.max(0.) as usize).min(term.columns().saturating_sub(1));
@@ -623,7 +671,7 @@ impl TerminalView {
     /// address in the text — the line the program wrapped joined up.
     fn link_at(&self, position: Point<Pixels>) -> Option<Link> {
         let (point, _) = self.grid_point(position);
-        let term = self.term.lock();
+        let term = self.shown().lock();
         let grid = term.grid();
         let columns = term.columns();
         let (top, bottom) = (-(grid.history_size() as i32), term.screen_lines() as i32 - 1);
@@ -701,6 +749,9 @@ impl TerminalView {
         // A drag selects, whatever the program: one that takes the mouse
         // (tmux with its mouse on) got the clicks without the drag, and
         // nothing could be selected at all.
+        // From here the screen holds still: what is under the pointer stays
+        // there. (Over a selection already made, it stays as it was held.)
+        self.freeze();
         let (point, side) = self.grid_point(event.position);
         let kind = match event.click_count {
             2 => SelectionType::Semantic,
@@ -708,7 +759,7 @@ impl TerminalView {
             _ => SelectionType::Simple,
         };
         let selection = Selection::new(kind, point, side);
-        self.term.lock().selection = Some(selection.clone());
+        self.shown().lock().selection = Some(selection.clone());
         self.dragging = Some(selection);
         self.kept = None;
         self.selected_text = None;
@@ -734,7 +785,8 @@ impl TerminalView {
             return;
         }
         let (point, side) = self.grid_point(event.position);
-        let mut term = self.term.lock();
+        let shown = self.shown().clone();
+        let mut term = shown.lock();
         // From tvty's own copy: the emulator's may have been dropped.
         if let Some(selection) = self.dragging.as_mut() {
             selection.update(point, side);
@@ -753,7 +805,8 @@ impl TerminalView {
         }
         self.selecting = false;
         // A click without a drag selects nothing.
-        let mut term = self.term.lock();
+        let shown = self.shown().clone();
+        let mut term = shown.lock();
         if let Some(selection) = self.dragging.take() {
             term.selection = Some(selection);
         }
@@ -770,6 +823,10 @@ impl TerminalView {
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         if let Some(text) = self.selected_text.clone() {
             cx.write_to_primary(ClipboardItem::new_string(text));
+        }
+        // Nothing selected (a plain click): the live screen again.
+        if self.kept.is_none() {
+            self.unfreeze(cx);
         }
         cx.notify();
     }
@@ -799,7 +856,7 @@ impl TerminalView {
 
     /// The right click's menu: Copy (when something is selected), Paste.
     fn menu_view(&self, at: Point<Pixels>, cx: &mut Context<Self>) -> impl IntoElement {
-        let selected = self.term.lock().selection.as_ref().is_some_and(|s| !s.is_empty()) || self.selected_text.is_some();
+        let selected = self.shown().lock().selection.as_ref().is_some_and(|s| !s.is_empty()) || self.selected_text.is_some();
         let item = |id: &'static str, label: &'static str, keys: &'static str, enabled: bool| {
             div()
                 .named(id)
@@ -870,6 +927,11 @@ impl TerminalView {
     /// tmux's history (copy mode), else through the terminal's own.
     fn on_scroll(&mut self, event: &ScrollWheelEvent, _: &mut Window, cx: &mut Context<Self>) {
         self.take_size_back();
+        // Held still under a selection: the wheel moves nothing.
+        if self.frozen.is_some() {
+            cx.stop_propagation();
+            return;
+        }
         let (origin, cell) = self.layout;
         let lines = match event.delta {
             ScrollDelta::Lines(delta) => crate::wheel::terminal_lines(delta.y),
@@ -968,12 +1030,33 @@ impl Render for TerminalView {
             .size_full()
             .bg(background())
             .child(TerminalElement {
-                term: self.term.clone(),
+                term: self.shown().clone(),
                 view: Some(cx.entity()),
                 viewport: None,
                 status_line: false,
             })
             .children(self.menu.map(|at| self.menu_view(at, cx)))
+            // Held still under a selection: said in its corner, so that the
+            // agent is not thought stopped; a click lets the selection go.
+            .children((self.frozen.is_some() && self.kept.is_some()).then(|| {
+                div().absolute().top_1().right_3().child(
+                    div()
+                        .saying("terminal-frozen", "held still · selection")
+                        .px_2()
+                        .py_0p5()
+                        .rounded_sm()
+                        .text_xs()
+                        .text_color(crate::theme::on(crate::theme::p().warning))
+                        .bg(crate::theme::p().warning)
+                        .cursor_pointer()
+                        .child("held still · selection")
+                        .tip("The screen is held still while text is selected; the session goes on. A click here, Esc or a key lets it go.")
+                        .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, cx| {
+                            view.clear_selection(cx);
+                            cx.stop_propagation();
+                        })),
+                )
+            }))
             // Another client has the session's size: said under it, a click
             // takes it back.
             .children(self.outsized().then(|| {
@@ -1006,7 +1089,7 @@ impl Render for TerminalView {
             // the address, just above it.
             .children(self.hover_link.as_ref().filter(|l| l.named).and_then(|link| {
                 let (_, cell) = self.layout;
-                let offset = self.term.lock().grid().display_offset() as i32;
+                let offset = self.shown().lock().grid().display_offset() as i32;
                 let &(line, column, _) = link.cells.first()?;
                 let row = (line + offset).max(1);
                 Some(
@@ -1637,6 +1720,31 @@ fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad>
         quads.push(rect(cx - (t / 2.).floor(), cy - (t / 2.).floor(), cx + (t / 2.).ceil(), y1));
     }
     quads
+}
+
+/// What `term` shows now, as a terminal of its own that nothing writes to:
+/// the rows on screen (its history scrolled as it is), the cursor, the
+/// colours the program set.
+fn screen_copy(term: &Term<Listener>) -> Term<Listener> {
+    use alacritty_terminal::vte::ansi::Handler as _;
+    let (columns, lines) = (term.columns(), term.screen_lines());
+    // Its events go nowhere.
+    let (sender, _) = unbounded();
+    let mut copy = Term::new(Config::default(), &TermSize::new(columns, lines), Listener(sender));
+    let offset = term.grid().display_offset() as i32;
+    for line in 0..lines as i32 {
+        for column in 0..columns {
+            copy.grid_mut()[Line(line)][Column(column)] = term.grid()[Line(line - offset)][Column(column)].clone();
+        }
+    }
+    copy.grid_mut().cursor.point = term.grid().cursor.point;
+    let colors = term.colors();
+    for index in 0..alacritty_terminal::term::color::COUNT {
+        if let Some(rgb) = colors[index] {
+            copy.set_color(index, rgb);
+        }
+    }
+    copy
 }
 
 /// A terminal's screen drawn elsewhere — a card of the slider or the
