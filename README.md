@@ -2,7 +2,7 @@
 
 **Terminal Velocity for Claude Code: tickets, loops, focus — all in one.**
 
-*Twenty agents in loops, one window, no tab hunting. Beta · Linux; Windows in progress.*
+*Twenty agents in loops, one window, no tab hunting. Beta · Linux; Windows in progress; macOS: [help wanted](docs/MACOS.md).*
 
 ![Terminal Velocity at work: an agent answers live beside its ticket; the slider, the gallery, a notification, a ticket full screen](docs/images/tvty.gif)
 
@@ -62,6 +62,7 @@ Windows 10 or 11 (x86_64) with winget.
 - [Guide](docs/GUIDE.md) — a tour in pictures, what it is built on, its files, how it is tested
 - [Interface](docs/UX.md) — every surface and shortcut, as decided
 - [Testing](docs/TESTING.md) — headless, in wbox, on a fake aiball
+- [macOS](docs/MACOS.md) — not there yet: the milestones, and help wanted
 - [Changelog](CHANGELOG.md)
 
 ## License
