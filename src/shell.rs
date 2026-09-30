@@ -86,6 +86,13 @@ const SLIDER_CHOSEN: (f32, f32) = (340., 205.);
 
 const TITLE_BAR_HEIGHT: f32 = 41.;
 
+/// A press on a button of the title bar is the button's, not the bar's: the
+/// bar moves the window, and on Windows a press it gets starts a move that
+/// swallows the click (only a double click got through).
+fn press_kept<E: InteractiveElement>(element: E) -> E {
+    element.on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+}
+
 /// The app's name, in full: the window's title, About.
 pub const NAME: &str = "Terminal Velocity";
 /// The projects' list, its tabs' rail (44 px) included.
@@ -5092,11 +5099,11 @@ impl Render for Shell {
                     .child(
                         crate::tips::target(
                             "menu.icon",
-                            buttons::icon(
+                            press_kept(buttons::icon(
                                 "help-button",
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
                                 buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
-                            )
+                            ))
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 // The bar's own double click (maximize) is not its.
                                 cx.stop_propagation();
@@ -5117,8 +5124,7 @@ impl Render for Shell {
                     )
                     // A ticket to go to, discreet: no button, Enter goes.
                     .child(
-                        div()
-                            .named("goto")
+                        press_kept(div().named("goto"))
                             .flex_none()
                             .w(px(96.))
                             .mr_2()
@@ -5133,7 +5139,7 @@ impl Render for Shell {
                     .child(
                         crate::tips::target(
                             "title.theme",
-                            buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next"))
+                            press_kept(buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next")))
                                 .text_xs()
                                 .on_click(cx.listener(|shell, _, _, cx| {
                                     cx.stop_propagation();
@@ -5148,11 +5154,11 @@ impl Render for Shell {
                     .children((!self.away_from_hub()).then(||
                         // An SVG keeps its own colour: brightened with the
                         // button under the pointer, as the ⚙ beside it.
-                        buttons::icon(
+                        press_kept(buttons::icon(
                             "message-all",
                             crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.).group_hover("message-all", |s| s.text_color(p().text)),
                             "A message to every running agent: send, send & hold, release holds",
-                        )
+                        ))
                         .group("message-all")
                             .mr_1()
                             .on_click(cx.listener(|shell, _, window, cx| {
@@ -5161,7 +5167,7 @@ impl Render for Shell {
                             })),
                     ))
                     .child(
-                        buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle"))
+                        press_kept(buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle")))
                             .mr_2()
                             .text_sm()
                             .on_click(cx.listener(|shell, _, window, cx| {
