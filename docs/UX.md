@@ -137,7 +137,9 @@ sessions runs — on its own (auto) or held (stop) —, kept in tvty's state
 groups that run now, chosen in the picker, under a name. Each workspace
 shows its groups and sessions, kept how (▶ ■) and how they are now
 (runs, held, stopped: in yellow when it differs), a click opening a
-session; ✕ takes a group out. **Open** asks (the picker) what to do:
+session; ✕ takes a group out, and "+ PROJECT" adds the group shown now
+(the terminal on screen's), its sessions as they run ("↻ PROJECT" when it
+is there already: kept again as it runs now). **Open** asks (the picker) what to do:
 start what is stopped, let go a session kept on its own and found held;
 one kept held and found running is listed, unticked. **Shut** asks which
 sessions to stop: those of a group no other workspace has are ticked, the

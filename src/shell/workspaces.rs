@@ -562,9 +562,38 @@ impl Shell {
         cx.notify();
     }
 
+    /// The group shown now: the project of the terminal on screen, and its
+    /// agents' sessions as they run.
+    fn current_group(&self) -> Option<Group> {
+        let (project, _) = self.terminal_of(self.selected.as_deref()?)?;
+        let sessions: Vec<Session> = self
+            .live_sessions()
+            .into_iter()
+            .filter(|(of, _)| of == project)
+            .map(|(_, agent)| Session { mode: self.mode_now(&agent).unwrap_or(Mode::Auto), agent })
+            .collect();
+        (!sessions.is_empty()).then(|| Group { project: project.to_string(), sessions })
+    }
+
+    /// The group shown now goes into `name`: added, or put again as it runs.
+    fn add_current_group(&mut self, name: &str, cx: &mut Context<Self>) {
+        let Some(group) = self.current_group() else { return };
+        let project = group.project.clone();
+        if let Some(workspace) = self.settings.saved.workspaces.iter_mut().find(|w| w.name == name) {
+            match workspace.groups.iter_mut().find(|g| g.project == project) {
+                Some(kept) => *kept = group,
+                None => workspace.groups.push(group),
+            }
+        }
+        self.settings.save(cx);
+        activity::publish(cx, Activity::done(None, format!("{project} is in {name}")));
+        cx.notify();
+    }
+
     /// The left panel's second tab: the workspaces kept, each with its
     /// groups and their sessions — kept how, and how they are now.
     pub(super) fn workspaces_tab(&self, cx: &mut Context<Self>) -> AnyElement {
+        let current = self.current_group().map(|g| g.project);
         let mut list = div().id("workspaces").flex().flex_col().pb_2();
         list = list.child(
             div().flex().px_3().py_2().child(
@@ -640,6 +669,23 @@ impl Shell {
                     let name = name.clone();
                     move |shell, _, _, cx| shell.pick_save_workspace(&name, cx)
                 })))
+                // The group on screen, added (or put again as it runs now).
+                .when_some(current.clone(), |d, project| {
+                    let there = workspace.groups.iter().any(|g| g.project == project);
+                    d.child(
+                        buttons::link(SharedString::from(format!("workspace-add-{name}")), if there { format!("↻ {project}") } else { format!("+ {project}") })
+                            .text_xs()
+                            .tip(if there {
+                                "the group shown now, kept again as it runs now"
+                            } else {
+                                "adds the group shown now, its sessions as they run"
+                            })
+                            .on_click(cx.listener({
+                                let name = name.clone();
+                                move |shell, _, _, cx| shell.add_current_group(&name, cx)
+                            })),
+                    )
+                })
                 .child(act("rename", "rename", "another name; Enter confirms").on_click(cx.listener({
                     let name = name.clone();
                     move |shell, _, window, cx| {
