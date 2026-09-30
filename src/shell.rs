@@ -5,7 +5,7 @@
 //! See docs/UX.md.
 
 use crate::ui::Named as _;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::time::Duration;
@@ -91,6 +91,9 @@ pub const NAME: &str = "Terminal Velocity";
 /// The projects' list, its tabs' rail (44 px) included.
 const SIDEBAR_WIDTH: f32 = 290.;
 const SIDEBAR_MIN: f32 = 230.;
+/// Around the sidebar header's two groups: its padding on both sides, and
+/// a gap between them.
+const SIDEBAR_HEADER_ROOM: f32 = 36.;
 const PANEL_MIN: f32 = 260.;
 const CENTER_MIN: f32 = 320.;
 /// The sessions list's rows: a project's heading, a session with its
@@ -239,6 +242,9 @@ pub struct Shell {
     /// The hub's agent shown in the terminal's place (behind a node): its
     /// session is read from here, not opened.
     pub(super) hub_shown: Option<String>,
+    /// The sidebar header's two groups as last drawn, the widest seen: its
+    /// tabs, its buttons. The list is never resized narrower than both.
+    sidebar_header: Rc<Cell<(f32, f32)>>,
     /// The new ticket's form, and whether it is shown: hidden, it keeps
     /// its draft.
     new_ticket: Option<Entity<NewTicketForm>>,
@@ -780,6 +786,7 @@ impl Shell {
             wire_whoami: None,
             machine: None,
             hub_shown: None,
+            sidebar_header: Rc::default(),
             new_ticket: None,
             new_ticket_shown: false,
             live: Default::default(),
@@ -2194,12 +2201,13 @@ impl Shell {
     /// The projects' list lies over the terminal: it only needs to leave
     /// some of it visible.
     fn sidebar_width(&self, window: &Window) -> f32 {
-        let max = (Self::inner_width(window) * 0.6).max(SIDEBAR_MIN);
-        self.settings
-            .layout
-            .sidebar_width
-            .unwrap_or(SIDEBAR_WIDTH)
-            .clamp(SIDEBAR_MIN, max)
+        // Never narrower than its header: its tabs on the left, its buttons
+        // and the chevron that folds it on the right, as they were drawn
+        // (their width is the font's, and differs by system).
+        let (tabs, buttons) = self.sidebar_header.get();
+        let min = SIDEBAR_MIN.max(tabs + buttons + SIDEBAR_HEADER_ROOM);
+        let max = (Self::inner_width(window) * 0.6).max(min);
+        self.settings.layout.sidebar_width.unwrap_or(SIDEBAR_WIDTH).clamp(min, max)
     }
 
     fn panel_width(&self, window: &Window) -> f32 {
@@ -4210,6 +4218,30 @@ impl Shell {
                     cx.notify();
                 }))
         };
+        // A group of the header, its width noted as drawn (the widest seen,
+        // so that a tab with fewer buttons does not narrow the list): what
+        // the list's least width is made of. A width that grew draws again.
+        let seen = self.sidebar_header.clone();
+        let measured = move |which: usize| {
+            let seen = seen.clone();
+            div().relative().flex().flex_none().items_center().gap_1().child(
+                canvas(
+                    move |bounds, window, _| {
+                        let width = f32::from(bounds.size.width).ceil();
+                        let mut widths = seen.get();
+                        let known = if which == 0 { &mut widths.0 } else { &mut widths.1 };
+                        if width > *known {
+                            *known = width;
+                            seen.set(widths);
+                            window.refresh();
+                        }
+                    },
+                    |_, _, _, _| {},
+                )
+                .absolute()
+                .size_full(),
+            )
+        };
         // Its header lines up with the tickets panel's: the name, and the
         // chevron that folds the list towards the window's edge.
         let header = div()
@@ -4221,9 +4253,13 @@ impl Shell {
             .border_b_1()
             .border_color(p().border)
             .gap_1()
-            .child(tab("sidebar-tab-sessions", "Sessions", "", !workspaces, cx))
-            .child(tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx))
-            .child(div().flex_1())
+            .child(
+                measured(0)
+                    .child(tab("sidebar-tab-sessions", "Sessions", "", !workspaces, cx))
+                    .child(tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx)),
+            )
+            .child(div().flex_1());
+        let buttons = measured(1)
             // The sessions' own: their order, a project, a terminal.
             .when(!workspaces, |d| {
                 let recent = self.applied.sessions.recent_first;
@@ -4257,6 +4293,7 @@ impl Shell {
                 buttons::icon("sidebar-collapse", "‹", buttons::hint(cx, "Fold the sessions' list", "sidebar.toggle"))
                     .on_click(cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx))),
             );
+        let header = header.child(buttons);
         div()
             .named("sidebar")
             .flex()

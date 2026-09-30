@@ -511,7 +511,9 @@ tickets, a notification does not know which lists light its ticket up.
 ## Folding the sides
 
 The **projects' list lies over the terminal** (it does not push it aside),
-at a width set by dragging its edge; the ticket panel sits beside the
+at a width set by dragging its edge — never narrower than its header (its
+tabs, its buttons, the chevron that folds it, as wide as the system's font
+draws them): the drag stops there; the ticket panel sits beside the
 terminal, its width set the same way. Both widths are remembered.
 
 Both sides — the projects' list and the ticket panel — fold with a **grip**
