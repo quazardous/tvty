@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0-beta.1] - 2026-09-30
+
 ### Added
 
 - A terminal's screen holds still while text is selected in it, so what is being selected no longer scrolls away; the session goes on meanwhile. A mark in its corner says so; Esc, a click or a key lets it go.
