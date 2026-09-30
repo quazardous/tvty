@@ -25,9 +25,15 @@ Later, **Updates…** in Terminal Velocity's menu opens it again; tvty says
 itself when a newer release is out (Options > Layout > Updates turns that
 off).
 
-**You need** tmux 3.x, and the libraries every Wayland or X11 desktop has
-(xkbcommon, Vulkan, fontconfig, freetype). aiball needs Node.js and git; the
-updater says what is missing.
+**You need** the libraries every Wayland or X11 desktop has (xkbcommon,
+Vulkan, fontconfig, freetype), and four programs: **git** and **Node.js**
+(aiball's), **tmux** 3.x (the loops in tmux mode) and **Claude Code** (the
+agents themselves; run `claude` once to sign in). The updater checks them
+before it installs anything: its window lists what is missing, each with
+the command to copy for your distribution (dnf, apt, pacman, zypper;
+Claude Code by its own installer, no `sudo`), and `tvty-updater --install`
+says them and fails. It installs none of them for you on Linux.
+`tvty-updater --check` only says what is missing.
 
 **Terminal Velocity alone**, without the updater, from the same release:
 

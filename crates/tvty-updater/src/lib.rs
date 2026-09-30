@@ -10,6 +10,8 @@
 //! Every gesture writes what it does, line by line, to the `say` it is
 //! given: the window shows it as it goes.
 
+pub mod prerequisites;
+
 use std::io::{BufRead as _, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -170,7 +172,15 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     // Each part tried whatever the others did: what failed is said, and
     // the rest is in place.
     let mut failed = Vec::new();
+    // What is missing is said first, with how to get it: without Claude
+    // Code, say, everything installs and no loop ever starts.
+    let missing = prerequisites::report(say);
+    failed.extend(missing.iter().copied());
+    // aiball's install clones it and runs on Node.js: not tried without.
     let aiball = match aiball_status().state(Some(MIN_AIBALL)) {
+        State::Missing | State::TooOld if missing.iter().any(|m| matches!(*m, "git" | "node" | "pwsh")) => {
+            Err(anyhow::anyhow!("not installed: it needs what is missing above"))
+        }
         State::Missing => install_aiball(say),
         State::TooOld => update_aiball(say),
         _ => {
@@ -197,7 +207,7 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         say(format!("✗ Terminal Velocity: {error:#}"));
         failed.push("Terminal Velocity");
     }
-    anyhow::ensure!(failed.is_empty(), "not installed: {}", failed.join(", "));
+    anyhow::ensure!(failed.is_empty(), "not in place: {}", failed.join(", "));
     Ok(())
 }
 
