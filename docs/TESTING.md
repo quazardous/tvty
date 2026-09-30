@@ -260,15 +260,40 @@ hope for:
   the agent bar's line (`place`, `afk`, `update`), the sessions' picker
   (what for, how many rows, how many ticked), a dialog, a menu, the
   megaphone, the new ticket's form;
-- `tvty-ctl shot [--region ID] [--no-tips] NAME` — a capture by wbox,
-  taken once tvty has drawn again: what a click just changed is on it. It
+- `tvty-ctl --instance NAME …` (or `TVTY_CTL_INSTANCE`) — which test tvty:
+  a file `dev/tvty-ctl/NAME.json` says its state directory, its wbox config
+  and where its captures go. `test` is the tests' (written by
+  `scripts/test-env`), `readme` the README's demo (written by
+  `demo/shots.py`). Without one: the tvty of this shell's `XDG_STATE_HOME`,
+  in the tests' wbox;
+- `tvty-ctl click --text PREFIX TEXT` (and `dblclick`, `hover`, `press`,
+  `where`, `wait`) — the one element under PREFIX that says TEXT, in place
+  of an id: a ticket by its title (`--text ticket- "Copy and paste"`), a
+  menu's entry by its label. None, or several: an error that says so;
+- `tvty-ctl dblclick ID`; `tvty-ctl window maximize | restore | size W H`
+  — asked of the window itself (no title bar to aim at), answered once the
+  compositor has applied it;
+- `tvty-ctl hold MODS` … `tvty-ctl release` — modifiers held between two
+  commands: what lives while a key is held. The slider: `hold ctrl`, `key
+  ctrl-tab`, a capture, `key escape`, `release`;
+- `tvty-ctl settle [MS]` — until the screen holds still: none of tvty's
+  animations runs (a terminal sliding in, the slider's stacks, a notice
+  coming in), and a frame was drawn since. It fails naming what still
+  moves. An animation is known where it is made:
+  `crate::inspect::animation(id, duration)` beside its `with_animation`.
+  What is still to come from aiball is not an animation: `wait`,
+  `wait-text` for that;
+- `tvty-ctl park` — the pointer put outside the window: no hover, no
+  tooltip left (a menu opened by a click keeps its button's tooltip over
+  it otherwise);
+- `tvty-ctl shot [--region ID[+ID…]] [--margin N] [--no-tips] [--now]
+  [--out FILE] NAME` — a capture by the instance's wbox, taken once the
+  screen holds still (`settle`; `--now`: at once, to catch a movement). It
   answers the PNG's path, and fails rather than hand back a file of the
-  same name left from before. `--region ID`: only that element's box, a
-  margin around (ImageMagick crops) — a capture to post on a ticket.
-  `--no-tips`: the pointer is put outside the window first, so that no
-  tooltip and no hover covers what is shown. It waits for tvty's frame,
-  not for what is still to come from aiball: wait for that first (`wait`,
-  `wait-text`);
+  same name left from before. `--region`: only the box around those
+  elements, `--margin` pixels more (8 by default; ImageMagick crops) — a
+  capture to post on a ticket, a picture for the docs. `--no-tips`: the
+  pointer parked first. `--out`: the picture copied there;
 - `tvty-ctl paste-image FILE` — FILE put in the clipboard of the
   compositor the test tvty draws on (tvty says which, in `state`), then
   Ctrl+V: an image pasted in a ticket's text. It refuses when that display
@@ -334,8 +359,12 @@ agent's terminal replaying `demo/scenes/<agent>.txt` with simai-cli in
 a wbox of its own (1920×1200), drives it and writes `docs/images/`;
 `demo/run film` drives it again while grim films the wbox's display, about
 ten frames a second, into `docs/images/tvty.gif` — the README's film, one
-agent answering live. `demo/run down` removes it all. Their clicks are
-positions: after a change of layout, look at the pictures.
+agent answering live. `demo/run down` removes it all. Both drive tvty by
+name, through `scripts/tvty-ctl --instance readme`: a ticket by its title,
+a tab by its session, the window maximized, the slider under a held Ctrl,
+each picture taken once the screen holds still and cut to its elements
+(`shot --region`) — a change of layout moves no click and no crop. Look at
+the pictures all the same: what they show is the point.
 
 ## Measuring
 

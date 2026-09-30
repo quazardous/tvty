@@ -18,7 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import shots  # noqa: E402
-from shots import DEMO, OUT, ROOT, click, key, wbox  # noqa: E402
+from shots import DEMO, OUT, ROOT, click, ctl, key, wbox  # noqa: E402
 
 FRAMES = DEMO / "film"
 FPS = 10
@@ -105,11 +105,13 @@ def main():
     shots.settings()
     wbox("down")
     wbox("up")
-    time.sleep(7)
+    shots.ctl("ready", 30000)
+    time.sleep(3)
     if not display():
         sys.exit("no wayland display for the wbox")
-    wbox("dblclick", *shots.TITLE_BAR)
-    click(shots.ROW[1], wait=2)
+    ctl("window", "maximize")
+    shots.click_said("ticket-", shots.HERO_TICKET)
+    ctl("settle")
 
     shutil.rmtree(FRAMES, ignore_errors=True)
     FRAMES.mkdir(parents=True)
@@ -119,17 +121,25 @@ def main():
     camera.start()
     time.sleep(9)
     # The slider: a stack per project, one step, then the next.
-    wbox("hold", "ctrl", "Tab", 2, "--name", "film-slider",
-         env={"WBOX_HOLD_CANCEL": "1", "WBOX_HOLD_WAIT": "1.5", "WBOX_HOLD_THEN": "Tab"})
+    ctl("hold", "ctrl")
+    for _ in range(3):
+        key("ctrl-tab")
+        time.sleep(1.5)
+    key("escape")
+    ctl("release")
     time.sleep(0.8)
-    key("ctrl+shift+space", wait=3)
+    key("ctrl-shift-space")
+    time.sleep(3)
     wbox("type", "sphere")
     time.sleep(2)
-    key("Escape", wait=1)
+    key("escape")
+    time.sleep(1)
     notice()
     time.sleep(3.5)
-    click(shots.MORE, wait=3.5)
-    key("Escape", wait=1.5)
+    click(shots.MORE)
+    time.sleep(3.5)
+    key("escape")
+    time.sleep(1.5)
     camera.stop()
     wbox("down")
 

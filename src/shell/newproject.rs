@@ -467,7 +467,8 @@ impl Shell {
             .items(Step::ALL.iter().map(|s| StepperItem::new().child(s.title())))
             .on_click(cx.listener(|shell, step: &usize, _, cx| shell.wizard_back_to(*step, cx)));
         let card = div()
-            .named("new-project")
+            // Not "new-project": that is the list's "+ project" link.
+            .named("new-project-card")
             .occlude()
             .w(px(680.))
             .h(px(660.))

@@ -109,8 +109,10 @@ impl Shell {
             };
             // Staggered entrance: each stack starts a little after the one before.
             let delay = 0.35 * i as f32 / count;
+            let id = format!("portfolio-{}-{}", self.slider_shown, group.name);
+            crate::inspect::animation(&id, Duration::from_millis(420));
             body = body.child(slot.with_animation(
-                SharedString::from(format!("portfolio-{}-{}", self.slider_shown, group.name)),
+                SharedString::from(id),
                 Animation::new(Duration::from_millis(420)).with_easing(move |t| {
                     let t = ((t - delay) / (1. - delay)).clamp(0., 1.);
                     1. - (1. - t).powi(3)

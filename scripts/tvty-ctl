@@ -7,6 +7,16 @@
     scripts/tvty-ctl wait-text ID TEXT [MS]   until ID says TEXT (contains it)
     scripts/tvty-ctl where ID           the middle of ID on screen
     scripts/tvty-ctl click ID           a click on ID, put in through the window
+    scripts/tvty-ctl dblclick ID        a double click on ID
+    scripts/tvty-ctl … --text PREFIX TEXT   in place of an ID (click, dblclick, hover, press,
+                                        where, wait): the one element under PREFIX that says
+                                        TEXT — a ticket by its title, a menu's entry by its label
+    scripts/tvty-ctl window maximize | restore | size W H
+                                        the window maximized, put back, or given a size
+    scripts/tvty-ctl hold MODS          modifiers held until `release` (ctrl, ctrl-shift…): what
+                                        lives while a key is held (the slider) stays between
+                                        two commands
+    scripts/tvty-ctl release            the modifiers let go
     scripts/tvty-ctl hover ID           the pointer moved onto ID
     scripts/tvty-ctl press ID           a press on ID never released (let go outside the window)
     scripts/tvty-ctl selection          the text selected in the window, if any
@@ -15,14 +25,27 @@
     scripts/tvty-ctl wait ID [MS]       until ID is on screen (5000 ms at most)
     scripts/tvty-ctl state              the page, the terminal, the panel, the bus, what is open in the views
     scripts/tvty-ctl ready [MS]         until the control answers, after a launch (20000 ms at most)
-    scripts/tvty-ctl shot [--region ID] [--no-tips] NAME
-                                        a capture taken once tvty has drawn again: never an old
-                                        frame; --region: only ID's box (a margin around);
-                                        --no-tips: the pointer put away first, no tooltip on it
+    scripts/tvty-ctl shot [--region ID[+ID…]] [--margin N] [--no-tips] [--now] [--out FILE] NAME
+                                        a capture taken once the screen holds still (--now: at
+                                        once, in mid-movement) and tvty has drawn: never an old
+                                        frame; --region: only the box around those elements
+                                        (--margin pixels more, 8 by default); --no-tips: the
+                                        pointer put away first; --out: the picture copied there
+    scripts/tvty-ctl settle [MS]        until the screen holds still: none of tvty's animations
+                                        runs (a terminal sliding in, the slider, a notice
+                                        coming) — or fails naming what still moves
+    scripts/tvty-ctl park               the pointer put outside the window (no hover, no tooltip
+                                        left), once tvty has drawn again
     scripts/tvty-ctl paste-image FILE   FILE put in the test compositor's clipboard, then Ctrl+V
     scripts/tvty-ctl inspector          GPUI's inspector, on or off (debug builds)
     scripts/tvty-ctl bus-reconnect      the bus dropped and connected again
     scripts/tvty-ctl fault KIND         KIND's next subscribing fails once (Tickets…)
+
+Which tvty: `--instance NAME` first (or TVTY_CTL_INSTANCE) names a test
+instance, whose file dev/tvty-ctl/NAME.json says its state directory, its
+wbox config and where its captures go — `test` (scripts/test-env writes it)
+or `readme` (the README's demo). Without one: the tvty of this shell's
+XDG_STATE_HOME, in the tests' wbox.
 
 tvty listens only when TVTY_DEBUG_CONTROL is set, as scripts/test-env sets
 it: a test tvty, never the user's. The rendez-vous is in tvty's state directory: a Unix socket
@@ -40,8 +63,15 @@ import time
 from pathlib import Path
 
 
+# The test instance asked for (--instance, TVTY_CTL_INSTANCE): its state
+# home, its wbox config, its captures' folder.
+INSTANCE = {}
+
+
 def state_dir():
     """tvty's state directory, as tvty-config finds it."""
+    if INSTANCE.get("state_home"):
+        return Path(INSTANCE["state_home"]) / "tvty"
     if os.environ.get("XDG_STATE_HOME"):
         return Path(os.environ["XDG_STATE_HOME"]) / "tvty"
     if os.name == "nt":
@@ -95,12 +125,18 @@ USAGE = {
     "click": "ID",
     "hover": "ID",
     "press": "ID",
+    "dblclick": "ID",
+    "window": "maximize|restore|size [W H]",
+    "hold": "MODS",
+    "release": "",
     "selection": "",
     "key": "KEYS",
     "type": "TEXT...",
     "wait": "ID [MS]",
     "state": "",
     "ready": "[MS]",
+    "park": "",
+    "settle": "[MS]",
     "paste-image": "FILE",
     "shot": "NAME",
     "inspector": "",
@@ -110,7 +146,7 @@ USAGE = {
 
 
 # The flags a command takes, before its arguments.
-FLAGS = {"tree": "[--text]", "shot": "[--region ID] [--no-tips]"}
+FLAGS = {"tree": "[--text]", "shot": "[--region ID[+ID…]] [--margin N] [--no-tips] [--now] [--out FILE]"}
 USAGE["tree"] = "[PREFIX]"
 
 
@@ -122,10 +158,25 @@ def usage(cmd):
     return " ".join(word for word in ("usage: tvty-ctl", cmd, FLAGS.get(cmd, ""), USAGE[cmd]) if word)
 
 
+def by_text(prefix, text):
+    """The id of the one element under `prefix` that says `text`."""
+    answer = request({"cmd": "query", "id": prefix})
+    said = [e["id"] for e in answer.get("ok", {}).get("elements", []) if e.get("text") == text]
+    if len(said) == 1:
+        return said[0]
+    if not said:
+        raise Misused(f"tvty-ctl: nothing under {prefix!r} says {text!r}")
+    raise Misused(f"tvty-ctl: {len(said)} elements under {prefix!r} say {text!r}: {', '.join(said)}")
+
+
 def check(cmd, rest):
     """The arguments fit the command's usage, or Misused."""
     if cmd not in USAGE:
         raise Misused(f"tvty-ctl: {cmd}: no such command (tvty-ctl --help lists them)")
+    if cmd == "window":
+        if not rest or rest[0] not in ("maximize", "restore", "size") or len(rest) != (3 if rest[0] == "size" else 1):
+            raise Misused(usage(cmd))
+        return
     words = USAGE[cmd].split()
     needed = [w for w in words if not w.startswith("[")]
     most = None if any(w.endswith("...") for w in words) else len(words)
@@ -211,37 +262,51 @@ def wbox_python():
     return None
 
 
-def shot(name, region, no_tips):
-    """A capture of the test compositor once tvty has drawn again."""
+def instance_file(name):
+    return REPO / "dev" / "tvty-ctl" / f"{name}.json"
+
+
+def shot(name, regions, no_tips, margin, out, now=False):
+    """A capture of the instance's compositor once tvty has drawn again."""
     python = wbox_python()
     if python is None:
         return {"error": "shot needs wbox (wbox-mcp on the PATH, or WBOX_PYTHON)"}
-    box = None
-    if region:
+    config = Path(INSTANCE.get("wbox_config") or WBOX_CONFIG)
+    folder = Path(INSTANCE.get("screenshots") or REPO / "dev" / "tvty-wbox" / "screenshots")
+    boxes = []
+    for region in regions:
         found = [e for e in request({"cmd": "query", "id": region}).get("ok", {}).get("elements", []) if e["id"] == region]
         if not found:
             return {"error": f"{region}: not on screen"}
-        box = found[-1]
-    frame = request({"cmd": "frame", "park": no_tips})
+        boxes.append(found[-1])
+    # Once nothing moves any more — or at once, asked so.
+    frame = request({"cmd": "frame" if now else "settle", "park": no_tips})
     if "error" in frame:
         return frame
     began = time.time()
-    taken = subprocess.run([python, str(REPO / "scripts" / "wbox_ctl.py"), "shot", str(WBOX_CONFIG), "--name", name], cwd=REPO, capture_output=True, text=True, timeout=30)
-    path = REPO / "dev" / "tvty-wbox" / "screenshots" / f"{name}.png"
+    taken = subprocess.run([python, str(REPO / "scripts" / "wbox_ctl.py"), "shot", str(config), "--name", name], cwd=REPO, capture_output=True, text=True, timeout=30)
+    path = folder / f"{name}.png"
     if taken.returncode or not path.is_file():
         return {"error": f"wbox took no capture: {(taken.stderr or taken.stdout).strip()[-300:]}"}
     # The file is this capture's, not one of the same name left from before.
     if path.stat().st_mtime < began - 1:
         return {"error": f"{path}: older than this capture — wbox did not write it"}
     answer = {"path": str(path)}
-    if box:
+    if boxes:
         cropper = shutil.which("magick") or shutil.which("convert")
         if cropper is None:
             return {"error": "shot --region needs ImageMagick (magick) to crop"}
-        x, y = max(0, int(box["x"]) - REGION_MARGIN), max(0, int(box["y"]) - REGION_MARGIN)
-        w, h = int(box["w"]) + 2 * REGION_MARGIN, int(box["h"]) + 2 * REGION_MARGIN
-        subprocess.run([cropper, str(path), "-crop", f"{w}x{h}+{x}+{y}", "+repage", str(path)], check=True, timeout=30)
-        answer["region"] = {"id": region, "x": x, "y": y, "w": w, "h": h}
+        # The box around them all, the margin more.
+        left = max(0, int(min(b["x"] for b in boxes)) - margin)
+        top = max(0, int(min(b["y"] for b in boxes)) - margin)
+        right = int(max(b["x"] + b["w"] for b in boxes)) + margin
+        bottom = int(max(b["y"] + b["h"] for b in boxes)) + margin
+        subprocess.run([cropper, str(path), "-crop", f"{right - left}x{bottom - top}+{left}+{top}", "+repage", str(path)], check=True, timeout=30)
+        answer["region"] = {"ids": regions, "x": left, "y": top, "w": right - left, "h": bottom - top}
+    if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(path, out)
+        answer["out"] = str(out)
     return {"ok": answer}
 
 
@@ -254,8 +319,16 @@ def run(cmd, rest):
         command["id"], command["text"] = rest[0], rest[1]
         if len(rest) > 2:
             command["ms"] = number(cmd, rest[2])
-    elif cmd in ("where", "click", "hover", "press", "text"):
+    elif cmd in ("where", "click", "dblclick", "hover", "press", "text"):
         command["id"] = rest[0]
+    elif cmd == "window":
+        command["what"] = rest[0]
+        if rest[0] == "size":
+            command["w"], command["h"] = number(cmd, rest[1]), number(cmd, rest[2])
+    elif cmd == "hold":
+        command["keys"] = rest[0]
+    elif cmd == "release":
+        command = {"cmd": "hold", "keys": ""}
     elif cmd == "key":
         command["keys"] = rest[0]
     elif cmd == "type":
@@ -266,12 +339,16 @@ def run(cmd, rest):
         command["id"] = rest[0]
         if len(rest) > 1:
             command["ms"] = number(cmd, rest[1])
+    elif cmd == "park":
+        return request({"cmd": "frame", "park": True})
+    elif cmd == "settle":
+        command["ms"] = number(cmd, rest[0]) if rest else 5000
     elif cmd == "ready":
         return ready(number(cmd, rest[0]) if rest else 20000)
     elif cmd == "paste-image":
         return paste_image(rest[0])
     elif cmd == "shot":
-        return shot(rest[0], run.region, run.no_tips)
+        return shot(rest[0], run.regions, run.no_tips, run.margin, run.out, run.now)
     return request(command)
 
 
@@ -279,22 +356,54 @@ def main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip())
         return 0
+    # Which tvty, before the command.
+    name = os.environ.get("TVTY_CTL_INSTANCE")
+    if argv[0] == "--instance":
+        if len(argv) < 3:
+            print("usage: tvty-ctl --instance NAME COMMAND …", file=sys.stderr)
+            return 2
+        name, argv = argv[1], argv[2:]
+    if name:
+        try:
+            INSTANCE.update(json.loads(instance_file(name).read_text()))
+        except (OSError, ValueError) as error:
+            print(f"tvty-ctl: instance {name}: {error} (its file: {instance_file(name)})", file=sys.stderr)
+            return 2
     cmd, rest = argv[0], argv[1:]
     texts = cmd == "tree" and "--text" in rest
-    rest = [r for r in rest if r != "--text"]
+    if cmd == "tree":
+        rest = [r for r in rest if r != "--text"]
     # shot's flags, wherever they stand.
     run.no_tips = cmd == "shot" and "--no-tips" in rest
-    run.region = None
+    run.now = cmd == "shot" and "--now" in rest
+    run.regions, run.margin, run.out = [], REGION_MARGIN, None
     if cmd == "shot":
-        rest = [r for r in rest if r != "--no-tips"]
-        if "--region" in rest:
-            at = rest.index("--region")
+        rest = [r for r in rest if r not in ("--no-tips", "--now")]
+        for flag in ("--region", "--margin", "--out"):
+            if flag not in rest:
+                continue
+            at = rest.index(flag)
             if at + 1 >= len(rest):
                 print(usage(cmd), file=sys.stderr)
                 return 2
-            run.region = rest[at + 1]
+            value = rest[at + 1]
             del rest[at:at + 2]
+            if flag == "--region":
+                run.regions = [r for r in value.split("+") if r]
+            elif flag == "--out":
+                run.out = value
+            elif value.isdigit():
+                run.margin = int(value)
+            else:
+                print(f"{usage(cmd)}  ({value!r} is not a margin in pixels)", file=sys.stderr)
+                return 2
     try:
+        # An element named by what it says, in place of its id.
+        if "--text" in rest and cmd in ("click", "dblclick", "hover", "press", "where", "wait"):
+            at = rest.index("--text")
+            if at + 2 >= len(rest) + 0 and len(rest) < at + 3:
+                raise Misused(f"usage: tvty-ctl {cmd} --text PREFIX TEXT")
+            rest[at:at + 3] = [by_text(rest[at + 1], rest[at + 2])]
         check(cmd, rest)
         answer = run(cmd, rest)
     except Misused as error:

@@ -2,8 +2,11 @@
 """The README's pictures, taken: tvty on the demo world (demo/run up), in a
 wbox of its own, driven step by step; the pictures land in docs/images/.
 
-Run through `demo/run shots`. The clicks are where tvty draws things on a
-1920×1200 screen: a change of layout may move them — look at the pictures.
+Run through `demo/run shots`. tvty is driven by name (scripts/tvty-ctl: a
+ticket by its title, a tab by its session, a button by its id), so a change
+of layout does not move the clicks; the keys, the window's size and the
+captures go through it too, each capture taken once the screen holds still.
+wbox only runs the compositor.
 """
 
 import json
@@ -22,16 +25,16 @@ OUT = ROOT / "docs" / "images"
 PYTHON = os.environ.get("WBOX_PYTHON", str(ROOT.parent / "wbox-mcp" / ".venv" / "bin" / "python3"))
 
 SCREEN = (1920, 1200)
-# Where things are, on that screen: the window first as it opens, then
-# maximized.
-TITLE_BAR = (800, 72)
-ROW = {1: (1450, 375), 4: (1450, 318)}
-SUPERLASER_TAB = (300, 56)
-MORE = (1884, 100)
-BACK_TO_LIST = (1358, 58)
-MENU = (28, 20)
-NEW_PROJECT = (100, 99)
-WIZARD_NEXT = (1237, 919)
+# What is clicked, by name: tickets by their title (demo/seed.py), the rest
+# by id.
+HERO_TICKET = "Cover the thermal exhaust port"
+PLAN_TICKET = "Superlaser: charge in under 24 h"
+SUPERLASER_TAB = "tab-cl-superlaser"
+MORE = "thread-full"
+BACK_TO_LIST = "back"
+MENU = "help-button"
+NEW_PROJECT = "New project…"
+WIZARD_NEXT = "new-project-next"
 # A folder the wizard is shown making a project of (left as it is: the
 # wizard stops before setting it up).
 FOLDER = "/tmp/tvty-demo/escape-pod"
@@ -43,20 +46,57 @@ def wbox(*args, env=None):
                    check=True, capture_output=True, env={**os.environ, **(env or {})})
 
 
-def shot(name, wait=1.5):
-    time.sleep(wait)
-    wbox("shot", "--name", name)
-    return SHOTS / f"{name}.png"
+# The demo's tvty, as scripts/tvty-ctl names it (`wbox_config` writes its file).
+INSTANCE = "readme"
 
 
-def click(at, wait=1.2):
-    wbox("click", *at)
-    time.sleep(wait)
+def ctl(*args):
+    """scripts/tvty-ctl on the demo's tvty: its answer."""
+    done = subprocess.run([sys.executable, str(ROOT / "scripts" / "tvty-ctl"), "--instance", INSTANCE, *map(str, args)], capture_output=True, text=True)
+    if done.returncode:
+        sys.exit(f"tvty-ctl {' '.join(map(str, args))}: {(done.stderr or done.stdout).strip()}")
+    return done.stdout
 
 
-def key(shortcut, wait=1.2):
-    wbox("key", shortcut)
-    time.sleep(wait)
+def shot(name):
+    """The whole screen, once it holds still."""
+    return Path(json.loads(ctl("shot", name))["path"])
+
+
+def part(name, regions, margin=12):
+    """The picture of those elements alone (the box around them), into
+    docs/images/."""
+    OUT.mkdir(parents=True, exist_ok=True)
+    ctl("shot", "--region", "+".join(regions), "--margin", margin, "--out", OUT / f"{name}.png", f"{name}-part")
+
+
+def click(name):
+    """A click on the element of that id, once it is on screen."""
+    ctl("wait", name, 8000)
+    ctl("click", name)
+
+
+def click_said(prefix, text):
+    """A click on the element under `prefix` that says `text`: a ticket by
+    its title, a menu's entry by its label."""
+    for _ in range(40):
+        if any(line.partition("\t")[2] == text for line in ctl("tree", "--text", prefix).splitlines()):
+            break
+        time.sleep(0.2)
+    ctl("click", "--text", prefix, text)
+
+
+def key(keys):
+    ctl("key", keys)
+
+
+def wait_for(prefix, seconds=10):
+    """Until an element whose id starts with `prefix` is on screen."""
+    for _ in range(seconds * 5):
+        if json.loads(ctl("tree", prefix))["elements"]:
+            return
+        time.sleep(0.2)
+    sys.exit(f"nothing named {prefix}… after {seconds} s")
 
 
 def settings():
@@ -66,7 +106,8 @@ def settings():
     shutil.rmtree(DEMO / "tvty", ignore_errors=True)
     config.mkdir(parents=True)
     state.mkdir(parents=True)
-    (config / "settings.toml").write_text('[appearance]\ntheme = "Tokyo Night"\n')
+    # No "Did you know?" card over the pictures.
+    (config / "settings.toml").write_text('[appearance]\ntheme = "Tokyo Night"\n\n[tips]\nshow = false\n')
     (state / "layout.json").write_text(json.dumps({"sidebar_open": False, "panel_open": True, "sessions_folded": ["idle", "shut"]}))
     (state / "workspace.json").write_text(json.dumps({
         "open_terminals": ["cl-exhaust-port", "cl-superlaser", "cl-panel-crew"], "shown_terminal": "cl-exhaust-port"}))
@@ -85,6 +126,10 @@ def wbox_config():
             line = "  command: sh -c 'r=$(git rev-parse --show-toplevel) && exec $r/demo/run tvty'"
         lines.append(line)
     CONFIG.write_text("\n".join(lines) + "\n")
+    # What scripts/tvty-ctl --instance readme drives.
+    instance = ROOT / "dev" / "tvty-ctl" / f"{INSTANCE}.json"
+    instance.parent.mkdir(parents=True, exist_ok=True)
+    instance.write_text(json.dumps({"state_home": str(DEMO / "tvty" / "state"), "wbox_config": str(CONFIG), "screenshots": str(SHOTS)}))
 
 
 def gif(frames, out, seconds=2.2):
@@ -105,44 +150,51 @@ def main():
     settings()
     wbox("down")
     wbox("up")
-    time.sleep(7)
-    wbox("dblclick", *TITLE_BAR)
+    ctl("ready", 30000)
+    ctl("window", "maximize")
     frames = [shot("01-start")]
 
-    click(ROW[1])
+    click_said("ticket-", HERO_TICKET)
     frames.append(shot("hero"))
-    click(MORE, wait=1.5)
+    click(MORE)
     frames.append(shot("ticket"))
-    key("Escape")
+    key("escape")
 
-    wbox("hold", "ctrl", "Tab", 1, "--name", "slider", env={"WBOX_HOLD_CANCEL": "1", "WBOX_HOLD_WAIT": "1.2"})
-    frames.append(SHOTS / "slider.png")
-    key("ctrl+shift+space", wait=2)
+    # The slider lives while Ctrl is held.
+    ctl("hold", "ctrl")
+    key("ctrl-tab")
+    frames.append(shot("slider"))
+    key("escape")
+    ctl("release")
+    key("ctrl-shift-space")
     frames.append(shot("gallery"))
-    key("Escape")
+    key("escape")
 
-    key("ctrl+shift+b")
-    sessions = shot("sessions")
-    frames.append(sessions)
-    key("ctrl+shift+b")
+    key("ctrl-shift-b")
+    frames.append(shot("sessions"))
+    # The list with the title bar above it, down to the last section's title.
+    part("sessions", ["help-button", "sidebar-collapse", "sessions-shut-title"])
+    key("ctrl-shift-b")
 
     click(SUPERLASER_TAB)
     click(BACK_TO_LIST)
-    click(ROW[4])
+    click_said("ticket-", PLAN_TICKET)
     frames.append(shot("plan"))
 
     click(MENU)
-    menu = shot("menu")
-    frames.append(menu)
-    click(NEW_PROJECT)
+    # The pointer off the button: its tooltip would lie over the menu.
+    ctl("park")
+    frames.append(shot("menu"))
+    part("menu", ["help-button", "help-menu"])
+    click_said("help-", NEW_PROJECT)
     Path(FOLDER).mkdir(parents=True, exist_ok=True)
+    ctl("wait", WIZARD_NEXT, 8000)
     wbox("type", FOLDER)
     click(WIZARD_NEXT)
-    wizard = shot("newproject")
-    frames.append(wizard)
-    # Once out of the field, once out of the wizard.
-    key("Escape")
-    key("Escape")
+    ctl("park")
+    frames.append(shot("newproject"))
+    part("newproject", ["new-project-card"], margin=20)
+    click("new-project-close")
 
     # An agent answers: its words come as a notification.
     sys.path.insert(0, str(ROOT / "scripts"))
@@ -155,18 +207,14 @@ def main():
         "summary_until": "The star agrees to the window if it faces the galaxy's good side; asks who cleans it.",
         "commits": None, "handback": True})
     board.close()
-    notice = shot("notice", wait=2.5)
-    frames.append(notice)
+    # Its notice comes once aiball has pushed the comment.
+    wait_for("notice-")
+    frames.append(shot("notice"))
+    part("notice", ["notices"], margin=40)
 
     OUT.mkdir(parents=True, exist_ok=True)
     for name in ("hero", "ticket", "slider", "gallery", "plan"):
         shutil.copy(SHOTS / f"{name}.png", OUT / f"{name}.png")
-    # The parts that tell: the projects' list, the menu, the wizard, the notice.
-    from PIL import Image
-    Image.open(sessions).crop((0, 0, 700, 640)).save(OUT / "sessions.png")
-    Image.open(menu).crop((0, 0, 720, 440)).save(OUT / "menu.png")
-    Image.open(wizard).crop((600, 265, 1320, 935)).save(OUT / "newproject.png")
-    Image.open(notice).crop((560, 40, 1440, 330)).save(OUT / "notice.png")
     gif(frames, OUT / "tour.gif")
     wbox("down")
     print("\n".join(sorted(str(p.relative_to(ROOT)) for p in OUT.iterdir())))

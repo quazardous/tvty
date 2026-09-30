@@ -179,7 +179,7 @@ impl Shell {
             }
             list = list.child(
                 div()
-                    .named(("help", i))
+                    .saying(("help", i), entry.label())
                     .flex()
                     .items_center()
                     .gap_4()

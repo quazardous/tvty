@@ -4258,6 +4258,7 @@ impl Shell {
                     .on_click(cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx))),
             );
         div()
+            .named("sidebar")
             .flex()
             .flex_none()
             .w(px(width))
@@ -4711,6 +4712,10 @@ impl Render for Shell {
                                 // Its own drawing, reused until it changes: the rest
                                 // of the window does not move with its output.
                                 .child(terminal.clone().cached(StyleRefinement::default().size_full()))
+                                .map(|d| {
+                                    crate::inspect::animation(&format!("switch-{}", self.switches), SWITCH);
+                                    d
+                                })
                                 .with_animation(
                                     SharedString::from(format!("switch-{}", self.switches)),
                                     Animation::new(SWITCH).with_easing(switch_easing),

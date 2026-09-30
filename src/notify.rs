@@ -10,6 +10,7 @@
 use crate::ui::Named as _;
 use std::time::{Duration, Instant};
 
+use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::bus::{self, Signal};
@@ -313,6 +314,10 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
                             dismiss(cx, id);
                         }),
                 )
+                .map(|d| {
+                    crate::inspect::animation(&format!("notice-in-{id}"), Duration::from_millis(200));
+                    d
+                })
                 .with_animation(
                     SharedString::from(format!("notice-in-{id}")),
                     Animation::new(Duration::from_millis(200)).with_easing(|t| 1. - (1. - t).powi(3)),

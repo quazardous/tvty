@@ -14,6 +14,37 @@ static FRAME: AtomicU64 = AtomicU64::new(0);
 /// what it says when that is known.
 static MARKS: Mutex<Vec<(String, Bounds<Pixels>, u64, Option<String>)>> = Mutex::new(Vec::new());
 
+/// The animations drawn: their id, how long each lasts, when it was first
+/// and last drawn. One still within its time is running.
+static ANIMATIONS: Mutex<Vec<(String, std::time::Duration, std::time::Instant, std::time::Instant)>> = Mutex::new(Vec::new());
+
+/// An animation is drawn, under the id it is given to GPUI (a new id starts
+/// it again), lasting `lasts`: said where it is made, so that a test can
+/// wait for the screen to hold still (`still_animating`).
+pub fn animation(id: &str, lasts: std::time::Duration) {
+    if !enabled() {
+        return;
+    }
+    let now = std::time::Instant::now();
+    if let Ok(mut animations) = ANIMATIONS.lock() {
+        // Those not drawn for a while are gone from the screen.
+        animations.retain(|(_, _, _, seen)| now.duration_since(*seen) < std::time::Duration::from_secs(2));
+        match animations.iter_mut().find(|(known, ..)| known == id) {
+            Some(entry) => entry.3 = now,
+            None => animations.push((id.to_string(), lasts, now, now)),
+        }
+    }
+}
+
+/// The animations still running, by id.
+pub fn still_animating() -> Vec<String> {
+    let now = std::time::Instant::now();
+    ANIMATIONS
+        .lock()
+        .map(|animations| animations.iter().filter(|(_, lasts, began, _)| now.duration_since(*began) < *lasts).map(|(id, ..)| id.clone()).collect())
+        .unwrap_or_default()
+}
+
 /// Turns the recording on, once, at start.
 pub fn enable() {
     ON.store(true, Ordering::Relaxed);

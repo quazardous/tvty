@@ -11,6 +11,10 @@
 //! `{"cmd": "text", "id": …}` (what it says) · `{"cmd": "wait-text", "id":
 //! …, "text": …, "ms": 5000}` (until it says so) ·
 //! `{"cmd": "frame", "park": true}` (until the window has drawn again) ·
+//! `{"cmd": "settle", "ms": 5000}` (until no animation runs) ·
+//! `{"cmd": "dblclick", "id": …}` · `{"cmd": "window", "what": "maximize"}`
+//! (or `restore`, or `size` with `w`, `h`) · `{"cmd": "hold", "keys":
+//! "ctrl"}` (modifiers held until others are said; none: let go) ·
 //! `{"cmd": "state"}` · `{"cmd": "inspector"}` · and failure paths,
 //! provoked: `{"cmd": "bus-reconnect"}`, `{"cmd": "fault", "subscribe":
 //! "Tickets"}` (its next subscribing fails once).
@@ -111,7 +115,7 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             Ok(json!({ "elements": marks }))
         }
         "where" => center(id).map(|p| json!({ "x": f32::from(p.x), "y": f32::from(p.y) })),
-        "click" | "hover" | "press" => match center(id) {
+        "click" | "dblclick" | "hover" | "press" => match center(id) {
             Ok(at) => cx
                 .update(|window, cx| {
                     let moved = MouseMoveEvent { position: at, pressed_button: None, modifiers: Modifiers::default() };
@@ -122,8 +126,15 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
                     }
                     // A press: the button goes down and its release never
                     // comes (it was let go outside the window).
-                    if cmd == "click" {
+                    if matches!(cmd, "click" | "dblclick") {
                         let up = MouseUpEvent { button: MouseButton::Left, position: at, modifiers: Modifiers::default(), click_count: 1 };
+                        window.dispatch_event(PlatformInput::MouseUp(up), cx);
+                    }
+                    // The second click of a double one, counted so.
+                    if cmd == "dblclick" {
+                        let down = MouseDownEvent { button: MouseButton::Left, position: at, modifiers: Modifiers::default(), click_count: 2, first_mouse: false };
+                        window.dispatch_event(PlatformInput::MouseDown(down), cx);
+                        let up = MouseUpEvent { button: MouseButton::Left, position: at, modifiers: Modifiers::default(), click_count: 2 };
                         window.dispatch_event(PlatformInput::MouseUp(up), cx);
                     }
                     json!({ "x": f32::from(at.x), "y": f32::from(at.y) })
@@ -201,32 +212,97 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
         // outside the window first, so that no tooltip covers anything.
         "frame" => {
             let park = command.get("park").and_then(Value::as_bool).unwrap_or(false);
-            let (drawn, was_drawn) = futures::channel::oneshot::channel::<()>();
-            let asked = cx.update(|window, cx| {
-                if park {
-                    let away = MouseMoveEvent { position: point(px(-10.), px(-10.)), pressed_button: None, modifiers: Modifiers::default() };
-                    window.dispatch_event(PlatformInput::MouseMove(away), cx);
+            drawn(cx, park).await.map(|()| json!({ "drawn": true }))
+        }
+        // Until the screen holds still: no animation of tvty's running
+        // (the terminal sliding in, the slider's stacks, a notice coming),
+        // and drawn once more since.
+        "settle" => {
+            let ms = command.get("ms").and_then(Value::as_u64).unwrap_or(5000);
+            let park = command.get("park").and_then(Value::as_bool).unwrap_or(false);
+            let until = std::time::Instant::now() + Duration::from_millis(ms);
+            let mut waited = 0;
+            loop {
+                if let Err(error) = drawn(cx, park && waited == 0).await {
+                    break Err(error);
                 }
-                // Two frames: the first draws what changed, the second's
-                // start says the first is done.
-                window.refresh();
-                window.on_next_frame(move |window, _| {
-                    window.refresh();
-                    window.on_next_frame(move |_, _| {
-                        let _ = drawn.send(());
-                    });
-                });
-            });
+                let running = inspect::still_animating();
+                if running.is_empty() {
+                    break Ok(json!({ "settled": true, "waited_for": waited }));
+                }
+                if std::time::Instant::now() >= until {
+                    break Err(format!("still moving after {ms} ms: {}", running.join(", ")));
+                }
+                waited += 1;
+                cx.background_executor().timer(WAIT_STEP).await;
+            }
+        }
+        // The window itself: maximized, put back, or given a size — asked
+        // of the window, not aimed at its title bar.
+        "window" => {
+            let what = command.get("what").and_then(Value::as_str).unwrap_or_default().to_string();
+            let (w, h) = (command.get("w").and_then(Value::as_f64), command.get("h").and_then(Value::as_f64));
+            let asked = cx
+                .update(|window, _| {
+                    match (what.as_str(), w, h) {
+                        ("maximize", _, _) if !window.is_maximized() => window.zoom_window(),
+                        ("restore", _, _) if window.is_maximized() => window.zoom_window(),
+                        ("maximize" | "restore", _, _) => {}
+                        ("size", Some(w), Some(h)) => window.resize(size(px(w as f32), px(h as f32))),
+                        _ => return Err(format!("{what:?}: maximize, restore, or size W H")),
+                    }
+                    Ok((window.is_maximized(), window.viewport_size()))
+                })
+                .map_err(|e| format!("{e:#}"))
+                .and_then(|r| r);
             match asked {
-                Ok(()) => {
-                    let late = cx.background_executor().timer(FRAME_WAIT);
-                    let in_time = futures::future::select(was_drawn, Box::pin(late)).await;
-                    match in_time {
-                        futures::future::Either::Left(_) => Ok(json!({ "drawn": true })),
-                        futures::future::Either::Right(_) => Err(format!("no frame drawn in {} ms (a window not shown draws none)", FRAME_WAIT.as_millis())),
+                Err(error) => Err(error),
+                // The compositor answers a moment later: said once the
+                // window is as asked (or as it is after a second).
+                Ok(before) => {
+                    let until = std::time::Instant::now() + Duration::from_millis(1000);
+                    loop {
+                        let _ = drawn(cx, false).await;
+                        let now = cx.update(|window, _| (window.is_maximized(), window.viewport_size())).map_err(|e| format!("{e:#}"));
+                        let Ok(now) = now else { break now.map(|_| json!({})) };
+                        let as_asked = match what.as_str() {
+                            "maximize" => now.0,
+                            "restore" => !now.0,
+                            _ => now != before || (Some(f64::from(f32::from(now.1.width))), Some(f64::from(f32::from(now.1.height)))) == (w, h),
+                        };
+                        if as_asked || std::time::Instant::now() >= until {
+                            break Ok(json!({ "maximized": now.0, "w": f32::from(now.1.width), "h": f32::from(now.1.height) }));
+                        }
+                        cx.background_executor().timer(WAIT_STEP).await;
                     }
                 }
-                Err(error) => Err(format!("{error:#}")),
+            }
+        }
+        // Modifiers held from now on, until others are said (none: let
+        // go): what lives while a key is held — the slider under Ctrl — is
+        // there between two commands. `key` then takes them into its own.
+        "hold" => {
+            let keys = command.get("keys").and_then(Value::as_str).unwrap_or_default().to_string();
+            let mut modifiers = Modifiers::default();
+            let mut unknown = None;
+            for key in keys.split(['-', '+', ' ']).filter(|k| !k.is_empty()) {
+                match key {
+                    "ctrl" | "control" => modifiers.control = true,
+                    "shift" => modifiers.shift = true,
+                    "alt" => modifiers.alt = true,
+                    "super" | "cmd" | "platform" => modifiers.platform = true,
+                    other => unknown = Some(other.to_string()),
+                }
+            }
+            match unknown {
+                Some(other) => Err(format!("{other:?}: not a modifier (ctrl, shift, alt, super)")),
+                None => cx
+                    .update(|window, cx| {
+                        let event = ModifiersChangedEvent { modifiers, capslock: Default::default() };
+                        window.dispatch_event(PlatformInput::ModifiersChanged(event), cx);
+                        json!({ "held": keys })
+                    })
+                    .map_err(|e| format!("{e:#}")),
             }
         }
         "state" => this.update(cx, |shell, cx| shell.said(cx)).map_err(|e| format!("{e:#}")),
@@ -250,11 +326,38 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "inspector" => toggle_inspector(cx),
-        other => Err(format!("{other:?}: no such command (tree, query, frame, text, where, click, hover, press, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
+        other => Err(format!("{other:?}: no such command (tree, query, frame, settle, text, where, click, dblclick, hover, press, window, hold, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
     };
     match answer {
         Ok(value) => json!({ "ok": value }),
         Err(error) => json!({ "error": error }),
+    }
+}
+
+/// Until the window has drawn again: what changed so far is on screen.
+/// `park`: the pointer put outside the window first.
+async fn drawn(cx: &mut AsyncWindowContext, park: bool) -> Result<(), String> {
+    let (drawn, was_drawn) = futures::channel::oneshot::channel::<()>();
+    cx.update(|window, cx| {
+        if park {
+            let away = MouseMoveEvent { position: point(px(-10.), px(-10.)), pressed_button: None, modifiers: Modifiers::default() };
+            window.dispatch_event(PlatformInput::MouseMove(away), cx);
+        }
+        // Two frames: the first draws what changed, the second's start
+        // says the first is done.
+        window.refresh();
+        window.on_next_frame(move |window, _| {
+            window.refresh();
+            window.on_next_frame(move |_, _| {
+                let _ = drawn.send(());
+            });
+        });
+    })
+    .map_err(|e| format!("{e:#}"))?;
+    let late = cx.background_executor().timer(FRAME_WAIT);
+    match futures::future::select(was_drawn, Box::pin(late)).await {
+        futures::future::Either::Left(_) => Ok(()),
+        futures::future::Either::Right(_) => Err(format!("no frame drawn in {} ms (a window not shown draws none)", FRAME_WAIT.as_millis())),
     }
 }
 

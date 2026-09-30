@@ -32,6 +32,11 @@ export CL_CLAUDE_CMD="$(cd "$TVTY_ROOT/.." && pwd)/aiball/bin/fake-claude"
 export TVTY_DEBUG_CONTROL=1
 unset TMUX
 mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty" "$XDG_STATE_HOME/tvty" "$CLAUDE_LOOP_STATE_ROOT"
+# What scripts/tvty-ctl --instance test drives: this tvty, in the tests' wbox.
+mkdir -p "$TVTY_ROOT/dev/tvty-ctl"
+printf '{"state_home": "%s", "wbox_config": "%s", "screenshots": "%s"}\n' \
+    "$XDG_STATE_HOME" "$TVTY_ROOT/dev/tvty-wbox/config.yaml" "$TVTY_ROOT/dev/tvty-wbox/screenshots" \
+    >"$TVTY_ROOT/dev/tvty-ctl/test.json"
 # The projects' list starts folded: nothing to click by accident (unless an
 # older tvty's state.json is still there to be migrated).
 [ -f "$XDG_STATE_HOME/tvty/layout.json" ] || [ -f "$XDG_CONFIG_HOME/tvty/state.json" ] \
