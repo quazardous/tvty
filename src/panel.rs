@@ -50,6 +50,10 @@ pub struct OrderChanged {
     pub newest_first: bool,
 }
 
+/// The panel pinned beside the terminal (true), or let over it.
+#[derive(Clone, Debug)]
+pub struct PinChanged(pub bool);
+
 /// The detail went full screen, or back to the panel.
 pub struct FullChanged;
 
@@ -153,6 +157,8 @@ pub struct TicketPanel {
     /// only, which a click unfolds. As left, from a ticket to the next;
     /// at start, as the settings say (folded, unless asked open).
     summary_open: bool,
+    /// Held beside the terminal; else it lies over it.
+    pinned: bool,
     /// Who can be @mentioned, read once.
     mentions: Vec<String>,
     /// The detail fills the window: the ticket's invariants on the left
@@ -190,6 +196,7 @@ pub struct TicketPanel {
 impl EventEmitter<OrderChanged> for TicketPanel {}
 impl EventEmitter<FullChanged> for TicketPanel {}
 impl EventEmitter<CollapsePanel> for TicketPanel {}
+impl EventEmitter<PinChanged> for TicketPanel {}
 impl EventEmitter<OpenFullList> for TicketPanel {}
 impl EventEmitter<OpenMegaphone> for TicketPanel {}
 
@@ -275,6 +282,7 @@ impl TicketPanel {
             newest_first: false,
             panel_newest_first: false,
             summary_open: false,
+            pinned: true,
             mentions: Vec::new(),
             full: false,
             full_folded: false,
@@ -637,6 +645,11 @@ impl TicketPanel {
         let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
         self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
         self.change(format!("related to #{target} ({kind})"), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
+    }
+
+    pub fn set_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
+        self.pinned = pinned;
+        cx.notify();
     }
 
     /// "Where it stands" open or folded in the panel, as the settings say.
@@ -2534,6 +2547,12 @@ impl Render for TicketPanel {
                 buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
+            // Then its pin: held beside the terminal, or let over it.
+            .child({
+                let pinned = self.pinned;
+                buttons::icon("panel-pin", icons::pin(pinned, if pinned { p().accent } else { p().muted }, 15.), "Pinned: the panel stays beside the terminal. Not pinned: it lies over it")
+                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PinChanged(!pinned))))
+            })
             // A ticket open: its project's name and badges, as the list has
             // them (the way back is above its title).
             .when(self.detail.is_some(), |d| {

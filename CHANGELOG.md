@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - In the ticket panel, "Where it stands" folds to its title, and starts folded: the thread gets the room. A click unfolds it, and it stays as left from a ticket to the next. Settings > Ticket list > Thread > "Where it stands, open" makes it start open. Full screen it shows whole, as before.
 - Switches where there were boxes to tick (the sessions' picker, "Remember this choice", the "+ session" form, the new project's wizard) and "Fold / unfold" buttons (Settings > Layout > Sides).
 - A new ticket has "File and exit": it is filed without being opened, and you are back at the terminal or the full list.
-- The ticket panel can lie over the terminal, as the sessions' list does, rather than beside it (Settings > Layout > Ticket panel > Place): the terminal then keeps its whole width.
+- The ticket panel can lie over the terminal, as the sessions' list does, rather than beside it (Settings > Layout > Ticket panel > Place, or the pin in the panel's header): the terminal then keeps its whole width.
 - The updater's console can be copied whole, and is kept in a file (`updater.log`, beside Terminal Velocity's log) whose folder a button opens. An aiball run from its checkout (a development install) is said so, with the command that updates it by hand, and is no longer updated — nor failed — from the updater.
 - A ticket full screen shows who follows it (People > followers): one tag each, its ✕ to end it, a dropdown to add one; one who muted it is greyed.
 - Windows: tvty can attach to a session a host holds, without psmux, to watch it or to type in it. It waits for aiball's session host to run on Windows, which it does not yet.

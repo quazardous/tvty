@@ -45,7 +45,7 @@ mod tabs;
 mod tips;
 use tabs::Restoring;
 mod viewer;
-use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, Scope, TicketPanel, dot, pill};
+use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, PinChanged, Scope, TicketPanel, dot, pill};
 use crate::sessions::{self, Board, Terminal};
 use crate::settings::{Preferences, SCHEMA, Settings};
 use gpui_kit::component::slider::{Slider, SliderEvent, SliderState};
@@ -681,6 +681,10 @@ impl Shell {
             cx.notify();
         })
         .detach();
+        cx.subscribe(&panel, |shell, _, pin: &PinChanged, cx| {
+            shell.set_pref("tickets.panel_overlay", Value::Toggle(!pin.0), cx);
+        })
+        .detach();
         cx.subscribe(&panel, |shell, _, order: &OrderChanged, cx| {
             let key = if order.full { "tickets.newest_first" } else { "tickets.panel_newest_first" };
             shell.set_pref(key, Value::Toggle(order.newest_first), cx);
@@ -868,6 +872,8 @@ impl Shell {
             panel.set_newest_first(newest_first, panel_newest_first, cx);
             panel.set_summary_open(summary_open, cx);
         });
+        let pinned = !shell.applied.tickets.panel_overlay;
+        shell.panel.update(cx, |panel, cx| panel.set_pinned(pinned, cx));
         match selected {
             Some(session) => shell.select(session, window, cx),
             None => {
@@ -3854,6 +3860,8 @@ impl Shell {
             let summary_open = new.tickets.summary_open;
             self.panel.update(cx, |panel, cx| panel.set_summary_open(summary_open, cx));
         }
+        let pinned = !new.tickets.panel_overlay;
+        self.panel.update(cx, |panel, cx| panel.set_pinned(pinned, cx));
         if old.sessions != new.sessions {
             // Ordered afresh, from the board as it comes.
             self.board = sessions::Board::default();

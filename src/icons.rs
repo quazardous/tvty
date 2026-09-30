@@ -62,6 +62,9 @@ icons! {
     Unassign => "person_off.svg",
     // What runs on aiball's hub, seen from another machine.
     Hub => "cloud.svg",
+    // The ticket panel held beside the terminal, or let over it.
+    Pinned => "keep_fill.svg",
+    Unpinned => "keep.svg",
 }
 
 impl AssetSource for Assets {
@@ -87,6 +90,11 @@ pub fn icon(icon: Icon, colour: Hsla, size: f32) -> Svg {
         .size(px(size))
         .flex_none()
         .text_color(colour)
+}
+
+/// The pin of the ticket panel: full when it is held beside the terminal.
+pub fn pin(pinned: bool, colour: Hsla, size: f32) -> Svg {
+    icon(if pinned { Icon::Pinned } else { Icon::Unpinned }, colour, size)
 }
 
 /// The 📢 (what steers a project's agents), the kit's megaphone: an emoji

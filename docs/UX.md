@@ -526,6 +526,9 @@ terminal, its width set the same way. Both widths are remembered.
 terminal instead, as the list on the left: the terminal keeps its whole
 width (its session is not resized when the panel opens or folds), the
 panel covers its right side while open, and the notices stay left of it.
+The **pin** in the panel's header, after its fold chevron, is the same
+choice at hand: pinned, the panel stays beside the terminal; not pinned,
+it lies over it.
 
 Both sides — the projects' list and the ticket panel — fold with a **grip**
 on their edge (or their key, below) into a **10-pixel strip** that still
