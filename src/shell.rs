@@ -1837,7 +1837,6 @@ impl Shell {
     fn hub_view(&self, hub: &sessions::HubAgent) -> AnyElement {
         div()
             .saying("hub-session", format!("{} — on hub", hub.agent))
-            .relative()
             .size_full()
             .flex()
             .flex_col()
@@ -1846,17 +1845,15 @@ impl Shell {
             .gap_3()
             // Where a terminal would be: as see-through as one.
             .bg(p().bg.opacity(crate::terminal::opacity()))
-            // Behind what is said, a cloud as a watermark: on the hub.
             .child(
                 div()
-                    .absolute()
-                    .inset_0()
                     .flex()
                     .items_center()
-                    .justify_center()
-                    .child(crate::icons::icon(crate::icons::Icon::Hub, p().warning.opacity(HUB_WATERMARK), 300.)),
+                    .gap_2()
+                    .text_lg()
+                    .child(div().font_weight(FontWeight::BOLD).child(hub.agent.clone()))
+                    .child(hub_mark("hub-session-mark")),
             )
-            .child(div().relative().text_lg().font_weight(FontWeight::BOLD).child(hub.agent.clone()))
             .children(hub.project.clone().map(|project| div().text_sm().text_color(p().muted).child(project)))
             .children(hub.status.as_ref().map(|status| status.line(None)))
             .child(
@@ -5376,24 +5373,14 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
 }
 
 /// `text` with the words searched for marked.
-/// How much of the warning colour a watermark cloud keeps: seen at a
-/// glance, never in the way of what is written over it.
-const HUB_WATERMARK: f32 = 0.22;
-
 /// The mark of what runs on aiball's hub, seen from another machine: a
-/// cloud as a watermark in the warning colour — it is not this machine's —
-/// behind a row's right end, and under the pointer, what that means. `id`
-/// names it (one per row). Its parent is `relative()`.
+/// small cloud in the warning colour — it is not this machine's — and under
+/// the pointer, what that means. `id` names it (one per row).
 pub(super) fn hub_mark(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
         .saying(id, "on hub")
-        .absolute()
-        .top_0()
-        .bottom_0()
-        .right_2()
-        .flex()
-        .items_center()
-        .child(crate::icons::icon(crate::icons::Icon::Hub, p().warning.opacity(HUB_WATERMARK + 0.1), 38.))
+        .flex_none()
+        .child(crate::icons::icon(crate::icons::Icon::Hub, p().warning, 17.))
         .tip("On aiball's hub, another machine: read from here (its state, its tickets), not opened — a session is attached from its own machine.")
 }
 

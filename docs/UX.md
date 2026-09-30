@@ -83,10 +83,10 @@ when the two are the same. Behind a proxy node — aiball's hub being another
 machine — the hub's agents are therefore not this machine's: their sessions
 are not listed, their folders not offered. **Options > Layout > Sessions >
 The hub's sessions** (off by default) lists them in a fourth section, **on
-hub**, each with a cloud as a watermark behind its row, in the warning colour (under the pointer: what it means). They are read,
+hub**, each with a small cloud drawn in outline, in the warning colour (under the pointer: what it means). They are read,
 never opened — a session is attached from its own machine: a click shows,
 in the terminal's place, a page saying whose session it is, how it is doing
-and that it runs on the hub, over a large cloud as a watermark; its project's tickets in the panel; "on hub"
+and that it runs on the hub; its project's tickets in the panel; "on hub"
 in the window's title. No start, no stop, no hold is offered on them. The
 sessions of other nodes are never listed. "Message every agent" is not
 offered behind a node (aiball refuses it there). A session is attached

@@ -8,7 +8,7 @@ taken unchanged from
 They are licensed under the **Apache License 2.0**
 (<https://www.apache.org/licenses/LICENSE-2.0>), © Google.
 
-`cloud.svg` is the filled one (`cloud_fill1_24px.svg`).
+`cloud.svg` is the outline in a heavier stroke (`cloud_wght600_24px.svg`): a thin one does not read at the size it is drawn.
 
 `chat_bubble_mine.svg` is
 `chat_bubble.svg` mirrored (its point on the
