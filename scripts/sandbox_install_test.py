@@ -10,7 +10,8 @@ a picture of the whole desktop. `--from` gives it a local build's release
 files (target/distrib) instead of the published release.
 
 What it leaves in dev/tvty-wbox-win/home/install-test: out.txt, setup.log,
-desk.png. Run under wbox's own interpreter, as scripts/wbox_ctl.py is.
+desk.png. `--aiball-ref` installs aiball at a tag or a branch rather than
+its latest release, to try a fix of it. Run under wbox's own interpreter, as scripts/wbox_ctl.py is.
 The sandbox is left up, to look further; one sandbox runs at a time, so
 any other is closed first.
 """
@@ -30,7 +31,7 @@ CONFIG = ROOT / "dev/tvty-wbox-win/install.yaml"
 WORK = ROOT / "dev/tvty-wbox-win/home/install-test"
 INSTANCE = "tvty-wbox-win"
 RELEASE_FILES = ("*.ps1", "*.zip", "*.sha256", "sha256.sum")
-STEP = ("===", "github:", "winget:", "tvty-setup:", "shortcuts:", "tvty:", "aiball:", "desk.png:")
+STEP = ("===", "github:", "winget:", "tvty-setup:", "shortcuts:", "tvty:", "aiball:", "aiball at:", "daemon:", "processes:", "task:", "vbs left:", "desk.png:")
 
 
 def transcript() -> str:
@@ -41,11 +42,17 @@ def transcript() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--from", dest="source", help="a folder of release files (target/distrib)")
+    parser.add_argument("--aiball-ref", help="a tag or a branch of aiball to install, instead of its latest release")
     parser.add_argument("--minutes", type=int, default=30, help="how long to wait for it")
     args = parser.parse_args()
 
+    # A fresh Windows: whatever sandbox is up goes — first, as it holds the
+    # folder it shares.
+    SandboxCompositor(instance_name=INSTANCE)._shutdown()
     shutil.rmtree(WORK, ignore_errors=True)
-    WORK.mkdir(parents=True)
+    WORK.mkdir(parents=True, exist_ok=True)
+    for left in WORK.iterdir():
+        raise SystemExit(f"{left} cannot be removed: something still holds it")
     shutil.copy(ROOT / "scripts/sandbox/install-test.ps1", WORK)
     shutil.copy(ROOT / "packaging/windows/tvty-setup.ps1", WORK)
     if args.source:
@@ -54,8 +61,9 @@ def main() -> int:
             for file in Path(args.source).glob(pattern):
                 shutil.copy(file, WORK / "release")
 
-    # A fresh Windows: whatever sandbox is up goes.
-    SandboxCompositor(instance_name=INSTANCE)._shutdown()
+    if args.aiball_ref:
+        (WORK / "aiball-ref.txt").write_text(args.aiball_ref)
+
     ctl = [sys.executable, str(ROOT / "scripts/wbox_ctl.py")]
     subprocess.run([*ctl, "up", str(CONFIG)], check=True, stdout=subprocess.DEVNULL)
     subprocess.run([*ctl, "down", str(CONFIG)], check=True, stdout=subprocess.DEVNULL)

@@ -356,12 +356,17 @@ fn aiball() -> Command {
 /// Installs aiball: its latest tag cloned, then its own installer
 /// (`install.sh`, or `install.ps1` on Windows).
 pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
-    let tag = latest_aiball_tag()?;
+    // Its latest release; `TVTY_AIBALL_REF` names another tag or a branch
+    // (to try a fix of aiball before its release).
+    let tag = match std::env::var("TVTY_AIBALL_REF").ok().filter(|r| !r.trim().is_empty()) {
+        Some(asked) => asked.trim().to_string(),
+        None => latest_aiball_tag()?,
+    };
     let dir = home().join(".local/src/aiball");
     if dir.exists() {
         say(format!("{} is there already: updating it to {tag}", dir.display()));
-        run(Command::new("git").args(["fetch", "--tags", "--depth", "1", "origin", &tag]).current_dir(&dir), say)?;
-        run(Command::new("git").args(["checkout", &tag]).current_dir(&dir), say)?;
+        run(Command::new("git").args(["fetch", "--depth", "1", "origin", &tag]).current_dir(&dir), say)?;
+        run(Command::new("git").args(["-c", "advice.detachedHead=false", "checkout", "FETCH_HEAD"]).current_dir(&dir), say)?;
     } else {
         std::fs::create_dir_all(dir.parent().expect("a parent"))?;
         run(Command::new("git").args(["-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
