@@ -49,7 +49,7 @@ Get-Content -Raw "$here\tvty-setup.ps1" | Invoke-Expression
 
 Step 'what is there'
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
-foreach ($command in 'git', 'node', 'pwsh', 'psmux', 'aiball', 'tvty', 'tvty-updater') {
+foreach ($command in 'git', 'node', 'pwsh', 'psmux', 'claude', 'aiball', 'tvty', 'tvty-updater') {
     $found = Get-Command $command -ErrorAction SilentlyContinue
     "{0,-13} {1}" -f $command, $(if ($found) { $found.Source } else { 'MISSING' })
 }
