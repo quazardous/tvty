@@ -5,6 +5,8 @@
     scripts/tvty-ctl where ID           the middle of ID on screen
     scripts/tvty-ctl click ID           a click on ID, put in through the window
     scripts/tvty-ctl hover ID           the pointer moved onto ID
+    scripts/tvty-ctl press ID           a press on ID never released (let go outside the window)
+    scripts/tvty-ctl selection          the text selected in the window, if any
     scripts/tvty-ctl key KEYS           a keystroke, as the keymap writes it (ctrl-enter)
     scripts/tvty-ctl type TEXT          TEXT typed
     scripts/tvty-ctl wait ID [MS]       until ID is on screen (5000 ms at most)
@@ -78,7 +80,7 @@ def main(argv):
     command = {"cmd": cmd}
     if cmd in ("tree", "query"):
         command = {"cmd": "query", "id": rest[0] if rest else ""}
-    elif cmd in ("where", "click", "hover"):
+    elif cmd in ("where", "click", "hover", "press"):
         command["id"] = rest[0]
     elif cmd == "key":
         command["keys"] = rest[0]

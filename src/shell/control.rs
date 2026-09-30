@@ -5,7 +5,8 @@
 //!
 //! `{"cmd": "tree"}` · `{"cmd": "query", "id": "assign"}` (ids starting so)
 //! · `{"cmd": "where", "id": …}` · `{"cmd": "click", "id": …}` ·
-//! `{"cmd": "hover", "id": …}` · `{"cmd": "key", "keys": "ctrl-enter"}` ·
+//! `{"cmd": "hover", "id": …}` · `{"cmd": "press", "id": …}` (a press never
+//! released) · `{"cmd": "selection"}` (the text selected) · `{"cmd": "key", "keys": "ctrl-enter"}` ·
 //! `{"cmd": "type", "text": …}` · `{"cmd": "wait", "id": …, "ms": 5000}` ·
 //! `{"cmd": "state"}` · `{"cmd": "inspector"}` · and failure paths,
 //! provoked: `{"cmd": "bus-reconnect"}`, `{"cmd": "fault", "subscribe":
@@ -68,14 +69,18 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             Ok(json!({ "elements": marks }))
         }
         "where" => center(id).map(|p| json!({ "x": f32::from(p.x), "y": f32::from(p.y) })),
-        "click" | "hover" => match center(id) {
+        "click" | "hover" | "press" => match center(id) {
             Ok(at) => cx
                 .update(|window, cx| {
                     let moved = MouseMoveEvent { position: at, pressed_button: None, modifiers: Modifiers::default() };
                     window.dispatch_event(PlatformInput::MouseMove(moved), cx);
-                    if cmd == "click" {
+                    if cmd != "hover" {
                         let down = MouseDownEvent { button: MouseButton::Left, position: at, modifiers: Modifiers::default(), click_count: 1, first_mouse: false };
                         window.dispatch_event(PlatformInput::MouseDown(down), cx);
+                    }
+                    // A press: the button goes down and its release never
+                    // comes (it was let go outside the window).
+                    if cmd == "click" {
                         let up = MouseUpEvent { button: MouseButton::Left, position: at, modifiers: Modifiers::default(), click_count: 1 };
                         window.dispatch_event(PlatformInput::MouseUp(up), cx);
                     }
@@ -84,6 +89,14 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
                 .map_err(|e| format!("{e:#}")),
             Err(error) => Err(error),
         },
+        // The text selected in the window (the panel's, a page's), and
+        // whether any is.
+        "selection" => cx
+            .update(|window, cx| {
+                let text = gpui_kit::base::TextSelection::selected_text(window, cx);
+                json!({ "selected": !text.is_empty(), "text": text })
+            })
+            .map_err(|e| format!("{e:#}")),
         "key" => {
             let keys = command.get("keys").and_then(Value::as_str).unwrap_or_default().to_string();
             match Keystroke::parse(&keys) {

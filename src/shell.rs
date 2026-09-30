@@ -4740,6 +4740,16 @@ impl Render for Shell {
             |_, _, _| {},
             move |_, _, window, _| {
                 crate::wheel::speed_up(window);
+                // The kit's text selection starts at any press in the window
+                // and ends at the release it sees: one let go outside the
+                // window (or as it lost the pointer) left it selecting, and
+                // the pointer coming back over the panel selected its text
+                // with no button held. A move with none held ends it.
+                window.on_mouse_event(|event: &MouseMoveEvent, phase, window, cx| {
+                    if phase == DispatchPhase::Capture && event.pressed_button.is_none() {
+                        gpui_kit::base::TextSelection::end(window, cx);
+                    }
+                });
                 window.on_mouse_event(move |_: &MouseUpEvent, phase, window, cx| {
                     if phase != DispatchPhase::Bubble {
                         return;

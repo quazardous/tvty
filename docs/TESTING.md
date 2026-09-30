@@ -209,6 +209,9 @@ hope for:
   Windows, where wbox is not; `where ID` gives the middle, for wbox's real
   pointer when the platform must see it (a tooltip);
 - `tvty-ctl wait ID [MS]` — until ID is painted;
+- `tvty-ctl press ID` — a press never released (let go outside the
+  window), and `tvty-ctl selection` — the text selected in the window: a
+  stuck selection is provoked and read without a screenshot;
 - `tvty-ctl state` — the page, the terminal, the panel (project, ticket,
   field being edited, menu open), the bus and its subscriptions;
 - `tvty-ctl inspector` — GPUI's inspector (debug builds; its key is
