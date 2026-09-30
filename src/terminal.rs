@@ -26,7 +26,6 @@ use crate::tip::Tip as _;
 
 use crate::stats;
 
-const FONT_FAMILY: &str = "Source Code Pro";
 /// Tried in order for glyphs the main font lacks (emoji, CJK, symbols).
 const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
 /// The terminals' font size, in pixels: by default, and its bounds.
@@ -1201,7 +1200,7 @@ impl Element for TerminalElement {
             fallbacks: Some(FontFallbacks::from_fonts(
                 FONT_FALLBACKS.iter().map(|f| f.to_string()).collect(),
             )),
-            ..font(FONT_FAMILY)
+            ..font(crate::fonts::mono())
         };
         let styled = |flags: Flags| Font {
             weight: if flags.contains(Flags::BOLD) {

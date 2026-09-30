@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows: the terminals' text is fixed-width again, and the cursor sits where the text ends. tvty asked for a font Windows does not have and got one of variable width; it now takes the first fixed-width font the machine has (Source Code Pro, Cascadia Mono, Consolas…).
 - Windows: the title bar's buttons (menu, themes, message to every agent, settings) answer a single click; they needed a double one.
 - Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
 - The left panel can no longer be resized narrower than its header: its buttons and the chevron that folds it went out of it (seen on Windows, where the text is wider).
