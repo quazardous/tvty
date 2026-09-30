@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
+
 ### Added
 
 - A ticket full screen shows who follows it (People > followers): one tag each, its ✕ to end it, a dropdown to add one; one who muted it is greyed.
