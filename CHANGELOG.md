@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A ticket's thread has an order in the panel and another full screen: ⇅ sets the one of the view it is in, and Settings > Ticket list > Thread has both. The panel starts newest last, by the reply, whatever the full screen's order.
 - In the ticket panel, "Where it stands" folds to its title, and starts folded: the thread gets the room. A click unfolds it, and it stays as left from a ticket to the next. Settings > Ticket list > Thread > "Where it stands, open" makes it start open. Full screen it shows whole, as before.
 - Switches where there were boxes to tick (the sessions' picker, "Remember this choice", the "+ session" form, the new project's wizard) and "Fold / unfold" buttons (Settings > Layout > Sides).
 - The ticket panel can lie over the terminal, as the sessions' list does, rather than beside it (Settings > Layout > Ticket panel > Place): the terminal then keeps its whole width.

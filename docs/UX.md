@@ -363,6 +363,8 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   Events are one grey line, merged when one author repeats them.
 - **⇅ sets the order**: newest last, the reply box under the talk (the
   default), or newest first, the reply box at the top; it is remembered.
+  The panel and the full screen have an order each: ⇅ sets the one of the
+  view it is in (Settings > Ticket list > Thread has both).
 - **The frequent gestures stay at hand** in the panel — a dev's round is
   read, decide or answer, next: a click on the priority chip changes it;
   Snooze gives an hour, a day or a week (Wake when snoozed); "without

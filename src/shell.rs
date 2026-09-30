@@ -682,7 +682,8 @@ impl Shell {
         })
         .detach();
         cx.subscribe(&panel, |shell, _, order: &OrderChanged, cx| {
-            shell.set_pref("tickets.newest_first", Value::Toggle(order.0), cx);
+            let key = if order.full { "tickets.newest_first" } else { "tickets.panel_newest_first" };
+            shell.set_pref(key, Value::Toggle(order.newest_first), cx);
         })
         .detach();
         // The full pages' side column, as dragged: kept with the layout.
@@ -862,8 +863,9 @@ impl Shell {
         })
         .detach();
         let (newest_first, summary_open) = (shell.applied.tickets.newest_first, shell.applied.tickets.summary_open);
+        let panel_newest_first = shell.applied.tickets.panel_newest_first;
         shell.panel.update(cx, |panel, cx| {
-            panel.set_newest_first(newest_first, cx);
+            panel.set_newest_first(newest_first, panel_newest_first, cx);
             panel.set_summary_open(summary_open, cx);
         });
         match selected {
@@ -3840,8 +3842,8 @@ impl Shell {
         );
         crate::activity::set_own(cx, notifications.own);
         crate::wheel::set_speed(new.scroll.speed);
-        let newest_first = new.tickets.newest_first;
-        self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
+        let (newest_first, panel_newest_first) = (new.tickets.newest_first, new.tickets.panel_newest_first);
+        self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, panel_newest_first, cx));
         if old.tickets.summary_open != new.tickets.summary_open {
             let summary_open = new.tickets.summary_open;
             self.panel.update(cx, |panel, cx| panel.set_summary_open(summary_open, cx));

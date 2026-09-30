@@ -44,7 +44,11 @@ pub struct OpenFullList;
 pub struct OpenMegaphone;
 
 /// The user flipped the thread's order: newest first when true.
-pub struct OrderChanged(pub bool);
+pub struct OrderChanged {
+    /// The full screen's order, else the panel's.
+    pub full: bool,
+    pub newest_first: bool,
+}
 
 /// The detail went full screen, or back to the panel.
 pub struct FullChanged;
@@ -139,8 +143,12 @@ pub struct TicketPanel {
     /// The bands folded to their title, and each band's own scroll.
     folded: HashSet<Band>,
     scrolls: HashMap<Band, ScrollHandle>,
-    /// The thread's order: newest first (top-down) or last (by the reply).
+    /// The thread's order full screen: newest first (top-down) or last (by
+    /// the reply).
     newest_first: bool,
+    /// The same in the panel, which has an order of its own: there the
+    /// reply is a glance away from the newest word, newest last.
+    panel_newest_first: bool,
     /// In the panel, "Where it stands" shows its text; else its title
     /// only, which a click unfolds. As left, from a ticket to the next;
     /// at start, as the settings say (folded, unless asked open).
@@ -265,6 +273,7 @@ impl TicketPanel {
             folded: HashSet::new(),
             scrolls: HashMap::new(),
             newest_first: false,
+            panel_newest_first: false,
             summary_open: false,
             mentions: Vec::new(),
             full: false,
@@ -636,21 +645,33 @@ impl TicketPanel {
         cx.notify();
     }
 
-    pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {
-        self.newest_first = newest_first;
+    /// The thread's order, full screen and in the panel, as the settings say.
+    pub fn set_newest_first(&mut self, full: bool, panel: bool, cx: &mut Context<Self>) {
+        self.newest_first = full;
+        self.panel_newest_first = panel;
         cx.notify();
     }
 
+    /// The thread's order where it shows now: full screen, or in the panel.
+    fn newest(&self) -> bool {
+        if self.full { self.newest_first } else { self.panel_newest_first }
+    }
+
     fn flip_order(&mut self, cx: &mut Context<Self>) {
-        self.newest_first = !self.newest_first;
+        let newest_first = !self.newest();
+        if self.full {
+            self.newest_first = newest_first;
+        } else {
+            self.panel_newest_first = newest_first;
+        }
         if let Some(detail) = &self.detail {
-            if self.newest_first {
+            if newest_first {
                 detail.scroll.set_offset(point(px(0.), px(0.)));
             } else {
                 detail.scroll.scroll_to_bottom();
             }
         }
-        cx.emit(OrderChanged(self.newest_first));
+        cx.emit(OrderChanged { full: self.full, newest_first });
         cx.notify();
     }
 
@@ -786,7 +807,7 @@ impl TicketPanel {
                 })
                 .await;
             let _ = this.update(cx, |panel, cx| {
-                let newest_first = panel.newest_first;
+                let newest_first = panel.newest();
                 if let Some(detail) = panel.detail.as_mut().filter(|d| d.ticket == ticket) {
                     match subscribers {
                         Some(Ok(subscribers)) => detail.subscribers = Some(subscribers),
@@ -1286,7 +1307,7 @@ impl TicketPanel {
         // screen they end the title's line; in the panel they sit on the
         // line of the way back, so that the title keeps its whole width.
         let tools = [
-            buttons::link("thread-order", if self.newest_first { "⇅ newest first" } else { "⇅ newest last" })
+            buttons::link("thread-order", if self.newest() { "⇅ newest first" } else { "⇅ newest last" })
                 .text_xs()
                 .font_weight(FontWeight::NORMAL)
                 .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
@@ -1517,7 +1538,7 @@ impl TicketPanel {
             };
             talk.push(self.entry(entry, comment, detail, &user, cx));
         }
-        if self.newest_first {
+        if self.newest() {
             talk.reverse();
         }
         let body = div().flex().flex_col().px_3().py_2().gap_2().children(talk);
@@ -1665,7 +1686,7 @@ impl TicketPanel {
             .flex_none()
             .gap_2()
             .p_3()
-            .map(|d| if self.newest_first { d.border_b_1() } else { d.border_t_1() })
+            .map(|d| if self.newest() { d.border_b_1() } else { d.border_t_1() })
             .border_color(p().border)
             // A paste with an image: it goes to aiball, its link to the
             // reply. Caught before the reply box pastes text.
@@ -1804,7 +1825,7 @@ impl TicketPanel {
                 ),
             );
         // Newest last, the reply sits under the talk; newest first, above it.
-        let (first, second) = if self.newest_first {
+        let (first, second) = if self.newest() {
             (actions.into_any_element(), thread_view.into_any_element())
         } else {
             (thread_view.into_any_element(), actions.into_any_element())
