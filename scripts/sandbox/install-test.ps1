@@ -9,7 +9,9 @@
 #   done       written last
 # With a `release` folder beside it, the release's files come from there
 # (a local build); without, from the published release. With an
-# `aiball-ref.txt`, aiball is installed at that tag or branch.
+# `aiball-ref.txt`, aiball is installed at that tag or branch. With a
+# `published.txt`, the setup script is the published one, fetched by the
+# README's line, not this checkout's.
 $here = 'C:\tvty-home\install-test'
 Remove-Item "$here\done" -ErrorAction SilentlyContinue
 Start-Transcript -Path "$here\out.txt" -Force | Out-Null
@@ -45,7 +47,14 @@ if (Test-Path "$here\aiball-ref.txt") {
     $env:TVTY_AIBALL_REF = (Get-Content "$here\aiball-ref.txt" -Raw).Trim()
     "aiball at: $env:TVTY_AIBALL_REF"
 }
-Get-Content -Raw "$here\tvty-setup.ps1" | Invoke-Expression
+if (Test-Path "$here\published.txt") {
+    # What a user gets today: the README's line, as it is.
+    $line = 'https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1'
+    "the published script: $line"
+    Invoke-RestMethod $line | Invoke-Expression
+} else {
+    Get-Content -Raw "$here\tvty-setup.ps1" | Invoke-Expression
+}
 
 Step 'what is there'
 $env:Path = [Environment]::GetEnvironmentVariable('Path', 'Machine') + ';' + [Environment]::GetEnvironmentVariable('Path', 'User')
