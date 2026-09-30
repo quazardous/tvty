@@ -240,6 +240,15 @@ hope for:
   the agent bar's line (`place`, `afk`, `update`), the sessions' picker
   (what for, how many rows, how many ticked), a dialog, a menu, the
   megaphone, the new ticket's form;
+- `tvty-ctl shot [--region ID] [--no-tips] NAME` — a capture by wbox,
+  taken once tvty has drawn again: what a click just changed is on it. It
+  answers the PNG's path, and fails rather than hand back a file of the
+  same name left from before. `--region ID`: only that element's box, a
+  margin around (ImageMagick crops) — a capture to post on a ticket.
+  `--no-tips`: the pointer is put outside the window first, so that no
+  tooltip and no hover covers what is shown. It waits for tvty's frame,
+  not for what is still to come from aiball: wait for that first (`wait`,
+  `wait-text`);
 - `tvty-ctl paste-image FILE` — FILE put in the clipboard of the
   compositor the test tvty draws on (tvty says which, in `state`), then
   Ctrl+V: an image pasted in a ticket's text. It refuses when that display
