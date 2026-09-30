@@ -2,12 +2,13 @@
 #
 #   irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 #
-# 1. Terminal Velocity and its updater, from the release (their own
-#    installers, into ~\.local\bin, added to your PATH). They need nothing.
-# 2. The updater, without a window (`tvty-updater --install`): what aiball
-#    and tvty need, through winget when it is missing (Git, Node.js LTS,
-#    PowerShell 7, psmux, Claude Code: the updater keeps that list), then
-#    aiball (its own install.ps1) and the Start menu's shortcuts.
+# 1. Terminal Velocity Updater, from the release (its own installer, into
+#    ~\.local\bin, added to your PATH). It needs nothing.
+# 2. The updater, without a window (`tvty-updater --install`), does all the
+#    rest: what aiball and tvty need, through winget when it is missing
+#    (Git, Node.js LTS, PowerShell 7, psmux, Claude Code: the updater keeps
+#    that list), then aiball (its own install.ps1), Terminal Velocity itself,
+#    and the Start menu's shortcuts.
 #
 # It tries everything and says what failed; run it again once that is fixed,
 # it skips what is there. Everything it says and everything the installers
@@ -76,8 +77,8 @@
         return $to
     }
 
-    # 1. Terminal Velocity and its updater, by their own installers.
-    foreach ($app in 'tvty', 'tvty-updater') {
+    # 1. The updater, by its own installer.
+    foreach ($app in @('tvty-updater')) {
         Say "installing $app..."
         try {
             $installer = Get-ReleaseFile "$app-installer.ps1"
@@ -95,10 +96,12 @@
     }
     Update-Path
 
-    # 2. What they need, aiball and the shortcuts, by the updater.
+    # 2. Everything else, by the updater.
     $updater = Join-Path $bin 'tvty-updater.exe'
     if (Test-Path -LiteralPath $updater) {
-        Say 'installing what is missing, aiball and the Start menu shortcuts...'
+        Say 'installing what is missing, aiball, Terminal Velocity and the Start menu shortcuts...'
+        # Where the release's files are, for the updater too.
+        if ($env:TVTY_SETUP_FROM) { $env:TVTY_SETUP_FROM = $from }
         Invoke-Logged $updater '--install'
         if ($LASTEXITCODE) { $failed += 'what the updater installs (the lines above say which)' }
     } else {

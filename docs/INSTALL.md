@@ -76,10 +76,11 @@ installs everything:
 irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 ```
 
-It installs Terminal Velocity and its updater (into `~\.local\bin`, added
-to your PATH), and the updater does the rest: what is missing through winget
-(Git, Node.js LTS, PowerShell 7, psmux, Claude Code), then aiball through
-its own `install.ps1`, and both programs in the Start menu. It says what
+It installs Terminal Velocity Updater (into `~\.local\bin`, added to your
+PATH), and the updater does the rest: what is missing through winget (Git,
+Node.js LTS, PowerShell 7, psmux, Claude Code), then aiball through its own
+`install.ps1`, Terminal Velocity itself, and both programs in the Start
+menu. It says what
 failed, if anything; run it again once that is fixed, it skips what is
 there. Without winget (Windows Sandbox, some LTSC editions) it names what to
 install, each with its command.
@@ -93,6 +94,19 @@ wrong, that is the file to attach to an
 window does it too: it lists what is missing, an Install button on each
 line. Settings live in `%APPDATA%\tvty`, the
 layout and the log in `%LOCALAPPDATA%\tvty`.
+
+**Terminal Velocity alone**, without the updater, stays possible: its own
+installer, from the same release, puts `tvty.exe` in `~\.local\bin` and adds
+that folder to your PATH.
+
+```powershell
+irm https://github.com/quazardous/tvty/releases/latest/download/tvty-installer.ps1 | iex
+```
+
+It installs nothing else: not what tvty and aiball need (Git, Node.js,
+PowerShell 7, psmux, Claude Code), not aiball, no Start menu shortcut, and
+nothing keeps it up to date. `tvty-updater-installer.ps1`, beside it,
+installs the updater alone the same way; its window then installs the rest.
 
 ## Updates
 

@@ -163,13 +163,72 @@ pub fn update_tvty(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     }
     updater.configure_version_specifier(UpdateRequest::LatestMaybePrerelease);
     updater.disable_installer_output();
-    say("downloading and installing the latest release…".into());
-    match updater.run_sync()? {
-        Some(done) => say(format!("installed Terminal Velocity {}", done.new_version)),
-        None => say("Terminal Velocity is up to date".into()),
+    match std::env::var("TVTY_SETUP_FROM").ok().filter(|from| !from.trim().is_empty()) {
+        // A build tried before its release: its files are where this says,
+        // not asked of GitHub.
+        Some(from) => {
+            say(format!("installing Terminal Velocity from {from}…"));
+            run_release_installer("tvty", from.trim(), say)?;
+        }
+        None => {
+            say("downloading and installing the latest release…".into());
+            match updater.run_sync() {
+                Ok(Some(done)) => say(format!("installed Terminal Velocity {}", done.new_version)),
+                Ok(None) => say("Terminal Velocity is up to date".into()),
+                // GitHub's API answers a few requests an hour from one
+                // address, then refuses; the release's installer is also
+                // behind a plain link, which it does not count.
+                Err(error) => {
+                    say(format!("the latest release could not be asked ({error}): its installer taken by its link"));
+                    run_release_installer("tvty", RELEASE_LINKS, say)?;
+                }
+            }
+        }
     }
+    anyhow::ensure!(bin_dir().join(exe("tvty")).exists(), "Terminal Velocity is not in {} once installed", bin_dir().display());
     install_launcher(say)?;
     Ok(())
+}
+
+/// Where the latest release's files are, by their links.
+const RELEASE_LINKS: &str = "https://github.com/quazardous/tvty/releases/latest/download";
+
+/// Runs the release's own installer of `app` (dist's: a PowerShell script on
+/// Windows, a shell script elsewhere), taken from `base`: a URL, or a folder
+/// holding the release's files.
+fn run_release_installer(app: &str, base: &str, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+    let base = base.trim_end_matches(['/', '\\']);
+    let folder = Path::new(base).is_dir();
+    let script = format!("{app}-installer.{}", if cfg!(windows) { "ps1" } else { "sh" });
+    let mut command = if cfg!(windows) {
+        let mut command = tool("powershell");
+        command.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass"]);
+        if folder {
+            command.arg("-File").arg(Path::new(base).join(&script));
+        } else {
+            command.args(["-Command", &format!("irm '{base}/{script}' | iex")]);
+        }
+        command
+    } else {
+        let mut command = Command::new("sh");
+        if folder {
+            command.arg(Path::new(base).join(&script));
+        } else {
+            command.args(["-c", &format!("curl --proto '=https' --tlsv1.2 -LsSf '{base}/{script}' | sh")]);
+        }
+        command
+    };
+    if folder {
+        // The installer takes its archive from the same folder.
+        command.env(format!("{}_DOWNLOAD_URL", app.replace('-', "_").to_uppercase()), file_url(base));
+    }
+    run(&mut command, say)
+}
+
+/// A folder as a `file:` URL.
+fn file_url(folder: &str) -> String {
+    let path = folder.replace('\\', "/");
+    format!("file://{}{path}", if path.starts_with('/') { "" } else { "/" })
 }
 
 /// Everything, without a window (`tvty-updater --install`, what the Windows
@@ -518,6 +577,12 @@ mod tests {
         assert_eq!(s(Some("0.4.0"), Some("0.5.0")).state(None), State::UpdateAvailable);
         assert_eq!(s(Some("0.5.0"), Some("0.5.0")).state(None), State::UpToDate);
         assert_eq!(s(Some("0.5.0"), None).state(None), State::Unknown);
+    }
+
+    #[test]
+    fn a_folder_is_a_file_url_on_either_system() {
+        assert_eq!(super::file_url(r"C:\work\distrib"), "file:///C:/work/distrib");
+        assert_eq!(super::file_url("/srv/distrib"), "file:///srv/distrib");
     }
 
     #[test]

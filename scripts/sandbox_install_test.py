@@ -65,8 +65,12 @@ def main() -> int:
         (WORK / "aiball-ref.txt").write_text(args.aiball_ref)
 
     ctl = [sys.executable, str(ROOT / "scripts/wbox_ctl.py")]
-    subprocess.run([*ctl, "up", str(CONFIG)], check=True, stdout=subprocess.DEVNULL)
-    subprocess.run([*ctl, "down", str(CONFIG)], check=True, stdout=subprocess.DEVNULL)
+    # `up` boots the sandbox, then starts the config's program (a debug tvty):
+    # only the boot matters here, so a build that is not there is no failure.
+    subprocess.run([*ctl, "up", str(CONFIG)], check=False, stdout=subprocess.DEVNULL)
+    subprocess.run([*ctl, "down", str(CONFIG)], check=False, stdout=subprocess.DEVNULL)
+    if not Channel(Path(tempfile.gettempdir()) / f"wbox_{INSTANCE}_sandbox").ready():
+        raise SystemExit("the sandbox did not boot")
 
     channel = Channel(Path(tempfile.gettempdir()) / f"wbox_{INSTANCE}_sandbox")
     command = ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", r"C:\tvty-home\install-test\install-test.ps1"]
