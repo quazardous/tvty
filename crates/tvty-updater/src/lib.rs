@@ -266,7 +266,7 @@ pub fn install_launcher(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
 /// object's file); their icon is the one in each .exe.
 fn shortcuts_in(programs: &Path, bin: &Path, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let script = shortcuts_script(programs, bin);
-    let out = Command::new("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().context("powershell")?;
+    let out = tool("powershell").args(["-NoProfile", "-NonInteractive", "-Command", &script]).output().context("powershell")?;
     if !out.status.success() {
         bail!("the Start menu's shortcuts: {}", String::from_utf8_lossy(&out.stderr).trim());
     }
@@ -356,7 +356,7 @@ pub fn update_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
 fn aiball() -> Command {
     let aiball = program("aiball");
     if cfg!(windows) && aiball.extension().is_none() {
-        let mut command = Command::new("cmd");
+        let mut command = tool("cmd");
         command.args(["/c", "aiball"]);
         command
     } else {
@@ -376,22 +376,22 @@ pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let dir = home().join(".local/src/aiball");
     if dir.exists() {
         say(format!("{} is there already: updating it to {tag}", dir.display()));
-        run(Command::new("git").args(["fetch", "--depth", "1", "origin", &tag]).current_dir(&dir), say)?;
-        run(Command::new("git").args(["-c", "advice.detachedHead=false", "checkout", "FETCH_HEAD"]).current_dir(&dir), say)?;
+        run(tool("git").args(["fetch", "--depth", "1", "origin", &tag]).current_dir(&dir), say)?;
+        run(tool("git").args(["-c", "advice.detachedHead=false", "checkout", "FETCH_HEAD"]).current_dir(&dir), say)?;
     } else {
         std::fs::create_dir_all(dir.parent().expect("a parent"))?;
-        run(Command::new("git").args(["-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
+        run(tool("git").args(["-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
     }
     if cfg!(windows) {
         // PowerShell 7 (`pwsh`), as aiball's Windows install says.
-        run(Command::new("pwsh").args(["-NoProfile", "-File", "install.ps1"]).current_dir(&dir), say)
+        run(tool("pwsh").args(["-NoProfile", "-File", "install.ps1"]).current_dir(&dir), say)
     } else {
         run(Command::new("bash").arg("./install.sh").current_dir(&dir), say)
     }
 }
 
 fn latest_aiball_tag() -> anyhow::Result<String> {
-    let out = Command::new("git")
+    let out = tool("git")
         .args(["ls-remote", "--tags", "--refs", "--sort=-v:refname", AIBALL_REPO, "v*"])
         .output()
         .context("git, to find aiball's releases")?;
@@ -415,8 +415,32 @@ fn latest_tag(listing: &str) -> Option<String> {
 
 // ── Running ──────────────────────────────────────────────────────────────
 
+/// A program of the machine, as the updater runs them. On Windows it is
+/// found along the `PATH` a new session would have
+/// ([`prerequisites::search_path`]) and runs with it — what was installed a
+/// moment ago is found, and finds its own tools — and without a console
+/// window of its own: the updater is a window program, and each of them
+/// would flash one.
+pub(crate) fn tool(name: &str) -> Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let path = prerequisites::search_path();
+        // Found here, not by the process's own PATH, which may be stale.
+        let program = std::env::split_paths(&path)
+            .flat_map(|dir| ["exe", "cmd", "bat"].map(|ext| dir.join(name).with_extension(ext)))
+            .find(|file| file.is_file() || file.symlink_metadata().is_ok_and(|entry| !entry.is_dir()));
+        let mut command = Command::new(program.unwrap_or_else(|| PathBuf::from(name)));
+        command.env("PATH", path).creation_flags(CREATE_NO_WINDOW);
+        command
+    }
+    #[cfg(not(windows))]
+    Command::new(name)
+}
+
 /// Runs `command`, each line it writes (out and err) said as it comes.
-fn run(command: &mut Command, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+pub(crate) fn run(command: &mut Command, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     say(format!("$ {}", shown(command)));
     let mut child = command.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().with_context(|| shown(command))?;
     let (tx, rx) = std::sync::mpsc::channel::<String>();

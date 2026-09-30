@@ -27,7 +27,7 @@ dist = true
 
 # Its lines on the console it was started from (`--install`).
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61", features = ["Win32_System_Console", "Win32_System_Registry"] }
 
 # Terminal Velocity's icon in the .exe.
 [target.'cfg(windows)'.build-dependencies]
