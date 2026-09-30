@@ -2079,11 +2079,12 @@ impl TicketPanel {
                 })
             })
             .collect();
-        col = col.child(
+        col = col.child(crate::tips::target(
+            "ticket.followers",
             field("followers", fields::tags(chips, self.field_picker(Editing::Subscribers)))
                 .named("inv-subscribers")
                 .tip("Who follows this ticket by their own choice (or muted it). The project's owners are notified by their role: they are not listed here."),
-        );
+        ));
 
         // ── Links ──
         let (parent, parent_project) = (ticket.id, self.project());
@@ -2550,8 +2551,11 @@ impl Render for TicketPanel {
             // Then its pin: held beside the terminal, or let over it.
             .child({
                 let pinned = self.pinned;
-                buttons::icon("panel-pin", icons::pin(pinned, if pinned { p().accent } else { p().muted }, 15.), "Pinned: the panel stays beside the terminal. Not pinned: it lies over it")
-                    .on_click(cx.listener(move |_, _, _, cx| cx.emit(PinChanged(!pinned))))
+                crate::tips::target(
+                    "panel.pin",
+                    buttons::icon("panel-pin", icons::pin(pinned, if pinned { p().accent } else { p().muted }, 15.), "Pinned: the panel stays beside the terminal. Not pinned: it lies over it")
+                        .on_click(cx.listener(move |_, _, _, cx| cx.emit(PinChanged(!pinned)))),
+                )
             })
             // A ticket open: its project's name and badges, as the list has
             // them (the way back is above its title).

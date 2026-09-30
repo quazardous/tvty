@@ -84,6 +84,13 @@ tip_files![
     "room",
     "themes",
     "wizard",
+    "file-and-exit",
+    "panel-pin",
+    "followers",
+    "thread-order",
+    "held-selection",
+    "workspaces",
+    "workspace-open",
 ];
 
 /// A tip's file read: its header, then its text.
@@ -413,7 +420,7 @@ mod tests {
     #[test]
     fn every_target_is_one_the_code_marks() {
         let src = |path: &str| std::fs::read_to_string(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(path)).unwrap();
-        let code: String = ["src/composer.rs", "src/panel.rs", "src/shell.rs", "src/shell/agentbar.rs"].iter().map(|p| src(p)).collect();
+        let code: String = ["src/composer.rs", "src/newticket.rs", "src/panel.rs", "src/shell.rs", "src/shell/agentbar.rs"].iter().map(|p| src(p)).collect();
         for tip in all() {
             if let Some(target) = &tip.target {
                 assert!(code.contains(&format!("tips::target(\"{target}\"")) || code.contains(&format!("\"{target}\",")), "{}: no element marked {target}", tip.id);

@@ -468,7 +468,8 @@ impl Render for NewTicketForm {
                     .items_center()
                     .gap_2()
                     .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
-                    .child(
+                    .child(crate::tips::target(
+                        "new-ticket.file-exit",
                         buttons::answer("new-ticket-file-exit", "File and exit")
                             // Filled in the warning colour, beside the accent of "File the ticket".
                             .warning()
@@ -477,7 +478,7 @@ impl Render for NewTicketForm {
                             .disabled(busy)
                             .tooltip("Files it without opening it: back to where you were")
                             .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
-                    )
+                    ))
                     .child(
                         buttons::primary("new-ticket-file", "File the ticket")
                             .loading(busy)

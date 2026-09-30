@@ -4286,7 +4286,7 @@ impl Shell {
             .child(
                 measured(0)
                     .child(tab("sidebar-tab-sessions", "Sessions", "", !workspaces, cx))
-                    .child(tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx)),
+                    .child(crate::tips::target("sidebar.workspaces", tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx))),
             )
             .child(div().flex_1());
         let buttons = measured(1)
