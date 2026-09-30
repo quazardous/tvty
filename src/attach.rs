@@ -390,6 +390,41 @@ mod tests {
 
     const WAIT: Duration = Duration::from_secs(10);
 
+    /// A real host's session, watched as a copy (it neither types nor
+    /// resizes): `TVTY_ATTACH_PROBE` names its `attach.sock`.
+    ///
+    ///     TVTY_ATTACH_PROBE=…/hosts/NAME/attach.sock cargo test --bin tvty real_host -- --ignored --nocapture
+    #[test]
+    #[ignore = "needs a host that runs: TVTY_ATTACH_PROBE"]
+    fn a_real_host_is_watched() {
+        let socket = PathBuf::from(std::env::var("TVTY_ATTACH_PROBE").expect("TVTY_ATTACH_PROBE: a session's attach.sock"));
+        let (term, attach, ended) = attached(&socket, false);
+        let started = std::time::Instant::now();
+        // Its screen, once it came.
+        let blank = || {
+            let rows = term.lock().screen_lines() as i32;
+            (0..rows).all(|row| line(&term, row).is_empty())
+        };
+        while started.elapsed() < WAIT && blank() {
+            assert!(ended.try_recv().is_err(), "the view ended before any screen");
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let first = started.elapsed();
+        let (columns, rows) = {
+            let term = term.lock();
+            (term.columns(), term.screen_lines())
+        };
+        println!("attached in {first:?}; the session is {columns}x{rows}:");
+        for row in 0..rows as i32 {
+            let text = line(&term, row);
+            if !text.is_empty() {
+                println!("  {text}");
+            }
+        }
+        attach.close();
+        ended.recv_timeout(WAIT).unwrap();
+    }
+
     #[test]
     fn an_address_file_is_a_port_and_a_token() {
         assert_eq!(address_file(Path::new("/h/s/attach.sock")), PathBuf::from("/h/s/attach.sock.addr"));
