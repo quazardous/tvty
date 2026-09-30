@@ -116,14 +116,20 @@ impl Updater {
             Gesture::Rollback => "Going back…",
         });
         self.failed = false;
+        said(&self.log, format!("— {}", self.busy.unwrap_or_default()));
         let (aiball_state, tvty_state) = (self.state(Program::Aiball), self.state(Program::Tvty));
         let log = self.log.clone();
         // How it ended, once it has: read by the loop below.
         let outcome: Arc<Mutex<Option<bool>>> = Arc::default();
         let ended = outcome.clone();
         cx.background_executor().spawn(async move {
-            let mut say = |line: String| log.lock().expect("the log").push(line);
+            let mut say = |line: String| said(&log, line);
             let aiball = |say: &mut dyn FnMut(String)| match aiball_state {
+                // A development install: its own update refuses to run.
+                Some(State::Dev) => {
+                    say("aiball is a development install: left as it is, updated by hand".into());
+                    Ok(())
+                }
                 // There but silent: its own update would not run either.
                 Some(State::Missing | State::Silent) => tvty_updater::install_aiball(say),
                 _ => tvty_updater::update_aiball(say),
@@ -159,7 +165,7 @@ impl Updater {
                     if let Some(ok) = finished {
                         updater.busy = None;
                         updater.failed = !ok;
-                        updater.log.lock().expect("the log").push(if ok { "✓ done".into() } else { "stopped".into() });
+                        said(&updater.log, if ok { "✓ done".into() } else { "stopped".into() });
                         updater.check(cx);
                     }
                     cx.notify();
@@ -250,6 +256,7 @@ impl Updater {
             None => ("checking…", theme.muted_foreground),
             Some(State::Missing) => ("not installed", theme.warning),
             Some(State::Silent) => ("installed, but it does not answer", theme.danger),
+            Some(State::Dev) => ("a development install: updated by hand, not from here", theme.muted_foreground),
             Some(State::TooOld) => ("too old for Terminal Velocity", theme.danger),
             Some(State::UpdateAvailable) => ("update available", theme.warning),
             Some(State::UpToDate) => ("up to date", theme.success),
@@ -269,6 +276,8 @@ impl Updater {
             parts.join(" · ")
         });
         let note = status.as_ref().and_then(|s| s.note.clone());
+        // A development install: the command that updates it by hand, to copy.
+        let by_hand = status.as_ref().filter(|s| s.dev).and_then(|s| s.update_command.clone());
         let busy = self.busy.is_some();
         let action = match state {
             Some(State::Missing) => Some(("Install", Gesture::Install(program))),
@@ -298,7 +307,19 @@ impl Updater {
                     .child(div().flex().items_baseline().gap_2().child(div().text_lg().font_weight(FontWeight::BOLD).child(program.title())).child(div().text_sm().text_color(theme.muted_foreground).child(program.about())))
                     .child(div().text_sm().text_color(colour).child(said))
                     .children(versions.filter(|v| !v.is_empty()).map(|v| div().text_sm().text_color(theme.muted_foreground).child(v)))
-                    .children(note.map(|n| div().text_xs().text_color(theme.muted_foreground).child(n))),
+                    .children(note.map(|n| div().text_xs().text_color(theme.muted_foreground).child(n)))
+                    .children(by_hand.map(|command| {
+                        let copied = command.clone();
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .pt_1()
+                            .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_xs().font_family("monospace").child(command))
+                            .child(Button::new(SharedString::from(format!("{}-by-hand", program.title()))).label("Copy").small().on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
+                            }))
+                    })),
             )
             .when(rollback, |d| {
                 d.child(
@@ -335,6 +356,10 @@ impl Render for Updater {
             .child(gpui_kit::component::TitleBar::new().child(div().text_sm().child(NAME)))
             .child(
                 div()
+                    // Taller than the window (something missing, a command
+                    // to copy): it scrolls, the console never out of reach.
+                    .id("content")
+                    .overflow_y_scroll()
                     .flex_1()
                     .min_h_0()
                     .flex()
@@ -394,7 +419,7 @@ impl Render for Updater {
                                                 Ok(()) => "Terminal Velocity started".to_string(),
                                                 Err(error) => format!("✗ {error:#}"),
                                             };
-                                            updater.log.lock().expect("the log").push(line);
+                                            said(&updater.log, line);
                                             cx.notify();
                                         })),
                                 )
@@ -412,6 +437,33 @@ impl Render for Updater {
                                     .disabled(busy.is_some() || !anything)
                                     .on_click(cx.listener(|updater, _, _, cx| updater.run(Gesture::All, cx))),
                             ),
+                    )
+                    // The console's own gestures: all of it to the clipboard
+                    // (to paste in a message), the folder of the file that
+                    // keeps it (to attach it whole).
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            // Cut when long: the buttons stay in the window.
+                            .child(div().flex_1().min_w_0().truncate().text_xs().text_color(theme.muted_foreground).child(match tvty_updater::log_file() {
+                                Some(file) => format!("kept in {}", short(&file)),
+                                None => "not kept in a file here".to_string(),
+                            }))
+                            .child(Button::new("log-copy").label("Copy").small().disabled(lines.is_empty()).on_click({
+                                let text = lines.join("\n");
+                                move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone()))
+                            }))
+                            .child(Button::new("log-folder").label("Open the log's folder").small().disabled(tvty_updater::log_file().is_none()).on_click(|_, _, cx| {
+                                if let Some(file) = tvty_updater::log_file() {
+                                    // Made now if nothing was said yet: a folder to open.
+                                    if let Some(dir) = file.parent() {
+                                        let _ = std::fs::create_dir_all(dir);
+                                        if file.exists() { cx.reveal_path(&file) } else { cx.open_with_system(dir) }
+                                    }
+                                }
+                            })),
                     )
                     .child(
                         div()
@@ -443,6 +495,20 @@ impl Render for Updater {
 }
 
 /// A link to a page, opened in the browser.
+/// A path as it reads: the home folder written `~`.
+fn short(path: &std::path::Path) -> String {
+    match tvty_config::home().and_then(|home| path.strip_prefix(home).ok().map(|rest| rest.to_path_buf())) {
+        Some(rest) => format!("~{}{}", std::path::MAIN_SEPARATOR, rest.display()),
+        None => path.display().to_string(),
+    }
+}
+
+/// A line of the console: shown in the window, and kept in the log file.
+fn said(log: &Arc<Mutex<Vec<String>>>, line: String) {
+    tvty_updater::log_append(&line);
+    log.lock().expect("the log").push(line);
+}
+
 fn link(id: &'static str, label: &'static str, url: &str, theme: &gpui_kit::component::Theme) -> impl IntoElement {
     let url = url.to_string();
     div()
@@ -482,9 +548,15 @@ fn main() {
     // Without a window: what the Windows setup script runs, its lines on
     // standard output.
     if std::env::args().any(|a| a == "--install") {
-        let result = tvty_updater::install_all(&mut |line| println!("{line}"));
+        // Said on standard output, and kept in the updater's log as the
+        // window's lines are.
+        let result = tvty_updater::install_all(&mut |line| {
+            println!("{line}");
+            tvty_updater::log_append(&line);
+        });
         if let Err(error) = &result {
             eprintln!("✗ {error:#}");
+            tvty_updater::log_append(&format!("✗ {error:#}"));
         }
         std::process::exit(if result.is_ok() { 0 } else { 1 });
     }

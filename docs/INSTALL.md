@@ -117,6 +117,17 @@ app's icon) opens Terminal Velocity Updater, which updates aiball its own way
 (`aiball update`) and Terminal Velocity from its release, the version in
 place kept to go back to.
 
+An aiball run from its own checkout (a development install) does not update
+itself: the updater says so, shows the command that updates it by hand, to
+copy, and leaves it alone.
+
+What the updater says is shown in its console and kept in `updater.log`,
+beside Terminal Velocity's own log (`~/.local/state/tvty/`; on Windows
+`%LOCALAPPDATA%\tvty\`, beside the setup's `setup.log`). Above the console,
+**Copy** puts all of it in the clipboard and **Open the log's folder** opens
+where the file is: what to paste in, or attach to, an
+[issue](https://github.com/quazardous/tvty/issues).
+
 ## First start
 
  `tvty` finds aiball over its local socket (`$AIBALL_SOCK`,

@@ -40,6 +40,11 @@ pub struct Status {
     /// It is on the machine, but did not say its version when asked (its
     /// command failed): not the same as not installed.
     pub silent: bool,
+    /// It runs from a development checkout (aiball's `install.mode: dev`):
+    /// it does not update itself, its owner updates it by hand.
+    pub dev: bool,
+    /// The command that updates it by hand, as it says it.
+    pub update_command: Option<String>,
 }
 
 /// Where a program stands.
@@ -49,6 +54,9 @@ pub enum State {
     /// There, but it did not answer when asked its version (half installed,
     /// or broken): said as such, and mended by installing it again.
     Silent,
+    /// A development install (run from its checkout): updated by hand,
+    /// never from here.
+    Dev,
     /// Older than Terminal Velocity needs.
     TooOld,
     UpdateAvailable,
@@ -63,6 +71,10 @@ impl Status {
         let Some(installed) = self.installed.as_deref() else {
             return if self.silent { State::Silent } else { State::Missing };
         };
+        // Whatever its version: its own update refuses to run.
+        if self.dev {
+            return State::Dev;
+        }
         if min.is_some_and(|min| older(installed, min)) {
             return State::TooOld;
         }
@@ -251,6 +263,10 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         }
         State::Missing => install_aiball(say),
         State::TooOld => update_aiball(say),
+        State::Dev => {
+            say("aiball is a development install (it runs from its checkout): left as it is, updated by hand".into());
+            Ok(())
+        }
         // Half installed, or broken: its installer run again mends it.
         State::Silent => {
             say("aiball is there, but its command does not answer: installing it again".into());
@@ -271,7 +287,7 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let tvty = match tvty_status().state(None) {
         State::Missing | State::TooOld | State::UpdateAvailable => update_tvty(say),
         // Installed, its latest release not asked or not known: kept.
-        State::UpToDate | State::Unknown | State::Silent => {
+        State::UpToDate | State::Unknown | State::Silent | State::Dev => {
             say("Terminal Velocity is installed".into());
             install_launcher(say)
         }
@@ -427,6 +443,48 @@ fn read_aiball_version(v: &serde_json::Value, status: &mut Status) {
     status.running = text(daemon.and_then(|d| d.get("running")));
     status.latest = text(daemon.and_then(|d| d.get("latest")));
     status.note = text(daemon.and_then(|d| d.get("error"))).or_else(|| text(v.get("daemon_error")));
+    status.dev = v.pointer("/install/mode").and_then(serde_json::Value::as_str) == Some("dev");
+    status.update_command = text(v.get("update_command")).filter(|_| status.dev);
+}
+
+// ── The log ──────────────────────────────────────────────────────────────
+
+/// Where the updater keeps what it says: `updater.log`, beside Terminal
+/// Velocity's own log (its state directory) — on Windows beside the setup
+/// script's `setup.log`, one folder up (`%LOCALAPPDATA%\tvty`).
+pub fn log_file() -> Option<PathBuf> {
+    let state = tvty_config::dir("tvty", tvty_config::Place::State)?;
+    let dir = if cfg!(windows) { state.parent()?.to_path_buf() } else { state };
+    Some(dir.join("updater.log"))
+}
+
+/// A line the updater said, kept in its log with when it was said (UTC).
+/// A log that cannot be written is no reason to stop.
+pub fn log_append(line: &str) {
+    use std::io::Write as _;
+    let Some(file) = log_file() else { return };
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(file) {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or_default();
+        let _ = writeln!(log, "{} {line}", utc(now));
+    }
+}
+
+/// `2026-09-30 13:05:24`, from seconds since the epoch.
+fn utc(seconds: u64) -> String {
+    let (days, rest) = (seconds / 86_400, seconds % 86_400);
+    // Days to a civil date (Howard Hinnant's algorithm).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let (day, month) = (doy - (153 * mp + 2) / 5 + 1, if mp < 10 { mp + 3 } else { mp - 9 });
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    format!("{year:04}-{month:02}-{day:02} {:02}:{:02}:{:02}", rest / 3_600, rest % 3_600 / 60, rest % 60)
 }
 
 /// Updates aiball its own way (`aiball update`).
@@ -583,6 +641,31 @@ mod tests {
     fn a_folder_is_a_file_url_on_either_system() {
         assert_eq!(super::file_url(r"C:\work\distrib"), "file:///C:/work/distrib");
         assert_eq!(super::file_url("/srv/distrib"), "file:///srv/distrib");
+    }
+
+    #[test]
+    fn a_development_install_is_told_and_never_updated_from_here() {
+        let v = serde_json::json!({"cli":"0.52.0","daemon":{"running":"0.52.0","installed":"0.52.0","latest":"0.53.0"},
+            "install":{"mode":"dev","source":"/w/aiball","inferred":true},"update_command":"cd /w/aiball; git pull"});
+        let mut status = Status::default();
+        super::read_aiball_version(&v, &mut status);
+        assert!(status.dev);
+        assert_eq!(status.update_command.as_deref(), Some("cd /w/aiball; git pull"));
+        // Not "update available", nor "too old": its own update would refuse.
+        assert_eq!(status.state(None), State::Dev);
+        assert_eq!(status.state(Some("0.60.0")), State::Dev);
+        // An installed one says no such thing.
+        let v = serde_json::json!({"cli":"0.52.0","daemon":{"installed":"0.52.0"},"install":{"mode":"installed"},"update_command":"aiball update"});
+        let mut status = Status::default();
+        super::read_aiball_version(&v, &mut status);
+        assert!(!status.dev && status.update_command.is_none());
+    }
+
+    #[test]
+    fn a_log_line_is_dated_in_utc() {
+        assert_eq!(super::utc(0), "1970-01-01 00:00:00");
+        assert_eq!(super::utc(1_790_773_524), "2026-09-30 13:05:24");
+        assert_eq!(super::utc(951_782_400), "2000-02-29 00:00:00");
     }
 
     #[test]

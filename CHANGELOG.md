@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The updater's console can be copied whole, and is kept in a file (`updater.log`, beside Terminal Velocity's log) whose folder a button opens. An aiball run from its checkout (a development install) is said so, with the command that updates it by hand, and is no longer updated — nor failed — from the updater.
 - A ticket full screen shows who follows it (People > followers): one tag each, its ✕ to end it, a dropdown to add one; one who muted it is greyed.
 - Windows: tvty can attach to a session a host holds, without psmux, to watch it or to type in it. It waits for aiball's session host to run on Windows, which it does not yet.
 - Windows: the setup line installs only the updater, which installs everything else, Terminal Velocity included; when GitHub's API refuses (too many requests from one address), the updater takes the release's installer by its link.
