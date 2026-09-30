@@ -1286,6 +1286,11 @@ impl Element for TerminalElement {
         };
 
         let mut backgrounds = Vec::new();
+        // The cells' backgrounds, a run of one colour on a row at a time:
+        // one quad a run, its edges on whole pixels. A quad a cell, at a
+        // scale where a cell is not a whole number of pixels, leaves a
+        // seam between two cells of one colour.
+        let mut runs: Vec<BackgroundRun> = Vec::new();
         let mut emoji = Vec::new();
         let mut rules = Vec::new();
         let mut rows: Vec<(usize, Vec<Segment>)> = Vec::new();
@@ -1352,15 +1357,12 @@ impl Element for TerminalElement {
                 rules.extend(box_quads(arms, Bounds::new(at(line, column), cell), fg));
                 flush(&mut pending, &mut segments);
                 if bg != default_rgb(NamedColor::Background as usize) {
-                    backgrounds.push(fill(Bounds::new(at(line, column), cell), to_hsla(bg)));
+                    BackgroundRun::add(&mut runs, line, column, 1, bg);
                 }
                 continue;
             }
             if bg != default_rgb(NamedColor::Background as usize) {
-                backgrounds.push(fill(
-                    Bounds::new(at(line, column), size(cell.width * width as f32, cell.height)),
-                    to_hsla(bg),
-                ));
+                BackgroundRun::add(&mut runs, line, column, width, bg);
             }
 
             // A colour emoji: an image over its cells, not text.
@@ -1461,6 +1463,13 @@ impl Element for TerminalElement {
         if !live {
             stats::card(started);
         }
+        let scale = window.scale_factor();
+        let whole = |v: Pixels| px((f32::from(v) * scale).round() / scale);
+        backgrounds.extend(runs.iter().map(|run| {
+            let (from, to) = (at(run.line, run.from), at(run.line + 1, run.to));
+            let (left, top, right, bottom) = (whole(from.x), whole(from.y), whole(to.x), whole(to.y));
+            fill(Bounds::new(point(left, top), size(right - left, bottom - top)), to_hsla(run.colour))
+        }));
         backgrounds.extend(rules);
         // The link under the pointer: a line under its cells.
         if let Some(cells) = hover_cells {
@@ -1523,6 +1532,26 @@ impl Element for TerminalElement {
 }
 
 /// The bytes a terminal expects for a keystroke, or `None` to let it through.
+/// Cells of one background colour that follow each other on a row.
+struct BackgroundRun {
+    line: usize,
+    /// Its first column, and the one after its last.
+    from: usize,
+    to: usize,
+    colour: Rgb,
+}
+
+impl BackgroundRun {
+    /// A cell's background (`width` columns wide): joined to the run before
+    /// it when it follows it in the same colour, else a run of its own.
+    fn add(runs: &mut Vec<Self>, line: usize, column: usize, width: usize, colour: Rgb) {
+        match runs.last_mut() {
+            Some(last) if last.line == line && last.to == column && last.colour == colour => last.to = column + width,
+            _ => runs.push(Self { line, from: column, to: column + width, colour }),
+        }
+    }
+}
+
 fn keystroke_bytes(keystroke: &Keystroke, app_cursor: bool) -> Option<Vec<u8>> {
     let m = &keystroke.modifiers;
     let arrow = |c: char| -> Vec<u8> {
