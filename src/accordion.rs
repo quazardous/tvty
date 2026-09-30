@@ -6,6 +6,7 @@
 //! rows. When even those minimums do not fit, the whole list scrolls
 //! rather than letting them overlap: put the sections in [`list`].
 
+use crate::ui::Named as _;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -99,7 +100,7 @@ pub const TITLE_HEIGHT: f32 = 28.;
 
 /// The column that holds the sections.
 pub fn list(id: impl Into<ElementId>) -> Stateful<Div> {
-    div().id(id).flex().flex_col().flex_1().min_h_0().overflow_y_scroll()
+    div().named(id).flex().flex_col().flex_1().min_h_0().overflow_y_scroll()
 }
 
 /// One section.
@@ -199,7 +200,7 @@ impl Section {
         // full colour and its count in a pill — the break between two
         // groups reads at a glance.
         let header = div()
-            .id(SharedString::from(format!("{id}-title")))
+            .named(SharedString::from(format!("{id}-title")))
             .flex()
             .flex_none()
             .items_center()
@@ -280,7 +281,7 @@ impl Section {
             .child(header)
             .when(!folded, |d| {
                 let rows = div()
-                    .id(SharedString::from(format!("{id}-rows")))
+                    .named(SharedString::from(format!("{id}-rows")))
                     .flex()
                     .flex_col()
                     .flex_initial()

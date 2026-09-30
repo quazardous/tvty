@@ -3,6 +3,7 @@
 //! each row with all it has to say. The panel beside the terminal stays the
 //! compact list; this one is for looking over the board.
 
+use crate::ui::Named as _;
 use std::collections::{BTreeSet, HashMap};
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -263,7 +264,7 @@ impl FullList {
         let refs: Vec<&TicketRow> = rows.iter().collect();
         let link = |id: &'static str, label: &'static str| buttons::link(id, label).text_xs();
         let mut side = div()
-            .id("bulk-side")
+            .named("bulk-side")
             .flex()
             .flex_col()
             .gap_1()
@@ -292,7 +293,7 @@ impl FullList {
             let count = action.count(&refs);
             let asked = self.confirm == Some(action);
             let row = div()
-                .id(SharedString::from(format!("bulk-{}", action.label())))
+                .named(SharedString::from(format!("bulk-{}", action.label())))
                 .flex()
                 .items_center()
                 .gap_2()
@@ -446,7 +447,7 @@ impl FullList {
 
     fn side(&self, rows: &[(RowState, &TicketRow)], query: &str, cx: &mut Context<Self>) -> Stateful<Div> {
         let mut side = div()
-            .id("full-list-side")
+            .named("full-list-side")
             .flex()
             .flex_col()
             .gap_0p5()
@@ -572,7 +573,7 @@ impl FullList {
         on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Stateful<Div> {
         div()
-            .id(id)
+            .named(id)
             .flex()
             .items_center()
             .gap_2()
@@ -638,7 +639,7 @@ impl FullList {
                     icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone())
                         .text_xs()
                         .text_color(p().muted)
-                        .id("priority")
+                        .named("priority")
                         .tip(format!("priority: {priority}")),
                 )
             })
@@ -696,7 +697,7 @@ impl FullList {
             .text_color(p().muted)
             .children(crate::panel::critical_chip(ticket))
             .when(ticket.hot, |d| {
-                d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).id("hot").tip("an agent was active on it lately"))
+                d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).named("hot").tip("an agent was active on it lately"))
             })
             .children(ticket.tags.iter().map(|tag| {
                 div().px_1().rounded_sm().border_1().border_color(p().border).child(tag.name.clone())
@@ -707,7 +708,7 @@ impl FullList {
         let lit = crate::notify::lit(cx, id);
         let chosen = self.selected.iter().any(|(p, i)| *p == project && *i == id);
         div()
-            .id(SharedString::from(format!("full-{}-{}", ticket.project, ticket.id)))
+            .named(SharedString::from(format!("full-{}-{}", ticket.project, ticket.id)))
             // A notification about it is up: it shines.
             .map(|d| crate::notify::halo(d, lit))
             .flex()
@@ -770,7 +771,7 @@ impl Render for FullList {
         let order: Vec<(String, u64)> = shown.iter().map(|(_, t)| (t.project.clone(), t.id)).collect();
         // Rows chosen, the left column says what can be done to them.
         let side = if self.selected.is_empty() { self.side(&rows, &query, cx) } else { self.bulk_side(cx) };
-        let mut list = div().id("full-list-rows").flex().flex_col().pb_4();
+        let mut list = div().named("full-list-rows").flex().flex_col().pb_4();
         // What holds the most back, project by project, heads the whole list
         // (no band, no filter): the tickets to move first.
         let criticals = self.criticals(&self.scoped());
@@ -807,7 +808,7 @@ impl Render for FullList {
             }
         };
         let view = div()
-            .id("full-list")
+            .named("full-list")
             .absolute()
             .inset_0()
             .occlude()

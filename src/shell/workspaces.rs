@@ -4,6 +4,7 @@
 //! which stop when tvty quits or a workspace is shut, which start or are
 //! let go when one is opened. Nothing is stopped or started unasked.
 
+use crate::ui::Named as _;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -423,7 +424,7 @@ impl Shell {
             }
         }
         let scrolls = picker.rows.len() + groups.len() > LIST_LINES;
-        let mut list = div().id("picker-list").flex().flex_col().gap_2().p_2().text_sm();
+        let mut list = div().named("picker-list").flex().flex_col().gap_2().p_2().text_sm();
         for (project, indexes) in groups {
             let free: Vec<usize> = indexes.iter().copied().filter(|i| !picker.rows[*i].fixed).collect();
             let ticked = free.iter().filter(|i| picker.rows[**i].checked).count();
@@ -594,7 +595,7 @@ impl Shell {
     /// groups and their sessions — kept how, and how they are now.
     pub(super) fn workspaces_tab(&self, cx: &mut Context<Self>) -> AnyElement {
         let current = self.current_group().map(|g| g.project);
-        let mut list = div().id("workspaces").flex().flex_col().pb_2();
+        let mut list = div().named("workspaces").flex().flex_col().pb_2();
         list = list.child(
             div().flex().px_3().py_2().child(
                 buttons::link("workspace-new", "+ workspace")
@@ -616,7 +617,7 @@ impl Shell {
                 div().flex_1().min_w_0().child(Input::new(&self.workspace_name).small()).into_any_element()
             } else {
                 div()
-                    .id(SharedString::from(format!("workspace-{name}")))
+                    .named(SharedString::from(format!("workspace-{name}")))
                     .flex_1()
                     .min_w_0()
                     .flex()
@@ -755,7 +756,7 @@ impl Shell {
                     let live = self.board.projects.iter().flat_map(|p| &p.terminals).find(|t| t.agent.as_deref() == Some(session.agent.as_str())).map(|t| t.session.clone());
                     list = list.child(
                         div()
-                            .id(SharedString::from(format!("workspace-session-{name}-{}", session.agent)))
+                            .named(SharedString::from(format!("workspace-session-{name}-{}", session.agent)))
                             .flex()
                             .items_center()
                             .gap_2()

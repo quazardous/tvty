@@ -3,6 +3,7 @@
 //! top, the talk folded up to its latest snapshot, and the gestures in one
 //! place under it: accept or reject, moderate, reply, close or reopen.
 
+use crate::ui::Named as _;
 use std::collections::{HashMap, HashSet};
 
 use gpui_kit::component::button::ButtonVariants as _;
@@ -536,7 +537,7 @@ impl TicketPanel {
     fn text_editor(&self, id: u64, busy: bool, cx: &mut Context<Self>) -> AnyElement {
         let busy = busy || self.edit_text.read(cx).uploading();
         div()
-            .id("text-editor")
+            .named("text-editor")
             .flex()
             .flex_col()
             .gap_2()
@@ -1096,7 +1097,7 @@ impl TicketPanel {
         let group: SharedString = format!("ticket-row-{id}").into();
         let sunk_mark = sunk.as_ref().map(|(until, left)| {
             let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
-            div().flex().flex_none().items_center().gap_1().child(left.clone()).child(icons::icon(Icon::Sunk, p().muted, 13.)).id(("sunk", id)).tip(format!(
+            div().flex().flex_none().items_center().gap_1().child(left.clone()).child(icons::icon(Icon::Sunk, p().muted, 13.)).named(("sunk", id)).tip(format!(
                 "sunk in {agent}'s backlog until {until} (in {left}): its loop won't bring it up before, unless the thread moves"
             ))
         });
@@ -1137,8 +1138,7 @@ impl TicketPanel {
             .when(dim, |d| d.opacity(0.5).group_hover(group.clone(), |s| s.opacity(1.)));
 
         div()
-            .id(("ticket", id))
-            .children(crate::inspect::mark_if(format!("ticket-{id}")))
+            .named(("ticket", id))
             .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()
@@ -1581,7 +1581,7 @@ impl TicketPanel {
         });
         let quiet = detail.quiet;
         let actions = div()
-            .id("ticket-actions")
+            .named("ticket-actions")
             .flex()
             .flex_col()
             .flex_none()
@@ -1712,7 +1712,7 @@ impl TicketPanel {
             .min_h_0()
             .child(
                 div()
-                    .id("ticket-thread")
+                    .named("ticket-thread")
                     .size_full()
                     .track_scroll(&detail.scroll)
                     .overflow_y_scroll()
@@ -1839,7 +1839,7 @@ impl TicketPanel {
         let row = |id: &'static str, text: &'static str, value: String, edit: Option<Editing>, cx: &mut Context<Self>| {
             let open = edit.is_some() && edit == editing;
             div()
-                .id(id)
+                .named(id)
                 .flex()
                 .gap_2()
                 .py_0p5()
@@ -1885,7 +1885,7 @@ impl TicketPanel {
         };
 
         let mut col = div()
-            .id("ticket-invariants")
+            .named("ticket-invariants")
             .flex()
             .flex_col()
             // Room for the scrollbar.
@@ -1951,7 +1951,7 @@ impl TicketPanel {
         let (parent, parent_project) = (ticket.id, self.project());
         col = col.child(group("Links")).child(
             div()
-                .id("inv-sub-ticket")
+                .named("inv-sub-ticket")
                 .flex()
                 .gap_2()
                 .py_0p5()
@@ -2328,7 +2328,7 @@ impl TicketPanel {
         cx: &mut Context<Self>,
     ) -> impl IntoElement + use<> {
         div()
-            .id(("entry", id))
+            .named(("entry", id))
             .flex()
             .flex_wrap()
             .items_center()
@@ -2358,7 +2358,7 @@ impl TicketPanel {
                     |d| {
                         d.child(
                             div()
-                                .id(("resume", id))
+                                .named(("resume", id))
                                 .flex()
                                 .gap_1()
                                 .text_color(colour)
@@ -2366,7 +2366,7 @@ impl TicketPanel {
                                 .children(short.clone())
                                 .children(on_ticket.map(|n| {
                                     div()
-                                        .id(("resume-on", id))
+                                        .named(("resume-on", id))
                                         .flex()
                                         .gap_1()
                                         .child(if short.is_some() { "or on" } else { "on" })
@@ -2487,7 +2487,7 @@ fn who(name: &str, user: &str) -> String {
 /// A folded comment's one line; a click unfolds it, as its head does.
 fn folded_line(id: u64, text: String, cx: &mut Context<TicketPanel>) -> impl IntoElement {
     div()
-        .id(("folded", id))
+        .named(("folded", id))
         .rounded_sm()
         .text_color(p().muted)
         .truncate()
@@ -2636,7 +2636,7 @@ impl TicketPanel {
                         let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
                         let reference = picture.reference.clone();
                         let frame = div()
-                            .id(SharedString::from(format!("{id}-pic-{i}-{j}")))
+                            .named(SharedString::from(format!("{id}-pic-{i}-{j}")))
                             .relative()
                             .flex_none()
                             .rounded_sm()
@@ -2712,7 +2712,7 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<D
         return Some(
             icons::labelled(Icon::PendingComments, p().warning, 12., n.to_string())
                 .text_color(p().warning)
-                .id("comments")
+                .named("comments")
                 .tip(format!("{n} comment{} waiting for moderation", if n == 1 { "" } else { "s" })),
         );
     }
@@ -2731,7 +2731,7 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<D
     Some(
         icons::labelled(if mine && !ticket.unread { Icon::CommentsMine } else { Icon::Comments }, colour, 12., n.to_string())
             .text_color(colour)
-            .id("comments")
+            .named("comments")
             .tip(format!("{n} comment{} — {tip}", if n == 1 { "" } else { "s" })),
     )
 }
@@ -2741,9 +2741,9 @@ pub(crate) fn holder_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
     let holder = ticket.holder()?.to_string();
     let tip = if ticket.hot { format!("held by {holder}, active on it lately") } else { format!("held by {holder}") };
     Some(if ticket.hot {
-        icons::labelled(Icon::Hot, p().warning, 12., holder).id("holder").tip(tip)
+        icons::labelled(Icon::Hot, p().warning, 12., holder).named("holder").tip(tip)
     } else {
-        div().child(holder).id("holder").tip(tip)
+        div().child(holder).named("holder").tip(tip)
     })
 }
 
@@ -2754,7 +2754,7 @@ pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
     let quiet = critical.quiet();
     Some(
         icons::pill(Icon::Critical, quiet.map_or(holds.to_string(), |q| format!("{holds} · {q}")), p().danger)
-            .id("critical")
+            .named("critical")
             .tip(format!(
                 "the project's critical ticket: it holds {holds} open ticket{}{}",
                 if holds == 1 { "" } else { "s" },
@@ -2767,7 +2767,7 @@ pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
 pub(crate) fn priority_chip(ticket: &TicketRow, size: f32) -> Option<Stateful<Div>> {
     let priority = ticket.priority.as_deref()?;
     let icon = icons::priority(priority)?;
-    Some(div().child(icons::icon(icon, icons::priority_colour(priority), size)).id("priority").tip(format!("priority: {priority}")))
+    Some(div().child(icons::icon(icon, icons::priority_colour(priority), size)).named("priority").tip(format!("priority: {priority}")))
 }
 
 /// The state glyph, saying what it means — a step, when its agent resumes.
@@ -2781,7 +2781,7 @@ pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketR
         Some(at) => format!("step — the agent resumes at {at}"),
         None => glyph.meaning().to_string(),
     };
-    div().child(icons::icon(icons::of_glyph(glyph), colour, size)).id("glyph").tip(tip)
+    div().child(icons::icon(icons::of_glyph(glyph), colour, size)).named("glyph").tip(tip)
 }
 
 /// A decision, as a chip: the list's glyphs, and "superseded" when a newer

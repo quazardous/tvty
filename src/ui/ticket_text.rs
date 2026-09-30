@@ -5,6 +5,7 @@
 //! what surrounds it (the button that files or saves, the error) is the
 //! view's own.
 
+use crate::ui::Named as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use gpui_kit::component::text::TextView;
 use gpui_kit::*;
@@ -222,7 +223,7 @@ impl Render for TicketText {
                 let text = self.body(cx);
                 // Its own height; shrunk, and scrolled, when the page is short.
                 div()
-                    .id(SharedString::from(format!("{id}-body-preview")))
+                    .named(SharedString::from(format!("{id}-body-preview")))
                     .min_h_0()
                     .overflow_y_scroll()
                     .p_3()

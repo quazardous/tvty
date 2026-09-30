@@ -6,6 +6,7 @@
 //! conversation — as they were (a held one held again) or fresh (on their
 //! own) — asked or not.
 
+use crate::ui::Named as _;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -370,7 +371,7 @@ impl Shell {
         // Past what fits, a fixed height and a scrollbar (a height the list
         // only caps would take its content's, and nothing would scroll).
         let scrolls = loops.len() + projects.len() > LIST_LINES;
-        let mut list = div().id("quit-list").flex().flex_col().gap_2().p_2().text_sm();
+        let mut list = div().named("quit-list").flex().flex_col().gap_2().p_2().text_sm();
         for (project, rows) in projects {
             list = list.child(
                 div()
@@ -465,7 +466,7 @@ fn count_of(n: usize) -> String {
 /// A card over a dimmed window, which takes every click.
 pub(super) fn dialog(body: impl IntoElement) -> Stateful<Div> {
     div()
-        .id("quit-dialog")
+        .named("quit-dialog")
         .occlude()
         .absolute()
         .inset_0()

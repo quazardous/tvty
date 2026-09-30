@@ -4,6 +4,7 @@
 //! first) and the gallery (ctrl+shift+space, every terminal as a thumbnail).
 //! See docs/UX.md.
 
+use crate::ui::Named as _;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -463,7 +464,7 @@ impl Alerts {
     pub(crate) fn badges<K: Into<SharedString>>(&self, key: K) -> impl IntoElement + use<K> {
         let key: SharedString = key.into();
         let badge = |what: &str, text: String, colour: Hsla, tip: String| {
-            div().id(SharedString::from(format!("{key}-{what}"))).child(pill(text, colour)).tip(tip)
+            div().named(SharedString::from(format!("{key}-{what}"))).child(pill(text, colour)).tip(tip)
         };
         let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
         div()
@@ -515,7 +516,7 @@ impl AgentCounts {
             let on = value.is_some_and(|v| v > 0);
             let (bg, fg) = if on { (lit, crate::theme::on(lit)) } else { (p().hover, p().muted) };
             div()
-                .id(SharedString::from(format!("{key}-{what}")))
+                .named(SharedString::from(format!("{key}-{what}")))
                 .flex()
                 .flex_none()
                 .items_center()
@@ -541,7 +542,7 @@ impl AgentCounts {
             .when(self.critical, |d| {
                 d.child(
                     div()
-                        .id(SharedString::from(format!("{key}-critical")))
+                        .named(SharedString::from(format!("{key}-critical")))
                         .child(pill("!", critical()))
                         .tip("it holds the critical ticket: the one that holds the most open tickets"),
                 )
@@ -1109,13 +1110,12 @@ impl Shell {
         };
         Some(
             div()
-                .id("bus-status")
+                .named("bus-status")
                 .flex_none()
                 .mr_2()
                 .size(px(9.))
                 .rounded_full()
                 .bg(colour)
-                .children(crate::inspect::mark_if("bus-status"))
                 .tip(tip),
         )
     }
@@ -1770,8 +1770,7 @@ impl Shell {
         let shown = self.project_shown.as_deref() == Some(project);
         let name = project.to_string();
         div()
-            .id(SharedString::from(format!("heading-{project}")))
-            .children(crate::inspect::mark_if(format!("heading-{project}")))
+            .named(SharedString::from(format!("heading-{project}")))
             .flex_1()
             .min_w_0()
             .truncate()
@@ -2667,7 +2666,7 @@ impl Shell {
         let group_hit = |page: Section, group: &str| hits.as_ref().is_none_or(|h| h.contains(&(page.title().to_string(), group.to_string())));
 
         let mut tree = div()
-            .id("options-tree")
+            .named("options-tree")
             .flex()
             .flex_col()
             .gap_0p5()
@@ -2680,7 +2679,7 @@ impl Shell {
             let chosen = !searching && page == section;
             tree = tree.child(
                 div()
-                    .id(SharedString::from(format!("options-{}", page.title())))
+                    .named(SharedString::from(format!("options-{}", page.title())))
                     .px_2()
                     .py_1()
                     .rounded_md()
@@ -2695,7 +2694,7 @@ impl Shell {
                 let lit = chosen && in_view.as_ref() == Some(&group);
                 tree = tree.child(
                     div()
-                        .id(SharedString::from(format!("options-{}-{group}", page.title())))
+                        .named(SharedString::from(format!("options-{}-{group}", page.title())))
                         .ml_3()
                         .px_2()
                         .py_0p5()
@@ -2734,7 +2733,7 @@ impl Shell {
                     .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
             );
         let content = div()
-            .id("options-scroll")
+            .named("options-scroll")
             .size_full()
             .flex()
             .flex_col()
@@ -2746,7 +2745,7 @@ impl Shell {
             .when(empty, |d| d.child(option_note("Nothing found. Search a name, a word it says, a key (ctrl+shift+b), a value — or @modified.")))
             .children(sections.into_iter().map(|(_, section)| section));
         div()
-            .id("options")
+            .named("options")
             .absolute()
             .inset_0()
             // A page over the window: the mouse stops here.
@@ -3234,7 +3233,7 @@ impl Shell {
             .child(div().pb_1());
         let choice = |name: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
             div()
-                .id(SharedString::from(format!("options-{key}-{name}")))
+                .named(SharedString::from(format!("options-{key}-{name}")))
                 .flex()
                 .items_center()
                 .gap_2()
@@ -3484,7 +3483,7 @@ impl Shell {
         let small = |id: SharedString, label: &'static str| buttons::chip(id, label).text_xs();
         let listening_chip = |id: SharedString| {
             div()
-                .id(id)
+                .named(id)
                 .px_1p5()
                 .rounded_sm()
                 .border_1()
@@ -3550,7 +3549,7 @@ impl Shell {
                             .text_sm()
                             .child(
                                 div()
-                                    .id(SharedString::from(id.clone()))
+                                    .named(SharedString::from(id.clone()))
                                     .px_1p5()
                                     .cursor_pointer()
                                     .hover(|d| d.bg(p().hover))
@@ -3811,7 +3810,7 @@ impl Shell {
         let current = if terminal { theme::current_terminal() } else { Some(theme::current(cx)) };
         let item = |id: String, label: SharedString, chosen: bool| {
             div()
-                .id(SharedString::from(id))
+                .named(SharedString::from(id))
                 .flex()
                 .items_center()
                 .gap_2()
@@ -3823,7 +3822,7 @@ impl Shell {
                 .child(div().w(px(10.)).child(if chosen { "✓" } else { "" }))
                 .child(label)
         };
-        let mut list = div().id("theme-menu-list").flex().flex_col().py_1().text_sm();
+        let mut list = div().named("theme-menu-list").flex().flex_col().py_1().text_sm();
         if terminal {
             list = list.child(
                 item("theme-terminal-window".into(), "Same as the window".into(), current.is_none())
@@ -3856,7 +3855,7 @@ impl Shell {
         // Window or terminal: what the list chooses for.
         let tab = |id: &'static str, label: &'static str, on: bool, to_terminal: bool, cx: &mut Context<Self>| {
             div()
-                .id(id)
+                .named(id)
                 .flex_1()
                 .py_1()
                 .text_center()
@@ -3880,7 +3879,7 @@ impl Shell {
         // The box holds the place under the title bar; the list scrolls in
         // it (the scrollbar's wrapper keeps a size, not a position).
         div()
-            .id("theme-menu")
+            .named("theme-menu")
             .absolute()
             .occlude()
             .top(px(36.))
@@ -3931,7 +3930,7 @@ impl Shell {
     /// the list, as Esc does.
     fn theme_menu_backdrop(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
-            .id("theme-menu-backdrop")
+            .named("theme-menu-backdrop")
             .absolute()
             .inset_0()
             .occlude()
@@ -3951,7 +3950,7 @@ impl Shell {
     fn edge(&self, side: Side, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let resizing = self.resizing == Some(side);
         div()
-            .id(match side {
+            .named(match side {
                 Side::Left => "sidebar-edge",
                 Side::Right => "panel-edge",
             })
@@ -3978,7 +3977,7 @@ impl Shell {
             .on_drag(ResizeDrag, |_, _, _, cx| cx.new(|_| NoPreview))
             .child(
                 div()
-                    .id(match side {
+                    .named(match side {
                         Side::Left => "sidebar-grip",
                         Side::Right => "panel-grip",
                     })
@@ -4031,7 +4030,7 @@ impl Shell {
 
     fn folded(&self, side: Side, marks: Vec<Mark>, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         div()
-            .id(match side {
+            .named(match side {
                 Side::Left => "sidebar-folded",
                 Side::Right => "panel-folded",
             })
@@ -4056,7 +4055,7 @@ impl Shell {
                     Some(glyph) => crate::icons::loop_glyph(glyph, mark.colour, 7.),
                     None => crate::icons::loop_dot(mark.colour, 7.),
                 };
-                let one = div().id(("folded-mark", i)).flex().justify_center().w_full().child(shape);
+                let one = div().named(("folded-mark", i)).flex().justify_center().w_full().child(shape);
                 match mark.tip {
                     Some(tip) => one.tip(tip).into_any_element(),
                     None => one.into_any_element(),
@@ -4309,8 +4308,7 @@ impl Shell {
                 let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
                 list = list.child(
                     div()
-                        .id(SharedString::from(format!("terminal-{session}")))
-                        .children(crate::inspect::mark_if(format!("terminal-{session}")))
+                        .named(SharedString::from(format!("terminal-{session}")))
                         .h(px(height))
                         .flex_none()
                         .overflow_hidden()
@@ -4348,7 +4346,7 @@ impl Shell {
                                         // Green: the terminal already runs in tvty.
                                         .child(
                                             div()
-                                                .id("open")
+                                                .named("open")
                                                 .w(px(7.))
                                                 .when(open, |d| d.child(dot(p().success)).tip("open in tvty: its terminal runs here")),
                                         )
@@ -4357,7 +4355,7 @@ impl Shell {
                                         .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
                                             d.child(
                                                 div()
-                                                    .id("looped")
+                                                    .named("looped")
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child("⇄")
@@ -4367,7 +4365,7 @@ impl Shell {
                                         .when_some(attached, |d, a| {
                                             d.child(
                                                 div()
-                                                    .id("attached")
+                                                    .named("attached")
                                                     .text_xs()
                                                     .text_color(if a.typing > 0 { p().warning } else { p().muted })
                                                     .child(format!("+{}", a.others))
@@ -4384,7 +4382,7 @@ impl Shell {
                                         .when(terminal.agent.is_none() && terminal.attach.is_some(), |d| {
                                             d.child(
                                                 div()
-                                                    .id("shell")
+                                                    .named("shell")
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child(">_")
@@ -4395,7 +4393,7 @@ impl Shell {
                                         .when(restart, |d| {
                                             d.child(
                                                 div()
-                                                    .id("restart")
+                                                    .named("restart")
                                                     .text_color(p().warning)
                                                     .child("⟳")
                                                     .tip("its Claude Code installed an update: restart it from its bar"),
@@ -4414,7 +4412,7 @@ impl Shell {
                                         .map(|model| {
                                             let newer = model.newer.is_some();
                                             div()
-                                                .id(SharedString::from(format!("row-model-{}", terminal.session)))
+                                                .named(SharedString::from(format!("row-model-{}", terminal.session)))
                                                 .flex_none()
                                                 .text_size(px(11.))
                                                 .text_color(if newer { p().warning } else { p().muted })
@@ -4459,7 +4457,7 @@ impl Shell {
         .absolute()
         .size_full();
         div()
-            .id(SharedString::from(format!("card-{session}{}", if live { "" } else { "-ghost" })))
+            .named(SharedString::from(format!("card-{session}{}", if live { "" } else { "-ghost" })))
             .relative()
             .bg(p().bg)
             .child(spot)
@@ -4501,7 +4499,7 @@ impl Shell {
         let chosen = self.gallery_chosen();
         // Projects side by side, each with its terminals: groups flow.
         let mut body = div()
-            .id("gallery")
+            .named("gallery")
             .flex()
             .flex_wrap()
             .content_start()
@@ -4792,7 +4790,7 @@ impl Render for Shell {
         let page_focus = self.page_focus.clone();
         let surface = move |name: &'static str, content: AnyElement| {
             div()
-                .id(name)
+                .named(name)
                 .absolute()
                 .inset_0()
                 .key_context(name)
@@ -4800,7 +4798,7 @@ impl Render for Shell {
                 .child(content)
         };
         let body = div()
-            .id("shell")
+            .named("shell")
             .on_drag_move(cx.listener(Self::on_drag_move))
             // A section's title dragged, in the sessions list or the panel.
             .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
@@ -4835,7 +4833,7 @@ impl Render for Shell {
                 // The workspace: the terminals, the sessions list, the panel
                 // beside them — its key context, the shell's own focus.
                 div()
-                    .id("workspace")
+                    .named("workspace")
                     .key_context(crate::keymap::WORKSPACE)
                     .track_focus(&self.focus)
                     .size_full()
@@ -4873,7 +4871,7 @@ impl Render for Shell {
             div().absolute().inset_0().child(self.theme_menu_backdrop(cx)).child(self.theme_menu_view(cx))
         });
         div()
-            .id("window")
+            .named("window")
             // The window's keys and commands, for the whole of it: the title
             // bar's boxes (the goto) hear Esc and the shortcuts too.
             .key_context(crate::keymap::WINDOW)
@@ -4971,7 +4969,7 @@ impl Render for Shell {
                     // A ticket to go to, discreet: no button, Enter goes.
                     .child(
                         div()
-                            .id("goto")
+                            .named("goto")
                             .flex_none()
                             .w(px(96.))
                             .mr_2()
@@ -5027,7 +5025,7 @@ impl Render for Shell {
                     // Who tvty acts as on aiball's board.
                     .child(
                         div()
-                            .id("title-user")
+                            .named("title-user")
                             .flex_none()
                             .mr_2()
                             .text_sm()

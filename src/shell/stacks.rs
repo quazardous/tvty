@@ -4,6 +4,7 @@
 //! is the group's terminal used last; releasing ctrl opens it, and the tabs
 //! move within the group.
 
+use crate::ui::Named as _;
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -169,7 +170,7 @@ impl Shell {
         // The edges behind: readable on the veil, fainter the farther.
         let edge = if chosen { p().accent } else { p().muted };
         let front = div()
-            .id(SharedString::from(format!("stack-{}{}", group.name, if live { "" } else { "-ghost" })))
+            .named(SharedString::from(format!("stack-{}{}", group.name, if live { "" } else { "-ghost" })))
             .relative()
             .child(spot)
             .flex()

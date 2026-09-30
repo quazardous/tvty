@@ -3,6 +3,7 @@
 //! × (not now), or no tips at all. The menu's Tips… shows them all, one
 //! after the other.
 
+use crate::ui::Named as _;
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -209,7 +210,7 @@ impl Shell {
                 // tints its colour: it read as disabled).
                 .child(
                     div()
-                        .id("tip-got")
+                        .named("tip-got")
                         .flex()
                         .flex_none()
                         .items_center()
@@ -235,7 +236,7 @@ impl Shell {
                 ),
         };
         let body = div()
-            .id("tip-card")
+            .named("tip-card")
             .occlude()
             .w(px(CARD_WIDTH))
             .flex()

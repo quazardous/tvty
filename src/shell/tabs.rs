@@ -4,6 +4,7 @@
 //! stops. Ctrl+PgUp / Ctrl+PgDn move along them; "+" opens a shell in the
 //! group's folder. The slider moves between groups, the tabs within one.
 
+use crate::ui::Named as _;
 use std::collections::HashSet;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -191,7 +192,7 @@ impl Shell {
     pub(super) fn tab_bar(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         let group = self.selected_group()?;
         let mut bar = div()
-            .id("tab-bar")
+            .named("tab-bar")
             .flex()
             .flex_none()
             .items_end()
@@ -212,8 +213,7 @@ impl Shell {
             let counts = self.counts_of(&group.name, &terminal);
             bar = bar.child(
                 div()
-                    .id(SharedString::from(format!("tab-{session}")))
-                    .children(crate::inspect::mark_if(format!("tab-{session}")))
+                    .named(SharedString::from(format!("tab-{session}")))
                     .flex()
                     .flex_none()
                     .items_center()
@@ -234,7 +234,7 @@ impl Shell {
                     // ×: shown on the tab shown, and on the one under the pointer.
                     .child(
                         div()
-                            .id(SharedString::from(format!("tab-close-{session}")))
+                            .named(SharedString::from(format!("tab-close-{session}")))
                             .flex_none()
                             .px_1()
                             .rounded_sm()

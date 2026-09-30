@@ -3,6 +3,7 @@
 //! from the clipboard, uploaded, its link put in the text, and Write /
 //! Preview tabs above the box.
 
+use crate::ui::Named as _;
 use gpui_kit::*;
 
 use crate::theme::p;
@@ -16,7 +17,7 @@ pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set:
         let on = preview == to;
         tabs = tabs.child(
             div()
-                .id(SharedString::from(format!("{id}-{key}")))
+                .named(SharedString::from(format!("{id}-{key}")))
                 .px_3()
                 .py_1()
                 .text_sm()

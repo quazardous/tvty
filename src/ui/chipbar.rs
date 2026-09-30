@@ -3,6 +3,7 @@
 //! on the chip's, so the pointer barely moves. A press anywhere else
 //! closes it; on the chip, the chip's own click does (it toggles).
 
+use crate::ui::Named as _;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -22,7 +23,7 @@ pub enum Edge {
 /// colour for a gesture on a loop, say), sized to its content.
 pub fn line(id: &'static str, border: Hsla) -> Stateful<Div> {
     div()
-        .id(id)
+        .named(id)
         .occlude()
         .flex()
         .flex_none()

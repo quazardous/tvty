@@ -6,6 +6,7 @@
 //! aiball's MCP server in Claude Code). Nothing is written before "Set it
 //! up".
 
+use crate::ui::Named as _;
 use std::path::{Path, PathBuf};
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -466,7 +467,7 @@ impl Shell {
             .items(Step::ALL.iter().map(|s| StepperItem::new().child(s.title())))
             .on_click(cx.listener(|shell, step: &usize, _, cx| shell.wizard_back_to(*step, cx)));
         let card = div()
-            .id("new-project")
+            .named("new-project")
             .occlude()
             .w(px(680.))
             .h(px(660.))
@@ -490,7 +491,7 @@ impl Shell {
                     .child(buttons::link("new-project-close", "✕  Esc").text_sm().on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx)))),
             )
             .child(div().flex_none().px_5().py_3().child(steps))
-            .child(div().id("new-project-page").flex_1().min_h_0().overflow_y_scroll().px_5().py_2().child(page))
+            .child(div().named("new-project-page").flex_1().min_h_0().overflow_y_scroll().px_5().py_2().child(page))
             .child(
                 div()
                     .flex()
@@ -506,7 +507,7 @@ impl Shell {
             );
         Some(
             div()
-                .id("new-project-veil")
+                .named("new-project-veil")
                 .absolute()
                 .inset_0()
                 .occlude()

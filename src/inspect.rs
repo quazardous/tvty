@@ -1,4 +1,4 @@
-//! What is on screen, by id: the buttons, chips and marked elements, with
+//! What is on screen, by id: every element named (`ui::Named`), with
 //! where each was painted — a page's DOM, for a test to read and act on
 //! (`crate::control`, `scripts/tvty-ctl`). Kept only while the debug
 //! control is on (`TVTY_DEBUG_CONTROL`): off, nothing is recorded.

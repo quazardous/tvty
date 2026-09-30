@@ -6,6 +6,7 @@
 //! (proposed, checked) and an agent. claude-loop starts it, detached, in
 //! that directory — never tvty's —, and tvty opens it once it runs.
 
+use crate::ui::Named as _;
 use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{Disableable as _, Sizable as _};
 use gpui_kit::*;
@@ -177,7 +178,7 @@ impl Shell {
                 (true, _) => div().text_xs().text_color(p().accent).child("starting…").into_any_element(),
                 // Refused: said why on hover.
                 (false, Some(other)) => div()
-                    .id(SharedString::from(format!("{id}-astray")))
+                    .named(SharedString::from(format!("{id}-astray")))
                     .text_xs()
                     .text_color(p().danger)
                     .child(format!("⚠ {other}'s folder"))
@@ -186,9 +187,8 @@ impl Shell {
                 (false, None) => div().text_xs().text_color(p().accent).child("▶ start").into_any_element(),
             };
             div()
-                .id(SharedString::from(id.clone()))
+                .named(SharedString::from(id.clone()))
                 .relative()
-                .children(crate::inspect::mark_if(id))
                 .flex()
                 .flex_col()
                 .px_3()

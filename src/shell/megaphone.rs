@@ -6,6 +6,7 @@
 //! (`crate::kernel::standing`): this is the view.
 
 
+use crate::ui::Named as _;
 use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{Input, InputState, Textarea, TextareaState};
 use gpui_kit::prelude::FluentBuilder as _;
@@ -306,7 +307,7 @@ impl Shell {
         let card = card
             .children(m.error.clone().map(|error| div().text_xs().text_color(p().danger).child(error)))
             .when(m.busy, |d| d.child(div().text_xs().text_color(p().muted).child("…")));
-        let backdrop = div().id("megaphone-backdrop").absolute().inset_0().occlude().on_mouse_down(
+        let backdrop = div().named("megaphone-backdrop").absolute().inset_0().occlude().on_mouse_down(
             MouseButton::Left,
             cx.listener(|shell, _, window, cx| shell.close_megaphone(window, cx)),
         );
@@ -314,7 +315,7 @@ impl Shell {
         // title bar, by its button.
         let top = if m.project.is_some() { 80. } else { 40. };
         let card = div()
-            .id("megaphone")
+            .named("megaphone")
             .absolute()
             .occlude()
             .top(px(top))
@@ -376,7 +377,7 @@ impl Shell {
         }
         // No padding: the row is full, the project's name gives way to it.
         use crate::tip::Tip as _;
-        Some(div().id(SharedString::from(format!("steered-{project}"))).flex_none().child(crate::icons::megaphone(p().accent, 13.)).tip(tip.join("\n")).into_any_element())
+        Some(div().named(SharedString::from(format!("steered-{project}"))).flex_none().child(crate::icons::megaphone(p().accent, 13.)).tip(tip.join("\n")).into_any_element())
     }
 }
 

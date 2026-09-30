@@ -7,6 +7,7 @@
 //! events, the tickets it holds, where it works; a click on
 //! its backlog lists it. Agent-centric: the panel beside it is the project's.
 
+use crate::ui::Named as _;
 use std::time::Duration;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -153,9 +154,8 @@ impl Shell {
             Tone::Boot => crate::theme::on(p().warning),
         };
         let afk = item()
-            .id("agent-afk")
+            .named("agent-afk")
             .relative()
-            .children(crate::inspect::mark_if("agent-afk"))
             .px_1p5()
             .rounded_sm()
             .cursor_pointer()
@@ -223,7 +223,7 @@ impl Shell {
         .unwrap_or_default();
         let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
         let state = item()
-            .id("agent-state")
+            .named("agent-state")
             .text_color(match phase.as_deref() {
                 Some("busy") => p().accent,
                 Some("boot") => crate::theme::on(p().warning),
@@ -394,7 +394,7 @@ impl Shell {
         // options'. None from a loop too old to say it.
         let rc_chip = bar.as_ref().and_then(|b| b.remote_control.as_ref()).map(|rc| {
             div()
-                .id("agent-rc")
+                .named("agent-rc")
                 .flex_none()
                 .px_1()
                 .rounded_sm()
@@ -413,14 +413,14 @@ impl Shell {
         let model_item = bar.as_ref().and_then(|b| b.model.as_ref()).map(|model| {
             let newer = model.newer.is_some();
             item()
-                .id("agent-model")
+                .named("agent-model")
                 .text_color(ink(if newer { p().warning } else { p().muted }))
                 .child(if newer { format!("{} ↑", model.name) } else { model.name.clone() })
                 .tip(model.said())
         });
         Some(
             div()
-                .id("agent-bar")
+                .named("agent-bar")
                 .relative()
                 .flex()
                 .flex_none()
@@ -465,7 +465,7 @@ impl Shell {
                         .when(b.prompt.visible, |d| {
                             d.child(
                                 item()
-                                    .id("agent-prompt")
+                                    .named("agent-prompt")
                                     .text_color(ink(if b.prompt.has_input { p().accent } else { p().muted }))
                                     .child("❯")
                                     .tip(if b.prompt.has_input {
@@ -478,25 +478,25 @@ impl Shell {
                         .when(b.human_typing, |d| {
                             d.child(
                                 item()
-                                    .id("agent-typing")
+                                    .named("agent-typing")
                                     .text_color(ink(p().danger))
                                     .child("⌨")
                                     .tip("a human typed in its terminal a moment ago: the loop holds off"),
                             )
                         })
-                        .when(b.zen, |d| d.child(item().id("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
+                        .when(b.zen, |d| d.child(item().named("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
                 })
                 .child(sep())
                 // As claude-loop's line counts them (a: b: e:), in words.
                 .child(
                     item()
-                        .id("agent-all")
+                        .named("agent-all")
                         .child(format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
                         .tip("a: all the project's open tickets"),
                 )
                 .child(
                     item()
-                        .id("agent-backlog")
+                        .named("agent-backlog")
                         .px_1()
                         .rounded_sm()
                         .cursor_pointer()
@@ -511,14 +511,14 @@ impl Shell {
                 )
                 .child(
                     item()
-                        .id("agent-events")
+                        .named("agent-events")
                         .when(unseen > 0, |d| d.text_color(ink(p().text)))
                         .child(format!("events:{unseen}"))
                         .tip("e: its events not seen yet — pings, answers, decisions waiting for it"),
                 )
                 .child(
                     item()
-                        .id("agent-holds")
+                        .named("agent-holds")
                         .when(holds > 0, |d| d.text_color(ink(p().text)))
                         .child(format!("holds:{holds}"))
                         .tip("the tickets it holds"),
@@ -526,7 +526,7 @@ impl Shell {
                 .when(pending || wake.is_some(), |d| {
                     d.child(
                         item()
-                            .id("agent-wake")
+                            .named("agent-wake")
                             .when(wake.is_some(), |d| d.text_color(ink(p().text)))
                             .child("✉")
                             .children(wake.map(ago))
@@ -565,7 +565,7 @@ impl Shell {
     /// opens one in the panel.
     fn backlog_list(&self, view: &BacklogView, cx: &mut Context<Self>) -> AnyElement {
         let mut list = div()
-            .id("agent-backlog-list")
+            .named("agent-backlog-list")
             .absolute()
             .bottom(px(BAR_HEIGHT))
             .left(px(8.))
@@ -611,7 +611,7 @@ impl Shell {
                     let (project, ticket) = (row.project.clone(), row.id);
                     list = list.child(
                         div()
-                            .id(SharedString::from(format!("backlog-{ticket}")))
+                            .named(SharedString::from(format!("backlog-{ticket}")))
                             .flex()
                             .gap_2()
                             .px_1()

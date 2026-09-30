@@ -24,6 +24,7 @@
 //! In a bar, groups of actions are set apart by a [`separator`]; inside a
 //! group, a plain gap.
 
+use crate::ui::Named as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
@@ -49,8 +50,7 @@ enum Hover {
 fn base(id: impl Into<ElementId>, hover: Hover) -> Stateful<Div> {
     let id: ElementId = id.into();
     // Known by its id to the debug control, where it is painted.
-    let mark = crate::inspect::enabled().then(|| crate::inspect::mark(id.to_string()));
-    let d = div().id(id).flex().flex_none().items_center().gap_1().rounded_sm().children(mark);
+    let d = div().named(id).flex().flex_none().items_center().gap_1().rounded_sm();
     match hover {
         Hover::Off => d.text_color(p().muted.opacity(0.5)),
         hover => d.cursor_pointer().active(|d| d.bg(p().active)).hover(move |d| match hover {

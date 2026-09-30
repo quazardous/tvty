@@ -4,6 +4,7 @@
 //! the scope means. The views keep their own state and gestures; the look
 //! is one.
 
+use crate::ui::Named as _;
 use gpui_kit::*;
 
 use crate::theme::p;
@@ -56,7 +57,7 @@ pub fn picker(state: &Entity<ComboState>, id: impl Into<SharedString>, placehold
 /// click the caller's).
 pub fn tag(id: impl Into<SharedString>, name: &str, drop: Stateful<Div>) -> Stateful<Div> {
     div()
-        .id(id.into())
+        .named(id.into())
         .flex()
         .items_center()
         .gap_1()

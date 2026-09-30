@@ -1,6 +1,7 @@
 //! A terminal: `alacritty_terminal` does the emulation and owns the PTY, a
 //! GPUI element paints its grid, and keystrokes go back to the PTY as bytes.
 
+use crate::ui::Named as _;
 use std::borrow::Cow;
 use std::sync::Arc;
 
@@ -801,7 +802,7 @@ impl TerminalView {
         let selected = self.term.lock().selection.as_ref().is_some_and(|s| !s.is_empty()) || self.selected_text.is_some();
         let item = |id: &'static str, label: &'static str, keys: &'static str, enabled: bool| {
             div()
-                .id(id)
+                .named(id)
                 .flex()
                 .gap_6()
                 .justify_between()
@@ -817,7 +818,7 @@ impl TerminalView {
         deferred(
             anchored().position(at).child(
                 div()
-                    .id("terminal-menu")
+                    .named("terminal-menu")
                     .occlude()
                     .min_w(px(180.))
                     .p_1()
@@ -942,7 +943,7 @@ impl Render for TerminalView {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
         let _timing = crate::stats::Timing::new("terminal");
         div()
-            .id("terminal")
+            .named("terminal")
             .key_context(keymap::TERMINAL)
             .track_focus(&self.focus)
             .on_action(cx.listener(Self::send_tab))
@@ -977,7 +978,7 @@ impl Render for TerminalView {
             // takes it back.
             .children(self.outsized().then(|| {
                 div()
-                    .id("terminal-outsized")
+                    .named("terminal-outsized")
                     .absolute()
                     .bottom_2()
                     .left_0()
@@ -996,7 +997,6 @@ impl Render for TerminalView {
                             .hover(|d| d.text_color(crate::theme::p().text))
                             .child("size taken by another client · click to take it back"),
                     )
-                    .children(crate::inspect::mark_if("terminal-outsized"))
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.take_size();
                         cx.notify();

@@ -4,6 +4,7 @@
 //! One width for all of them, kept with the layout (the shell observes
 //! [`SideWidth`]); every view that shows the column observes it too.
 
+use crate::ui::Named as _;
 use gpui_kit::*;
 
 use crate::theme::p;
@@ -48,7 +49,7 @@ pub fn column(cx: &App) -> Div {
 /// the default back.
 pub fn edge(id: &'static str) -> Stateful<Div> {
     div()
-        .id(id)
+        .named(id)
         .w(px(5.))
         .flex_none()
         .h_full()

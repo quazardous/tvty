@@ -5,6 +5,7 @@
 //! gives its name, size and zoom, and opens it in the default application
 //! when aiball keeps it on this machine.
 
+use crate::ui::Named as _;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
@@ -135,7 +136,7 @@ impl Shell {
             });
         Some(
             div()
-                .id("viewer")
+                .named("viewer")
                 .absolute()
                 .inset_0()
                 .occlude()

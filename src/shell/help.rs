@@ -2,6 +2,7 @@
 //! people — the version and the build, the documentation, the shortcuts,
 //! what changed, the repository, a bug to report — and a restart.
 
+use crate::ui::Named as _;
 use gpui_kit::*;
 
 use super::Shell;
@@ -167,14 +168,14 @@ impl Shell {
         if !self.help_menu {
             return None;
         }
-        let mut list = div().id("help-menu").flex().flex_col().py_1().text_sm();
+        let mut list = div().named("help-menu").flex().flex_col().py_1().text_sm();
         for (i, entry) in Entry::ALL.into_iter().enumerate() {
             if matches!(entry, Entry::Repository | Entry::Restart) {
                 list = list.child(div().my_1().h(px(1.)).bg(p().border));
             }
             list = list.child(
                 div()
-                    .id(("help", i))
+                    .named(("help", i))
                     .flex()
                     .items_center()
                     .gap_4()
@@ -187,7 +188,7 @@ impl Shell {
                     .on_click(cx.listener(move |shell, _, window, cx| shell.help_entry(entry, window, cx))),
             );
         }
-        let backdrop = div().id("help-menu-backdrop").absolute().inset_0().occlude().on_mouse_down(
+        let backdrop = div().named("help-menu-backdrop").absolute().inset_0().occlude().on_mouse_down(
             MouseButton::Left,
             cx.listener(|shell, _, _, cx| {
                 shell.help_menu = false;

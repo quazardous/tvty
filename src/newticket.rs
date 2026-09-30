@@ -8,6 +8,7 @@
 //! The form lives on while hidden: Esc puts it away, the draft kept for the
 //! next time, until it is sent.
 
+use crate::ui::Named as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
 use gpui_kit::component::Disableable as _;
@@ -396,7 +397,7 @@ impl NewTicketForm {
     /// milestone, assignee) are searched as they are typed.
     fn fields(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         use fields::{field, group};
-        let mut col = div().id("new-ticket-fields").flex().flex_col().pr_3().text_sm();
+        let mut col = div().named("new-ticket-fields").flex().flex_col().pr_3().text_sm();
 
         // ── Where ──
         col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, cx)));
@@ -475,7 +476,7 @@ impl Render for NewTicketForm {
             None => "New ticket".into(),
         };
         div()
-            .id("new-ticket")
+            .named("new-ticket")
             .absolute()
             .inset_0()
             .occlude()

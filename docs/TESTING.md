@@ -199,11 +199,19 @@ to test it). `scripts/tvty-ctl` speaks to it, on either — no coordinates to gu
 hope for:
 
 - `tvty-ctl tree [PREFIX]` — what is on screen, by id, with where it is
-  painted: every button, chip and link (`ui::buttons` marks them), the
-  sessions' rows (`terminal-NAME`), the tabs (`tab-NAME`), the projects'
-  headings (`heading-NAME`), the tickets' rows (`ticket-N`), the combos
-  (`new-intent`, `field-combo`, `options-scope`). An element worth
-  reaching gets `.children(crate::inspect::mark_if(id))`;
+  painted: **every element that has an id**. The buttons, chips and links,
+  the sessions' rows (`terminal-NAME`), the tabs (`tab-NAME`,
+  `sidebar-tab-workspaces`, `edit-body-preview`), the projects' headings
+  (`heading-NAME`), the tickets' rows (`ticket-N`), a section's title
+  (`band-Open-title`), a thread's entries (`entry-N`), the combos
+  (`new-intent`, `field-combo`, `options-scope`). In the code an element
+  takes its id with `.named(id)` (`ui::Named`) where GPUI's `.id(id)`
+  would be: that is all it takes to be seen and clicked by name. A kit
+  widget with an id of its own (a `Select`) gets
+  `.children(crate::inspect::mark_if(id))` on the element around it. GPUI
+  keeps no list of its elements a program can read (its inspector's is
+  private, and filled only while picking): an element with no id is not
+  known;
 - `tvty-ctl click ID`, `hover ID`, `key KEYS` (`ctrl-enter`, `escape`),
   `type TEXT` — put in through the window, as the user's would: the same on
   Windows, where wbox is not; `where ID` gives the middle, for wbox's real

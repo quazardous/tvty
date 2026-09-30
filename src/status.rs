@@ -2,6 +2,7 @@
 //! idle (and for how long), who drives it — the loop on its own, held, or a
 //! human typing — and whether the loop is connected at all.
 
+use crate::ui::Named as _;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -35,7 +36,7 @@ impl Status {
         let for_good = matches!(self.driver.as_str(), "wait" | "stop") && armed == Some("wait_inf");
         if !self.online {
             return div()
-                .id("status")
+                .named("status")
                 .text_size(px(11.))
                 .text_color(p().muted)
                 .child("offline")
@@ -68,7 +69,7 @@ impl Status {
         };
         let since = self.since.map(|since| ago(now().saturating_sub(since)));
         div()
-            .id("status")
+            .named("status")
             .flex()
             .items_center()
             .gap_1()

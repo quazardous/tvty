@@ -7,6 +7,7 @@
 //! Anything posts one ([`push`]); a click on it goes where it points,
 //! through the bus ([`crate::bus::Signal::OpenNotice`]).
 
+use crate::ui::Named as _;
 use std::time::{Duration, Instant};
 
 use gpui_kit::*;
@@ -257,7 +258,7 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
     if shown.is_empty() || notices.hidden {
         return None;
     }
-    let column = div().id("notices").absolute().w(px(NOTICE_WIDTH)).flex().flex_col().gap_2();
+    let column = div().named("notices").absolute().w(px(NOTICE_WIDTH)).flex().flex_col().gap_2();
     let (mut column, newest_last) = match corner {
         Corner::TopRight { top, right } => (column.top(px(top)).right(px(right)), false),
         Corner::BottomLeft { bottom, left } => (column.bottom(px(bottom)).left(px(left)), true),
@@ -272,7 +273,7 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
         };
         column = column.child(
             div()
-                .id(SharedString::from(format!("notice-{id}")))
+                .named(SharedString::from(format!("notice-{id}")))
                 .occlude()
                 .flex()
                 .items_start()
