@@ -3,7 +3,7 @@
 #   irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
 #
 # 1. What aiball and tvty need, through winget when it is missing: Git,
-#    Node.js (LTS), PowerShell 7 and psmux.
+#    Node.js (LTS), PowerShell 7, psmux and Claude Code.
 # 2. Terminal Velocity and its updater, from the release (their own
 #    installers, into ~\.local\bin, added to your PATH).
 # 3. The updater, without a window: aiball (its own install.ps1) and the
@@ -81,7 +81,8 @@
         @{ Command = 'git';   Id = 'Git.Git';              For = 'aiball (its install clones it)' },
         @{ Command = 'node';  Id = 'OpenJS.NodeJS.LTS';    For = 'aiball (it runs on Node.js)' },
         @{ Command = 'pwsh';  Id = 'Microsoft.PowerShell'; For = "aiball's installer" },
-        @{ Command = 'psmux'; Id = 'marlocarlo.psmux';     For = 'the loops in tmux mode' }
+        @{ Command = 'psmux'; Id = 'marlocarlo.psmux';     For = 'the loops in tmux mode' },
+        @{ Command = 'claude'; Id = 'Anthropic.ClaudeCode'; For = 'the agents themselves' }
     )
     $winget = Get-Command winget -ErrorAction SilentlyContinue
     Say "winget: $(if ($winget) { winget --version } else { 'none' })"
@@ -141,5 +142,6 @@
         return
     }
     Say 'done. Terminal Velocity is in the Start menu; its updater keeps it and aiball up to date.'
+    Say 'Claude Code asks you to sign in the first time: run `claude` once in a terminal before starting a loop.'
     Say "the log of this run: $log"
 }

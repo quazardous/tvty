@@ -68,7 +68,7 @@ irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 |
 ```
 
 It installs what is missing through winget (Git, Node.js LTS, PowerShell 7,
-psmux), then Terminal Velocity and its updater (into `~\.local\bin`, added
+psmux, Claude Code), then Terminal Velocity and its updater (into `~\.local\bin`, added
 to your PATH), then aiball through its own `install.ps1`, and puts both
 programs in the Start menu. It says what failed, if anything; run it again
 once that is fixed, it skips what is there. Without winget (Windows
