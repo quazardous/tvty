@@ -422,17 +422,18 @@ impl Shell {
                     .items_center()
                     .gap_3()
                     .child(
-                        buttons::link("quit-remember", if remember { "☑" } else { "☐" })
-                            .flex_1()
-                            .gap_2()
-                            .text_sm()
-                            .text_color(p().text)
-                            .child("Remember this choice")
-                            .tip("Settings > Layout > Sessions changes it")
-                            .on_click(cx.listener(|shell, _, _, cx| {
-                                shell.remember = !shell.remember;
+                        buttons::switch(
+                            "quit-remember",
+                            remember,
+                            "Remember this choice",
+                            cx.listener(|shell, wanted: &bool, _, cx| {
+                                shell.remember = *wanted;
                                 cx.notify();
-                            })),
+                            }),
+                        )
+                        .flex_1()
+                        .text_sm()
+                        .tip("Settings > Layout > Sessions changes it"),
                     )
                     .child(answers),
             );

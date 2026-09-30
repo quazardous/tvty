@@ -861,8 +861,11 @@ impl Shell {
             shell.preferences_changed(window, cx)
         })
         .detach();
-        let newest_first = shell.applied.tickets.newest_first;
-        shell.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
+        let (newest_first, summary_open) = (shell.applied.tickets.newest_first, shell.applied.tickets.summary_open);
+        shell.panel.update(cx, |panel, cx| {
+            panel.set_newest_first(newest_first, cx);
+            panel.set_summary_open(summary_open, cx);
+        });
         match selected {
             Some(session) => shell.select(session, window, cx),
             None => {
@@ -3376,19 +3379,19 @@ impl Shell {
             .flex_col()
             .gap_2()
             .max_w(px(640.))
-            .child(option_row(
+            .child(option_toggle(
                 "Projects' list",
                 "Over the terminal, on the left. Drag its edge to resize it; its grip folds it.",
                 sidebar,
-                "Fold / unfold",
-                cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx)),
+                self.settings.layout.sidebar_open,
+                cx.listener(|shell, _: &bool, _, cx| shell.toggle_sidebar(cx)),
             ))
-            .child(option_row(
+            .child(option_toggle(
                 "Ticket panel",
                 "On the right of the terminal. Drag its edge to resize it; its grip folds it.",
                 panel,
-                "Fold / unfold",
-                cx.listener(|shell, _, _, cx| shell.toggle_panel(cx)),
+                self.settings.layout.panel_open,
+                cx.listener(|shell, _: &bool, _, cx| shell.toggle_panel(cx)),
             ))
             .child(option_row(
                 "Widths",
@@ -3839,6 +3842,10 @@ impl Shell {
         crate::wheel::set_speed(new.scroll.speed);
         let newest_first = new.tickets.newest_first;
         self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, cx));
+        if old.tickets.summary_open != new.tickets.summary_open {
+            let summary_open = new.tickets.summary_open;
+            self.panel.update(cx, |panel, cx| panel.set_summary_open(summary_open, cx));
+        }
         if old.sessions != new.sessions {
             // Ordered afresh, from the board as it comes.
             self.board = sessions::Board::default();
@@ -5294,6 +5301,37 @@ fn option_row(
                 .py_1()
                 .on_click(on_click),
         )
+}
+
+/// As [`option_row`], what it does a switch: on, the side is open.
+fn option_toggle(
+    name: &'static str,
+    about: &'static str,
+    state: String,
+    on: bool,
+    flip: impl Fn(&bool, &mut Window, &mut App) + 'static,
+) -> impl IntoElement {
+    div()
+        .flex()
+        .items_center()
+        .gap_4()
+        .p_3()
+        .rounded_md()
+        .bg(p().surface)
+        .border_1()
+        .border_color(p().border)
+        .child(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .flex_1()
+                .min_w_0()
+                .child(div().font_weight(FontWeight::BOLD).child(name))
+                .child(div().text_sm().text_color(p().muted).child(about)),
+        )
+        .child(div().flex_none().text_sm().text_color(p().muted).child(state))
+        .child(buttons::switch(format!("options-action-{name}"), on, "", flip))
 }
 
 /// A setting away from its default: what ↺ puts back (`Default`, or in a

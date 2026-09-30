@@ -420,11 +420,11 @@ impl Shell {
     pub(super) fn picker_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let picker = self.picker.as_ref()?;
         let (title, summary) = match &picker.what {
-            PickFor::Quit => ("Stop the Claude Code sessions too?".to_string(), "Ticked: stopped as tvty quits (they stay restartable). Unticked: it runs on.".to_string()),
-            PickFor::New => ("A new workspace".to_string(), "Ticked: kept in it, each as it runs now (on its own, or held).".to_string()),
-            PickFor::Save(name) => (format!("Keep {name} as things are now"), "Ticked: in it, each as it runs now. Unticked: taken out of it.".to_string()),
-            PickFor::Shut(name) => (format!("Shut {name}: stop its sessions?"), "Ticked: stopped. Unticked: it runs on. A group another workspace has too is left unticked.".to_string()),
-            PickFor::Open(name) => (format!("Open {name}"), "Ticked: done. Unticked: left as it is.".to_string()),
+            PickFor::Quit => ("Stop the Claude Code sessions too?".to_string(), "On: stopped as tvty quits (they stay restartable). Off: it runs on.".to_string()),
+            PickFor::New => ("A new workspace".to_string(), "On: kept in it, each as it runs now (on its own, or held).".to_string()),
+            PickFor::Save(name) => (format!("Keep {name} as things are now"), "On: in it, each as it runs now. Off: taken out of it.".to_string()),
+            PickFor::Shut(name) => (format!("Shut {name}: stop its sessions?"), "On: stopped. Off: it runs on. A group another workspace has too is left off.".to_string()),
+            PickFor::Open(name) => (format!("Open {name}"), "On: done. Off: left as it is.".to_string()),
         };
         // By group, in the order they came.
         let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
@@ -445,19 +445,26 @@ impl Shell {
                 .items_center()
                 .gap_2()
                 .when(!free.is_empty(), |d| {
+                    // The group's own switch: on when all of it is, and how
+                    // many are when only some.
+                    let some = (!all && ticked > 0).then(|| format!("{ticked} of {}", free.len()));
                     d.child(
-                        buttons::link(SharedString::from(format!("pick-group-{project}")), if all { "☑" } else if ticked == 0 { "☐" } else { "◪" })
-                            .text_color(p().text)
-                            .tip("the whole group")
-                            .on_click(cx.listener(move |shell, _, _, cx| {
+                        buttons::switch(
+                            format!("pick-group-{project}"),
+                            all,
+                            "",
+                            cx.listener(move |shell, wanted: &bool, _, cx| {
                                 if let Some(picker) = shell.picker.as_mut() {
                                     for i in &free {
-                                        picker.rows[*i].checked = !all;
+                                        picker.rows[*i].checked = *wanted;
                                     }
                                 }
                                 cx.notify();
-                            })),
+                            }),
+                        )
+                        .tip("the whole group"),
                     )
+                    .children(some.map(|some| div().text_xs().text_color(p().muted).child(some)))
                 })
                 .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }));
             let mut group = div().flex().flex_col().gap_0p5().child(head);
@@ -469,17 +476,21 @@ impl Shell {
                     None => ("·", p().muted),
                 };
                 let tick = if row.fixed {
-                    div().w(px(18.)).into_any_element()
+                    // A switch's width: the names stay in one column.
+                    div().w(px(28.)).flex_none().into_any_element()
                 } else {
-                    buttons::link(SharedString::from(format!("pick-{}", row.agent)), if row.checked { "☑" } else { "☐" })
-                        .text_color(p().text)
-                        .on_click(cx.listener(move |shell, _, _, cx| {
+                    buttons::switch(
+                        format!("pick-{}", row.agent),
+                        row.checked,
+                        "",
+                        cx.listener(move |shell, wanted: &bool, _, cx| {
                             if let Some(row) = shell.picker.as_mut().and_then(|p| p.rows.get_mut(i)) {
-                                row.checked = !row.checked;
+                                row.checked = *wanted;
                             }
                             cx.notify();
-                        }))
-                        .into_any_element()
+                        }),
+                    )
+                    .into_any_element()
                 };
                 group = group.child(
                     div()
@@ -504,10 +515,10 @@ impl Shell {
         };
         let go = |label: String, cx: &mut Context<Self>| buttons::primary("picker-go", label).on_click(cx.listener(|shell, _, _, cx| shell.picker_answer(true, cx)));
         let answers = match &picker.what {
-            PickFor::Quit => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Quit, keep them all running", cx)).child(go(format!("Quit, stop the {ticked} ticked"), cx)),
+            PickFor::Quit => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Quit, keep them all running", cx)).child(go(format!("Quit, stop the {ticked} on"), cx)),
             PickFor::New | PickFor::Save(_) => div().flex().gap_2().ml_auto().child(cancel).child(go("Keep".into(), cx)),
-            PickFor::Shut(_) => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Shut, keep them all running", cx)).child(go(format!("Shut, stop the {ticked} ticked"), cx)),
-            PickFor::Open(_) => div().flex().gap_2().ml_auto().child(cancel).child(go(format!("Open, do the {ticked} ticked"), cx)),
+            PickFor::Shut(_) => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Shut, keep them all running", cx)).child(go(format!("Shut, stop the {ticked} on"), cx)),
+            PickFor::Open(_) => div().flex().gap_2().ml_auto().child(cancel).child(go(format!("Open, do the {ticked} on"), cx)),
         };
         let remember = self.remember;
         let body = div()
@@ -541,17 +552,18 @@ impl Shell {
                     .gap_3()
                     .when(picker.what == PickFor::Quit, |d| {
                         d.child(
-                            buttons::link("picker-remember", if remember { "☑" } else { "☐" })
-                                .flex_1()
-                                .gap_2()
-                                .text_sm()
-                                .text_color(p().text)
-                                .child("Remember this choice (stop them all, or keep them all)")
-                                .tip("Settings > Layout > Sessions changes it")
-                                .on_click(cx.listener(|shell, _, _, cx| {
-                                    shell.remember = !shell.remember;
+                            buttons::switch(
+                                "picker-remember",
+                                remember,
+                                "Remember this choice (stop them all, or keep them all)",
+                                cx.listener(|shell, wanted: &bool, _, cx| {
+                                    shell.remember = *wanted;
                                     cx.notify();
-                                })),
+                                }),
+                            )
+                            .flex_1()
+                            .text_sm()
+                            .tip("Settings > Layout > Sessions changes it"),
                         )
                     })
                     .child(answers),

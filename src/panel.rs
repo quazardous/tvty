@@ -142,7 +142,8 @@ pub struct TicketPanel {
     /// The thread's order: newest first (top-down) or last (by the reply).
     newest_first: bool,
     /// In the panel, "Where it stands" shows its text; else its title
-    /// only, which a click unfolds. As left, from a ticket to the next.
+    /// only, which a click unfolds. As left, from a ticket to the next;
+    /// at start, as the settings say (folded, unless asked open).
     summary_open: bool,
     /// Who can be @mentioned, read once.
     mentions: Vec<String>,
@@ -627,6 +628,12 @@ impl TicketPanel {
         let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
         self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
         self.change(format!("related to #{target} ({kind})"), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
+    }
+
+    /// "Where it stands" open or folded in the panel, as the settings say.
+    pub fn set_summary_open(&mut self, open: bool, cx: &mut Context<Self>) {
+        self.summary_open = open;
+        cx.notify();
     }
 
     pub fn set_newest_first(&mut self, newest_first: bool, cx: &mut Context<Self>) {

@@ -102,8 +102,8 @@ brings the panel back to that terminal's project. "+ session" on a project opens
 form: the working directory — proposed from the project's loops or agents,
 checked as it is typed —, the agent, whether it is a crew agent, and
 where it runs: **on aiball's host** (the default, no tmux: aiball's
-`session.start`, then tvty attaches over the session's socket) or, box
-unticked, in claude-loop's tmux (the same `session.start`, in tmux). Either
+`session.start`, then tvty attaches over the session's socket) or, its
+switch off, in claude-loop's tmux (the same `session.start`, in tmux). Either
 way it starts **in that directory**, and tvty never starts Claude itself:
 it opens the session once it runs. An agent whose loop runs already (on
 the host, or claude-loop's in tmux) is never started again: tvty opens it
@@ -141,15 +141,16 @@ the loop's other terminals (claude-loop's) become copies, which say
 
 **Quitting tvty** with Claude Code loops of this machine running asks
 which to stop (through aiball: they stay restartable) — the sessions'
-picker, below: ticked, stopped; unticked, it runs on — or to keep them
+picker, below: switched on, stopped; off, it runs on — or to keep them
 all, or cancel; "Remember this choice" keeps the answer for them all
 (Settings > Layout > Sessions > On quit).
 
 **The sessions' picker** is one dialog for every question about several
 sessions: they are listed by group (a project's terminals), each with how
-it runs now (▶ on its own, ■ held, · stopped) and a box to tick, the
-group's own box ticking them all, in a list that scrolls when they are
-many. Nothing is stopped or started that was not ticked.
+it runs now (▶ on its own, ■ held, · stopped) and a switch, the
+group's own switch turning them all on or off (and saying how many are on
+when only some are), in a list that scrolls when they are many. Nothing is
+stopped or started that was not switched on.
 
 **Workspaces** are the left panel's second tab ("Sessions | Workspaces").
 A workspace is a named group of groups, with how each of their agents'
@@ -162,9 +163,9 @@ session; ✕ takes a group out, and "+ PROJECT" adds the group shown now
 (the terminal on screen's), its sessions as they run ("↻ PROJECT" when it
 is there already: kept again as it runs now). **Open** asks (the picker) what to do:
 start what is stopped, let go a session kept on its own and found held;
-one kept held and found running is listed, unticked. **Shut** asks which
-sessions to stop: those of a group no other workspace has are ticked, the
-others are left unticked ("also in X"). "save" keeps it again as things
+one kept held and found running is listed, off. **Shut** asks which
+sessions to stop: those of a group no other workspace has are on, the
+others are left off ("also in X"). "save" keeps it again as things
 are now (a group that runs and is not in it yet is offered), "rename",
 "delete" (a second click confirms; its sessions are not touched). The loops tvty
 stopped are kept in its workspace with their hold: at the next start it
