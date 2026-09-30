@@ -4803,7 +4803,26 @@ impl Render for Shell {
         // Full screen, the panel lies over the window; its place shows the
         // folded strip meanwhile.
         let panel_full = self.panel.read(cx).is_full();
-        let right = if self.settings.layout.panel_open && !panel_full {
+        // Beside the terminal, or over it (as the sessions' list): then its
+        // place in the layout is the folded strip, and the terminal keeps
+        // its whole width.
+        let panel_shown = self.settings.layout.panel_open && !panel_full;
+        let panel_over = self.applied.tickets.panel_overlay;
+        let overlay_right = (panel_shown && panel_over).then(|| {
+            div()
+                .absolute()
+                .top_0()
+                .bottom_0()
+                .right_0()
+                .w(px(self.panel_width(window) + EDGE_WIDTH))
+                .occlude()
+                .flex()
+                .shadow_lg()
+                .bg(p().bg)
+                .child(self.edge(Side::Right, cx))
+                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
+        });
+        let right = if panel_shown && !panel_over {
             div()
                 .flex()
                 .flex_none()
@@ -4842,7 +4861,12 @@ impl Render for Shell {
                 top: f32::from(paddings.top) + TITLE_BAR_HEIGHT + NOTICE_MARGIN + if tabbed { tabs::TAB_BAR } else { 0. },
                 right: f32::from(paddings.right)
                     + NOTICE_MARGIN
-                    + if self.settings.layout.panel_open { self.panel_width(window) + EDGE_WIDTH } else { FOLDED_WIDTH },
+                    + match (self.settings.layout.panel_open, panel_over) {
+                        // Over the terminal: left of it, and of the strip it folds to.
+                        (true, true) => self.panel_width(window) + EDGE_WIDTH + FOLDED_WIDTH,
+                        (true, false) => self.panel_width(window) + EDGE_WIDTH,
+                        (false, _) => FOLDED_WIDTH,
+                    },
             }
         };
         let slider = self.slider.clone().map(|chosen| self.portfolio(&chosen, cx));
@@ -4970,7 +4994,8 @@ impl Render for Shell {
                             .h_full()
                             .min_w_0()
                             .child(center)
-                            .children(overlay),
+                            .children(overlay)
+                            .children(overlay_right),
                     )
                     .child(right)
                     .children(slider),

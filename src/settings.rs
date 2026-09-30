@@ -157,6 +157,9 @@ impl Default for Scroll {
 pub struct Tickets {
     /// A ticket's thread shows its newest word first.
     pub newest_first: bool,
+    /// The ticket panel lies over the terminal, as the sessions' list does,
+    /// rather than beside it.
+    pub panel_overlay: bool,
 }
 
 /// Every preference, declared once: its key in `settings.toml`, the options
@@ -308,6 +311,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Choice,
     },
     Setting {
+        key: "tickets.panel_overlay",
+        page: "Layout",
+        group: "Ticket panel",
+        label: "Place",
+        about: "Beside the terminal, which is then narrower — or over it, as the sessions' list on the left: the terminal keeps its whole width and the panel covers its right side while open.",
+        kind: Kind::Toggle { default: false, on: "over the terminal", off: "beside the terminal" },
+    },
+    Setting {
         key: "tickets.newest_first",
         page: "Ticket list",
         group: "Thread",
@@ -346,7 +357,7 @@ impl Stored for Preferences {
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             mouse: Mouse::default(),
-            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false) },
+            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false },
             sessions: Sessions::default(),
             updates: Updates::default(),
             tips: Tips::default(),

@@ -515,6 +515,10 @@ at a width set by dragging its edge — never narrower than its header (its
 tabs, its buttons, the chevron that folds it, as wide as the system's font
 draws them): the drag stops there; the ticket panel sits beside the
 terminal, its width set the same way. Both widths are remembered.
+**Settings > Layout > Ticket panel > Place** puts the ticket panel over the
+terminal instead, as the list on the left: the terminal keeps its whole
+width (its session is not resized when the panel opens or folds), the
+panel covers its right side while open, and the notices stay left of it.
 
 Both sides — the projects' list and the ticket panel — fold with a **grip**
 on their edge (or their key, below) into a **10-pixel strip** that still
