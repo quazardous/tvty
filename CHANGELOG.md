@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Windows: the setup line installs only the updater, which installs everything else, Terminal Velocity included; when GitHub's API refuses (too many requests from one address), the updater takes the release's installer by its link.
+
 ## [0.8.0-beta.1] - 2026-09-30
 
 ### Added
