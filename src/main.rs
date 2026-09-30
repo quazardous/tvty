@@ -51,6 +51,7 @@ mod ui;
 mod updates;
 mod wheel;
 mod wire;
+mod workspaces;
 
 use gpui_kit::*;
 

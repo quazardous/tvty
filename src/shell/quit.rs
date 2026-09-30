@@ -30,8 +30,6 @@ const STOP_WAIT: Duration = Duration::from_secs(15);
 /// What a dialog of this module asks.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum Ask {
-    /// Quitting: stop these loops too?
-    Quit(Vec<String>),
     /// At start: restart the loops stopped when tvty quit? With their AFK
     /// mode then, by loop.
     Restart(Vec<String>, HashMap<String, String>),
@@ -108,11 +106,8 @@ impl Shell {
         match self.applied.sessions.on_quit.as_deref() {
             Some("stop") => self.stop_and_quit(loops, cx),
             Some("keep") => self.quit_now(cx),
-            _ => {
-                self.ask = Some(Ask::Quit(loops));
-                self.remember = false;
-                cx.notify();
-            }
+            // Asked: which stop, which run on (the sessions' picker).
+            _ => self.pick_quit(loops, cx),
         }
     }
 
@@ -161,7 +156,7 @@ impl Shell {
         });
     }
 
-    fn quit_now(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn quit_now(&mut self, cx: &mut Context<Self>) {
         self.quitting = true;
         self.save_workspace(cx);
         self.settings.save(cx);
@@ -170,7 +165,7 @@ impl Shell {
 
     /// Stops `loops` (at most [`STOP_WAIT`]), keeps them to offer at the next
     /// start, then quits.
-    fn stop_and_quit(&mut self, loops: Vec<String>, cx: &mut Context<Self>) {
+    pub(super) fn stop_and_quit(&mut self, loops: Vec<String>, cx: &mut Context<Self>) {
         self.stopping_all = true;
         self.ask = None;
         cx.notify();
@@ -312,13 +307,6 @@ impl Shell {
         let Some(ask) = self.ask.take() else { return };
         let remember = self.remember;
         match ask {
-            Ask::Quit(loops) => {
-                let yes = answer == Answer::Yes;
-                if remember {
-                    self.set_pref("sessions.on_quit", Value::Choice(Some(if yes { "stop" } else { "keep" }.into())), cx);
-                }
-                if yes { self.stop_and_quit(loops, cx) } else { self.quit_now(cx) }
-            }
             Ask::Restart(names, holds) => {
                 if remember {
                     let choice = match answer {
@@ -336,21 +324,14 @@ impl Shell {
         cx.notify();
     }
 
-    fn cancel_ask(&mut self, cx: &mut Context<Self>) {
-        self.ask = None;
-        cx.notify();
-    }
-
     /// The dialog, over everything; or "stopping…" while the loops stop.
     pub(super) fn quit_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         if self.stopping_all {
             return Some(dialog(div().child("Stopping the Claude Code sessions, then quitting…")).into_any_element());
         }
         let ask = self.ask.as_ref()?;
-        let (title, loops) = match ask {
-            Ask::Quit(loops) => ("Stop the Claude Code sessions too?", loops),
-            Ask::Restart(loops, _) => ("Restart the sessions stopped when tvty quit?", loops),
-        };
+        let Ask::Restart(loops, _) = ask;
+        let title = "Restart the sessions stopped when tvty quit?";
         // The sessions by project, each with its mark: live when quitting,
         // as it was when restarting.
         let mut projects: Vec<(String, Vec<AnyElement>)> = Vec::new();
@@ -361,16 +342,9 @@ impl Shell {
         for name in names {
             let known = self.board.known.iter().find(|l| l.name == *name);
             let agent = known.and_then(|l| l.agent().map(str::to_string));
-            let (glyph, colour) = match ask {
-                Ask::Quit(_) => {
-                    let bar = agent.as_ref().and_then(|a| self.board.bars.get(a)).filter(|b| !b.stale).map(|b| &b.bar);
-                    hold_mark(bar.map(|b| b.presence.as_str()), bar.map(|b| b.afk.mode.as_str()))
-                }
-                Ask::Restart(_, holds) => {
-                    let mode = holds.get(name).map(String::as_str);
-                    hold_mark(mode.map(|m| if m == "off" { "loop" } else { "wait" }), mode)
-                }
-            };
+            let Ask::Restart(_, holds) = ask;
+            let mode = holds.get(name).map(String::as_str);
+            let (glyph, colour) = hold_mark(mode.map(|m| if m == "off" { "loop" } else { "wait" }), mode);
             let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
             let row = div()
                 .flex()
@@ -387,20 +361,12 @@ impl Shell {
                 _ => projects.push((project, vec![row])),
             }
         }
-        let summary = match ask {
-            Ask::Quit(_) => format!(
-                "{} of {} still {} on this machine.",
-                count_of(loops.len()),
-                count(projects.len(), "project"),
-                if loops.len() == 1 { "runs" } else { "run" }
-            ),
-            Ask::Restart(..) => format!(
-                "{} of {}; {} its conversation.",
-                count_of(loops.len()),
-                count(projects.len(), "project"),
-                if loops.len() == 1 { "it resumes" } else { "each resumes" }
-            ),
-        };
+        let summary = format!(
+            "{} of {}; {} its conversation.",
+            count_of(loops.len()),
+            count(projects.len(), "project"),
+            if loops.len() == 1 { "it resumes" } else { "each resumes" }
+        );
         // Past what fits, a fixed height and a scrollbar (a height the list
         // only caps would take its content's, and nothing would scroll).
         let scrolls = loops.len() + projects.len() > LIST_LINES;
@@ -416,22 +382,13 @@ impl Shell {
             );
         }
         let remember = self.remember;
-        let answers = match ask {
-            Ask::Quit(_) => div()
-                .flex()
-                .gap_2()
-                .ml_auto()
-                .child(buttons::secondary("quit-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| shell.cancel_ask(cx))))
-                .child(buttons::secondary("quit-no", "Quit, keep them running").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
-                .child(buttons::primary("quit-yes", "Quit and stop them").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx)))),
-            Ask::Restart(..) => div()
-                .flex()
-                .gap_2()
-                .ml_auto()
-                .child(buttons::secondary("quit-no", "Not now").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
-                .child(buttons::secondary("quit-fresh", "Restart fresh").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Fresh, cx))))
-                .child(buttons::primary("quit-yes", "Restart as they were").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx)))),
-        };
+        let answers = div()
+            .flex()
+            .gap_2()
+            .ml_auto()
+            .child(buttons::secondary("quit-no", "Not now").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
+            .child(buttons::secondary("quit-fresh", "Restart fresh").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Fresh, cx))))
+            .child(buttons::primary("quit-yes", "Restart as they were").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx))));
         let body = div()
             .flex()
             .flex_col()
@@ -455,9 +412,7 @@ impl Shell {
                     .overflow_hidden()
                     .map(|d| if scrolls { d.child(list.h(px(LIST_HEIGHT)).overflow_y_scrollbar()) } else { d.child(list) }),
             )
-            .when(matches!(ask, Ask::Restart(..)), |d| {
-                d.child(div().text_xs().text_color(p().muted).child("As they were: a held session is held again. Fresh: each boots, then runs on its own."))
-            })
+            .child(div().text_xs().text_color(p().muted).child("As they were: a held session is held again. Fresh: each boots, then runs on its own."))
             .child(div().h(px(1.)).bg(p().border))
             .child(
                 div()
@@ -485,11 +440,10 @@ impl Shell {
 
     /// Esc: the quit dialog is cancelled; the restart one, "not now".
     pub(super) fn escape_ask(&mut self, cx: &mut Context<Self>) -> bool {
-        match self.ask {
-            Some(Ask::Quit(_)) => self.cancel_ask(cx),
-            Some(Ask::Restart(..)) => self.answer(Answer::No, cx),
-            None => return false,
+        if self.ask.is_none() {
+            return false;
         }
+        self.answer(Answer::No, cx);
         true
     }
 }
@@ -509,7 +463,7 @@ fn count_of(n: usize) -> String {
 }
 
 /// A card over a dimmed window, which takes every click.
-fn dialog(body: impl IntoElement) -> Stateful<Div> {
+pub(super) fn dialog(body: impl IntoElement) -> Stateful<Div> {
     div()
         .id("quit-dialog")
         .occlude()

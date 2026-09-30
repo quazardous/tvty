@@ -69,7 +69,7 @@ impl Shell {
     /// The loops this machine knows that run no terminal, by project (one
     /// heading each); those of no aiball project (a folder aiball does not
     /// know) last.
-    fn inactive(&self, words: &[String]) -> Vec<&KnownLoop> {
+    pub(super) fn inactive(&self, words: &[String]) -> Vec<&KnownLoop> {
         let loops: Vec<&KnownLoop> = self
             .board
             .known

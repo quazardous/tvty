@@ -359,6 +359,10 @@ pub struct Layout {
     pub sidebar_width: Option<f32>,
     /// The sessions list's folded sections (`live`, `idle`, `shut`).
     pub sessions_folded: Vec<String>,
+    /// The left panel's tab: `workspaces`, or the sessions' (anything else).
+    pub sidebar_tab: String,
+    /// The workspaces folded in their tab, by name.
+    pub workspaces_folded: Vec<String>,
     /// The accordions' sections given a height by hand (`list/section`).
     pub section_heights: HashMap<String, f32>,
     /// A full-screen ticket's fields column, in pixels; none until the user
@@ -387,6 +391,8 @@ impl Default for Layout {
             sidebar_open: true,
             sidebar_width: None,
             sessions_folded: vec!["idle".into(), "shut".into()],
+            sidebar_tab: String::new(),
+            workspaces_folded: Vec::new(),
             section_heights: HashMap::new(),
             fields_width: None,
             window: None,
@@ -407,6 +413,8 @@ impl Stored for Layout {
             sidebar_open: old.get("sidebar_open").and_then(Value::as_bool).unwrap_or(default.sidebar_open),
             sidebar_width: old.get("sidebar_width").and_then(Value::as_f64).map(|v| v as f32),
             sessions_folded: old.get("sessions_folded").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or(default.sessions_folded),
+            sidebar_tab: String::new(),
+            workspaces_folded: Vec::new(),
             section_heights: old.get("section_heights").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
             fields_width: None,
             window: None,
@@ -490,6 +498,8 @@ pub fn retire_old_state() {
 pub struct Settings {
     pub layout: Layout,
     pub workspace: Workspace,
+    /// The workspaces kept (groups of groups).
+    pub saved: crate::workspaces::Saved,
 }
 
 impl Settings {
@@ -498,6 +508,7 @@ impl Settings {
         Self {
             layout: crate::config::get::<Layout>(cx).clone(),
             workspace: crate::config::get::<Workspace>(cx).clone(),
+            saved: crate::config::get::<crate::workspaces::Saved>(cx).clone(),
         }
     }
 
@@ -506,6 +517,7 @@ impl Settings {
     pub fn save(&self, cx: &mut gpui_kit::App) {
         crate::config::update::<Layout>(cx, |l| *l = self.layout.clone());
         crate::config::update::<Workspace>(cx, |w| *w = self.workspace.clone());
+        crate::config::update::<crate::workspaces::Saved>(cx, |w| *w = self.saved.clone());
     }
 }
 
@@ -531,6 +543,7 @@ pub fn init(cx: &mut gpui_kit::App) {
     crate::config::register::<Preferences>(cx);
     crate::config::register::<Layout>(cx);
     crate::config::register::<Workspace>(cx);
+    crate::config::register::<crate::workspaces::Saved>(cx);
     retire_old_state();
 }
 

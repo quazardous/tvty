@@ -38,6 +38,7 @@ mod newproject;
 mod projectopts;
 mod loopstabs;
 mod quit;
+mod workspaces;
 mod stacks;
 mod tabs;
 mod tips;
@@ -193,6 +194,14 @@ pub struct Shell {
     /// What the quit dialog asks (stop the loops? restart them?), and its
     /// "remember" box.
     ask: Option<quit::Ask>,
+    /// The sessions' picker, when one asks: quitting, a workspace kept,
+    /// shut or opened.
+    picker: Option<workspaces::Picker>,
+    /// A new or renamed workspace's name; the one renamed, the one whose
+    /// delete waits for a second click.
+    workspace_name: Entity<InputState>,
+    workspace_renaming: Option<String>,
+    workspace_deleting: Option<String>,
     remember: bool,
     /// The loops are being stopped before tvty quits.
     stopping_all: bool,
@@ -586,6 +595,7 @@ impl Shell {
         // its first session found.
         let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
         let goto = cx.new(|cx| InputState::new(window, cx).placeholder("#…"));
+        let workspace_name = Self::workspace_name_field(window, cx);
         let sliders = option_sliders(window, cx);
         see_through(&crate::config::get::<Preferences>(cx).appearance.clone(), window);
         // Enter: the input says it before any key handler would see it.
@@ -747,6 +757,10 @@ impl Shell {
             bus_state: Default::default(),
             project_shown: None,
             ask: None,
+            picker: None,
+            workspace_name,
+            workspace_renaming: None,
+            workspace_deleting: None,
             remember: false,
             stopping_all: false,
             quitting: false,
@@ -2184,7 +2198,7 @@ impl Shell {
             cx.stop_propagation();
             return;
         }
-        if key == "escape" && self.escape_ask(cx) {
+        if key == "escape" && (self.cancel_picker(cx) || self.escape_ask(cx)) {
             cx.stop_propagation();
             return;
         }
@@ -4106,7 +4120,24 @@ impl Shell {
 
     /// The projects' list: its tabs on the left, then the tab's list.
     fn sidebar(&self, width: f32, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let content = self.sessions_list(cx);
+        let workspaces = self.settings.layout.sidebar_tab == "workspaces";
+        let content = if workspaces { self.workspaces_tab(cx) } else { self.sessions_list(cx) };
+        // The panel's two tabs: every session, or the workspaces kept.
+        let tab = |id: &'static str, label: &'static str, to: &'static str, on: bool, cx: &mut Context<Self>| {
+            buttons::link(id, label)
+                .text_sm()
+                .font_weight(FontWeight::BOLD)
+                .text_color(if on { p().text } else { p().muted })
+                .border_b_2()
+                .border_color(if on { p().accent } else { gpui_kit::transparent_black() })
+                .on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.settings.layout.sidebar_tab = to.to_string();
+                    shell.workspace_renaming = None;
+                    shell.workspace_deleting = None;
+                    shell.settings.save(cx);
+                    cx.notify();
+                }))
+        };
         // Its header lines up with the tickets panel's: the name, and the
         // chevron that folds the list towards the window's edge.
         let header = div()
@@ -4117,37 +4148,38 @@ impl Shell {
             .px_3()
             .border_b_1()
             .border_color(p().border)
-            .child(div().font_weight(FontWeight::BOLD).child("Sessions"))
+            .gap_1()
+            .child(tab("sidebar-tab-sessions", "Sessions", "", !workspaces, cx))
+            .child(tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx))
             .child(div().flex_1())
-            // The order: as ctrl+tab goes, or alphabetical.
-            .child({
+            // The sessions' own: their order, a project, a terminal.
+            .when(!workspaces, |d| {
                 let recent = self.applied.sessions.recent_first;
-                buttons::link("sessions-order", if recent { "⇅ recent" } else { "⇅ a–z" })
-                    .text_xs()
-                    .tip(if recent {
-                        "the project used last first, as ctrl+tab goes; a click: alphabetical"
-                    } else {
-                        "alphabetical; a click: the project used last first, as ctrl+tab goes"
-                    })
-                    .on_click(cx.listener(move |shell, _, _, cx| {
-                        shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx)
-                    }))
+                d.child(
+                    buttons::link("sessions-order", "⇅")
+                        .text_xs()
+                        .tip(if recent {
+                            "the project used last first, as ctrl+tab goes; a click: alphabetical"
+                        } else {
+                            "alphabetical; a click: the project used last first, as ctrl+tab goes"
+                        })
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx))),
+                )
+                // A folder made an aiball project, its first session started.
+                .child(
+                    buttons::link("new-project", "+ project")
+                        .text_xs()
+                        .tip("a folder made an aiball project (aiball init), then its first session")
+                        .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
+                )
+                // A shell the daemon holds: it outlives tvty.
+                .child(
+                    buttons::link("new-terminal", ">_")
+                        .text_xs()
+                        .tip("a terminal of its own, which outlives tvty")
+                        .on_click(cx.listener(|shell, _, _, cx| shell.new_terminal(cx))),
+                )
             })
-            // A folder made an aiball project, its first session started.
-            .child(
-                buttons::link("new-project", "+ project")
-                    .text_xs()
-                    .tip("a folder made an aiball project (aiball init), then its first session")
-                    .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
-            )
-            // A shell the daemon holds: it outlives tvty.
-            .child(
-                buttons::link("new-terminal", ">_")
-                    .ml_1()
-                    .text_xs()
-                    .tip("a terminal of its own, which outlives tvty")
-                    .on_click(cx.listener(|shell, _, _, cx| shell.new_terminal(cx))),
-            )
             .child(buttons::separator())
             .child(
                 buttons::icon("sidebar-collapse", "‹", buttons::hint(cx, "Fold the sessions' list", "sidebar.toggle"))
@@ -4166,18 +4198,21 @@ impl Shell {
                     .w(px(width))
                     .h_full()
                     .child(header)
-                    .child(
-                        div()
-                            .flex_none()
-                            .px_2()
-                            .py_1p5()
-                            .border_b_1()
-                            .border_color(p().border)
-                            .child(crate::focusmode::on_hover(
-                                crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full(),
-                                self.sessions_filter.read(cx).focus_handle(cx),
-                            )),
-                    )
+                    // The sessions' filter: their tab's.
+                    .when(!workspaces, |d| {
+                        d.child(
+                            div()
+                                .flex_none()
+                                .px_2()
+                                .py_1p5()
+                                .border_b_1()
+                                .border_color(p().border)
+                                .child(crate::focusmode::on_hover(
+                                    crate::tips::target("sessions.filter", Input::new(&self.sessions_filter).small().cleanable(true)).w_full(),
+                                    self.sessions_filter.read(cx).focus_handle(cx),
+                                )),
+                        )
+                    })
                     .child(div().flex().flex_col().flex_1().min_h_0().text_sm().child(content)),
             )
     }
@@ -5010,6 +5045,7 @@ impl Render for Shell {
             .child(crate::tips::root_mark())
             .children(self.tip_view(cx))
             .children(self.quit_dialog(cx))
+            .children(self.picker_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }

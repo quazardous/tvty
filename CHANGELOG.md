@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Workspaces, the left panel's second tab: a named group of groups (a project's terminals), with how each session runs (on its own, or held). Open starts what is stopped and sets each as kept; Shut stops the sessions of the groups no other workspace has — both ask first, session by session.
+- Quitting tvty asks which sessions to stop, one box each, instead of all or none.
 - The Windows setup keeps a log of everything it and the installers say (`%LOCALAPPDATA%\tvty\setup.log`, your home folder written `~`), and names it at the end: the file to attach to an issue.
 
 ### Fixed

@@ -65,7 +65,7 @@ Nothing is written before "Set it up"; Esc leaves a box, then closes it.
 
 ## Opening a session
 
-The sessions list ("Sessions", ‹ folds it) has three foldable sections,
+The sessions list (the left panel's "Sessions" tab, ‹ folds it) has three foldable sections,
 each with its count, like the ticket list's bands (one component,
 `src/accordion.rs`: ▾/▸ and a click, each section scrolls on its own and
 they share the height — **dragging a title** moves the border with the
@@ -119,11 +119,31 @@ the loop's other terminals (claude-loop's) become copies, which say
 **Move into tmux**.
 
 **Quitting tvty** with Claude Code loops of this machine running asks
-whether to stop them too (through aiball: they stay restartable) or
-keep them running — or cancel; "Remember this choice" keeps the answer
-(Settings > Layout > Sessions > On quit). The dialog lists the sessions
-by project, each with its mark (▶ on its own, ‖ held for now, ■ held
-until let go), in a box that scrolls when they are many. The loops tvty
+which to stop (through aiball: they stay restartable) — the sessions'
+picker, below: ticked, stopped; unticked, it runs on — or to keep them
+all, or cancel; "Remember this choice" keeps the answer for them all
+(Settings > Layout > Sessions > On quit).
+
+**The sessions' picker** is one dialog for every question about several
+sessions: they are listed by group (a project's terminals), each with how
+it runs now (▶ on its own, ■ held, · stopped) and a box to tick, the
+group's own box ticking them all, in a list that scrolls when they are
+many. Nothing is stopped or started that was not ticked.
+
+**Workspaces** are the left panel's second tab ("Sessions | Workspaces").
+A workspace is a named group of groups, with how each of their agents'
+sessions runs — on its own (auto) or held (stop) —, kept in tvty's state
+(`workspaces.json`); a group may be in several. "+ workspace" keeps the
+groups that run now, chosen in the picker, under a name. Each workspace
+shows its groups and sessions, kept how (▶ ■) and how they are now
+(runs, held, stopped: in yellow when it differs), a click opening a
+session; ✕ takes a group out. **Open** asks (the picker) what to do:
+start what is stopped, let go a session kept on its own and found held;
+one kept held and found running is listed, unticked. **Shut** asks which
+sessions to stop: those of a group no other workspace has are ticked, the
+others are left unticked ("also in X"). "save" keeps it again as things
+are now (a group that runs and is not in it yet is offered), "rename",
+"delete" (a second click confirms; its sessions are not touched). The loops tvty
 stopped are kept in its workspace with their hold: at the next start it
 asks whether to restart them (aiball's `loop.restart`, each where it
 ran, its conversation resumed) **as they were** — a held one held again
