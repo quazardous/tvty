@@ -97,7 +97,7 @@ impl Shell {
 
     /// The agent of another project whose folder `l` works in, if it does.
     fn astray(&self, l: &KnownLoop) -> Option<&str> {
-        crate::loops::stranger(&l.cwd, self.loop_project(l).as_deref(), &self.board.homes)
+        crate::loops::stranger(&l.cwd, l.agent(), self.loop_project(l).as_deref(), &self.board.homes)
     }
 
     /// `agent` runs: a loop of it runs, or a terminal of it is live.
@@ -250,7 +250,7 @@ impl Shell {
                         last = Some(heading_of);
                     }
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
-                    let astray = crate::loops::stranger(cwd, project.as_deref(), &self.board.homes);
+                    let astray = crate::loops::stranger(cwd, Some(agent.as_str()), project.as_deref(), &self.board.homes);
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, astray, cx, start));
                 }
             }
@@ -400,7 +400,7 @@ impl Shell {
     /// that agent's conversation, two Claudes writing in one. Refused, and
     /// said.
     fn astray_start(&self, start: &Start, cx: &mut Context<Self>) -> bool {
-        let Some(other) = crate::loops::stranger(&start.cwd, start.project.as_deref(), &self.board.homes) else { return false };
+        let Some(other) = crate::loops::stranger(&start.cwd, start.agent.as_deref(), start.project.as_deref(), &self.board.homes) else { return false };
         let agent = start.agent.clone().unwrap_or_else(|| "a loop".into());
         let why = format!("{} is {other}'s folder: {agent} would resume its conversation", home_short(&start.cwd));
         crate::activity::publish(cx, crate::activity::Activity::failed(None, "start", why));

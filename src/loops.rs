@@ -79,10 +79,15 @@ impl KnownLoop {
 }
 
 /// The agent of another project whose folder `cwd` is, if one is: a
-/// loop started there resumes the conversation it finds, that agent's.
-pub fn stranger<'a>(cwd: &str, project: Option<&str>, homes: &'a [(String, Option<String>, String)]) -> Option<&'a str> {
+/// loop started there resumes the conversation it finds, that agent's. Never
+/// for `agent` in its own folder (the one aiball knows it by), whoever else
+/// is registered there (a test agent long gone, say).
+pub fn stranger<'a>(cwd: &str, agent: Option<&str>, project: Option<&str>, homes: &'a [(String, Option<String>, String)]) -> Option<&'a str> {
     let same = |a: &str, b: &str| a.trim_end_matches('/') == b.trim_end_matches('/');
     let project = project?;
+    if homes.iter().any(|(who, _, home)| Some(who.as_str()) == agent && same(home, cwd)) {
+        return None;
+    }
     homes
         .iter()
         .find(|(_, of, home)| same(home, cwd) && of.as_deref().is_some_and(|of| of != project))
@@ -198,11 +203,18 @@ mod tests {
             ("book".to_string(), Some("book".to_string()), "/w/book".to_string()),
             ("aiball-crew".to_string(), Some("aiball".to_string()), "/w/aiball-crew".to_string()),
         ];
-        assert_eq!(stranger("/w/aiball/", Some("book"), &homes), Some("aiball-dev"));
-        assert_eq!(stranger("/w/book", Some("book"), &homes), None);
+        assert_eq!(stranger("/w/aiball/", Some("book"), Some("book"), &homes), Some("aiball-dev"));
+        assert_eq!(stranger("/w/book", Some("book"), Some("book"), &homes), None);
         // A crew agent next to its project's main loop is at home.
-        assert_eq!(stranger("/w/aiball", Some("aiball"), &homes), None);
+        assert_eq!(stranger("/w/aiball", Some("aiball-crew"), Some("aiball"), &homes), None);
         // No project known: nothing to compare.
-        assert_eq!(stranger("/w/aiball", None, &homes), None);
+        assert_eq!(stranger("/w/aiball", Some("x"), None, &homes), None);
+        // In its own folder an agent is at home, whoever else is registered
+        // there: a test agent of another project, long gone.
+        let mut homes = homes;
+        homes.insert(0, ("testuser".to_string(), Some("test".to_string()), "/w/aiball".to_string()));
+        assert_eq!(stranger("/w/aiball", Some("aiball-dev"), Some("aiball"), &homes), None);
+        // Another project's agent started there is still astray.
+        assert!(stranger("/w/aiball", Some("book"), Some("book"), &homes).is_some());
     }
 }
