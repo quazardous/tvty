@@ -36,6 +36,10 @@ pub struct Consumer {
     /// It works on another machine: its `cwd` is that machine's.
     #[serde(default)]
     pub remote: Option<bool>,
+    /// The machine its loop is connected from, as aiball names them: `hub`,
+    /// `node:<label>`; none without a loop connected.
+    #[serde(default)]
+    pub machine: Option<String>,
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,
@@ -152,6 +156,10 @@ pub struct HostedSession {
     /// Those of them with the controls (a tmux loop's; a host does not say).
     #[serde(default)]
     pub interactive: Option<u32>,
+    /// The machine that holds it, as aiball names them: attached to from
+    /// that machine only.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// Where a client attaches: a socket on this machine, or none (`reason`).

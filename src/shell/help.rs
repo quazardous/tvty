@@ -170,6 +170,10 @@ impl Shell {
         }
         let mut list = div().named("help-menu").flex().flex_col().py_1().text_sm();
         for (i, entry) in Entry::ALL.into_iter().enumerate() {
+            // aiball refuses it from behind a proxy node: not offered there.
+            if matches!(entry, Entry::Megaphone) && self.away_from_hub() {
+                continue;
+            }
             if matches!(entry, Entry::Repository | Entry::Restart) {
                 list = list.child(div().my_1().h(px(1.)).bg(p().border));
             }

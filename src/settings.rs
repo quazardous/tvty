@@ -73,6 +73,9 @@ pub struct Sessions {
     /// The groups in the order they were used, the latest first (the
     /// slider's, ctrl+tab), rather than alphabetical.
     pub recent_first: bool,
+    /// Behind a proxy node: the sessions of aiball's hub are listed too (to
+    /// read, not to open).
+    pub show_hub: bool,
     /// When tvty quits with loops of this machine running: `stop` them,
     /// `keep` them running; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,7 +89,7 @@ pub struct Sessions {
 
 impl Default for Sessions {
     fn default() -> Self {
-        Self { recent_first: true, on_quit: None, on_start: None }
+        Self { recent_first: true, show_hub: false, on_quit: None, on_start: None }
     }
 }
 
@@ -279,6 +282,14 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Order",
         about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes — or alphabetical. Also the ⇅ in the list's header.",
         kind: Kind::Toggle { default: true, on: "most recent first", off: "alphabetical" },
+    },
+    Setting {
+        key: "sessions.show_hub",
+        page: "Layout",
+        group: "Sessions",
+        label: "The hub's sessions",
+        about: "When this machine reaches aiball through a proxy node: list the sessions that run on aiball's hub too, apart, under \"on hub\". They are read from here (state, tickets), never opened: a session is attached from its own machine. The sessions of other nodes are never listed.",
+        kind: Kind::Toggle { default: false, on: "listed", off: "not listed" },
     },
     Setting {
         key: "sessions.on_quit",
