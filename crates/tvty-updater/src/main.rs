@@ -248,6 +248,7 @@ impl Updater {
         let (said, colour) = match state {
             None => ("checking…", theme.muted_foreground),
             Some(State::Missing) => ("not installed", theme.warning),
+            Some(State::Silent) => ("installed, but it does not answer", theme.danger),
             Some(State::TooOld) => ("too old for Terminal Velocity", theme.danger),
             Some(State::UpdateAvailable) => ("update available", theme.warning),
             Some(State::UpToDate) => ("up to date", theme.success),

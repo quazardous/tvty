@@ -243,6 +243,11 @@ fn registry_text(root: windows_sys::Win32::System::Registry::HKEY, key: &str, na
     }
 }
 
+/// `command` is somewhere programs are looked for.
+pub fn on_path(command: &str) -> bool {
+    found_in(command, &search_dirs(), cfg!(windows))
+}
+
 /// What this system needs and does not have.
 pub fn missing() -> Vec<&'static Prerequisite> {
     let dirs = search_dirs();

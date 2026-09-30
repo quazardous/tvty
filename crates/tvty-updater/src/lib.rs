@@ -37,12 +37,18 @@ pub struct Status {
     pub latest: Option<String>,
     /// Why something is not known (no network, a command that failed).
     pub note: Option<String>,
+    /// It is on the machine, but did not say its version when asked (its
+    /// command failed): not the same as not installed.
+    pub silent: bool,
 }
 
 /// Where a program stands.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
     Missing,
+    /// There, but it did not answer when asked its version: installing it
+    /// again would not tell why.
+    Silent,
     /// Older than Terminal Velocity needs.
     TooOld,
     UpdateAvailable,
@@ -54,7 +60,9 @@ pub enum State {
 impl Status {
     /// Where it stands, `min` the oldest version that will do.
     pub fn state(&self, min: Option<&str>) -> State {
-        let Some(installed) = self.installed.as_deref() else { return State::Missing };
+        let Some(installed) = self.installed.as_deref() else {
+            return if self.silent { State::Silent } else { State::Missing };
+        };
         if min.is_some_and(|min| older(installed, min)) {
             return State::TooOld;
         }
@@ -184,6 +192,7 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         }
         State::Missing => install_aiball(say),
         State::TooOld => update_aiball(say),
+        State::Silent => Err(anyhow::anyhow!("it is there, but its command does not answer (try `aiball --json version`)")),
         _ => {
             say("aiball is installed".into());
             Ok(())
@@ -199,7 +208,7 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let tvty = match tvty_status().state(None) {
         State::Missing | State::TooOld | State::UpdateAvailable => update_tvty(say),
         // Installed, its latest release not asked or not known: kept.
-        State::UpToDate | State::Unknown => {
+        State::UpToDate | State::Unknown | State::Silent => {
             say("Terminal Velocity is installed".into());
             install_launcher(say)
         }
@@ -334,6 +343,16 @@ pub fn aiball_status() -> Status {
     match serde_json::from_slice::<serde_json::Value>(&out.stdout) {
         Ok(v) => read_aiball_version(&v, &mut status),
         Err(error) => status.note = Some(format!("aiball version: {error}")),
+    }
+    // Its command is there and said no version: it failed (said why on its
+    // error output), which is not "not installed".
+    if status.installed.is_none() && (program("aiball").is_absolute() || prerequisites::on_path("aiball")) {
+        status.silent = true;
+        let why = String::from_utf8_lossy(&out.stderr).lines().map(str::trim).find(|line| !line.is_empty()).map(str::to_string);
+        status.note = Some(format!("`aiball --json version` did not answer: {}", why.or(status.note.take()).unwrap_or_else(|| out.status.to_string())));
+    } else if status.installed.is_none() {
+        // Not there at all: nothing to explain.
+        status.note = None;
     }
     status
 }
@@ -495,6 +514,15 @@ mod tests {
         assert_eq!(s(Some("0.4.0"), Some("0.5.0")).state(None), State::UpdateAvailable);
         assert_eq!(s(Some("0.5.0"), Some("0.5.0")).state(None), State::UpToDate);
         assert_eq!(s(Some("0.5.0"), None).state(None), State::Unknown);
+    }
+
+    #[test]
+    fn there_but_silent_is_not_missing() {
+        let silent = Status { silent: true, ..Default::default() };
+        assert_eq!(silent.state(None), State::Silent);
+        // Once it says a version, it stands as any other.
+        let answered = Status { installed: Some("0.5.0".into()), silent: true, ..Default::default() };
+        assert_eq!(answered.state(None), State::Unknown);
     }
 
     #[test]
