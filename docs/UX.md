@@ -375,7 +375,10 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   is linked to, its tokens — the fields laid out and chosen as in a new
   ticket, each dropdown always in sight (intent, priority, level, scope and
   who it notifies, tags with their ✕, milestone, the reporter, the
-  assignee, the project — moved once "Move to …" confirms); a choice
+  assignee, the **followers** — who follows the ticket by their own choice,
+  one tag each with the ✕ that ends it, a dropdown to add one; one who
+  muted it is greyed; the project's owners, notified by their role, are not
+  among them —, the project — moved once "Move to …" confirms); a choice
   applies at once, no reply goes with it; a relation is added from its row
   ("+ a ticket") or undone by its ✕. "✎ edit" beside the title
   edits the title and body in its place, with the new ticket's editor

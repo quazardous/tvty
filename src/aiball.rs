@@ -541,6 +541,14 @@ impl TicketRow {
     }
 }
 
+/// Someone's own choice about a ticket: to follow it, or to mute it.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct Subscriber {
+    pub consumer_id: String,
+    #[serde(default)]
+    pub muted: bool,
+}
+
 #[derive(Clone, Debug, Deserialize)]
 pub struct Thread {
     pub ticket: TicketHeader,
@@ -1105,6 +1113,27 @@ impl Aiball {
     pub fn edit(&self, message: u64, mut fields: Value) -> anyhow::Result<()> {
         fields["id"] = json!(message);
         self.rpc_do("message.edit", fields)
+    }
+
+    /// Who follows a ticket, or muted it, by their own choice: the owners
+    /// notified by their role are not among them.
+    pub fn ticket_subscribers(&self, ticket: u64) -> anyhow::Result<Vec<Subscriber>> {
+        #[derive(Deserialize)]
+        struct Answer {
+            subscriptions: Vec<Subscriber>,
+        }
+        let answer: Answer = self.rpc("ticket.subscribers", json!({ "id": ticket }))?;
+        Ok(answer.subscriptions)
+    }
+
+    /// `consumer` follows the ticket from now on.
+    pub fn subscribe(&self, ticket: u64, consumer: &str) -> anyhow::Result<()> {
+        self.rpc_do("ticket.subscribe", json!({ "ticket_id": ticket, "consumer_id": consumer }))
+    }
+
+    /// `consumer` no longer follows (or mutes) the ticket: its role decides again.
+    pub fn unsubscribe(&self, ticket: u64, consumer: &str) -> anyhow::Result<()> {
+        self.rpc_do("ticket.unsubscribe", json!({ "ticket_id": ticket, "consumer_id": consumer }))
     }
 
     pub fn add_tag(&self, ticket: u64, tag: &str) -> anyhow::Result<()> {

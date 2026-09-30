@@ -65,6 +65,9 @@ struct Detail {
     /// full-screen list.
     project: Option<String>,
     thread: Option<Thread>,
+    /// Who follows the ticket or muted it (read full screen, where they
+    /// show); none until read, or when aiball would not say.
+    subscribers: Option<Vec<crate::aiball::Subscriber>>,
     error: Option<String>,
     /// A gesture is on its way to aiball.
     busy: bool,
@@ -89,7 +92,7 @@ enum Menu {
 }
 
 /// The fields chosen in a dropdown, full screen.
-const FIELDS: [Editing; 9] = [
+const FIELDS: [Editing; 10] = [
     Editing::Project,
     Editing::Intent,
     Editing::Priority,
@@ -99,6 +102,7 @@ const FIELDS: [Editing; 9] = [
     Editing::Tags,
     Editing::Owner,
     Editing::Assignee,
+    Editing::Subscribers,
 ];
 
 /// Full screen, a field of the left column: chosen in its dropdown (a
@@ -113,6 +117,8 @@ enum Editing {
     Tags,
     Owner,
     Assignee,
+    /// Who follows the ticket: one more added.
+    Subscribers,
     Relation,
     Project,
 }
@@ -340,6 +346,10 @@ impl TicketPanel {
             self.reply.update(cx, |reply, cx| reply.set_auto_grow(min, max, cx));
             if full {
                 self.read_catalog(cx);
+                // Who follows the ticket shows here: read with it.
+                if let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) {
+                    self.load(ticket, false, cx);
+                }
             }
             cx.emit(FullChanged);
             cx.notify();
@@ -428,6 +438,13 @@ impl TicketPanel {
                 (agents(&first), ticket.map(|t| t.by_agent))
             }
             Editing::Assignee => (agents(&catalog.own), ticket.and_then(|t| t.assignee)),
+            // Whoever does not follow it yet: the project's agents first, and the user.
+            Editing::Subscribers => {
+                let on: Vec<String> = self.detail.as_ref().and_then(|d| d.subscribers.as_ref()).into_iter().flatten().map(|s| s.consumer_id.clone()).collect();
+                let mut first = catalog.own.clone();
+                first.push(self.aiball.user.clone());
+                (agents(&first).into_iter().filter(|c| !on.contains(&c.value)).collect(), None)
+            }
             Editing::Intent => (INTENTS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.intent)),
             Editing::Priority => (PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.priority)),
             Editing::Level => (LEVELS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.level)),
@@ -454,6 +471,9 @@ impl TicketPanel {
                 self.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
             }
             (Editing::Assignee, None) => self.change("unassigned", |aiball, ticket| aiball.assign(ticket, None), window, cx),
+            (Editing::Subscribers, Some(name)) => {
+                self.change(format!("{name} now follows it"), move |aiball, ticket| aiball.subscribe(ticket, &name), window, cx)
+            }
             (Editing::Intent, Some(v)) => self.change(format!("intent {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
             (Editing::Priority, Some(v)) => self.change(format!("priority {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
             (Editing::Level, Some(v)) => self.change(format!("level {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "level": v })), window, cx),
@@ -470,6 +490,7 @@ impl TicketPanel {
             Editing::Tags => ("add a tag", "a tag…"),
             Editing::Milestone => ("none", "a milestone…"),
             Editing::Owner => ("the reporter", "an agent, or you…"),
+            Editing::Subscribers => ("add one", "an agent, or you…"),
             Editing::Intent => ("intent", "an intent…"),
             Editing::Priority => ("priority", "a priority…"),
             Editing::Level => ("level", "a level…"),
@@ -709,6 +730,7 @@ impl TicketPanel {
             ticket,
             project,
             thread: None,
+            subscribers: None,
             error: None,
             busy: false,
             unfolded: HashSet::new(),
@@ -734,10 +756,13 @@ impl TicketPanel {
     fn load(&mut self, ticket: u64, mark_read: bool, cx: &mut Context<Self>) {
         let aiball = self.aiball.clone();
         let images = self.images.clone();
+        // Who follows it shows full screen only: read there.
+        let full = self.full;
         cx.spawn(async move |this, cx| {
-            let thread = cx
+            let (thread, subscribers) = cx
                 .background_executor()
                 .spawn(async move {
+                    let subscribers = full.then(|| aiball.ticket_subscribers(ticket));
                     let mut thread = aiball.thread(ticket);
                     // Its images go in its texts, which cannot load them.
                     if let Ok(thread) = thread.as_mut() {
@@ -746,12 +771,20 @@ impl TicketPanel {
                     if mark_read && thread.is_ok() {
                         let _ = aiball.mark_read(ticket);
                     }
-                    thread
+                    (thread, subscribers)
                 })
                 .await;
             let _ = this.update(cx, |panel, cx| {
                 let newest_first = panel.newest_first;
                 if let Some(detail) = panel.detail.as_mut().filter(|d| d.ticket == ticket) {
+                    match subscribers {
+                        Some(Ok(subscribers)) => detail.subscribers = Some(subscribers),
+                        Some(Err(error)) => {
+                            log::warn!("ticket {ticket}: its subscribers: {error:#}");
+                            detail.subscribers = None;
+                        }
+                        None => {}
+                    }
                     match thread {
                         Ok(thread) => {
                             // First read, or the answer to a gesture: the
@@ -1949,6 +1982,32 @@ impl TicketPanel {
             ))
             .child(fields::said("claimed by", claim))
             .child(field("assigned to", self.field_picker(Editing::Assignee)));
+        // Who follows the ticket by their own choice, or muted it: each
+        // with the ✕ that puts them back to what their role says.
+        let subscribers = self.detail.as_ref().and_then(|d| d.subscribers.clone());
+        let chips = subscribers
+            .iter()
+            .flatten()
+            .map(|s| {
+                let name = s.consumer_id.clone();
+                let drop = fields::tag_drop(format!("subscriber-drop-{name}")).on_click(cx.listener({
+                    let name = name.clone();
+                    move |panel, _, window, cx| {
+                        let name = name.clone();
+                        panel.change(format!("{name} no longer follows it"), move |aiball, ticket| aiball.unsubscribe(ticket, &name), window, cx)
+                    }
+                }));
+                // Muted: greyed, and said under the pointer (the column is narrow).
+                fields::tag(format!("subscriber-{name}"), &who(&name, user), drop).when(s.muted, |d| {
+                    d.opacity(0.55).tip("muted: not notified of this ticket, even by its role — ✕ puts it back to what its role says")
+                })
+            })
+            .collect();
+        col = col.child(
+            field("followers", fields::tags(chips, self.field_picker(Editing::Subscribers)))
+                .named("inv-subscribers")
+                .tip("Who follows this ticket by their own choice (or muted it). The project's owners are notified by their role: they are not listed here."),
+        );
 
         // ── Links ──
         let (parent, parent_project) = (ticket.id, self.project());

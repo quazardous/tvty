@@ -68,8 +68,10 @@ pub fn tag(id: impl Into<SharedString>, name: &str, drop: Stateful<Div>) -> Stat
         .border_1()
         .border_color(p().accent)
         .bg(p().accent.opacity(0.15))
-        .child(name.to_string())
-        .child(drop.min_w(px(0.)))
+        // Never wider than its column: a long name is cut, its ✕ stays.
+        .max_w_full()
+        .child(div().min_w_0().truncate().child(name.to_string()))
+        .child(drop.flex_none())
 }
 
 /// The ✕ of a [`tag`].
