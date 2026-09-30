@@ -32,10 +32,19 @@ pub fn args(args: &[&str]) -> Vec<String> {
     server_args().into_iter().chain(args.iter().map(|a| a.to_string())).collect()
 }
 
-/// A multiplexer command, outside any session tvty itself runs in.
+/// A multiplexer command, outside any session tvty itself runs in. On
+/// Windows without a console window of its own: tvty is a window program,
+/// and each command (the sessions are listed again and again) would flash
+/// one.
 pub fn command(command_args: &[&str]) -> Command {
     let mut command = Command::new(program());
     command.args(args(command_args)).env_remove("TMUX");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt as _;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        command.creation_flags(CREATE_NO_WINDOW);
+    }
     command
 }
 

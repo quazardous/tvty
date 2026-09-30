@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
+
 ### Added
 
 - The updater's console can be copied whole, and is kept in a file (`updater.log`, beside Terminal Velocity's log) whose folder a button opens. An aiball run from its checkout (a development install) is said so, with the command that updates it by hand, and is no longer updated — nor failed — from the updater.
