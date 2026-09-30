@@ -30,8 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An agent in its own folder is no longer marked "⚠ …'s folder" (nor refused a start) because another project's agent, long gone, is registered there too.
 - The Windows setup installs its prerequisites where there is no Microsoft Store (winget then installed nothing), and no longer says "done" when aiball is installed but its daemon does not answer.
-
 - tvty no longer crashes on a Wayland desktop that sends the keyboard's modifiers before its keymap (a headless compositor, a keyboard plugged in later): a GPUI bug, patched here until fixed upstream.
 
 ## [0.7.0-beta.1] - 2026-09-30
