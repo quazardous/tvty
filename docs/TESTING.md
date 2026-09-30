@@ -212,6 +212,16 @@ hope for:
   keeps no list of its elements a program can read (its inspector's is
   private, and filled only while picking): an element with no id is not
   known;
+- `tvty-ctl text ID` — what an element says, read without a screenshot: a
+  button's, chip's or link's label (`ui::buttons` notes it when the label
+  is plain text), a ticket's row (its title), a section's title (`OPEN
+  5`), a session's action (`starting…`, `▶ start`). `tvty-ctl tree --text
+  [PREFIX]` lists every element that says something, id then text;
+  `tvty-ctl wait-text ID TEXT [MS]` waits until ID says TEXT (contains
+  it), and fails saying what it says instead. An element says its text
+  when it is made with `.saying(id, text)` instead of `.named(id)`;
+  nothing reads text off the screen, so one made with `.named` is on
+  screen with no text known;
 - `tvty-ctl click ID`, `hover ID`, `key KEYS` (`ctrl-enter`, `escape`),
   `type TEXT` — put in through the window, as the user's would: the same on
   Windows, where wbox is not; `where ID` gives the middle, for wbox's real

@@ -176,16 +176,16 @@ impl Shell {
         let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start| {
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
             let action = match (busy, astray) {
-                (true, _) => div().text_xs().text_color(p().accent).child("starting…").into_any_element(),
+                (true, _) => div().saying(SharedString::from(format!("{id}-action")), "starting…").text_xs().text_color(p().accent).child("starting…").into_any_element(),
                 // Refused: said why on hover.
                 (false, Some(other)) => div()
-                    .named(SharedString::from(format!("{id}-astray")))
+                    .saying(SharedString::from(format!("{id}-astray")), format!("⚠ {other}'s folder"))
                     .text_xs()
                     .text_color(p().danger)
                     .child(format!("⚠ {other}'s folder"))
                     .tip(format!("{other} works in {}: started here, this agent would resume its conversation. Not started.", home_short(cwd)))
                     .into_any_element(),
-                (false, None) => div().text_xs().text_color(p().accent).child("▶ start").into_any_element(),
+                (false, None) => div().saying(SharedString::from(format!("{id}-action")), "▶ start").text_xs().text_color(p().accent).child("▶ start").into_any_element(),
             };
             div()
                 .named(SharedString::from(id.clone()))

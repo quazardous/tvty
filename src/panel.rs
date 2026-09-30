@@ -543,7 +543,7 @@ impl TicketPanel {
             .gap_2()
             .max_h(px(560.))
             .overflow_y_scroll()
-            .child(div().text_sm().text_color(p().muted).child(format!("Editing #{id}")))
+            .child(div().saying("text-editing", format!("Editing #{id}")).text_sm().text_color(p().muted).child(format!("Editing #{id}")))
             .child(self.edit_text.clone())
             .when_some(self.text_error.clone(), |d, error| d.child(div().text_sm().text_color(p().danger).child(error)))
             .child(
@@ -1139,7 +1139,7 @@ impl TicketPanel {
             .when(dim, |d| d.opacity(0.5).group_hover(group.clone(), |s| s.opacity(1.)));
 
         div()
-            .named(("ticket", id))
+            .saying(("ticket", id), ticket.title.clone())
             .group(group.clone())
             .h(px(ROW_HEIGHT))
             .flex_none()

@@ -10,8 +10,9 @@ use gpui_kit::*;
 
 static ON: AtomicBool = AtomicBool::new(false);
 static FRAME: AtomicU64 = AtomicU64::new(0);
-/// Each element seen: its id, where it was painted, in which frame.
-static MARKS: Mutex<Vec<(String, Bounds<Pixels>, u64)>> = Mutex::new(Vec::new());
+/// Each element seen: its id, where it was painted, in which frame, and
+/// what it says when that is known.
+static MARKS: Mutex<Vec<(String, Bounds<Pixels>, u64, Option<String>)>> = Mutex::new(Vec::new());
 
 /// Turns the recording on, once, at start.
 pub fn enable() {
@@ -32,6 +33,11 @@ pub fn next_frame() {
 /// An element, marked `id`: a zero-size layer over it (its parent's box)
 /// that notes where it was painted. Put it as the element's child.
 pub fn mark(id: impl Into<String>) -> impl IntoElement {
+    mark_saying(id, None)
+}
+
+/// [`mark`], with what the element says (a button's label, a row's title).
+pub fn mark_saying(id: impl Into<String>, text: Option<String>) -> impl IntoElement {
     let id = id.into();
     canvas(
         move |bounds, _, _| {
@@ -39,8 +45,8 @@ pub fn mark(id: impl Into<String>) -> impl IntoElement {
             if let Ok(mut marks) = MARKS.lock() {
                 // One place per id: the last painted wins (a list's rows
                 // carry distinct ids).
-                marks.retain(|(m, _, at)| *m != id && *at == frame);
-                marks.push((id.clone(), bounds, frame));
+                marks.retain(|(m, _, at, _)| *m != id && *at == frame);
+                marks.push((id.clone(), bounds, frame, text.clone()));
             }
         },
         |_, _, _, _| {},
@@ -57,15 +63,21 @@ pub fn mark_if(id: impl Into<String>) -> Option<impl IntoElement> {
 
 /// What the last frame painted, in paint order: read between frames (on
 /// the UI thread), the last one is whole — what it did not paint is gone.
-pub fn marks() -> Vec<(String, Bounds<Pixels>)> {
+pub fn marks() -> Vec<(String, Bounds<Pixels>, Option<String>)> {
     let frame = FRAME.load(Ordering::Relaxed);
     MARKS
         .lock()
-        .map(|marks| marks.iter().filter(|(_, _, at)| *at == frame).map(|(id, b, _)| (id.clone(), *b)).collect())
+        .map(|marks| marks.iter().filter(|(_, _, at, _)| *at == frame).map(|(id, b, _, text)| (id.clone(), *b, text.clone())).collect())
         .unwrap_or_default()
+}
+
+/// Whether `id` is on screen, and what it says: `Some(None)` for an
+/// element that is there and whose text is not known.
+pub fn text_of(id: &str) -> Option<Option<String>> {
+    marks().into_iter().rev().find(|(m, _, _)| m == id).map(|(_, _, text)| text)
 }
 
 /// Where `id` is: the last painted of that id.
 pub fn bounds_of(id: &str) -> Option<Bounds<Pixels>> {
-    marks().into_iter().rev().find(|(m, _)| m == id).map(|(_, b)| b)
+    marks().into_iter().rev().find(|(m, _, _)| m == id).map(|(_, b, _)| b)
 }

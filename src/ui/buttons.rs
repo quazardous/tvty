@@ -25,6 +25,7 @@
 //! group, a plain gap.
 
 use crate::ui::Named as _;
+use crate::ui::Said;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::*;
@@ -47,10 +48,10 @@ enum Hover {
     Off,
 }
 
-fn base(id: impl Into<ElementId>, hover: Hover) -> Stateful<Div> {
+fn base(id: impl Into<ElementId>, hover: Hover, text: Option<String>) -> Stateful<Div> {
     let id: ElementId = id.into();
     // Known by its id to the debug control, where it is painted.
-    let d = div().named(id).flex().flex_none().items_center().gap_1().rounded_sm();
+    let d = div().named_saying(id, text).flex().flex_none().items_center().gap_1().rounded_sm();
     match hover {
         Hover::Off => d.text_color(p().muted.opacity(0.5)),
         hover => d.cursor_pointer().active(|d| d.bg(p().active)).hover(move |d| match hover {
@@ -62,34 +63,34 @@ fn base(id: impl Into<ElementId>, hover: Hover) -> Stateful<Div> {
 }
 
 /// An action in words: accent text, a background under the pointer.
-pub fn link(id: impl Into<ElementId>, label: impl IntoElement) -> Stateful<Div> {
-    base(id, Hover::Plain).px_1().text_color(p().accent).child(label)
+pub fn link(id: impl Into<ElementId>, label: impl Said) -> Stateful<Div> {
+    base(id, Hover::Plain, label.said()).px_1().text_color(p().accent).child(label)
 }
 
-fn glyph_button(id: impl Into<ElementId>, glyph: impl IntoElement, tip: impl Into<SharedString>, hover: Hover) -> Stateful<Div> {
-    base(id, hover).justify_center().min_w(px(20.)).px_1().text_color(p().muted).child(glyph).tip(tip)
+fn glyph_button(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedString>, hover: Hover) -> Stateful<Div> {
+    base(id, hover, glyph.said()).justify_center().min_w(px(20.)).px_1().text_color(p().muted).child(glyph).tip(tip)
 }
 
 /// A glyph alone, muted until the pointer comes; `tip` says what it does.
-pub fn icon(id: impl Into<ElementId>, glyph: impl IntoElement, tip: impl Into<SharedString>) -> Stateful<Div> {
+pub fn icon(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedString>) -> Stateful<Div> {
     glyph_button(id, glyph, tip, Hover::Brighter)
 }
 
 /// An icon that takes something away (✕, ×): the danger colour under the
 /// pointer.
-pub fn remove(id: impl Into<ElementId>, glyph: impl IntoElement, tip: impl Into<SharedString>) -> Stateful<Div> {
+pub fn remove(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedString>) -> Stateful<Div> {
     glyph_button(id, glyph, tip, Hover::Danger)
 }
 
 /// A bordered label: an option, a state to change.
-pub fn chip(id: impl Into<ElementId>, label: impl IntoElement) -> Stateful<Div> {
+pub fn chip(id: impl Into<ElementId>, label: impl Said) -> Stateful<Div> {
     chip_if(id, label, true)
 }
 
 /// A chip that may have nothing to do now: then greyed, no pointer, no
 /// hover — its click is the caller's to leave out.
-pub fn chip_if(id: impl Into<ElementId>, label: impl IntoElement, enabled: bool) -> Stateful<Div> {
-    base(id, if enabled { Hover::Plain } else { Hover::Off })
+pub fn chip_if(id: impl Into<ElementId>, label: impl Said, enabled: bool) -> Stateful<Div> {
+    base(id, if enabled { Hover::Plain } else { Hover::Off }, label.said())
         .px_1p5()
         .border_1()
         .border_color(p().border)
@@ -101,7 +102,8 @@ pub fn chip_if(id: impl Into<ElementId>, label: impl IntoElement, enabled: bool)
 /// to give (`.danger()`, `.success()`, `.warning()`).
 pub fn answer(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
     let id: ElementId = id.into();
-    let mark = crate::inspect::enabled().then(|| crate::inspect::mark(id.to_string()));
+    let label: SharedString = label.into();
+    let mark = crate::inspect::enabled().then(|| crate::inspect::mark_saying(id.to_string(), Some(label.to_string())));
     Button::new(id).small().label(label).children(mark)
 }
 

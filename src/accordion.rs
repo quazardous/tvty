@@ -204,7 +204,7 @@ impl Section {
         // full colour and its count in a pill — the break between two
         // groups reads at a glance.
         let header = div()
-            .named(SharedString::from(format!("{id}-title")))
+            .saying(SharedString::from(format!("{id}-title")), format!("{} {count}", title.to_uppercase()))
             .flex()
             .flex_none()
             .items_center()

@@ -8,6 +8,8 @@
 //! `{"cmd": "hover", "id": …}` · `{"cmd": "press", "id": …}` (a press never
 //! released) · `{"cmd": "selection"}` (the text selected) · `{"cmd": "key", "keys": "ctrl-enter"}` ·
 //! `{"cmd": "type", "text": …}` · `{"cmd": "wait", "id": …, "ms": 5000}` ·
+//! `{"cmd": "text", "id": …}` (what it says) · `{"cmd": "wait-text", "id":
+//! …, "text": …, "ms": 5000}` (until it says so) ·
 //! `{"cmd": "state"}` · `{"cmd": "inspector"}` · and failure paths,
 //! provoked: `{"cmd": "bus-reconnect"}`, `{"cmd": "fault", "subscribe":
 //! "Tickets"}` (its next subscribing fails once).
@@ -63,8 +65,14 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
         "tree" | "query" => {
             let marks: Vec<Value> = inspect::marks()
                 .into_iter()
-                .filter(|(m, _)| m.starts_with(id))
-                .map(|(m, b)| json!({ "id": m, "x": f32::from(b.origin.x), "y": f32::from(b.origin.y), "w": f32::from(b.size.width), "h": f32::from(b.size.height) }))
+                .filter(|(m, _, _)| m.starts_with(id))
+                .map(|(m, b, text)| {
+                    let mut element = json!({ "id": m, "x": f32::from(b.origin.x), "y": f32::from(b.origin.y), "w": f32::from(b.size.width), "h": f32::from(b.size.height) });
+                    if let Some(text) = text {
+                        element["text"] = json!(text);
+                    }
+                    element
+                })
                 .collect();
             Ok(json!({ "elements": marks }))
         }
@@ -116,6 +124,31 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             })
             .map_err(|e| format!("{e:#}"))
         }
+        // What an element says (a button's label, a row's title), when known.
+        "text" => match inspect::text_of(id) {
+            Some(Some(text)) => Ok(json!({ "text": text })),
+            Some(None) => Err(format!("{id}: on screen, its text is not known (give it one with `.saying`)")),
+            None => Err(format!("{id}: not on screen")),
+        },
+        // Until an element says `text` (contains it).
+        "wait-text" => {
+            let wanted = command.get("text").and_then(Value::as_str).unwrap_or_default().to_string();
+            let ms = command.get("ms").and_then(Value::as_u64).unwrap_or(5000);
+            let until = std::time::Instant::now() + Duration::from_millis(ms);
+            loop {
+                let said = inspect::text_of(id).flatten();
+                if said.as_deref().is_some_and(|t| t.contains(&wanted)) {
+                    break Ok(json!({ "text": said }));
+                }
+                if std::time::Instant::now() >= until {
+                    break Err(match said {
+                        Some(said) => format!("{id}: says {said:?}, not {wanted:?}, after {ms} ms"),
+                        None => format!("{id}: says nothing known after {ms} ms"),
+                    });
+                }
+                cx.background_executor().timer(WAIT_STEP).await;
+            }
+        }
         "wait" => {
             let ms = command.get("ms").and_then(Value::as_u64).unwrap_or(5000);
             let until = std::time::Instant::now() + Duration::from_millis(ms);
@@ -150,7 +183,7 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "inspector" => toggle_inspector(cx),
-        other => Err(format!("{other:?}: no such command (tree, query, where, click, hover, key, type, wait, state, inspector, bus-reconnect, fault)")),
+        other => Err(format!("{other:?}: no such command (tree, query, text, where, click, hover, press, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
     };
     match answer {
         Ok(value) => json!({ "ok": value }),

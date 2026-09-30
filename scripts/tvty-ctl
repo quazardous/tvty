@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
 """tvty-ctl — drives and reads a test tvty by name, not by pixels.
 
-    scripts/tvty-ctl tree [PREFIX]      the elements on screen: id, x, y, w, h
+    scripts/tvty-ctl tree [PREFIX]      the elements on screen: id, x, y, w, h, text
+    scripts/tvty-ctl tree --text [PREFIX]   those that say something: id, then its text
+    scripts/tvty-ctl text ID            what ID says (a button's label, a row's title)
+    scripts/tvty-ctl wait-text ID TEXT [MS]   until ID says TEXT (contains it)
     scripts/tvty-ctl where ID           the middle of ID on screen
     scripts/tvty-ctl click ID           a click on ID, put in through the window
     scripts/tvty-ctl hover ID           the pointer moved onto ID
@@ -78,9 +81,15 @@ def main(argv):
         return 0
     cmd, rest = argv[0], argv[1:]
     command = {"cmd": cmd}
+    texts = cmd == "tree" and "--text" in rest
+    rest = [r for r in rest if r != "--text"]
     if cmd in ("tree", "query"):
         command = {"cmd": "query", "id": rest[0] if rest else ""}
-    elif cmd in ("where", "click", "hover", "press"):
+    elif cmd == "wait-text":
+        command["id"], command["text"] = rest[0], rest[1]
+        if len(rest) > 2:
+            command["ms"] = int(rest[2])
+    elif cmd in ("where", "click", "hover", "press", "text"):
         command["id"] = rest[0]
     elif cmd == "key":
         command["keys"] = rest[0]
@@ -97,6 +106,11 @@ def main(argv):
     except OSError as error:
         print(f"tvty-ctl: {rendezvous()}: {error} (is a test tvty running, with TVTY_DEBUG_CONTROL?)", file=sys.stderr)
         return 1
+    if texts and "ok" in answer:
+        for element in answer["ok"]["elements"]:
+            if "text" in element:
+                print(f"{element['id']}\t{element['text']}")
+        return 0
     print(json.dumps(answer.get("ok", answer), indent=1))
     return 1 if "error" in answer else 0
 

@@ -223,7 +223,7 @@ impl Shell {
         .unwrap_or_default();
         let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
         let state = item()
-            .named("agent-state")
+            .saying("agent-state", format!("{what}{since}{info}"))
             .text_color(match phase.as_deref() {
                 Some("busy") => p().accent,
                 Some("boot") => crate::theme::on(p().warning),
@@ -413,7 +413,7 @@ impl Shell {
         let model_item = bar.as_ref().and_then(|b| b.model.as_ref()).map(|model| {
             let newer = model.newer.is_some();
             item()
-                .named("agent-model")
+                .saying("agent-model", model.name.clone())
                 .text_color(ink(if newer { p().warning } else { p().muted }))
                 .child(if newer { format!("{} ↑", model.name) } else { model.name.clone() })
                 .tip(model.said())
@@ -490,7 +490,7 @@ impl Shell {
                 // As claude-loop's line counts them (a: b: e:), in words.
                 .child(
                     item()
-                        .named("agent-all")
+                        .saying("agent-all", format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
                         .child(format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
                         .tip("a: all the project's open tickets"),
                 )
