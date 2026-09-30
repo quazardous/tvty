@@ -315,6 +315,8 @@ impl Updater {
                             .items_center()
                             .gap_2()
                             .pt_1()
+                            // Where the line is to be pasted.
+                            .child(div().flex_none().text_xs().text_color(theme.muted_foreground).child(if cfg!(windows) { "in PowerShell:" } else { "in a terminal:" }))
                             .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_xs().font_family("monospace").child(command))
                             .child(Button::new(SharedString::from(format!("{}-by-hand", program.title()))).label("Copy").small().on_click(move |_, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
@@ -452,7 +454,8 @@ impl Render for Updater {
                                 None => "not kept in a file here".to_string(),
                             }))
                             .child(Button::new("log-copy").label("Copy").small().disabled(lines.is_empty()).on_click({
-                                let text = lines.join("\n");
+                                // Windows' line ends: pasted in any of its programs, the lines stay lines.
+                                let text = lines.join(if cfg!(windows) { "\r\n" } else { "\n" });
                                 move |_, _, cx| cx.write_to_clipboard(ClipboardItem::new_string(text.clone()))
                             }))
                             .child(Button::new("log-folder").label("Open the log's folder").small().disabled(tvty_updater::log_file().is_none()).on_click(|_, _, cx| {
@@ -486,9 +489,15 @@ impl Render for Updater {
                             }),
                     )
                     .child(div().text_xs().text_color(theme.muted_foreground).child(
-                        "Beta software, provided as is, without warranty (MIT licence). Installing aiball sets its daemon up as a \
-                         service of your user (systemd). The updater asks GitHub for the latest releases, and nothing else leaves \
-                         this machine.",
+                        if cfg!(windows) {
+                            "Beta software, provided as is, without warranty (MIT licence). Installing aiball sets its daemon up to \
+                             start when you sign in (a scheduled task of your user). The updater asks GitHub for the latest releases, \
+                             and nothing else leaves this machine."
+                        } else {
+                            "Beta software, provided as is, without warranty (MIT licence). Installing aiball sets its daemon up as a \
+                             service of your user (systemd). The updater asks GitHub for the latest releases, and nothing else leaves \
+                             this machine."
+                        },
                     )),
             )
     }
@@ -506,7 +515,8 @@ fn short(path: &std::path::Path) -> String {
 /// A line of the console: shown in the window, and kept in the log file.
 fn said(log: &Arc<Mutex<Vec<String>>>, line: String) {
     tvty_updater::log_append(&line);
-    log.lock().expect("the log").push(line);
+    // Shown as it is kept: what is copied from here may be pasted anywhere.
+    log.lock().expect("the log").push(tvty_updater::plain(&line));
 }
 
 fn link(id: &'static str, label: &'static str, url: &str, theme: &gpui_kit::component::Theme) -> impl IntoElement {

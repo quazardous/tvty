@@ -103,6 +103,7 @@ fn main() {
         cx.set_global(instance::Raises(raises));
         // The user's own fonts (a colour emoji font), before any text is laid out.
         fonts::load(cx);
+        fonts::choose_mono(cx);
         // The sets of settings (settings.toml, the layout, the workspace).
         settings::init(cx);
         tips::init(cx);

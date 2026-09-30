@@ -49,7 +49,7 @@ pub(super) struct NewSession {
     cwd: Entity<InputState>,
     agent: Entity<InputState>,
     crew: bool,
-    /// Started on aiball's host (no tmux), the default; unticked, in
+    /// Started on aiball's host (no tmux), the default; switched off, in
     /// claude-loop's tmux.
     on_host: bool,
     busy: bool,
@@ -390,26 +390,30 @@ impl Shell {
                 )
                 .child(Input::new(&form.agent).small())
                 .child(
-                    buttons::link("new-session-crew", if crew { "☑" } else { "☐" })
-                        .text_color(if crew { p().text } else { p().muted })
-                        .child("a crew agent, next to the main loop")
-                        .on_click(cx.listener(|shell, _, _, cx| {
+                    buttons::switch(
+                        "new-session-crew",
+                        crew,
+                        "a crew agent, next to the main loop",
+                        cx.listener(|shell, wanted: &bool, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
-                                form.crew = !form.crew;
+                                form.crew = *wanted;
                             }
                             cx.notify();
-                        })),
+                        }),
+                    ),
                 )
                 .child(
-                    buttons::link("new-session-host", if on_host { "☑" } else { "☐" })
-                        .text_color(if on_host { p().text } else { p().muted })
-                        .child("on aiball's host, without tmux")
-                        .on_click(cx.listener(|shell, _, _, cx| {
+                    buttons::switch(
+                        "new-session-host",
+                        on_host,
+                        "on aiball's host, without tmux",
+                        cx.listener(|shell, wanted: &bool, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
-                                form.on_host = !form.on_host;
+                                form.on_host = *wanted;
                             }
                             cx.notify();
-                        })),
+                        }),
+                    ),
                 )
                 .child(
                     div()

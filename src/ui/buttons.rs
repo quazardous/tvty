@@ -63,6 +63,15 @@ fn base(id: impl Into<ElementId>, hover: Hover, text: Option<String>) -> Statefu
 }
 
 /// An action in words: accent text, a background under the pointer.
+/// A switch, on or off: what is chosen, or not. Named as a button is (a
+/// test clicks it by name); its label beside it, if any, flips it too.
+pub fn switch(id: impl Into<SharedString>, on: bool, label: impl Into<SharedString>, flip: impl Fn(&bool, &mut Window, &mut App) + 'static) -> Stateful<Div> {
+    use gpui_kit::component::switch::Switch;
+    let (id, label): (SharedString, SharedString) = (id.into(), label.into());
+    let switch = Switch::new(SharedString::from(format!("{id}-switch"))).checked(on).small().on_click(flip);
+    div().named(id).flex().flex_none().items_center().child(if label.is_empty() { switch } else { switch.label(label) })
+}
+
 pub fn link(id: impl Into<ElementId>, label: impl Said) -> Stateful<Div> {
     base(id, Hover::Plain, label.said()).px_1().text_color(p().accent).child(label)
 }

@@ -187,7 +187,7 @@ pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     // A theme may carry its own text size: the user's choice stays.
     Theme::global_mut(cx).font_size = px(window_font());
     // The kit's monospace font, where it uses one, is the terminal's.
-    Theme::global_mut(cx).mono_font_family = "Source Code Pro".into();
+    Theme::global_mut(cx).mono_font_family = crate::fonts::mono().into();
     // Scrollbars stay visible: they say where a long list stands.
     Theme::set_scrollbar_mode(ScrollbarMode::Always, cx);
     let theme = Theme::global(cx);

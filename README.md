@@ -67,4 +67,6 @@ Windows 10 or 11 (x86_64) with winget.
 
 ## License
 
-[MIT](LICENSE).
+[MIT](LICENSE). The terminals' fonts come with Terminal Velocity, each under
+the SIL Open Font License 1.1: Source Code Pro and JuliaMono
+([`assets/fonts`](assets/fonts)).

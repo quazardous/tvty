@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A ticket's thread has an order in the panel and another full screen: ⇅ sets the one of the view it is in, and Settings > Ticket list > Thread has both. The panel starts newest last, by the reply, whatever the full screen's order.
+- In the ticket panel, "Where it stands" folds to its title, and starts folded: the thread gets the room. A click unfolds it, and it stays as left from a ticket to the next. Settings > Ticket list > Thread > "Where it stands, open" makes it start open. Full screen it shows whole, as before.
+- Switches where there were boxes to tick (the sessions' picker, "Remember this choice", the "+ session" form, the new project's wizard) and "Fold / unfold" buttons (Settings > Layout > Sides).
 - The ticket panel can lie over the terminal, as the sessions' list does, rather than beside it (Settings > Layout > Ticket panel > Place): the terminal then keeps its whole width.
 - The updater's console can be copied whole, and is kept in a file (`updater.log`, beside Terminal Velocity's log) whose folder a button opens. An aiball run from its checkout (a development install) is said so, with the command that updates it by hand, and is no longer updated — nor failed — from the updater.
 - A ticket full screen shows who follows it (People > followers): one tag each, its ✕ to end it, a dropdown to add one; one who muted it is greyed.
@@ -35,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The terminal no longer shows thin dark lines between cells of one background colour (a status bar), seen at display scales where a cell is not a whole number of pixels (125 %).
+- Settings > Layout > Sides: its frames are as wide as the others, its switches in their column.
+- Windows: what the updater keeps in its log, and what its Copy takes, reads the same as on screen and may be pasted anywhere: colour codes taken out, the home folder written `~`, Windows' line ends. The line that updates a development aiball by hand is said to be for PowerShell.
+- The terminals' font comes with Terminal Velocity (Source Code Pro, and JuliaMono for the symbols it lacks), the same on every system. On Windows the text was of variable width, the cursor ran ahead of it, and the word after Claude Code's spinner moved with each of its characters; each character now stands on its cell.
+- Windows: the title bar's buttons (menu, themes, message to every agent, settings) answer a single click; they needed a double one.
 - Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
 - The left panel can no longer be resized narrower than its header: its buttons and the chevron that folds it went out of it (seen on Windows, where the text is wider).
 - In the ticket panel, the thread's order and "more" sit on the line of "← Tickets", and the title keeps its whole width.

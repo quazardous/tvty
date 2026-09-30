@@ -458,9 +458,50 @@ pub fn log_file() -> Option<PathBuf> {
     Some(dir.join("updater.log"))
 }
 
-/// A line the updater said, kept in its log with when it was said (UTC).
-/// A log that cannot be written is no reason to stop.
+/// A line as it may be pasted where anyone reads it (an issue): the colour
+/// codes a program wrote taken out, the home folder written `~`.
+pub fn plain(line: &str) -> String {
+    plain_in(line, tvty_config::home().as_deref())
+}
+
+fn plain_in(line: &str, home: Option<&Path>) -> String {
+    // Escape sequences: `ESC [ … letter` (colours, moves), `ESC ] … BEL`
+    // (titles); any other escape goes alone.
+    let mut text = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c != '\u{1b}' {
+            text.push(c);
+            continue;
+        }
+        match chars.next() {
+            Some('[') => {
+                for c in chars.by_ref() {
+                    if ('@'..='~').contains(&c) {
+                        break;
+                    }
+                }
+            }
+            Some(']') => {
+                for c in chars.by_ref() {
+                    if c == '\u{7}' {
+                        break;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    let Some(home) = home.map(|home| home.to_string_lossy().to_string()).filter(|home| home.len() > 1) else { return text };
+    // As written, and with the other slash (git and node write `/` on Windows).
+    let other = if home.contains('\\') { home.replace('\\', "/") } else { home.clone() };
+    text.replace(&home, "~").replace(&other, "~")
+}
+
+/// A line the updater said, kept in its log with when it was said (UTC),
+/// [`plain`]. A log that cannot be written is no reason to stop.
 pub fn log_append(line: &str) {
+    let line = &plain(line);
     use std::io::Write as _;
     let Some(file) = log_file() else { return };
     if let Some(dir) = file.parent() {
@@ -612,7 +653,20 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Status, latest_tag, older, read_aiball_version};
+    use super::{State, Status, latest_tag, older, plain_in, read_aiball_version};
+    use std::path::Path;
+
+    #[test]
+    fn a_line_is_kept_without_colours_nor_the_home_folder() {
+        let home = Path::new("/srv/u");
+        assert_eq!(plain_in("\u{1b}[32mdone\u{1b}[0m in /srv/u/.local/bin", Some(home)), "done in ~/.local/bin");
+        assert_eq!(plain_in("\u{1b}]0;a title\u{7}said", Some(home)), "said");
+        assert_eq!(plain_in("nothing to change", Some(home)), "nothing to change");
+        // Windows' folder, written either way.
+        let home = Path::new("C:\\U\\u");
+        assert_eq!(plain_in("C:\\U\\u\\.local and C:/U/u/.local", Some(home)), "~\\.local and ~/.local");
+        assert_eq!(plain_in("C:\\U\\u", None), "C:\\U\\u");
+    }
 
     #[test]
     fn versions_order_as_releases() {

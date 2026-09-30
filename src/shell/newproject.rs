@@ -616,20 +616,23 @@ impl Shell {
                         .items_center()
                         .gap_3()
                         .child(
-                            buttons::link(id, if on { "☑" } else { "☐" })
-                                .text_color(if said.is_some() { imported } else { p().text })
-                                .child(label)
-                        .on_click(cx.listener(move |shell, _, _, cx| {
-                            if let Some(wizard) = shell.new_project.as_mut() {
-                                flip(wizard);
-                            }
-                            shell.preview_init(cx);
-                            cx.notify();
-                        })),
+                            buttons::switch(
+                                id,
+                                on,
+                                "",
+                                cx.listener(move |shell, _: &bool, _, cx| {
+                                    if let Some(wizard) = shell.new_project.as_mut() {
+                                        flip(wizard);
+                                    }
+                                    shell.preview_init(cx);
+                                    cx.notify();
+                                }),
+                            ),
                         )
+                        .child(div().text_color(if said.is_some() { imported } else { p().text }).child(label))
                         .children(origin(said)),
                 )
-                .child(div().pl_6().text_xs().text_color(p().muted).child(about))
+                .child(div().pl_10().text_xs().text_color(p().muted).child(about))
         };
         let kept = |set: bool, same: bool, said: &str| (set && same).then(|| said.to_string());
         let project_from = kept(was.consumer.project.set(), name == filled.project, was.consumer.project.said());
@@ -658,12 +661,12 @@ impl Shell {
             .children(was.file.as_ref().map(|file| div().text_xs().text_color(imported).child(format!("Filled from {file}: change anything, what is here is what gets set up."))))
             .child(field("project", &wizard.name, project_from.as_deref()))
             .child(field("agent", &wizard.agent, agent_from.as_deref()))
-            .child(tick("new-project-crew", wizard.crew, "a crew agent", "Beside the project's lead, on the tickets it is given; unticked: the lead.", crew_from.as_deref(), |w| w.crew = !w.crew))
+            .child(tick("new-project-crew", wizard.crew, "a crew agent", "Beside the project's lead, on the tickets it is given; off: the lead.", crew_from.as_deref(), |w| w.crew = !w.crew))
             .child(tick(
                 "new-project-host",
                 wizard.on_host,
                 "its loops on aiball's host",
-                "Where the loops started in this folder run; unticked: in tmux.",
+                "Where the loops started in this folder run; off: in tmux.",
                 host_from.as_deref(),
                 |w| w.on_host = !w.on_host,
             ))

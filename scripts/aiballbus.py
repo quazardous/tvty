@@ -5,6 +5,10 @@ socket. The identity is the connection's: it is opened as a consumer
 (`x-aiball-consumer`), and every call on it acts as that consumer — so a
 script that acts as several agents opens one connection each (`Board`).
 
+Where aiball has no socket (Windows), the address is `tcp://127.0.0.1:PORT`
+and the connection bears aiball's machine secret (`$AIBALL_HOME/machine-secret`),
+which gives a local caller what the socket gives.
+
     bus = Bus(sock, "david")
     bus.call("session.list")
 
@@ -18,6 +22,7 @@ import json
 import os
 import socket
 import struct
+from pathlib import Path
 
 
 class BusError(Exception):
@@ -48,15 +53,23 @@ class Bus:
 
     def __init__(self, sock_path, consumer, timeout=30):
         self.consumer = consumer
-        self.sock = socket.socket(socket.AF_UNIX)
-        self.sock.settimeout(timeout)
-        self.sock.connect(sock_path)
+        host, secret = "aiball", ""
+        if str(sock_path).startswith("tcp://"):
+            host = str(sock_path)[len("tcp://"):].rstrip("/")
+            name, _, port = host.rpartition(":")
+            self.sock = socket.create_connection((name, int(port)), timeout=timeout)
+            home = os.environ.get("AIBALL_HOME") or str(Path.home() / ".local" / "share" / "aiball")
+            secret = f"Authorization: Bearer {(Path(home) / 'machine-secret').read_text().strip()}\r\n"
+        else:
+            self.sock = socket.socket(socket.AF_UNIX)
+            self.sock.settimeout(timeout)
+            self.sock.connect(sock_path)
         key = base64.b64encode(os.urandom(16)).decode()
         self.sock.sendall(
             (
-                "GET /bus HTTP/1.1\r\nHost: aiball\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                f"GET /bus HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
                 f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n"
-                f"x-aiball-consumer: {consumer}\r\n\r\n"
+                f"{secret}x-aiball-consumer: {consumer}\r\n\r\n"
             ).encode()
         )
         head = b""

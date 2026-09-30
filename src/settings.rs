@@ -155,11 +155,16 @@ impl Default for Scroll {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Tickets {
-    /// A ticket's thread shows its newest word first.
+    /// A ticket's thread, full screen, shows its newest word first.
     pub newest_first: bool,
+    /// The same in the panel, which has an order of its own.
+    pub panel_newest_first: bool,
     /// The ticket panel lies over the terminal, as the sessions' list does,
     /// rather than beside it.
     pub panel_overlay: bool,
+    /// In the panel, a ticket's "Where it stands" shows its text at once,
+    /// rather than folded to its title.
+    pub summary_open: bool,
 }
 
 /// Every preference, declared once: its key in `settings.toml`, the options
@@ -322,9 +327,25 @@ pub const SCHEMA: Schema = Schema(&[
         key: "tickets.newest_first",
         page: "Ticket list",
         group: "Thread",
-        label: "Newest first",
-        about: "A ticket's thread shows its newest word first (also ⇅ in the ticket's header).",
+        label: "Newest first, full screen",
+        about: "A ticket full screen shows its thread's newest word first (also ⇅ in the ticket's header).",
         kind: Kind::Toggle { default: false, on: "newest first", off: "newest last" },
+    },
+    Setting {
+        key: "tickets.panel_newest_first",
+        page: "Ticket list",
+        group: "Thread",
+        label: "Newest first, in the panel",
+        about: "A ticket in the panel shows its thread's newest word first; off, last, by the reply (also ⇅ there). The panel has an order of its own: the full screen's is not its.",
+        kind: Kind::Toggle { default: false, on: "newest first", off: "newest last" },
+    },
+    Setting {
+        key: "tickets.summary_open",
+        page: "Ticket list",
+        group: "Thread",
+        label: "Where it stands, open",
+        about: "In the ticket panel, a ticket's \"Where it stands\" shows its text at once; off, it is folded to its title, a click away. Full screen it always shows.",
+        kind: Kind::Toggle { default: false, on: "open", off: "folded" },
     },
 ]);
 
@@ -357,7 +378,7 @@ impl Stored for Preferences {
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             mouse: Mouse::default(),
-            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false },
+            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false, summary_open: false, panel_newest_first: false },
             sessions: Sessions::default(),
             updates: Updates::default(),
             tips: Tips::default(),
