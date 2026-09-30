@@ -159,7 +159,7 @@ impl Shell {
                             .items_center()
                             .gap_2()
                             .child(div().flex_1().min_w_0().truncate().child(super::marked(&hub.agent, words)))
-                            .child(super::hub_pill()),
+                            .child(super::hub_mark(SharedString::from(format!("hub-{}-mark", hub.agent)))),
                     )
                     .children(hub.status.as_ref().map(|status| status.line(None)))
                     .on_click(cx.listener(move |shell, _, _, cx| shell.show_hub_agent(agent.clone(), cx))),

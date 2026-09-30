@@ -1852,7 +1852,7 @@ impl Shell {
                     .gap_2()
                     .text_lg()
                     .child(div().font_weight(FontWeight::BOLD).child(hub.agent.clone()))
-                    .child(hub_pill()),
+                    .child(hub_mark("hub-session-mark")),
             )
             .children(hub.project.clone().map(|project| div().text_sm().text_color(p().muted).child(project)))
             .children(hub.status.as_ref().map(|status| status.line(None)))
@@ -5373,18 +5373,15 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
 }
 
 /// `text` with the words searched for marked.
-/// The mark of what runs on aiball's hub, seen from another machine: in
-/// the warning colour — it is not this machine's.
-pub(super) fn hub_pill() -> Div {
+/// The mark of what runs on aiball's hub, seen from another machine: a
+/// small cloud in the warning colour — it is not this machine's — and under
+/// the pointer, what that means. `id` names it (one per row).
+pub(super) fn hub_mark(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
+        .saying(id, "on hub")
         .flex_none()
-        .px_1p5()
-        .rounded_sm()
-        .text_xs()
-        .font_weight(FontWeight::NORMAL)
-        .bg(p().warning)
-        .text_color(crate::theme::on(p().warning))
-        .child("on hub")
+        .child(crate::icons::icon(crate::icons::Icon::Hub, p().warning, 15.))
+        .tip("On aiball's hub, another machine: read from here (its state, its tickets), not opened — a session is attached from its own machine.")
 }
 
 fn marked(text: &str, words: &[String]) -> StyledText {

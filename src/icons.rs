@@ -60,6 +60,8 @@ icons! {
     PendingComments => "schedule.svg",
     Sunk => "snooze.svg",
     Unassign => "person_off.svg",
+    // What runs on aiball's hub, seen from another machine.
+    Hub => "cloud.svg",
 }
 
 impl AssetSource for Assets {

@@ -83,7 +83,7 @@ when the two are the same. Behind a proxy node — aiball's hub being another
 machine — the hub's agents are therefore not this machine's: their sessions
 are not listed, their folders not offered. **Options > Layout > Sessions >
 The hub's sessions** (off by default) lists them in a fourth section, **on
-hub**, each with the "on hub" mark in the warning colour. They are read,
+hub**, each with a small cloud in the warning colour (under the pointer: what it means). They are read,
 never opened — a session is attached from its own machine: a click shows,
 in the terminal's place, a page saying whose session it is, how it is doing
 and that it runs on the hub; its project's tickets in the panel; "on hub"
