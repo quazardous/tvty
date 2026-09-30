@@ -1,8 +1,9 @@
 //! What Terminal Velocity and aiball need on the machine before anything is
 //! installed: one list for every system — the command looked for, what it is
 //! for, how to install it. The updater checks it first (its window, and
-//! `--install`), says what is missing and how to get it; on Linux nothing is
-//! installed for the user (package managers differ, and ask for `sudo`).
+//! `--install`), says what is missing and how to get it. On Linux it installs
+//! by itself what needs no `sudo` (Claude Code, by its own installer); the
+//! rest is the distribution's package manager's, named to the user.
 
 use std::path::{Path, PathBuf};
 
@@ -194,6 +195,35 @@ fn search_dirs() -> Vec<PathBuf> {
 pub fn missing() -> Vec<&'static Prerequisite> {
     let dirs = search_dirs();
     ALL.iter().filter(|p| p.here() && !found_in(p.command, &dirs, cfg!(windows))).collect()
+}
+
+impl Prerequisite {
+    /// The updater installs it by itself on this system: it has an installer
+    /// of its own that asks for no password (Claude Code, on Unix).
+    pub fn installable(&self) -> bool {
+        !cfg!(windows) && self.script.is_some()
+    }
+
+    /// Installs it by its own installer.
+    pub fn install(&self, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+        let script = self.script.filter(|_| !cfg!(windows)).ok_or_else(|| anyhow::anyhow!("{}: nothing to install it by here", self.command))?;
+        say(format!("installing {}, for {}…", self.command, self.purpose));
+        crate::run(std::process::Command::new("bash").args(["-c", script]), say)?;
+        anyhow::ensure!(found_in(self.command, &search_dirs(), cfg!(windows)), "{} is still not found once installed", self.command);
+        Ok(())
+    }
+}
+
+/// Makes what is missing be there where the updater can (what has an
+/// installer of its own, no password asked), and says the rest, each with
+/// how to install it; answers the commands still missing.
+pub fn ensure(say: &mut dyn FnMut(String)) -> Vec<&'static str> {
+    for p in missing().into_iter().filter(|p| p.installable()) {
+        if let Err(error) = p.install(say) {
+            say(format!("✗ {}: {error:#}", p.command));
+        }
+    }
+    report(say)
 }
 
 /// Says each missing prerequisite, what it is for and how to install it;

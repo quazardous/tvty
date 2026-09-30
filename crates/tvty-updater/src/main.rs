@@ -55,6 +55,8 @@ enum Gesture {
     Update(Program),
     Rollback,
     All,
+    /// What is missing and installs by itself (Claude Code).
+    Prerequisites,
 }
 
 struct Updater {
@@ -109,7 +111,7 @@ impl Updater {
             return;
         }
         self.busy = Some(match gesture {
-            Gesture::Install(_) => "Installing…",
+            Gesture::Install(_) | Gesture::Prerequisites => "Installing…",
             Gesture::Update(_) | Gesture::All => "Updating…",
             Gesture::Rollback => "Going back…",
         });
@@ -129,6 +131,10 @@ impl Updater {
                 Gesture::Install(Program::Aiball) | Gesture::Update(Program::Aiball) => aiball(&mut say),
                 Gesture::Install(Program::Tvty) | Gesture::Update(Program::Tvty) => tvty_updater::update_tvty(&mut say),
                 Gesture::Rollback => tvty_updater::rollback_tvty(&mut say),
+                Gesture::Prerequisites => {
+                    let still = tvty_updater::prerequisites::ensure(&mut say);
+                    if still.is_empty() { Ok(()) } else { Err(anyhow::anyhow!("still missing: {}", still.join(", "))) }
+                }
                 Gesture::All => {
                     let first = if matches!(aiball_state, Some(State::UpToDate)) { Ok(()) } else { aiball(&mut say) };
                     first.and_then(|()| {
@@ -217,7 +223,18 @@ impl Updater {
                             .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_sm().font_family("monospace").child(how.clone()))
                             .child(Button::new(SharedString::from(format!("missing-copy-{}", p.command))).label("Copy").small().on_click(move |_, _, cx| {
                                 cx.write_to_clipboard(ClipboardItem::new_string(how.clone()));
-                            })),
+                            }))
+                            // Its own installer, no password: done from here.
+                            .when(p.installable(), |d| {
+                                d.child(
+                                    Button::new(SharedString::from(format!("missing-install-{}", p.command)))
+                                        .label("Install")
+                                        .primary()
+                                        .small()
+                                        .disabled(self.busy.is_some())
+                                        .on_click(cx.listener(|updater, _, _, cx| updater.run(Gesture::Prerequisites, cx))),
+                                )
+                            }),
                     ),
             );
         }
@@ -443,6 +460,14 @@ fn main() {
     };
     // Without a window, and installing nothing: what is missing on the
     // machine, each with how to get it; fails when something is.
+    // The same, and what installs by itself is installed (Claude Code).
+    if std::env::args().any(|a| a == "--prerequisites") {
+        let missing = tvty_updater::prerequisites::ensure(&mut |line| println!("{line}"));
+        if missing.is_empty() {
+            println!("nothing is missing");
+        }
+        std::process::exit(if missing.is_empty() { 0 } else { 1 });
+    }
     if std::env::args().any(|a| a == "--check") {
         let missing = tvty_updater::prerequisites::report(&mut |line| println!("{line}"));
         if missing.is_empty() {

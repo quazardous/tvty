@@ -174,7 +174,8 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     let mut failed = Vec::new();
     // What is missing is said first, with how to get it: without Claude
     // Code, say, everything installs and no loop ever starts.
-    let missing = prerequisites::report(say);
+    // Installed here when it can be without a password (Claude Code).
+    let missing = prerequisites::ensure(say);
     failed.extend(missing.iter().copied());
     // aiball's install clones it and runs on Node.js: not tried without.
     let aiball = match aiball_status().state(Some(MIN_AIBALL)) {

@@ -30,10 +30,13 @@ Vulkan, fontconfig, freetype), and four programs: **git** and **Node.js**
 (aiball's), **tmux** 3.x (the loops in tmux mode) and **Claude Code** (the
 agents themselves; run `claude` once to sign in). The updater checks them
 before it installs anything: its window lists what is missing, each with
-the command to copy for your distribution (dnf, apt, pacman, zypper;
-Claude Code by its own installer, no `sudo`), and `tvty-updater --install`
-says them and fails. It installs none of them for you on Linux.
-`tvty-updater --check` only says what is missing.
+the command to copy for your distribution (dnf, apt, pacman, zypper).
+**Claude Code it installs itself**, by Claude Code's own installer (no
+`sudo`): the **Install** button beside it in the window, and
+`tvty-updater --install` does it first (`tvty-updater --prerequisites`
+does only that). The three others are your package manager's, and need
+your password: the updater names them and `--install` fails while one is
+missing. `tvty-updater --check` only says what is missing.
 
 **Terminal Velocity alone**, without the updater, from the same release:
 
