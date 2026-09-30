@@ -1,0 +1,283 @@
+#!/usr/bin/env python3
+"""fake-agent — an agent on the throwaway aiball, in one command.
+
+    scripts/fake-agent up NAME [--project P] [--bare | --no-loop]
+        The project (P, else NAME without its "-claude"), the agent NAME and
+        its folder with a .aiball.yaml of its own are made; its loop is
+        started on the daemon's host, on fake-claude.
+        --bare: no loop, fake-claude alone in a tmux session of the test
+        server (cl-PROJECT-lead) — a terminal tvty shows as the agent's,
+        whose bar is then whatever `present` pushes.
+        --no-loop: the agent is only declared, idle in its folder (tvty
+        offers to start it).
+    scripts/fake-agent present NAME [KEY=VALUE ...]
+        NAME is kept present, as a loop would keep it, and its bar pushed —
+        for a --bare agent (a loop that runs pushes its own, over this one).
+        Keys set the bar: phase=busy, afk=wait_inf (off, wait_10m, wait_inf),
+        restart_needed=true, zen=true, info="3 tools", model="Opus 5.5", or
+        any field by its path (alerts.link_down=true, prompt.visible=false).
+        Runs in the background until `down`; said again, it replaces itself.
+    scripts/fake-agent down NAME
+        Its loop stopped, its bare session ended, its presence let go. The
+        agent and its folder stay.
+    scripts/fake-agent list
+        The agents kept present by this script.
+
+Only the fake aiball (scripts/fake-aiball): it refuses any other socket —
+its gestures act as the user. Only the standard library.
+"""
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "scripts"))
+from aiballbus import Bus, BusError  # noqa: E402
+
+FAKE = ROOT / "dev" / "fake-aiball"
+SOCK = FAKE / "home" / "sock"
+FOLDERS = FAKE / "demo"
+# The presences kept, a pid each.
+PRESENT = FAKE / "home" / "present"
+USER = "david"
+
+
+def sock():
+    """The fake aiball's socket — and no other."""
+    asked = os.environ.get("AIBALL_SOCK")
+    if asked and Path(asked).resolve() != SOCK.resolve():
+        sys.exit(f"fake-agent: AIBALL_SOCK is {asked}: only the fake aiball ({SOCK}), never another board")
+    if not SOCK.is_socket():
+        sys.exit("fake-agent: the fake aiball is not up (make aiball-up)")
+    return str(SOCK)
+
+
+def call(who, method, params, ok=()):
+    """A call as `who`; an error whose message holds one of `ok` is let by."""
+    bus = Bus(sock(), who)
+    try:
+        return bus.call(method, params)
+    except BusError as error:
+        if any(word in str(error).lower() for word in ok):
+            return None
+        raise
+    finally:
+        bus.close()
+
+
+def folder(name):
+    return FOLDERS / name
+
+
+def tmux(*args):
+    """tmux on the test server (scripts/test-env's), never the user's."""
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+    env["TMUX_TMPDIR"] = str(ROOT / "dev" / "tmux")
+    return subprocess.run(["tmux", *args], env=env, capture_output=True, text=True)
+
+
+def project_of(name, project=None):
+    return project or name.removesuffix("-claude")
+
+
+def bare_session(project):
+    return f"cl-{project}-lead"
+
+
+def up(name, project, loop, bare=False):
+    project = project_of(name, project)
+    call(USER, "consumer.upsert", {"consumer_id": USER, "kind": "human"})
+    call(USER, "project.create", {"name": project, "created_by": USER}, ok=("exist", "already"))
+    call(USER, "consumer.upsert", {"consumer_id": name, "kind": "agent"})
+    cwd = folder(name)
+    cwd.mkdir(parents=True, exist_ok=True)
+    # Its own: a loop refuses a folder whose .aiball.yaml is another agent's.
+    (cwd / ".aiball.yaml").write_text(
+        f"project_type: public\nconsumer:\n  agent: {name}\n  project: {project}\n  role: lead\nautopoll:\n  enabled: true\n"
+    )
+    call(name, "consumer.push_state", {"consumer_id": name, "state": "idle", "cwd": str(cwd), "project": project})
+    said = {"agent": name, "project": project, "cwd": str(cwd), "loop": None}
+    if bare:
+        session = bare_session(project)
+        if tmux("has-session", "-t", f"={session}").returncode:
+            fake_claude = ROOT.parent / "aiball" / "bin" / "fake-claude"
+            made = tmux("new-session", "-d", "-s", session, "-c", str(cwd), "-x", "160", "-y", "48", str(fake_claude))
+            if made.returncode:
+                sys.exit(f"fake-agent: tmux: {made.stderr.strip()}")
+        said["session"] = session
+    elif loop:
+        # On the daemon's host: started by the daemon (on fake-claude), with
+        # nothing of this shell's own loop.
+        answer = call(USER, "session.start", {"cwd": str(cwd), "project": project, "agent": name, "mode": "host"})
+        said["loop"] = answer
+    return said
+
+
+def value(text):
+    """true, 3, null, "text" — else the text itself."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        return text
+
+
+def bar(settings):
+    """The bar a loop would push, `settings` applied."""
+    bar = {
+        "phase": "idle",
+        "presence": "loop",
+        "afk": {"mode": "off", "expires_at": None},
+        "prompt": {"visible": True, "has_input": False},
+        "human_typing": False,
+        "marker": {"info": None, "health_prompt": False, "resume_picker": False, "resume_mode_picker": False},
+        "alerts": {"link_down": False, "daemon_down": False, "not_logged_in": False, "trust_dialog": False,
+                   "api_unreachable": False},
+        "proxy_alive": True,
+        "zen": False,
+        "counters": None,
+        "next_wake_at": None,
+        "boot": None,
+        "host": "tmux",
+        "attach": {"socket": None, "reason": "no_socket"},
+    }
+    for setting in settings:
+        key, _, text = setting.partition("=")
+        if not _:
+            sys.exit(f"fake-agent: {setting}: KEY=VALUE")
+        if key == "afk":
+            bar["afk"]["mode"] = text
+            bar["presence"] = "loop" if text == "off" else "wait"
+        elif key == "info":
+            bar["marker"]["info"] = value(text)
+        elif key == "model":
+            bar["model"] = {"id": str(value(text)).lower().replace(" ", "-"), "name": value(text)}
+        elif key in ("restart_needed", "restart_pending", "limit_reached"):
+            bar["alerts"][key] = value(text)
+        else:
+            at = bar
+            *path, last = key.split(".")
+            for part in path:
+                at = at.setdefault(part, {})
+            at[last] = value(text)
+    return bar
+
+
+def pidfile(name):
+    return PRESENT / f"{name}.pid"
+
+
+def let_go(name):
+    """The presence kept for `name` stopped, by its pid."""
+    file = pidfile(name)
+    if not file.is_file():
+        return False
+    try:
+        pid = int(file.read_text().split()[0])
+        # Ours: a pid reused by something else is left alone.
+        if f"fake-agent\0_hold\0{name}".encode() in Path(f"/proc/{pid}/cmdline").read_bytes():
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, ValueError, IndexError):
+        pass
+    file.unlink(missing_ok=True)
+    return True
+
+
+def present(name, settings):
+    sock()
+    pushed = bar(settings)
+    let_go(name)
+    PRESENT.mkdir(parents=True, exist_ok=True)
+    log = (PRESENT / f"{name}.log").open("ab")
+    keeper = subprocess.Popen(
+        [sys.executable, str(Path(__file__).resolve()), "_hold", name, json.dumps(pushed)],
+        stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True,
+    )
+    pidfile(name).write_text(f"{keeper.pid}\n")
+    # Said once aiball has it present.
+    for _ in range(50):
+        time.sleep(0.1)
+        if keeper.poll() is not None:
+            sys.exit(f"fake-agent: {name}'s presence ended at once, see {PRESENT / (name + '.log')}")
+        consumers = call(USER, "consumer.list", {}) or []
+        rows = consumers if isinstance(consumers, list) else consumers.get("consumers", [])
+        if any(row.get("consumer_id") == name and row.get("present") for row in rows):
+            return {"agent": name, "pid": keeper.pid, "bar": pushed}
+    sys.exit(f"fake-agent: {name} is still not present after 5 s, see {PRESENT / (name + '.log')}")
+
+
+def hold(name, pushed):
+    """Kept present until killed: connected again whenever the bus lets go."""
+    while True:
+        try:
+            bus = Bus(sock(), name, timeout=None)
+            bus.call("bus.subscribe", {"subject": f"agent.{name}.events"})
+            bus.call("consumer.push_bar", {"consumer_id": name, "bar": pushed})
+            bus.serve()
+        except (OSError, BusError) as error:
+            print(f"{name}: {error}", file=sys.stderr, flush=True)
+        time.sleep(1)
+
+
+def down(name):
+    # Its project, as its folder says.
+    project = project_of(name)
+    try:
+        for line in (folder(name) / ".aiball.yaml").read_text().splitlines():
+            if line.strip().startswith("project:"):
+                project = line.split(":", 1)[1].strip()
+    except OSError:
+        pass
+    bare = tmux("kill-session", "-t", f"={bare_session(project)}").returncode == 0
+    stopped = None
+    try:
+        call(USER, "consumer.stop_loop", {"consumer_id": name})
+        stopped = True
+    except BusError as error:
+        stopped = str(error)
+    return {"agent": name, "loop_stopped": stopped, "bare_session_ended": bare, "presence_let_go": let_go(name)}
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    if cmd == "list":
+        names = sorted(f.stem for f in PRESENT.glob("*.pid")) if PRESENT.is_dir() else []
+        print(json.dumps({"present": names}, indent=1))
+        return 0
+    if cmd not in ("up", "present", "down", "_hold") or not rest:
+        print("usage: fake-agent up NAME [--project P] [--bare | --no-loop] | present NAME [KEY=VALUE ...] | down NAME | list", file=sys.stderr)
+        return 2
+    name, rest = rest[0], rest[1:]
+    try:
+        if cmd == "_hold":
+            hold(name, json.loads(rest[0]))
+        elif cmd == "up":
+            project = None
+            if "--project" in rest:
+                at = rest.index("--project")
+                if at + 1 >= len(rest):
+                    print("usage: fake-agent up NAME [--project P] [--bare | --no-loop]", file=sys.stderr)
+                    return 2
+                project = rest[at + 1]
+            print(json.dumps(up(name, project, "--no-loop" not in rest, "--bare" in rest), indent=1))
+        elif cmd == "present":
+            print(json.dumps(present(name, rest), indent=1))
+        else:
+            print(json.dumps(down(name), indent=1))
+    except BusError as error:
+        print(f"fake-agent: {error}", file=sys.stderr)
+        return 1
+    except ConnectionError as error:
+        print(f"fake-agent: the fake aiball does not answer: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

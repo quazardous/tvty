@@ -157,6 +157,26 @@ scripts/aiball-call session.start "{\"cwd\":\"$PWD/dev/fake-aiball/demo/crew\",\
 scripts/aiball-call consumer.afk '{"name":"demo-crew","action":"arm_10m"}'
 ```
 
+**More agents, in one command** — `scripts/fake-agent`, on the fake aiball
+only (it refuses any other socket):
+
+```bash
+scripts/fake-agent up other-claude            # project `other`, its folder, a loop on the host (fake-claude)
+scripts/fake-agent up alpha-claude --bare     # no loop: fake-claude alone in a tmux session (cl-alpha-lead)
+scripts/fake-agent present alpha-claude phase=busy afk=wait_inf restart_needed=true model="Opus 5.5"
+scripts/fake-agent down alpha-claude          # loop stopped, bare session ended, presence let go
+```
+
+`up` makes the project, the agent and its folder with a `.aiball.yaml` of
+its own (a loop refuses a folder whose `.aiball.yaml` is another agent's),
+and has the daemon start the loop — never this shell, which may carry a
+real loop's variables. `present` keeps the agent present (a bar is stale
+unless its agent holds its events' subscription) and pushes the bar said:
+the way to see each chip of the agent bar — the state, the hold, the model,
+`⟳ update` — on a `--bare` agent, whose bar nothing else pushes. `make
+fake-agents` starts two more projects than `demo`, a loop each: what shows
+several groups (the sessions' list, workspaces, the picker).
+
 The test tvty points at it already (`AIBALL_SOCK`: the API and its live
 feed). To open a session at
 start:
