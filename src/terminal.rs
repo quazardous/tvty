@@ -26,8 +26,12 @@ use crate::tip::Tip as _;
 
 use crate::stats;
 
-/// Tried in order for glyphs the main font lacks (emoji, CJK, symbols).
-const FONT_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
+/// Tried in order for glyphs the main font lacks: symbols from tvty's own
+/// font, a cell wide each, then emoji and CJK.
+const FONT_FALLBACKS: &[&str] = &[crate::fonts::SYMBOLS, "Noto Color Emoji", "Noto Sans CJK JP", "Adwaita Mono"];
+/// The same for a character two cells wide (an emoji, CJK): the system's
+/// first, in colour where it has them.
+const WIDE_FALLBACKS: &[&str] = &["Noto Color Emoji", "Noto Sans CJK JP", crate::fonts::SYMBOLS, "Adwaita Mono"];
 /// The terminals' font size, in pixels: by default, and its bounds.
 pub const FONT_SIZE_DEFAULT: f32 = 14.;
 pub const FONT_SIZE_MIN: f32 = 8.;
@@ -1202,7 +1206,9 @@ impl Element for TerminalElement {
             )),
             ..font(crate::fonts::mono())
         };
+        let wide_fallbacks = FontFallbacks::from_fonts(WIDE_FALLBACKS.iter().map(|f| f.to_string()).collect());
         let styled = |flags: Flags| Font {
+            fallbacks: if flags.contains(Flags::WIDE_CHAR) { Some(wide_fallbacks.clone()) } else { regular.fallbacks.clone() },
             weight: if flags.contains(Flags::BOLD) {
                 FontWeight::BOLD
             } else {
@@ -1293,7 +1299,8 @@ impl Element for TerminalElement {
         let flush = |pending: &mut Option<(usize, String, TextRun)>, segments: &mut Vec<Segment>| {
             if let Some((column, text, run)) = pending.take() {
                 if !text.trim().is_empty() {
-                    let line = text_system.shape_line(text.into(), font_size, &[run], None);
+                    // Each glyph on its cell, whatever font it came from.
+                    let line = text_system.shape_line(text.into(), font_size, &[run], Some(cell.width));
                     segments.push(Segment { column, line });
                 }
             }
@@ -1375,9 +1382,17 @@ impl Element for TerminalElement {
                 }
             }
 
+            let mut font = styled(flags);
+            // What the terminals' font lacks is drawn from tvty's symbols
+            // font, asked for by name: a system's fallback would bring its
+            // own, of any width and in colour (Windows looks for fallbacks
+            // among its own fonts only).
+            if !wide && crate::fonts::is_symbol(cell_data.c) {
+                font.family = crate::fonts::SYMBOLS.into();
+            }
             let run = TextRun {
                 len: 0,
-                font: styled(flags),
+                font,
                 color: fg,
                 background_color: None,
                 underline: flags.intersects(Flags::ALL_UNDERLINES).then(|| UnderlineStyle {

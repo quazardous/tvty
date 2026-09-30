@@ -6,8 +6,11 @@
 //! `NotoColorEmoji.ttf` in bitmaps put there colours them.
 
 //!
-//! And the terminals' font, [`mono`]: fixed-width, the first of a few the
-//! machine has.
+//! And the terminals' fonts, which tvty brings itself (`assets/fonts`, each
+//! under the SIL Open Font License): Source Code Pro, and JuliaMono for the
+//! symbols it lacks (Claude Code's spinner, its marks), every one of them a
+//! cell wide. A system's own fonts for those are of any width, and the word
+//! after a spinner moved with each of its characters.
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -20,8 +23,34 @@ pub fn dir() -> Option<PathBuf> {
     Some(crate::config::dir(crate::config::Place::Data)?.join("fonts"))
 }
 
-/// Loads the user's fonts; answers how many.
+/// The fonts tvty brings.
+const OWN: &[&[u8]] = &[
+    include_bytes!("../assets/fonts/SourceCodePro-Regular.ttf"),
+    include_bytes!("../assets/fonts/SourceCodePro-Bold.ttf"),
+    include_bytes!("../assets/fonts/SourceCodePro-It.ttf"),
+    include_bytes!("../assets/fonts/SourceCodePro-BoldIt.ttf"),
+    include_bytes!("../assets/fonts/JuliaMono-Regular.ttf"),
+];
+
+/// The font of the symbols the terminals' font lacks, a cell wide each.
+pub const SYMBOLS: &str = "JuliaMono";
+
+/// Whether `font` (one of tvty's own) draws `c`.
+fn draws(font: &'static [u8], c: char) -> bool {
+    swash::FontRef::from_index(font, 0).is_some_and(|font| font.charmap().map(c) != 0)
+}
+
+/// Whether `c` is a symbol to draw from [`SYMBOLS`]: one the terminals' own
+/// font lacks, and that one has.
+pub fn is_symbol(c: char) -> bool {
+    !c.is_ascii() && mono() == MONO[0] && !draws(OWN[0], c) && draws(OWN[4], c)
+}
+
+/// Loads tvty's own fonts, then the user's; answers how many of the user's.
 pub fn load(cx: &mut App) -> usize {
+    if let Err(error) = cx.text_system().add_fonts(OWN.iter().map(|bytes| Cow::Borrowed(*bytes)).collect()) {
+        log::warn!("tvty's own fonts: {error:#}");
+    }
     let Some(dir) = dir() else { return 0 };
     let Ok(entries) = std::fs::read_dir(&dir) else { return 0 };
     let fonts: Vec<Cow<'static, [u8]>> = entries
@@ -50,10 +79,11 @@ pub fn load(cx: &mut App) -> usize {
     count
 }
 
-/// The terminals' font and those that stand for it, in order: each system
-/// ships some of them, none ships them all. All fixed-width — a terminal's
-/// grid is one width per cell, and a font of another kind (what a system
-/// gives for a name it does not know) leaves the cursor ahead of the text.
+/// The terminals' font — tvty's own — and those that stand for it should it
+/// not load, in order: each system ships some of them, none ships them all.
+/// All fixed-width — a terminal's grid is one width per cell, and a font of
+/// another kind (what a system gives for a name it does not know) leaves the
+/// cursor ahead of the text.
 const MONO: &[&str] = &["Source Code Pro", "Cascadia Mono", "Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Adwaita Mono"];
 
 static CHOSEN: OnceLock<&'static str> = OnceLock::new();
@@ -84,6 +114,18 @@ pub fn mono() -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{MONO, first_installed};
+
+    #[test]
+    fn a_symbol_is_what_the_terminals_font_lacks_and_the_symbols_font_has() {
+        // Claude Code's spinner, and its mark before a message.
+        for c in ['\u{2722}', '\u{2733}', '\u{2736}', '\u{273B}', '\u{273D}', '\u{23FA}'] {
+            assert!(super::is_symbol(c), "{c}");
+        }
+        // Its own letters and marks; a character neither font has.
+        for c in ['m', 'é', '\u{00B7}', '\u{25CF}', '\u{E000}'] {
+            assert!(!super::is_symbol(c), "{c}");
+        }
+    }
 
     #[test]
     fn the_terminals_font_is_the_first_the_machine_has() {
