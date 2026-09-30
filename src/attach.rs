@@ -3,6 +3,11 @@
 //! `attach.sock`. The daemon's session host serves it, and claude-loop's
 //! proxy will too.
 //!
+//! The socket is a path whatever the system. Where there are no Unix
+//! sockets (Windows), the host listens on the loopback and writes where, and
+//! a token, in a file beside the path (`attach.sock.addr`); the client says
+//! the token in its `hello`.
+//!
 //! Frames both ways: `[type: u8][length: u32 BE][payload]`. tvty says
 //! `hello` (interactive, the whole stream), then feeds the `snapshot` and
 //! the `output` to its terminal as a PTY's bytes would be; its keys go as
@@ -10,7 +15,7 @@
 //! `closed`) ends the view, as a PTY's child exiting does.
 
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use alacritty_terminal::event::{Event, EventListener};
@@ -32,9 +37,8 @@ const EXITED: u8 = 0x0a;
 const CLOSED: u8 = 0x0b;
 const ERROR: u8 = 0x0c;
 
-/// The connection to a session (docs/IPC.md): its `attach.sock` today, a
-/// Unix socket — aiball's session host is Unix only for now, and elsewhere
-/// connecting says `Unsupported` at once.
+/// The connection to a session (docs/IPC.md): its `attach.sock`, a Unix
+/// socket, or the loopback port its address file names.
 type Stream = tvty_ipc::Conn;
 
 /// The history the snapshot brings above the screen.
@@ -91,9 +95,9 @@ impl Attach {
     /// and, interactive, takes the focus; answers the stream to read.
     fn open(&self, socket: &Path, interactive: bool) -> anyhow::Result<Stream> {
         let mut tries = 0;
-        let stream = loop {
+        let (stream, token) = loop {
             match dial(socket) {
-                Ok(stream) => break stream,
+                Ok(dialled) => break dialled,
                 Err(error) if tries < READY_TRIES && error.kind() != std::io::ErrorKind::Unsupported => {
                     tries += 1;
                     log::debug!("attach {}: not yet ({error})", socket.display());
@@ -108,19 +112,18 @@ impl Attach {
             self.close();
         }
         let (columns, lines) = *self.size.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))?;
-        self.send(
-            HELLO,
-            json!({
-                "version": 1,
-                "client": "tvty",
-                "mode": if interactive { "interactive" } else { "readonly" },
-                "view": "stream",
-                "scrollback": SCROLLBACK,
-                "size": { "rows": lines, "cols": columns },
-            })
-            .to_string()
-            .as_bytes(),
-        )?;
+        let mut hello = json!({
+            "version": 1,
+            "client": "tvty",
+            "mode": if interactive { "interactive" } else { "readonly" },
+            "view": "stream",
+            "scrollback": SCROLLBACK,
+            "size": { "rows": lines, "cols": columns },
+        });
+        if let Some(token) = token {
+            hello["token"] = Value::String(token);
+        }
+        self.send(HELLO, hello.to_string().as_bytes())?;
         // Opened to be shown: this client's size is the one to use.
         if interactive {
             self.focus();
@@ -175,9 +178,36 @@ impl Attach {
     }
 }
 
-/// The session's `attach.sock`, a path (aiball's contract): a Unix socket.
-fn dial(socket: &Path) -> std::io::Result<Stream> {
-    tvty_ipc::Endpoint::Unix(socket.to_path_buf()).connect()
+/// The file a host that cannot listen on `socket` writes beside it: the
+/// loopback port it listens on, and the token a client must say.
+fn address_file(socket: &Path) -> PathBuf {
+    let mut name = socket.as_os_str().to_os_string();
+    name.push(".addr");
+    PathBuf::from(name)
+}
+
+/// What an address file says: `{ "port": .., "token": ".." }`.
+fn address(text: &str) -> Option<(tvty_ipc::Endpoint, String)> {
+    let value: Value = serde_json::from_str(text).ok()?;
+    let port = u16::try_from(value.get("port")?.as_u64()?).ok().filter(|port| *port != 0)?;
+    let token = value.get("token")?.as_str().filter(|token| !token.is_empty())?;
+    Some((tvty_ipc::Endpoint::Tcp(([127, 0, 0, 1], port).into()), token.to_string()))
+}
+
+/// The session's `attach.sock`, a path (aiball's contract): the port its
+/// address file names, with the token to say, or else the Unix socket.
+fn dial(socket: &Path) -> std::io::Result<(Stream, Option<String>)> {
+    let file = address_file(socket);
+    match std::fs::read_to_string(&file) {
+        Ok(text) => {
+            let (endpoint, token) = address(&text)
+                .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("{}: not a port and a token", file.display())))?;
+            Ok((endpoint.connect()?, Some(token)))
+        }
+        // No Unix sockets here: the host has not written its address yet.
+        Err(error) if !cfg!(unix) => Err(error),
+        Err(_) => Ok((tvty_ipc::Endpoint::Unix(socket.to_path_buf()).connect()?, None)),
+    }
 }
 
 /// The session's side, until it ends: frames to the terminal.
@@ -253,4 +283,168 @@ fn frame(stream: &mut Stream) -> std::io::Result<(u8, Vec<u8>)> {
     let mut payload = vec![0u8; length];
     stream.read_exact(&mut payload)?;
     Ok((head[0], payload))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alacritty_terminal::grid::Dimensions as _;
+    use alacritty_terminal::term::Config;
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    /// Hears of the view's end.
+    #[derive(Clone)]
+    struct Heard(mpsc::Sender<()>);
+
+    impl EventListener for Heard {
+        fn send_event(&self, event: Event) {
+            if matches!(event, Event::Exit) {
+                let _ = self.0.send(());
+            }
+        }
+    }
+
+    fn write(stream: &mut TcpStream, kind: u8, payload: &[u8]) {
+        stream.write_all(&[kind]).unwrap();
+        stream.write_all(&(payload.len() as u32).to_be_bytes()).unwrap();
+        stream.write_all(payload).unwrap();
+    }
+
+    fn read_frame(stream: &mut TcpStream) -> std::io::Result<(u8, Vec<u8>)> {
+        let mut head = [0u8; 5];
+        stream.read_exact(&mut head)?;
+        let mut payload = vec![0u8; u32::from_be_bytes([head[1], head[2], head[3], head[4]]) as usize];
+        stream.read_exact(&mut payload)?;
+        Ok((head[0], payload))
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("tvty-attach-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// A host on the loopback, its address written beside `socket`: it wants
+    /// `token` in the hello, then shows a screen, echoes what is typed, and
+    /// closes on a `q`. Answers what it was told: each hello, and the keys.
+    fn host(socket: &Path, token: &'static str) -> mpsc::Receiver<Value> {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(address_file(socket), json!({ "port": port, "token": token }).to_string()).unwrap();
+        let (told, tells) = mpsc::channel();
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let mut stream = stream.unwrap();
+                let Ok((HELLO, payload)) = read_frame(&mut stream) else { continue };
+                let hello: Value = serde_json::from_slice(&payload).unwrap();
+                let _ = told.send(hello.clone());
+                if hello["token"] != token {
+                    continue;
+                }
+                write(&mut stream, WELCOME, json!({ "version": 1, "size": { "rows": 5, "cols": 20 } }).to_string().as_bytes());
+                write(&mut stream, SNAPSHOT, &[&[0u8; 8][..], b"held by a host"].concat());
+                while let Ok((kind, payload)) = read_frame(&mut stream) {
+                    if kind != INPUT {
+                        continue;
+                    }
+                    let _ = told.send(json!({ "input": String::from_utf8_lossy(&payload) }));
+                    if payload == b"q" {
+                        write(&mut stream, CLOSED, b"{}");
+                        break;
+                    }
+                    write(&mut stream, OUTPUT, &[&[0u8; 8][..], b"\r\n", &payload[..]].concat());
+                }
+            }
+        });
+        tells
+    }
+
+    /// A view's terminal, the way to it, and the word of its end.
+    fn attached(socket: &Path, interactive: bool) -> (Arc<FairMutex<Term<Heard>>>, Arc<Attach>, mpsc::Receiver<()>) {
+        let (heard, ended) = mpsc::channel();
+        let heard = Heard(heard);
+        let term = Arc::new(FairMutex::new(Term::new(Config::default(), &TermSize::new(80, 24), heard.clone())));
+        let attach = Attach::connect(socket, (80, 24), interactive, term.clone(), heard).unwrap();
+        (term, attach, ended)
+    }
+
+    fn line(term: &Arc<FairMutex<Term<Heard>>>, line: i32) -> String {
+        use alacritty_terminal::index::{Column, Line};
+        let term = term.lock();
+        (0..term.columns()).map(|column| term.grid()[Line(line)][Column(column)].c).collect::<String>().trim_end().to_string()
+    }
+
+    /// Waits for the screen's first line to be `text`.
+    fn shows(term: &Arc<FairMutex<Term<Heard>>>, text: &str) -> bool {
+        for _ in 0..100 {
+            if line(term, 0) == text {
+                return true;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        false
+    }
+
+    const WAIT: Duration = Duration::from_secs(10);
+
+    #[test]
+    fn an_address_file_is_a_port_and_a_token() {
+        assert_eq!(address_file(Path::new("/h/s/attach.sock")), PathBuf::from("/h/s/attach.sock.addr"));
+        let (endpoint, token) = address(r#"{"port":4312,"token":"abc"}"#).unwrap();
+        assert_eq!((endpoint.to_string().as_str(), token.as_str()), ("tcp://127.0.0.1:4312", "abc"));
+        for text in ["", "{}", r#"{"port":0,"token":"abc"}"#, r#"{"port":4312}"#, r#"{"port":4312,"token":""}"#, r#"{"port":70000,"token":"abc"}"#] {
+            assert!(address(text).is_none(), "{text}");
+        }
+    }
+
+    #[test]
+    fn a_session_is_attached_by_its_address_file_and_the_keys_held() {
+        let socket = scratch("held").join("attach.sock");
+        let tells = host(&socket, "the-token");
+        let (term, attach, ended) = attached(&socket, true);
+        let hello = tells.recv_timeout(WAIT).unwrap();
+        assert_eq!((hello["token"].as_str(), hello["mode"].as_str()), (Some("the-token"), Some("interactive")));
+        assert!(shows(&term, "held by a host"));
+        // The session's size, not the one this client came with.
+        let size = {
+            let term = term.lock();
+            (term.columns(), term.screen_lines())
+        };
+        assert_eq!(size, (20, 5));
+        // The host echoes a key, and closes on `q`.
+        attach.input(b"k");
+        assert_eq!(tells.recv_timeout(WAIT).unwrap()["input"], "k");
+        attach.input(b"q");
+        ended.recv_timeout(WAIT).unwrap();
+        assert_eq!(line(&term, 1), "k");
+    }
+
+    #[test]
+    fn a_copy_watches_and_sends_no_keys() {
+        let socket = scratch("copy").join("attach.sock");
+        let tells = host(&socket, "the-token");
+        let (term, attach, ended) = attached(&socket, false);
+        assert_eq!(tells.recv_timeout(WAIT).unwrap()["mode"], "readonly");
+        assert!(shows(&term, "held by a host"));
+        attach.input(b"k");
+        assert!(tells.recv_timeout(Duration::from_millis(300)).is_err());
+        // Leaving ends the view; the session goes on.
+        attach.close();
+        ended.recv_timeout(WAIT).unwrap();
+    }
+
+    #[test]
+    fn a_wrong_token_ends_the_view() {
+        let socket = scratch("refused").join("attach.sock");
+        let tells = host(&socket, "the-token");
+        let file = address_file(&socket);
+        std::fs::write(&file, std::fs::read_to_string(&file).unwrap().replace("the-token", "another")).unwrap();
+        let (term, _attach, ended) = attached(&socket, true);
+        assert_eq!(tells.recv_timeout(WAIT).unwrap()["token"], "another");
+        ended.recv_timeout(WAIT).unwrap();
+        assert_eq!(line(&term, 0), "");
+    }
 }

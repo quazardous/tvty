@@ -86,6 +86,17 @@ socket (`loop.list`, `loop.restart`, `loop.wake`, `project.init`,
 to another address. With a token instead, over TCP, aiball refuses those
 calls even to the human.
 
+## A session a host holds
+
+A session says where to attach with a path, `attach.socket`, whatever the
+platform. On Unix that path is the socket. Where there are no Unix sockets
+(Windows), the host listens on a free loopback port and writes
+`{ "port": …, "token": "…" }` in a file beside the path, named after it
+(`attach.sock.addr`), as aiball's loops do for theirs. tvty reads that file,
+connects, and says the token in its `hello`, the first frame of the
+protocol; a host closes a connection that says another. The frames
+themselves are the same on both transports.
+
 ## One tvty per state directory
 
 A second launch hands over to the first through a rendez-vous in the state

@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Windows: tvty can attach to a session a host holds, without psmux, to watch it or to type in it. It waits for aiball's session host to run on Windows, which it does not yet.
 - Windows: the setup line installs only the updater, which installs everything else, Terminal Velocity included; when GitHub's API refuses (too many requests from one address), the updater takes the release's installer by its link.
 - Behind a proxy node (aiball's hub on another machine), tvty shows and manages only this machine's sessions. An option, off by default (Settings > Layout > Sessions > The hub's sessions), lists the hub's sessions too, apart and marked "on hub": read from here (state, tickets), never opened. An agent this machine's own host runs opens there as on the hub.
 
