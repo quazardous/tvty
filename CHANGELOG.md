@@ -35,7 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- The updater no longer says "not installed" of an aiball that is there but whose command fails: it says "installed, but it does not answer", with what the command said, and offers no reinstall.
+- The updater no longer says "not installed" of an aiball that is there but whose command fails: it says "installed, but it does not answer", with what the command said, and its button reads "Reinstall".
 - The last section of a list (tickets, sessions) no longer stays short with blank space under it: a height it got while another section lay below could not be changed.
 - Text in the ticket panel no longer gets selected by itself as the pointer comes over it, after a click whose release was lost (let go outside the window).
 - An agent in its own folder is no longer marked "⚠ …'s folder" (nor refused a start) because another project's agent, long gone, is registered there too.

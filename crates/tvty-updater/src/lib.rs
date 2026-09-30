@@ -46,8 +46,8 @@ pub struct Status {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum State {
     Missing,
-    /// There, but it did not answer when asked its version: installing it
-    /// again would not tell why.
+    /// There, but it did not answer when asked its version (half installed,
+    /// or broken): said as such, and mended by installing it again.
     Silent,
     /// Older than Terminal Velocity needs.
     TooOld,
@@ -187,12 +187,16 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     failed.extend(missing.iter().copied());
     // aiball's install clones it and runs on Node.js: not tried without.
     let aiball = match aiball_status().state(Some(MIN_AIBALL)) {
-        State::Missing | State::TooOld if missing.iter().any(|m| matches!(*m, "git" | "node" | "pwsh")) => {
+        State::Missing | State::TooOld | State::Silent if missing.iter().any(|m| matches!(*m, "git" | "node" | "pwsh")) => {
             Err(anyhow::anyhow!("not installed: it needs what is missing above"))
         }
         State::Missing => install_aiball(say),
         State::TooOld => update_aiball(say),
-        State::Silent => Err(anyhow::anyhow!("it is there, but its command does not answer (try `aiball --json version`)")),
+        // Half installed, or broken: its installer run again mends it.
+        State::Silent => {
+            say("aiball is there, but its command does not answer: installing it again".into());
+            install_aiball(say)
+        }
         _ => {
             say("aiball is installed".into());
             Ok(())

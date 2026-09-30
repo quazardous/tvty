@@ -124,7 +124,8 @@ impl Updater {
         cx.background_executor().spawn(async move {
             let mut say = |line: String| log.lock().expect("the log").push(line);
             let aiball = |say: &mut dyn FnMut(String)| match aiball_state {
-                Some(State::Missing) => tvty_updater::install_aiball(say),
+                // There but silent: its own update would not run either.
+                Some(State::Missing | State::Silent) => tvty_updater::install_aiball(say),
                 _ => tvty_updater::update_aiball(say),
             };
             let result = match gesture {
@@ -271,6 +272,8 @@ impl Updater {
         let busy = self.busy.is_some();
         let action = match state {
             Some(State::Missing) => Some(("Install", Gesture::Install(program))),
+            // Its installer run again mends a half-made install.
+            Some(State::Silent) => Some(("Reinstall", Gesture::Install(program))),
             Some(State::TooOld | State::UpdateAvailable) => Some(("Update", Gesture::Update(program))),
             // Without a latest release known, the update may still be asked.
             Some(State::Unknown) => Some(("Update", Gesture::Update(program))),
@@ -322,7 +325,7 @@ impl Render for Updater {
         let busy = self.busy;
         let anything = [Program::Aiball, Program::Tvty]
             .iter()
-            .any(|p| matches!(self.state(*p), Some(State::Missing | State::TooOld | State::UpdateAvailable)));
+            .any(|p| matches!(self.state(*p), Some(State::Missing | State::Silent | State::TooOld | State::UpdateAvailable)));
         div()
             .size_full()
             .flex()
