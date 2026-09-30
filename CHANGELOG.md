@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The terminal no longer shows thin dark lines between cells of one background colour (a status bar), seen at display scales where a cell is not a whole number of pixels (125 %).
+- Settings > Layout > Sides: its frames are as wide as the others, its switches in their column.
+- Windows: what the updater keeps in its log, and what its Copy takes, reads the same as on screen and may be pasted anywhere: colour codes taken out, the home folder written `~`, Windows' line ends. The line that updates a development aiball by hand is said to be for PowerShell.
 - The terminals' font comes with Terminal Velocity (Source Code Pro, and JuliaMono for the symbols it lacks), the same on every system. On Windows the text was of variable width, the cursor ran ahead of it, and the word after Claude Code's spinner moved with each of its characters; each character now stands on its cell.
 - Windows: the title bar's buttons (menu, themes, message to every agent, settings) answer a single click; they needed a double one.
 - Windows: no console window flashes any more while tvty runs (one opened and closed each time tvty asked psmux for its sessions).
