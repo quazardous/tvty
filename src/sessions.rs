@@ -117,7 +117,17 @@ pub fn place(c: &Consumer, mine: Option<&str>, known: &[crate::loops::KnownLoop]
 /// The agents as this machine sees them, and those of the hub apart: an
 /// agent working elsewhere keeps no session here — one another machine
 /// holds cannot be attached from this one — and its folder is not offered.
-fn placed(consumers: Vec<Consumer>, mine: Option<&str>, known: &[crate::loops::KnownLoop]) -> (Vec<Consumer>, Vec<HubAgent>) {
+/// `held`: the sessions this machine's host holds for agents
+/// (`Live::agent_sessions`). Behind a proxy node the hub does not say them
+/// with the agent: an agent of this machine takes its own from there.
+fn placed(
+    consumers: Vec<Consumer>,
+    mine: Option<&str>,
+    known: &[crate::loops::KnownLoop],
+    held: &[(String, crate::aiball::HostedSession)],
+) -> (Vec<Consumer>, Vec<HubAgent>) {
+    // A session another machine holds is not attached from this one.
+    let attachable = |s: &crate::aiball::HostedSession| mine.is_none() || s.machine.is_none() || s.machine.as_deref() == mine;
     let mut hub = Vec::new();
     let consumers = consumers
         .into_iter()
@@ -130,8 +140,13 @@ fn placed(consumers: Vec<Consumer>, mine: Option<&str>, known: &[crate::loops::K
                 hub.push(HubAgent { agent: c.consumer_id.clone(), project: c.project.clone(), status: status_of(&c) });
             }
             c.remote = Some(place != Place::Here);
-            if place != Place::Here {
+            if place != Place::Here || c.session.as_ref().is_some_and(|s| !attachable(s)) {
                 c.session = None;
+            }
+            if place == Place::Here && c.session.as_ref().and_then(|s| s.socket()).is_none() {
+                if let Some((_, session)) = held.iter().find(|(agent, s)| *agent == c.consumer_id && s.socket().is_some() && attachable(s)) {
+                    c.session = Some(session.clone());
+                }
             }
             c
         })
@@ -182,7 +197,7 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 /// machine. Cheap: nothing is read from aiball.
 /// `mine`: this machine, as aiball names it ([`place`]).
 pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>, mine: Option<&str>) -> Board {
-    let (consumers, hub) = placed(live.consumers(), mine, &known);
+    let (consumers, hub) = placed(live.consumers(), mine, &known, &live.agent_sessions());
     // Whom each loop's tmux session runs for, as aiball lists its loops.
     let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
@@ -210,7 +225,8 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
     // its agents; the others together, before tmux's.
     let folders = folders(&board.homes, &board.known);
     let mut hosted = Vec::new();
-    for t in live.terminals() {
+    // A terminal another machine's host holds is not opened from this one.
+    for t in live.terminals().into_iter().filter(|t| mine.is_none() || t.machine.is_none() || t.machine.as_deref() == mine) {
         let terminal = Terminal {
             session: format!("{HOSTED_PREFIX}{}", t.name),
             label: t.name,
@@ -527,7 +543,7 @@ mod tests {
         mine.remote = Some(true);
         let mut beside = agent("beside", "C:\\w\\app", json!(null));
         beside.machine = Some("node:other".into());
-        let (seen, on_hub) = placed(vec![hub, mine, beside], Some("node:laptop"), &[]);
+        let (seen, on_hub) = placed(vec![hub, mine, beside], Some("node:laptop"), &[], &[]);
         assert_eq!(on_hub.iter().map(|h| h.agent.as_str()).collect::<Vec<_>>(), ["hub-agent"], "the hub's alone: not a node beside");
         assert!(seen[0].session.is_none(), "a session the hub holds cannot be attached from here");
         assert_eq!(seen.iter().map(|c| c.remote).collect::<Vec<_>>(), [Some(true), Some(false), Some(true)]);
@@ -536,6 +552,25 @@ mod tests {
         let labels: Vec<&str> = projects.iter().flat_map(|p| &p.terminals).map(|t| t.label.as_str()).collect();
         assert_eq!(labels, ["mine"]);
         assert_eq!(homes(&seen).iter().map(|h| h.0.as_str()).collect::<Vec<_>>(), ["mine"]);
+    }
+
+    #[test]
+    fn behind_a_node_an_agents_session_is_the_one_its_own_host_holds() {
+        let held = |agent: &str, machine: &str| {
+            let session: crate::aiball::HostedSession =
+                serde_json::from_value(json!({ "running": true, "machine": machine, "attach": { "socket": format!("/h/{agent}/attach.sock") } })).unwrap();
+            (agent.to_string(), session)
+        };
+        // As the hub says it: connected from this node, no session with it.
+        let mut mine = agent("mine", "/w/app", json!(null));
+        mine.machine = Some("node:laptop".into());
+        let (seen, _) = placed(vec![mine.clone()], Some("node:laptop"), &[], &[held("mine", "node:laptop"), held("other", "node:laptop")]);
+        assert_eq!(seen[0].session.as_ref().and_then(|s| s.socket()), Some("/h/mine/attach.sock"));
+        let projects = group(Vec::new(), &seen, &HashMap::new());
+        assert_eq!(projects[0].terminals[0].attach.as_deref(), Some("/h/mine/attach.sock"), "opened over its host's socket");
+        // A session another machine holds is not this machine's to attach.
+        let (seen, _) = placed(vec![mine], Some("node:laptop"), &[], &[held("mine", "hub")]);
+        assert!(seen[0].session.is_none());
     }
 
     #[test]

@@ -89,7 +89,11 @@ in the terminal's place, a page saying whose session it is, how it is doing
 and that it runs on the hub; its project's tickets in the panel; "on hub"
 in the window's title. No start, no stop, no hold is offered on them. The
 sessions of other nodes are never listed. "Message every agent" is not
-offered behind a node (aiball refuses it there).
+offered behind a node (aiball refuses it there). A session is attached
+from the machine that holds it, and from no other: behind a node, an
+agent's session on the host is the one the node's own host holds (the
+node serves its sessions itself; the hub's view of the agent does not
+carry it).
 
 A click on a project's name, in any of
 the three, shows its tickets in the panel with no session opened ("no

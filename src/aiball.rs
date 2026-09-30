@@ -156,6 +156,10 @@ pub struct HostedSession {
     /// Those of them with the controls (a tmux loop's; a host does not say).
     #[serde(default)]
     pub interactive: Option<u32>,
+    /// The machine that holds it, as aiball names them: attached to from
+    /// that machine only.
+    #[serde(default)]
+    pub machine: Option<String>,
 }
 
 /// Where a client attaches: a socket on this machine, or none (`reason`).

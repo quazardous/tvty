@@ -87,6 +87,8 @@ pub struct HostedTerminal {
     pub socket: String,
     /// Where it started: what places it with a project.
     pub cwd: Option<String>,
+    /// The machine that holds it, when aiball says.
+    pub machine: Option<String>,
 }
 
 /// Subscribing: what to call, and how to take the answers back.
@@ -557,8 +559,20 @@ impl Live {
                     name: name.clone(),
                     socket: s.pointer("/attach/socket")?.as_str()?.to_string(),
                     cwd: s.get("cwd").and_then(Value::as_str).map(str::to_string),
+                    machine: s.get("machine").and_then(Value::as_str).map(str::to_string),
                 })
             })
+            .collect()
+    }
+
+    /// The sessions the host that answers holds for agents, by agent.
+    /// Behind a proxy node they are the node's own (it serves `session.list`
+    /// and the sessions' feed for its machine), which the hub's view of an
+    /// agent does not carry.
+    pub fn agent_sessions(&self) -> Vec<(String, crate::aiball::HostedSession)> {
+        self.sessions
+            .values()
+            .filter_map(|s| Some((s.get("agent")?.as_str()?.to_string(), serde_json::from_value(s.clone()).ok()?)))
             .collect()
     }
 

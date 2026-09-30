@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Behind a proxy node (aiball's hub on another machine), tvty shows and manages only this machine's sessions. An option, off by default (Settings > Layout > Sessions > The hub's sessions), lists the hub's sessions too, apart and marked "on hub": read from here (state, tickets), never opened.
+- Behind a proxy node (aiball's hub on another machine), tvty shows and manages only this machine's sessions. An option, off by default (Settings > Layout > Sessions > The hub's sessions), lists the hub's sessions too, apart and marked "on hub": read from here (state, tickets), never opened. An agent this machine's own host runs opens there as on the hub.
 
 ## [0.8.0-beta.1] - 2026-09-30
 
