@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The last section of a list (tickets, sessions) no longer stays short with blank space under it: a height it got while another section lay below could not be changed.
 - Text in the ticket panel no longer gets selected by itself as the pointer comes over it, after a click whose release was lost (let go outside the window).
 - An agent in its own folder is no longer marked "⚠ …'s folder" (nor refused a start) because another project's agent, long gone, is registered there too.
 - The Windows setup installs its prerequisites where there is no Microsoft Store (winget then installed nothing), and no longer says "done" when aiball is installed but its daemon does not answer.

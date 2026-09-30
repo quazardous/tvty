@@ -1053,6 +1053,7 @@ impl TicketPanel {
             let section = crate::accordion::Section {
                 list: "tickets".into(),
                 above: above.replace(id.clone()),
+                last: end == rows.len(),
                 id,
                 title: band.title().to_string(),
                 count,

@@ -139,6 +139,7 @@ impl Shell {
             let section = crate::accordion::Section {
                 list: "sessions".into(),
                 above: (i > 0).then(|| SharedString::from(format!("sessions-{}", groups[i - 1].0))),
+                last: i + 1 == groups.len(),
                 id: SharedString::from(format!("sessions-{word}")),
                 title: word.to_string(),
                 count,

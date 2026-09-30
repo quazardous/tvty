@@ -20,7 +20,8 @@ use crate::theme::p;
 //
 // Dragging a section's title moves the border with the section above: that
 // one gets a height of its own, kept by `list/section`. The others keep
-// their share. A double click on a title gives the list its shares back.
+// their share, and the last section always does: a height it got while
+// another lay below would be one nothing could change. A double click on a title gives the list its shares back.
 
 fn heights_store() -> &'static Mutex<HashMap<String, f32>> {
     static HEIGHTS: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
@@ -109,6 +110,9 @@ pub struct Section {
     /// dragging its title sets that one's height.
     pub list: SharedString,
     pub above: Option<SharedString>,
+    /// The list's last section: no title below to drag, so it never keeps
+    /// a height of its own — it takes what the others leave.
+    pub last: bool,
     pub id: SharedString,
     pub title: String,
     pub count: usize,
@@ -158,9 +162,9 @@ pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<
 impl Section {
     /// The section, its title folding it through `on_toggle`.
     pub fn render(self, on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Div {
-        let Self { list, above, id, title, count, folded, keep, scroll, body, before, after, windowed } = self;
+        let Self { list, above, last, id, title, count, folded, keep, scroll, body, before, after, windowed } = self;
         let least = TITLE_HEIGHT + if folded { 0. } else { keep };
-        let height = (!folded)
+        let height = (!folded && !last)
             .then(|| heights_store().lock().ok()?.get(&key(&list, &id)).copied())
             .flatten()
             .map(|h| h.max(least));
