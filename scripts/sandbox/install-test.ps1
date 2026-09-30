@@ -8,7 +8,8 @@
 #              on no window's screenshot)
 #   done       written last
 # With a `release` folder beside it, the release's files come from there
-# (a local build); without, from the published release.
+# (a local build); without, from the published release. With an
+# `aiball-ref.txt`, aiball is installed at that tag or branch.
 $here = 'C:\tvty-home\install-test'
 Remove-Item "$here\done" -ErrorAction SilentlyContinue
 Start-Transcript -Path "$here\out.txt" -Force | Out-Null
@@ -40,6 +41,10 @@ if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
 
 Step 'tvty-setup.ps1, through iex'
 if (Test-Path "$here\release") { $env:TVTY_SETUP_FROM = "$here\release" }
+if (Test-Path "$here\aiball-ref.txt") {
+    $env:TVTY_AIBALL_REF = (Get-Content "$here\aiball-ref.txt" -Raw).Trim()
+    "aiball at: $env:TVTY_AIBALL_REF"
+}
 Get-Content -Raw "$here\tvty-setup.ps1" | Invoke-Expression
 
 Step 'what is there'
@@ -52,6 +57,13 @@ foreach ($command in 'git', 'node', 'pwsh', 'psmux', 'aiball', 'tvty', 'tvty-upd
 "tvty: " + (& "$HOME\.local\bin\tvty.exe" --version | Out-String).Trim()
 "aiball: " + (cmd /c "aiball --json version" 2>&1 | Out-String).Trim()
 Copy-Item "$env:LOCALAPPDATA\tvty\setup.log" "$here\setup.log" -ErrorAction SilentlyContinue
+
+Step 'aiball, once it had time to start'
+Start-Sleep -Seconds 20
+"daemon: " + $(try { (Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:7777/api/health' -TimeoutSec 5).Content.Substring(0, 60) } catch { "no answer ($_)" })
+"processes: " + ((Get-Process node, conhost, wscript, powershell, pwsh -ErrorAction SilentlyContinue | Group-Object ProcessName | ForEach-Object { "$($_.Name) x$($_.Count)" }) -join ', ')
+"task: " + ((Get-ScheduledTask -TaskName aiball-daemon -ErrorAction SilentlyContinue | ForEach-Object { "$($_.State): $($_.Actions[0].Execute) $($_.Actions[0].Arguments)" }) -join '; ')
+"vbs left: " + ((Get-ChildItem "$env:LOCALAPPDATA\aiball\*.vbs" -ErrorAction SilentlyContinue | ForEach-Object Name) -join ', ')
 
 Step 'the desktop'
 try {

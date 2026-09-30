@@ -69,7 +69,10 @@ wbox's interpreter, as `wbox_ctl.py`) boots a fresh sandbox *with* a network
 none), and runs `packaging/windows/tvty-setup.ps1` as a user does, through
 `iex`: the prerequisites, tvty and its updater, aiball. `--from
 target/distrib` makes it install a local build (`dist build --artifacts=all
---target x86_64-pc-windows-msvc`) instead of the published release. It
+--target x86_64-pc-windows-msvc`) instead of the published release;
+`--aiball-ref REF` makes it install aiball at a tag or a branch rather than
+its latest release (the updater's `TVTY_AIBALL_REF`), to try a fix of
+aiball before it is released. It
 prints the steps as they come and leaves in
 `dev/tvty-wbox-win/home/install-test`: `out.txt` (everything said),
 `setup.log` (the script's own log), and `desk.png`, **the sandbox's whole
