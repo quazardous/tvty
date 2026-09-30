@@ -98,10 +98,10 @@ pub enum Place {
 /// (`bus.whoami`), and an agent's `machine` where its loop is connected:
 /// the same, it is here. Without a loop connected an agent says no machine:
 /// on the hub, aiball's `remote` stands (it is the hub's own view); on
-/// another machine nothing says where it lives, and tvty does not guess —
-/// it is not this machine's. An aiball that names no machine: its `remote`
-/// stands.
-pub fn place(c: &Consumer, mine: Option<&str>) -> Place {
+/// another machine it is here when this machine knows a loop of it
+/// (`loop.list` is answered for this machine alone). An aiball that names
+/// no machine: its `remote` stands.
+pub fn place(c: &Consumer, mine: Option<&str>, known: &[crate::loops::KnownLoop]) -> Place {
     let as_aiball_says = if c.remote == Some(true) { Place::Elsewhere } else { Place::Here };
     let Some(mine) = mine else { return as_aiball_says };
     match c.machine.as_deref() {
@@ -109,6 +109,7 @@ pub fn place(c: &Consumer, mine: Option<&str>) -> Place {
         Some(HUB) => Place::Hub,
         Some(_) => Place::Elsewhere,
         None if mine == HUB => as_aiball_says,
+        None if known.iter().any(|l| l.agent.as_deref() == Some(c.consumer_id.as_str())) => Place::Here,
         None => Place::Elsewhere,
     }
 }
@@ -116,7 +117,7 @@ pub fn place(c: &Consumer, mine: Option<&str>) -> Place {
 /// The agents as this machine sees them, and those of the hub apart: an
 /// agent working elsewhere keeps no session here — one another machine
 /// holds cannot be attached from this one — and its folder is not offered.
-fn placed(consumers: Vec<Consumer>, mine: Option<&str>) -> (Vec<Consumer>, Vec<HubAgent>) {
+fn placed(consumers: Vec<Consumer>, mine: Option<&str>, known: &[crate::loops::KnownLoop]) -> (Vec<Consumer>, Vec<HubAgent>) {
     let mut hub = Vec::new();
     let consumers = consumers
         .into_iter()
@@ -124,7 +125,7 @@ fn placed(consumers: Vec<Consumer>, mine: Option<&str>) -> (Vec<Consumer>, Vec<H
             if c.kind != "agent" {
                 return c;
             }
-            let place = place(&c, mine);
+            let place = place(&c, mine, known);
             if place == Place::Hub {
                 hub.push(HubAgent { agent: c.consumer_id.clone(), project: c.project.clone(), status: status_of(&c) });
             }
@@ -181,7 +182,7 @@ pub fn found(words: &[String], fields: &[&str]) -> bool {
 /// machine. Cheap: nothing is read from aiball.
 /// `mine`: this machine, as aiball names it ([`place`]).
 pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: Vec<crate::loops::KnownLoop>, mine: Option<&str>) -> Board {
-    let (consumers, hub) = placed(live.consumers(), mine);
+    let (consumers, hub) = placed(live.consumers(), mine, &known);
     // Whom each loop's tmux session runs for, as aiball lists its loops.
     let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
@@ -498,23 +499,23 @@ mod tests {
             c.remote = remote;
             c
         };
+        let known = [crate::loops::KnownLoop { name: "cl-a".into(), agent: Some("a".into()), ..Default::default() }];
         let node = Some("node:laptop");
         // Behind a node: its own, the hub's, a node beside it.
-        assert_eq!(place(&on(Some("node:laptop"), Some(true)), node), Place::Here);
-        assert_eq!(place(&on(Some(HUB), Some(false)), node), Place::Hub);
-        assert_eq!(place(&on(Some("node:other"), Some(true)), node), Place::Elsewhere);
-        // No loop connected: nothing says where it lives, not guessed.
-        assert_eq!(place(&on(None, Some(true)), node), Place::Elsewhere);
-        assert_eq!(place(&on(None, Some(false)), node), Place::Elsewhere);
+        assert_eq!(place(&on(Some("node:laptop"), Some(true)), node, &[]), Place::Here);
+        assert_eq!(place(&on(Some(HUB), Some(false)), node, &[]), Place::Hub);
+        assert_eq!(place(&on(Some("node:other"), Some(true)), node, &[]), Place::Elsewhere);
+        // No loop connected: here when this machine knows a loop of it.
+        assert_eq!(place(&on(None, Some(true)), node, &known), Place::Here);
+        assert_eq!(place(&on(None, Some(false)), node, &[]), Place::Elsewhere);
         // On the hub: a node's agent is elsewhere; without a loop, aiball's
         // `remote` stands (it is the hub's view).
-        assert_eq!(place(&on(Some(HUB), None), Some(HUB)), Place::Here);
-        assert_eq!(place(&on(Some("node:laptop"), Some(true)), Some(HUB)), Place::Elsewhere);
-        assert_eq!(place(&on(None, Some(true)), Some(HUB)), Place::Elsewhere);
-        assert_eq!(place(&on(None, None), Some(HUB)), Place::Here);
+        assert_eq!(place(&on(Some(HUB), None), Some(HUB), &[]), Place::Here);
+        assert_eq!(place(&on(Some("node:laptop"), Some(true)), Some(HUB), &[]), Place::Elsewhere);
+        assert_eq!(place(&on(None, Some(true)), Some(HUB), &[]), Place::Elsewhere);
+        assert_eq!(place(&on(None, None), Some(HUB), &[]), Place::Here);
         // An aiball that names no machine: its `remote` stands.
-        assert_eq!(place(&on(None, Some(true)), None), Place::Elsewhere);
-        assert_eq!(place(&on(None, None), None), Place::Here);
+        assert_eq!(place(&on(None, Some(true)), None, &known), Place::Elsewhere);
     }
 
     #[test]
@@ -526,7 +527,7 @@ mod tests {
         mine.remote = Some(true);
         let mut beside = agent("beside", "C:\\w\\app", json!(null));
         beside.machine = Some("node:other".into());
-        let (seen, on_hub) = placed(vec![hub, mine, beside], Some("node:laptop"));
+        let (seen, on_hub) = placed(vec![hub, mine, beside], Some("node:laptop"), &[]);
         assert_eq!(on_hub.iter().map(|h| h.agent.as_str()).collect::<Vec<_>>(), ["hub-agent"], "the hub's alone: not a node beside");
         assert!(seen[0].session.is_none(), "a session the hub holds cannot be attached from here");
         assert_eq!(seen.iter().map(|c| c.remote).collect::<Vec<_>>(), [Some(true), Some(false), Some(true)]);
