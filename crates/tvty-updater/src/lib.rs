@@ -178,6 +178,9 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
             Ok(())
         }
     };
+    // Installed is not running: its daemon must answer, or tvty has
+    // nothing to talk to.
+    let aiball = aiball.and_then(|()| aiball_answers(say));
     if let Err(error) = aiball {
         say(format!("✗ aiball: {error:#}"));
         failed.push("aiball");
@@ -196,6 +199,18 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     }
     anyhow::ensure!(failed.is_empty(), "not installed: {}", failed.join(", "));
     Ok(())
+}
+
+/// aiball's daemon answers: waited for a little, as its install starts it.
+fn aiball_answers(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+    for _ in 0..10 {
+        if let Some(version) = aiball_status().running {
+            say(format!("aiball's daemon answers ({version})"));
+            return Ok(());
+        }
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    }
+    bail!("it is installed, but its daemon does not answer (`aiball --json version` says why; its log is named by its installer)")
 }
 
 /// Puts back the version kept by the last update.
@@ -349,7 +364,7 @@ pub fn install_aiball(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         run(Command::new("git").args(["checkout", &tag]).current_dir(&dir), say)?;
     } else {
         std::fs::create_dir_all(dir.parent().expect("a parent"))?;
-        run(Command::new("git").args(["clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
+        run(Command::new("git").args(["-c", "advice.detachedHead=false", "clone", "--depth", "1", "--branch", &tag, AIBALL_REPO]).arg(&dir), say)?;
     }
     if cfg!(windows) {
         // PowerShell 7 (`pwsh`), as aiball's Windows install says.

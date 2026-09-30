@@ -10,7 +10,9 @@
 #    Start menu's shortcuts.
 #
 # It tries everything and says what failed; run it again once that is fixed,
-# it skips what is there. TVTY_SETUP_FROM: where the release's files are
+# it skips what is there. Everything it says and everything the installers
+# say is also kept in %LOCALAPPDATA%/tvty/setup.log (your home folder
+# written ~): the file to attach to an issue. TVTY_SETUP_FROM: where the release's files are
 # (a URL, or a folder), to try a build before it is released.
 #
 # ASCII only: Windows PowerShell 5.1 reads a script without a BOM as ANSI.
@@ -28,7 +30,33 @@
     $bin = Join-Path $HOME '.local\bin'
     $failed = @()
 
-    function Say($text) { Write-Host "tvty-setup: $text" }
+    # The log of this run: what the console shows, colour codes removed and
+    # the home folder written ~ (it names the user).
+    $logDir = Join-Path $env:LOCALAPPDATA 'tvty'
+    $log = Join-Path $logDir 'setup.log'
+    New-Item -ItemType Directory -Force $logDir | Out-Null
+    Set-Content -LiteralPath $log -Value $null -Encoding UTF8
+    $escape = [string][char]27 + '\[[0-9;]*[A-Za-z]'
+
+    function Write-Line($text) {
+        Write-Host $text
+        $kept = ([string]$text -replace $escape, '').Replace($HOME, '~')
+        Add-Content -LiteralPath $log -Value $kept -Encoding UTF8
+    }
+    function Say($text) { Write-Line "tvty-setup: $text" }
+
+    # Runs a program, each line it writes (errors too) shown and logged.
+    # What it writes on its error output is said, not thrown: under 'Stop',
+    # PowerShell 5.1 would end the script on the first such line.
+    # The pipe is on the program itself: through a script block, PowerShell
+    # neither waits for a window program (the updater) nor reads what it says.
+    function Invoke-Logged($program, [string[]]$arguments) {
+        $ErrorActionPreference = 'Continue'
+        & $program @arguments 2>&1 | ForEach-Object { Write-Line "  $_" }
+    }
+
+    Say "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss'), from $from"
+    Say "Windows $([Environment]::OSVersion.Version), PowerShell $($PSVersionTable.PSVersion)"
 
     # The PATH as the registry has it now: what winget just installed shows.
     function Update-Path {
@@ -56,6 +84,7 @@
         @{ Command = 'psmux'; Id = 'marlocarlo.psmux';     For = 'the loops in tmux mode' }
     )
     $winget = Get-Command winget -ErrorAction SilentlyContinue
+    Say "winget: $(if ($winget) { winget --version } else { 'none' })"
     foreach ($need in $needed) {
         if (Get-Command $need.Command -ErrorAction SilentlyContinue) {
             Say "$($need.Command): there"
@@ -67,7 +96,9 @@
             continue
         }
         Say "installing $($need.Command) ($($need.Id)), for $($need.For)..."
-        winget install --id $need.Id --exact --silent --accept-package-agreements --accept-source-agreements --disable-interactivity | Out-Host
+        # --source winget: the Store's source, asked too by default, fails
+        # where there is no Store, and winget then installs nothing.
+        Invoke-Logged winget 'install', '--id', $need.Id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity'
         Update-Path
         if (-not (Get-Command $need.Command -ErrorAction SilentlyContinue)) {
             Say "$($need.Command) did not install (winget said $LASTEXITCODE)"
@@ -85,7 +116,7 @@
                 # A folder: the installer takes its archive from there too.
                 Set-Item "Env:${prefix}_DOWNLOAD_URL" ([Uri](Resolve-Path -LiteralPath $from).Path).AbsoluteUri
             }
-            & powershell -NoProfile -ExecutionPolicy Bypass -File $installer | Out-Host
+            Invoke-Logged powershell '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $installer
             if ($LASTEXITCODE) { throw "its installer said $LASTEXITCODE" }
         } catch {
             Say "$app did not install: $_"
@@ -98,20 +129,17 @@
     $updater = Join-Path $bin 'tvty-updater.exe'
     if (Test-Path -LiteralPath $updater) {
         Say 'installing aiball and the Start menu shortcuts...'
-        # What it writes on its error output is said, not thrown: under
-        # 'Stop', PowerShell 5.1 would end the script on its first line.
-        $ErrorActionPreference = 'Continue'
-        & $updater --install 2>&1 | ForEach-Object { Say "  $_" }
-        $code = $LASTEXITCODE
-        $ErrorActionPreference = 'Stop'
-        if ($code) { $failed += 'aiball or the shortcuts (the lines above say which)' }
+        Invoke-Logged $updater '--install'
+        if ($LASTEXITCODE) { $failed += 'aiball or the shortcuts (the lines above say which)' }
     } else {
         $failed += 'aiball and the shortcuts (no updater to install them)'
     }
 
     if ($failed.Count) {
         Say "not everything is in place: $($failed -join ', '). Fix it and run this again: what is there is skipped."
+        Say "the log of this run, to attach to an issue (https://github.com/quazardous/tvty/issues): $log"
         return
     }
     Say 'done. Terminal Velocity is in the Start menu; its updater keeps it and aiball up to date.'
+    Say "the log of this run: $log"
 }

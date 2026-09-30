@@ -74,6 +74,11 @@ programs in the Start menu. It says what failed, if anything; run it again
 once that is fixed, it skips what is there. Without winget (Windows
 Sandbox, some LTSC editions) it names what to install by hand.
 
+Everything it says, and everything the installers say, is also kept in
+`%LOCALAPPDATA%\tvty\setup.log` (your home folder written `~`): when it goes
+wrong, that is the file to attach to an
+[issue](https://github.com/quazardous/tvty/issues).
+
 `tvty-updater --install` does its last part alone: aiball when missing,
 Terminal Velocity, the shortcuts. Settings live in `%APPDATA%\tvty`, the
 layout and the log in `%LOCALAPPDATA%\tvty`.
