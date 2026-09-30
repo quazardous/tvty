@@ -63,6 +63,19 @@ when the sandbox is not there.
 For now tvty there has no aiball (its socket is Unix only), no session
 host and no multiplexer: the window, its settings and its panels.
 
+**The Windows setup, whole.** `scripts/sandbox_install_test.py` (under
+wbox's interpreter, as `wbox_ctl.py`) boots a fresh sandbox *with* a network
+(`dev/tvty-wbox-win/install.yaml`), installs winget in it (a sandbox has
+none), and runs `packaging/windows/tvty-setup.ps1` as a user does, through
+`iex`: the prerequisites, tvty and its updater, aiball. `--from
+target/distrib` makes it install a local build (`dist build --artifacts=all
+--target x86_64-pc-windows-msvc`) instead of the published release. It
+prints the steps as they come and leaves in
+`dev/tvty-wbox-win/home/install-test`: `out.txt` (everything said),
+`setup.log` (the script's own log), and `desk.png`, **the sandbox's whole
+desktop** — a window's screenshot does not show an error dialog another
+program raised; this one does. About ten minutes.
+
 ## Something to attach to
 
 `scripts/fake-loop` starts plain tmux sessions, no tokens spent:
