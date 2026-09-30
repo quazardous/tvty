@@ -320,6 +320,8 @@ impl TicketPanel {
             "ticket": self.detail.as_ref().map(|d| d.ticket),
             "full": self.is_full(),
             "editing": self.editing.map(|e| format!("{e:?}")),
+            "editing_text": self.editing_text,
+            "text_error": self.text_error,
             "menu": self.detail.as_ref().and_then(|d| d.menu).map(|m| format!("{m:?}")),
         })
     }

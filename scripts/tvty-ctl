@@ -13,7 +13,9 @@
     scripts/tvty-ctl key KEYS           a keystroke, as the keymap writes it (ctrl-enter)
     scripts/tvty-ctl type TEXT          TEXT typed
     scripts/tvty-ctl wait ID [MS]       until ID is on screen (5000 ms at most)
-    scripts/tvty-ctl state              the page, the terminal, the panel, the bus
+    scripts/tvty-ctl state              the page, the terminal, the panel, the bus, what is open in the views
+    scripts/tvty-ctl ready [MS]         until the control answers, after a launch (20000 ms at most)
+    scripts/tvty-ctl paste-image FILE   FILE put in the test compositor's clipboard, then Ctrl+V
     scripts/tvty-ctl inspector          GPUI's inspector, on or off (debug builds)
     scripts/tvty-ctl bus-reconnect      the bus dropped and connected again
     scripts/tvty-ctl fault KIND         KIND's next subscribing fails once (Tickets…)
@@ -22,12 +24,15 @@ tvty listens only when TVTY_DEBUG_CONTROL is set, as scripts/test-env sets
 it: a test tvty, never the user's. The rendez-vous is in tvty's state directory: a Unix socket
 (tvty-control.sock), or on Windows the file with a loopback port and its
 secret (tvty-control.addr). Only the standard library.
-Prints the answer as JSON; exits 1 on an error.
+Prints the answer as JSON; exits 1 on an error, 2 on a command misused.
 """
 import json
 import os
+import shutil
 import socket
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -75,20 +80,118 @@ def request(command):
     return json.loads(data.decode())
 
 
-def main(argv):
-    if not argv or argv[0] in ("-h", "--help"):
-        print(__doc__.strip())
-        return 0
-    cmd, rest = argv[0], argv[1:]
+# Each command: the arguments it takes (the last ones in brackets may be
+# left out), as its usage line says them.
+USAGE = {
+    "tree": "[--text] [PREFIX]",
+    "query": "[PREFIX]",
+    "text": "ID",
+    "wait-text": "ID TEXT [MS]",
+    "where": "ID",
+    "click": "ID",
+    "hover": "ID",
+    "press": "ID",
+    "selection": "",
+    "key": "KEYS",
+    "type": "TEXT...",
+    "wait": "ID [MS]",
+    "state": "",
+    "ready": "[MS]",
+    "paste-image": "FILE",
+    "inspector": "",
+    "bus-reconnect": "",
+    "fault": "KIND",
+}
+
+
+class Misused(Exception):
+    """A command given the wrong arguments: said as its usage line."""
+
+
+def usage(cmd):
+    return f"usage: tvty-ctl {cmd} {USAGE[cmd]}".rstrip()
+
+
+def check(cmd, rest):
+    """The arguments fit the command's usage, or Misused."""
+    if cmd not in USAGE:
+        raise Misused(f"tvty-ctl: {cmd}: no such command (tvty-ctl --help lists them)")
+    words = USAGE[cmd].split()
+    needed = [w for w in words if not w.startswith("[")]
+    most = None if any(w.endswith("...") for w in words) else len(words)
+    if len(rest) < len(needed) or (most is not None and len(rest) > most):
+        raise Misused(usage(cmd))
+
+
+def number(cmd, text):
+    try:
+        return int(text)
+    except ValueError:
+        raise Misused(f"{usage(cmd)}  ({text!r} is not a number of milliseconds)") from None
+
+
+def unreachable(error):
+    """Why the control does not answer, in words."""
+    where = rendezvous()
+    if isinstance(error, FileNotFoundError):
+        why = "no test tvty runs here, or it has not opened its control yet"
+    elif isinstance(error, ConnectionRefusedError):
+        why = "nothing listens there: tvty is starting, or it is gone"
+    else:
+        why = str(error)
+    return f"tvty-ctl: {where}: {why} (`tvty-ctl ready` waits for it; a test tvty has TVTY_DEBUG_CONTROL, as scripts/test-env sets it)"
+
+
+def ready(ms):
+    """Waits until the control answers."""
+    until = time.monotonic() + ms / 1000
+    while True:
+        try:
+            request({"cmd": "state"})
+            return {"ok": {"ready": True}}
+        except (OSError, ValueError) as error:
+            if time.monotonic() >= until:
+                raise TimeoutError(f"{unreachable(error)} — still so after {ms} ms") from None
+            time.sleep(0.2)
+
+
+IMAGE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp"}
+
+
+def paste_image(file):
+    """FILE in the clipboard of the compositor the test tvty draws on, then
+    Ctrl+V to tvty. Never the desktop's clipboard."""
+    path = Path(file)
+    kind = IMAGE_TYPES.get(path.suffix.lower())
+    if kind is None:
+        raise Misused(f"{usage('paste-image')}  ({path.suffix or file!r}: not an image tvty-ctl knows: {', '.join(sorted(IMAGE_TYPES))})")
+    if not path.is_file():
+        raise Misused(f"{usage('paste-image')}  ({file}: no such file)")
+    if not shutil.which("wl-copy"):
+        return {"error": "paste-image needs wl-copy (wl-clipboard), on a Wayland test compositor"}
+    state = request({"cmd": "state"})
+    display = state.get("ok", {}).get("wayland_display")
+    if not display:
+        return {"error": "the test tvty does not say which Wayland display it draws on"}
+    if display == os.environ.get("WAYLAND_DISPLAY"):
+        return {"error": f"the test tvty draws on {display}, this shell's own display: that clipboard is the desktop's, left alone"}
+    with path.open("rb") as image:
+        subprocess.run(["wl-copy", "--type", kind], stdin=image, env={**os.environ, "WAYLAND_DISPLAY": display}, check=True, timeout=10)
+    answer = request({"cmd": "key", "keys": "ctrl-v"})
+    if "ok" in answer:
+        answer["ok"] = {"pasted": str(path), "type": kind, "display": display, **answer["ok"]}
+    return answer
+
+
+def run(cmd, rest):
+    """The command carried out: tvty's answer."""
     command = {"cmd": cmd}
-    texts = cmd == "tree" and "--text" in rest
-    rest = [r for r in rest if r != "--text"]
     if cmd in ("tree", "query"):
         command = {"cmd": "query", "id": rest[0] if rest else ""}
     elif cmd == "wait-text":
         command["id"], command["text"] = rest[0], rest[1]
         if len(rest) > 2:
-            command["ms"] = int(rest[2])
+            command["ms"] = number(cmd, rest[2])
     elif cmd in ("where", "click", "hover", "press", "text"):
         command["id"] = rest[0]
     elif cmd == "key":
@@ -100,11 +203,32 @@ def main(argv):
     elif cmd == "wait":
         command["id"] = rest[0]
         if len(rest) > 1:
-            command["ms"] = int(rest[1])
+            command["ms"] = number(cmd, rest[1])
+    elif cmd == "ready":
+        return ready(number(cmd, rest[0]) if rest else 20000)
+    elif cmd == "paste-image":
+        return paste_image(rest[0])
+    return request(command)
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0
+    cmd, rest = argv[0], argv[1:]
+    texts = cmd == "tree" and "--text" in rest
+    rest = [r for r in rest if r != "--text"]
     try:
-        answer = request(command)
+        check(cmd, rest)
+        answer = run(cmd, rest)
+    except Misused as error:
+        print(error, file=sys.stderr)
+        return 2
+    except TimeoutError as error:
+        print(error, file=sys.stderr)
+        return 1
     except OSError as error:
-        print(f"tvty-ctl: {rendezvous()}: {error} (is a test tvty running, with TVTY_DEBUG_CONTROL?)", file=sys.stderr)
+        print(unreachable(error), file=sys.stderr)
         return 1
     if texts and "ok" in answer:
         for element in answer["ok"]["elements"]:
