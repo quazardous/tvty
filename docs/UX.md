@@ -348,7 +348,9 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   chips only when they say something (who holds it — a lapsed claim does
   not count —, a high priority, the tickets it holds, tokens, what it
   depends on or blocks); and the latest `summary_until`, pinned: where it
-  stands. A step's comment says when its agent resumes, as it said
+  stands — in the panel folded to its title, which a click unfolds (it
+  stays as left from a ticket to the next); full screen, whole. A step's
+  comment says when its agent resumes, as it said
   (`resumes 08:16 or on #8`: a time to come, local, and the ticket it waits
   on, a click away); the list's step glyph says the time in its tip.
 - **The talk**, oldest first, so the latest word sits by the reply box, where

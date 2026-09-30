@@ -141,6 +141,9 @@ pub struct TicketPanel {
     scrolls: HashMap<Band, ScrollHandle>,
     /// The thread's order: newest first (top-down) or last (by the reply).
     newest_first: bool,
+    /// In the panel, "Where it stands" shows its text; else its title
+    /// only, which a click unfolds. As left, from a ticket to the next.
+    summary_open: bool,
     /// Who can be @mentioned, read once.
     mentions: Vec<String>,
     /// The detail fills the window: the ticket's invariants on the left
@@ -261,6 +264,7 @@ impl TicketPanel {
             folded: HashSet::new(),
             scrolls: HashMap::new(),
             newest_first: false,
+            summary_open: false,
             mentions: Vec::new(),
             full: false,
             full_folded: false,
@@ -1367,7 +1371,28 @@ impl TicketPanel {
                     .into_any_element(),
             );
         }
+        // In the panel it folds to its title, and starts so: the room is
+        // the thread's. Full screen it heads the talk, whole.
+        let summary_open = self.full || self.summary_open;
         let summary = read.summary.clone().map(|(text, by)| {
+            let label = div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user)));
+            let label = if self.full {
+                label.into_any_element()
+            } else {
+                div()
+                    .named("summary-fold")
+                    .flex()
+                    .items_center()
+                    .gap_1()
+                    .cursor_pointer()
+                    .child(chevron(summary_open))
+                    .child(label)
+                    .on_click(cx.listener(|panel, _, _, cx| {
+                        panel.summary_open = !panel.summary_open;
+                        cx.notify();
+                    }))
+                    .into_any_element()
+            };
             div()
                 .flex()
                 .flex_col()
@@ -1376,13 +1401,15 @@ impl TicketPanel {
                 .py_1p5()
                 .rounded_md()
                 .bg(p().hover)
-                .child(div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user))))
+                .child(label)
                 // Selectable, as the thread's words: it is copied as often.
-                .child(
-                    TextView::markdown("thread-summary", crate::ui::ticketref::linkify(&text))
-                        .selectable(true)
-                        .on_link_click(crate::ui::ticketref::on_link),
-                )
+                .when(summary_open, |d| {
+                    d.child(
+                        TextView::markdown("thread-summary", crate::ui::ticketref::linkify(&text))
+                            .selectable(true)
+                            .on_link_click(crate::ui::ticketref::on_link),
+                    )
+                })
         });
         // Under the priority's chip, where its ▾ points.
         let priority_menu = (detail.menu == Some(Menu::Priority)).then(|| {
