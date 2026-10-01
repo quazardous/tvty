@@ -6,7 +6,6 @@
 //! aiball's MCP server in Claude Code). Nothing is written before "Set it
 //! up".
 
-use crate::ui::Named as _;
 use std::path::{Path, PathBuf};
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
@@ -466,58 +465,15 @@ impl Shell {
             .selected_index(wizard.step.index())
             .items(Step::ALL.iter().map(|s| StepperItem::new().child(s.title())))
             .on_click(cx.listener(|shell, step: &usize, _, cx| shell.wizard_back_to(*step, cx)));
-        let card = div()
-            // Not "new-project": that is the list's "+ project" link.
-            .named("new-project-card")
-            .occlude()
-            .w(px(680.))
-            .h(px(660.))
-            .max_w(relative(0.92))
-            .max_h(relative(0.9))
-            .flex()
-            .flex_col()
-            .rounded_lg()
-            .border_1()
-            .border_color(p().border)
-            .bg(p().surface)
-            .text_color(p().text)
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .px_5()
-                    .pt_4()
-                    .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child("New project"))
-                    .child(buttons::link("new-project-close", "✕  Esc").text_sm().on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx)))),
-            )
-            .child(div().flex_none().px_5().py_3().child(steps))
-            .child(div().named("new-project-page").flex_1().min_h_0().overflow_y_scroll().px_5().py_2().child(page))
-            .child(
-                div()
-                    .flex()
-                    .flex_none()
-                    .items_center()
-                    .justify_end()
-                    .gap_3()
-                    .px_5()
-                    .py_3()
-                    .border_t_1()
-                    .border_color(p().border)
-                    .child(footer),
-            );
+        // Its parts named new-project-…: not "new-project" alone, the list's
+        // "+ project" link.
         Some(
-            div()
-                .named("new-project-veil")
-                .absolute()
-                .inset_0()
-                .occlude()
-                .flex()
-                .items_center()
-                .justify_center()
-                .bg(gpui_kit::black().opacity(0.45))
-                .child(card)
-                .into_any_element(),
+            crate::ui::sheet::Sheet::new("new-project", "New project")
+                .steps(steps)
+                .body(page)
+                .answers(footer)
+                .on_close(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx)))
+                .render(),
         )
     }
 

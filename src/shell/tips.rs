@@ -67,7 +67,7 @@ impl Shell {
         let target = self
             .tip
             .as_ref()
-            .filter(|_| self.ask.is_none())
+            .filter(|_| self.picker.is_none())
             .and_then(|card| tips::all().iter().find(|t| t.id == card.id))
             .and_then(|t| t.target.clone());
         tips::set_active(target);
@@ -89,7 +89,7 @@ impl Shell {
     /// A tip for `surface`, if tips are on, none is up, and one is left.
     fn offer_tip(&mut self, surface: &str, cx: &mut Context<Self>) {
         // One at a time, and never over a dialog.
-        if !self.applied.tips.show || self.tip.is_some() || self.ask.is_some() || self.stopping_all {
+        if !self.applied.tips.show || self.tip.is_some() || self.picker.is_some() || self.stopping_all {
             return;
         }
         self.show_tip(surface, None, cx);
@@ -166,7 +166,7 @@ impl Shell {
     /// The card, bottom left.
     pub(super) fn tip_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         // A dialog asks: the tip waits.
-        if self.ask.is_some() {
+        if self.picker.is_some() {
             return None;
         }
         let card = self.tip.as_ref()?;

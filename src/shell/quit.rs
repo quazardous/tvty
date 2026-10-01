@@ -10,42 +10,13 @@ use crate::ui::Named as _;
 use std::collections::HashMap;
 use std::time::Duration;
 
-use gpui_kit::component::scroll::ScrollableElement as _;
-use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
-use tvty_config::Value;
 
 use super::Shell;
 use crate::theme::p;
-use crate::tip::Tip as _;
-use crate::ui::buttons;
-
-/// The height of the dialogs' list of sessions once it scrolls, and the
-/// lines (sessions and projects' heads) it shows before it does.
-const LIST_HEIGHT: f32 = 240.;
-const LIST_LINES: usize = 8;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
 const STOP_WAIT: Duration = Duration::from_secs(15);
-
-/// What a dialog of this module asks.
-#[derive(Clone, Debug, PartialEq)]
-pub(super) enum Ask {
-    /// At start: restart the loops stopped when tvty quit? With their AFK
-    /// mode then, by loop.
-    Restart(Vec<String>, HashMap<String, String>),
-}
-
-/// A dialog's answer.
-#[derive(Clone, Copy, PartialEq)]
-enum Answer {
-    /// Stop them too; restart them as they were.
-    Yes,
-    /// Restart them fresh: on their own, no hold.
-    Fresh,
-    /// Keep them running; leave them stopped.
-    No,
-}
 
 /// The AFK action that puts a loop back as it was: held until let go,
 /// held again ten minutes, or on its own.
@@ -54,17 +25,6 @@ fn afk_action(mode: Option<&str>) -> &'static str {
         Some("wait_inf") => "arm_inf",
         Some("wait_10m") => "arm_10m",
         _ => "off",
-    }
-}
-
-/// A session's mark, as the lists say it: ▶ on its own, ‖ held for now,
-/// ■ held until let go.
-fn hold_mark(presence: Option<&str>, mode: Option<&str>) -> (&'static str, Hsla) {
-    match (presence, mode) {
-        (_, Some("wait_inf")) => ("■", p().danger),
-        (Some("wait") | Some("stop"), _) | (_, Some("wait_10m")) => ("‖", p().warning),
-        (Some("loop"), _) => ("▶", p().success),
-        _ => ("·", p().muted),
     }
 }
 
@@ -168,7 +128,7 @@ impl Shell {
     /// start, then quits.
     pub(super) fn stop_and_quit(&mut self, loops: Vec<String>, cx: &mut Context<Self>) {
         self.stopping_all = true;
-        self.ask = None;
+        self.picker = None;
         cx.notify();
         let aiball = self.aiball.clone();
         let known: Vec<crate::loops::KnownLoop> = self.board.known.iter().filter(|l| loops.contains(&l.name)).cloned().collect();
@@ -235,18 +195,13 @@ impl Shell {
             Some("restart") => self.restart_loops(names, holds, true, cx),
             Some("fresh") => self.restart_loops(names, holds, false, cx),
             Some("leave") => {}
-            _ => {
-                self.ask = Some(Ask::Restart(names, holds));
-                self.remember = false;
-                cx.notify();
-            }
+            _ => self.pick_restart(names, holds, cx),
         }
     }
 
     /// Restarts `names`, resuming their conversation; then puts each back
     /// on hold as it was (`as_they_were`), or frees them all.
-    fn restart_loops(&mut self, names: Vec<String>, holds: HashMap<String, String>, as_they_were: bool, cx: &mut Context<Self>) {
-        self.ask = None;
+    pub(super) fn restart_loops(&mut self, names: Vec<String>, holds: HashMap<String, String>, as_they_were: bool, cx: &mut Context<Self>) {
         cx.notify();
         let aiball = self.aiball.clone();
         let agents: HashMap<String, String> =
@@ -303,150 +258,9 @@ impl Shell {
         .detach();
     }
 
-    /// The answer, remembered if asked.
-    fn answer(&mut self, answer: Answer, cx: &mut Context<Self>) {
-        let Some(ask) = self.ask.take() else { return };
-        let remember = self.remember;
-        match ask {
-            Ask::Restart(names, holds) => {
-                if remember {
-                    let choice = match answer {
-                        Answer::Yes => "restart",
-                        Answer::Fresh => "fresh",
-                        Answer::No => "leave",
-                    };
-                    self.set_pref("sessions.on_start", Value::Choice(Some(choice.into())), cx);
-                }
-                if answer != Answer::No {
-                    self.restart_loops(names, holds, answer == Answer::Yes, cx);
-                }
-            }
-        }
-        cx.notify();
-    }
-
-    /// The dialog, over everything; or "stopping…" while the loops stop.
-    pub(super) fn quit_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        if self.stopping_all {
-            return Some(dialog(div().child("Stopping the Claude Code sessions, then quitting…")).into_any_element());
-        }
-        let ask = self.ask.as_ref()?;
-        let Ask::Restart(loops, _) = ask;
-        let title = "Restart the sessions stopped when tvty quit?";
-        // The sessions by project, each with its mark: live when quitting,
-        // as it was when restarting.
-        let mut projects: Vec<(String, Vec<AnyElement>)> = Vec::new();
-        let mut names: Vec<&String> = loops.iter().collect();
-        let project_of = |name: &str| self.board.known.iter().find(|l| l.name == name).and_then(|l| l.project.clone()).unwrap_or_default();
-        let agent_of = |name: &str| self.board.known.iter().find(|l| l.name == name).and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.to_string());
-        names.sort_by_key(|name| (project_of(name), agent_of(name)));
-        for name in names {
-            let known = self.board.known.iter().find(|l| l.name == *name);
-            let agent = known.and_then(|l| l.agent().map(str::to_string));
-            let Ask::Restart(_, holds) = ask;
-            let mode = holds.get(name).map(String::as_str);
-            let (glyph, colour) = hold_mark(mode.map(|m| if m == "off" { "loop" } else { "wait" }), mode);
-            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
-            let row = div()
-                .flex()
-                .items_center()
-                .gap_2()
-                .pl_2()
-                .child(div().w(px(14.)).text_color(colour).child(glyph))
-                .child(div().text_color(p().text).child(agent.unwrap_or_else(|| name.clone())))
-                .child(div().text_xs().text_color(p().muted).child(place))
-                .into_any_element();
-            let project = project_of(name);
-            match projects.last_mut() {
-                Some((last, rows)) if *last == project => rows.push(row),
-                _ => projects.push((project, vec![row])),
-            }
-        }
-        let summary = format!(
-            "{} of {}; {} its conversation.",
-            count_of(loops.len()),
-            count(projects.len(), "project"),
-            if loops.len() == 1 { "it resumes" } else { "each resumes" }
-        );
-        // Past what fits, a fixed height and a scrollbar (a height the list
-        // only caps would take its content's, and nothing would scroll).
-        let scrolls = loops.len() + projects.len() > LIST_LINES;
-        let mut list = div().named("quit-list").flex().flex_col().gap_2().p_2().text_sm();
-        for (project, rows) in projects {
-            list = list.child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_0p5()
-                    .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }))
-                    .children(rows),
-            );
-        }
-        let remember = self.remember;
-        let answers = div()
-            .flex()
-            .gap_2()
-            .ml_auto()
-            .child(buttons::secondary("quit-no", "Not now").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::No, cx))))
-            .child(buttons::secondary("quit-fresh", "Restart fresh").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Fresh, cx))))
-            .child(buttons::primary("quit-yes", "Restart as they were").on_click(cx.listener(|shell, _, _, cx| shell.answer(Answer::Yes, cx))));
-        let body = div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
-                    .child(div().text_sm().text_color(p().muted).child(summary)),
-            )
-            // A box of its own height at most, its scrollbar shown: many
-            // sessions scroll there, the dialog keeps its size.
-            .child(
-                div()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(p().border)
-                    .bg(p().bg)
-                    .overflow_hidden()
-                    .map(|d| if scrolls { d.child(list.h(px(LIST_HEIGHT)).overflow_y_scrollbar()) } else { d.child(list) }),
-            )
-            .child(div().text_xs().text_color(p().muted).child("As they were: a held session is held again. Fresh: each boots, then runs on its own."))
-            .child(div().h(px(1.)).bg(p().border))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_3()
-                    .child(
-                        buttons::switch(
-                            "quit-remember",
-                            remember,
-                            "Remember this choice",
-                            cx.listener(|shell, wanted: &bool, _, cx| {
-                                shell.remember = *wanted;
-                                cx.notify();
-                            }),
-                        )
-                        .flex_1()
-                        .text_sm()
-                        .tip("Settings > Layout > Sessions changes it"),
-                    )
-                    .child(answers),
-            );
-        Some(dialog(body).into_any_element())
-    }
-
-    /// Esc: the quit dialog is cancelled; the restart one, "not now".
-    pub(super) fn escape_ask(&mut self, cx: &mut Context<Self>) -> bool {
-        if self.ask.is_none() {
-            return false;
-        }
-        self.answer(Answer::No, cx);
-        true
+    /// "Stopping…" over everything while the loops stop, before quitting.
+    pub(super) fn quit_dialog(&self) -> Option<AnyElement> {
+        self.stopping_all.then(|| dialog(div().child("Stopping the Claude Code sessions, then quitting…")).into_any_element())
     }
 }
 

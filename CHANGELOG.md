@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- At start, the sessions stopped when tvty quit are listed one by one: switch off those not to restart. Every question about several sessions, and the new project's wizard, now open in one large panel.
 - Seven new tips: "File and exit", the ticket panel's pin, a ticket's followers, the thread's order, the terminal held still while you select, workspaces and their Open and Shut.
 - A ticket's thread has an order in the panel and another full screen: ⇅ sets the one of the view it is in, and Settings > Ticket list > Thread has both. The panel starts newest last, by the reply, whatever the full screen's order.
 - In the ticket panel, "Where it stands" folds to its title, and starts folded: the thread gets the room. A click unfolds it, and it stays as left from a ticket to the next. Settings > Ticket list > Thread > "Where it stands, open" makes it start open. Full screen it shows whole, as before.

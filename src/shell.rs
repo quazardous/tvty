@@ -204,7 +204,6 @@ pub struct Shell {
     pub(super) project_shown: Option<String>,
     /// What the quit dialog asks (stop the loops? restart them?), and its
     /// "remember" box.
-    ask: Option<quit::Ask>,
     /// The sessions' picker, when one asks: quitting, a workspace kept,
     /// shut or opened.
     picker: Option<workspaces::Picker>,
@@ -781,7 +780,6 @@ impl Shell {
             retry_generation: 0,
             bus_state: Default::default(),
             project_shown: None,
-            ask: None,
             picker: None,
             workspace_name,
             workspace_renaming: None,
@@ -2302,7 +2300,7 @@ impl Shell {
             cx.stop_propagation();
             return;
         }
-        if key == "escape" && (self.cancel_picker(cx) || self.escape_ask(cx)) {
+        if key == "escape" && self.cancel_picker(cx) {
             cx.stop_propagation();
             return;
         }
@@ -5231,7 +5229,7 @@ impl Render for Shell {
             // Where the root is painted: the tips' cards are placed in it.
             .child(crate::tips::root_mark())
             .children(self.tip_view(cx))
-            .children(self.quit_dialog(cx))
+            .children(self.quit_dialog())
             .children(self.picker_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))

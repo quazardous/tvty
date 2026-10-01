@@ -145,12 +145,21 @@ picker, below: switched on, stopped; off, it runs on — or to keep them
 all, or cancel; "Remember this choice" keeps the answer for them all
 (Settings > Layout > Sessions > On quit).
 
-**The sessions' picker** is one dialog for every question about several
-sessions: they are listed by group (a project's terminals), each with how
-it runs now (▶ on its own, ■ held, · stopped) and a switch, the
-group's own switch turning them all on or off (and saying how many are on
-when only some are), in a list that scrolls when they are many. Nothing is
-stopped or started that was not switched on.
+**A sheet** is tvty's large panel, for what asks more than a yes or a
+no: over the dimmed window, a head (the title, a line saying what each
+answer does, ✕ Esc), the steps when there are some, a body that takes the
+room and scrolls, and a foot (a setting on the left, such as "Remember this
+choice", the answers on the right, the main one last). The sessions'
+picker and the new project's wizard are sheets; a plain confirmation keeps
+a small dialog.
+
+**The sessions' picker** is one sheet for every question about several
+sessions: quitting, a workspace made, kept again, opened or shut, and the
+sessions to restart at start. They are listed by group (a project's
+terminals), each with how it runs now (▶ on its own, ■ held, · stopped)
+and a switch, the group's own switch turning them all on or off (and
+saying how many are on when only some are). Nothing is stopped or started
+that was not switched on.
 
 **Workspaces** are the left panel's second tab ("Sessions | Workspaces").
 A workspace is a named group of groups, with how each of their agents'
@@ -168,11 +177,13 @@ sessions to stop: those of a group no other workspace has are on, the
 others are left off ("also in X"). "save" keeps it again as things
 are now (a group that runs and is not in it yet is offered), "rename",
 "delete" (a second click confirms; its sessions are not touched). The loops tvty
-stopped are kept in its workspace with their hold: at the next start it
-asks whether to restart them (aiball's `loop.restart`, each where it
-ran, its conversation resumed) **as they were** — a held one held again
-(`consumer.afk`) — or **fresh**, each booting then running on its own,
-or not now; with its own remembered choice (On start). tvty quits once
+stopped are kept in its workspace with their hold: at the next start the
+sessions' picker lists them, each switched on with its mark as it was,
+and restarts those left on (aiball's `loop.restart`, each where it ran,
+its conversation resumed) **as they were** — a held one held again
+(`consumer.afk`) — or **fresh**, each booting then running on its own;
+or none, not now. "Remember this choice" keeps the answer, for all of
+them, every time (On start). tvty quits once
 they stopped, 15 s at most. Loops of another machine are never touched.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal

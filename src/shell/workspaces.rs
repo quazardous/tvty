@@ -34,6 +34,9 @@ pub(super) enum PickFor {
     Shut(String),
     /// A workspace opened: what to start, let go or hold.
     Open(String),
+    /// At start, the sessions stopped when tvty quit: which to restart,
+    /// with the AFK mode each had then (by loop).
+    Restart(HashMap<String, String>),
 }
 
 /// A session in the picker.
@@ -64,6 +67,11 @@ pub(super) struct Picker {
 }
 
 impl Picker {
+    /// The sessions stopped at quit, offered at start.
+    pub(super) fn restarting(&self) -> bool {
+        matches!(self.what, PickFor::Restart(_))
+    }
+
     /// What it asks and of how many sessions, for the debug control.
     pub(super) fn said(&self) -> serde_json::Value {
         serde_json::json!({
@@ -74,10 +82,38 @@ impl Picker {
     }
 }
 
-/// The height of the picker's list once it scrolls, and the lines it shows
-/// before it does.
-const LIST_HEIGHT: f32 = 300.;
-const LIST_LINES: usize = 10;
+
+/// The sessions stopped at quit, as the restart sheet lists them: by
+/// project, each ticked, its mark as it was (▶ on its own, ■ held).
+fn restart_rows(loops: &[String], holds: &HashMap<String, String>, known: &[crate::loops::KnownLoop]) -> Vec<PickRow> {
+    let mut rows: Vec<PickRow> = loops
+        .iter()
+        .map(|name| {
+            let known = known.iter().find(|l| l.name == *name);
+            let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
+            let agent = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
+            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
+            let (now, held) = match holds.get(name).map(String::as_str) {
+                Some("wait_inf") => (Mode::Stop, " · held until let go"),
+                Some("wait_10m") => (Mode::Stop, " · held for a while"),
+                _ => (Mode::Auto, ""),
+            };
+            PickRow {
+                project,
+                agent,
+                loop_name: Some(name.clone()),
+                now: Some(now),
+                note: format!("{place}{held}"),
+                checked: true,
+                fixed: false,
+                opening: None,
+                kept: None,
+            }
+        })
+        .collect();
+    rows.sort_by(|a, b| (&a.project, &a.agent).cmp(&(&b.project, &b.agent)));
+    rows
+}
 
 impl Shell {
     /// The name field of a new or renamed workspace: Enter confirms.
@@ -287,8 +323,45 @@ impl Shell {
             }
             PickFor::Shut(name) => self.stop_sessions(&name, chosen, cx),
             PickFor::Open(name) => self.open_sessions(&name, chosen, cx),
+            // "Not now": none restarted (remembered: never asked again).
+            PickFor::Restart(holds) => {
+                if self.remember && !checked {
+                    self.set_pref("sessions.on_start", tvty_config::Value::Choice(Some("leave".into())), cx);
+                }
+                if checked {
+                    let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
+                    self.restart_loops(loops, holds, true, cx);
+                }
+            }
         }
         cx.notify();
+    }
+
+    /// The restart sheet's answer: the ticked sessions restarted, as they
+    /// were (`as_they_were`) or fresh; remembered, for all of them, every
+    /// time.
+    pub(super) fn picker_restart(&mut self, as_they_were: bool, cx: &mut Context<Self>) {
+        let Some(picker) = self.picker.take() else { return };
+        let PickFor::Restart(holds) = picker.what else {
+            self.picker = Some(picker);
+            return;
+        };
+        if self.remember {
+            let choice = if as_they_were { "restart" } else { "fresh" };
+            self.set_pref("sessions.on_start", tvty_config::Value::Choice(Some(choice.into())), cx);
+        }
+        let loops: Vec<String> = picker.rows.iter().filter(|r| r.checked && !r.fixed).filter_map(|r| r.loop_name.clone()).collect();
+        if !loops.is_empty() {
+            self.restart_loops(loops, holds, as_they_were, cx);
+        }
+        cx.notify();
+    }
+
+    /// At start: the sessions stopped when tvty quit, offered to restart —
+    /// each ticked, its mark as it was (▶ on its own, ■ held).
+    pub(super) fn pick_restart(&mut self, loops: Vec<String>, holds: HashMap<String, String>, cx: &mut Context<Self>) {
+        let rows = restart_rows(&loops, &holds, &self.board.known);
+        self.open_picker(PickFor::Restart(holds), rows, cx);
     }
 
     /// Stops the loops of `rows` (a workspace shut), off the UI thread.
@@ -425,6 +498,10 @@ impl Shell {
             PickFor::Save(name) => (format!("Keep {name} as things are now"), "On: in it, each as it runs now. Off: taken out of it.".to_string()),
             PickFor::Shut(name) => (format!("Shut {name}: stop its sessions?"), "On: stopped. Off: it runs on. A group another workspace has too is left off.".to_string()),
             PickFor::Open(name) => (format!("Open {name}"), "On: done. Off: left as it is.".to_string()),
+            PickFor::Restart(_) => (
+                "Restart the sessions stopped when tvty quit?".to_string(),
+                "On: restarted, resuming its conversation. As they were: a held session is held again; fresh: each boots, then runs on its own.".to_string(),
+            ),
         };
         // By group, in the order they came.
         let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
@@ -434,7 +511,6 @@ impl Shell {
                 None => groups.push((row.project.clone(), vec![i])),
             }
         }
-        let scrolls = picker.rows.len() + groups.len() > LIST_LINES;
         let mut list = div().named("picker-list").flex().flex_col().gap_2().p_2().text_sm();
         for (project, indexes) in groups {
             let free: Vec<usize> = indexes.iter().copied().filter(|i| !picker.rows[*i].fixed).collect();
@@ -515,60 +591,52 @@ impl Shell {
         };
         let go = |label: String, cx: &mut Context<Self>| buttons::primary("picker-go", label).on_click(cx.listener(|shell, _, _, cx| shell.picker_answer(true, cx)));
         let answers = match &picker.what {
-            PickFor::Quit => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Quit, keep them all running", cx)).child(go(format!("Quit, stop the {ticked} on"), cx)),
-            PickFor::New | PickFor::Save(_) => div().flex().gap_2().ml_auto().child(cancel).child(go("Keep".into(), cx)),
-            PickFor::Shut(_) => div().flex().gap_2().ml_auto().child(cancel).child(none("picker-none", "Shut, keep them all running", cx)).child(go(format!("Shut, stop the {ticked} on"), cx)),
-            PickFor::Open(_) => div().flex().gap_2().ml_auto().child(cancel).child(go(format!("Open, do the {ticked} on"), cx)),
+            PickFor::Quit => div().flex().gap_2().child(cancel).child(none("picker-none", "Quit, keep them all running", cx)).child(go(format!("Quit, stop the {ticked} on"), cx)),
+            PickFor::New | PickFor::Save(_) => div().flex().gap_2().child(cancel).child(go("Keep".into(), cx)),
+            PickFor::Shut(_) => div().flex().gap_2().child(cancel).child(none("picker-none", "Shut, keep them all running", cx)).child(go(format!("Shut, stop the {ticked} on"), cx)),
+            PickFor::Open(_) => div().flex().gap_2().child(cancel).child(go(format!("Open, do the {ticked} on"), cx)),
+            PickFor::Restart(_) => div()
+                .flex()
+                .gap_2()
+                .child(none("picker-none", "Not now", cx))
+                .child(buttons::secondary("picker-fresh", format!("Restart the {ticked} fresh")).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(false, cx))))
+                .child(buttons::primary("picker-go", format!("Restart the {ticked} as they were")).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(true, cx)))),
         };
         let remember = self.remember;
+        let remembered = match &picker.what {
+            PickFor::Quit => Some("Remember this choice (stop them all, or keep them all)"),
+            PickFor::Restart(_) => Some("Remember this choice (every time, all of them)"),
+            _ => None,
+        };
         let body = div()
             .flex()
             .flex_col()
             .gap_3()
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .gap_1()
-                    .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
-                    .child(div().text_sm().text_color(p().muted).child(summary)),
-            )
             .when(picker.what == PickFor::New, |d| d.child(div().flex().items_center().gap_2().child("Name").child(div().flex_1().child(Input::new(&self.workspace_name)))))
-            .child(
-                div()
-                    .rounded_md()
-                    .border_1()
-                    .border_color(p().border)
-                    .bg(p().bg)
-                    .overflow_hidden()
-                    .map(|d| if scrolls { d.child(list.h(px(LIST_HEIGHT)).overflow_y_scrollbar()) } else { d.child(list) }),
-            )
-            .child(div().h(px(1.)).bg(p().border))
-            .child(
-                div()
-                    .flex()
-                    .flex_wrap()
-                    .items_center()
-                    .gap_3()
-                    .when(picker.what == PickFor::Quit, |d| {
-                        d.child(
-                            buttons::switch(
-                                "picker-remember",
-                                remember,
-                                "Remember this choice (stop them all, or keep them all)",
-                                cx.listener(|shell, wanted: &bool, _, cx| {
-                                    shell.remember = *wanted;
-                                    cx.notify();
-                                }),
-                            )
-                            .flex_1()
-                            .text_sm()
-                            .tip("Settings > Layout > Sessions changes it"),
-                        )
-                    })
-                    .child(answers),
+            .child(div().rounded_md().border_1().border_color(p().border).bg(p().bg).child(list));
+        let mut sheet = crate::ui::sheet::Sheet::new("picker", title)
+            .summary(summary)
+            .body(body)
+            .answers(answers)
+            .on_close(cx.listener(|shell, _, _, cx| {
+                shell.cancel_picker(cx);
+            }));
+        if let Some(label) = remembered {
+            sheet = sheet.setting(
+                buttons::switch(
+                    "picker-remember",
+                    remember,
+                    label,
+                    cx.listener(|shell, wanted: &bool, _, cx| {
+                        shell.remember = *wanted;
+                        cx.notify();
+                    }),
+                )
+                .text_sm()
+                .tip("Settings > Layout > Sessions changes it"),
             );
-        Some(super::quit::dialog(body).into_any_element())
+        }
+        Some(sheet.render())
     }
 
     // ── The Workspaces tab ───────────────────────────────────────────────
@@ -808,4 +876,28 @@ impl Shell {
 /// "1 session", "3 groups".
 fn count(n: usize, what: &str) -> String {
     format!("{n} {what}{}", if n == 1 { "" } else { "s" })
+}
+
+#[cfg(test)]
+mod tests {
+    // Not `super::*`: the kit's own `test` attribute would come with it.
+    use super::{HashMap, Mode, restart_rows};
+    use crate::loops::KnownLoop;
+
+    #[test]
+    fn the_sessions_to_restart_are_listed_by_project_ticked_with_their_hold() {
+        let known = vec![
+            KnownLoop { name: "cl-z-1".into(), agent: Some("z-claude".into()), project: Some("zeta".into()), mode: "host".into(), ..Default::default() },
+            KnownLoop { name: "cl-a-1".into(), agent: Some("a-claude".into()), project: Some("alpha".into()), mode: "tmux".into(), ..Default::default() },
+        ];
+        let holds = HashMap::from([("cl-z-1".to_string(), "wait_inf".to_string()), ("cl-a-1".to_string(), "off".to_string())]);
+        let rows = restart_rows(&["cl-z-1".into(), "cl-a-1".into()], &holds, &known);
+        let said: Vec<(&str, &str, Option<Mode>, &str, bool)> =
+            rows.iter().map(|r| (r.project.as_str(), r.agent.as_str(), r.now, r.note.as_str(), r.checked)).collect();
+        assert_eq!(
+            said,
+            vec![("alpha", "a-claude", Some(Mode::Auto), "tmux", true), ("zeta", "z-claude", Some(Mode::Stop), "host · held until let go", true)]
+        );
+        assert!(rows.iter().all(|r| r.loop_name.is_some() && !r.fixed));
+    }
 }

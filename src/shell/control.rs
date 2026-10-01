@@ -76,7 +76,7 @@ impl Shell {
                     None
                 },
                 "picker": self.picker.as_ref().map(|p| p.said()),
-                "dialog": self.ask.as_ref().map(|_| "restart-loops"),
+                "dialog": self.picker.as_ref().filter(|p| p.restarting()).map(|_| "restart-loops"),
                 "menu": if self.theme_menu {
                     Some("theme")
                 } else if self.help_menu {
