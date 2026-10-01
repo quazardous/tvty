@@ -6,6 +6,11 @@
 
 ![Terminal Velocity at work: an agent answers live beside its ticket; the slider, the gallery, a notification, a ticket full screen](docs/images/tvty.gif)
 
+**Watch the demo (3 min):** three Claude Code agents build the Darkball —
+one asks another through a ticket, the human only approves and says yes.
+
+[![Terminal Velocity demo on YouTube: 3 AI agents, 1 window](https://img.youtube.com/vi/5TGDf7crzXI/maxresdefault.jpg)](https://www.youtube.com/watch?v=5TGDf7crzXI)
+
 Run many Claude Code agents at full speed without losing track of them.
 Each project's agents and its tickets live side by side: the agent asks,
 you decide, it carries on.
