@@ -4208,7 +4208,10 @@ impl Shell {
         taken.extend(self.shells_asked.iter().cloned());
         let name = (1..).map(|n| format!("{prefix}-{n}")).find(|n| !taken.contains(n)).expect("a free name");
         self.shells_asked.insert(name.clone());
-        let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| "bash".into());
+        // Windows has no $SHELL of its own (Git Bash sets one), and a bare
+        // "bash" there may be WSL's or nothing: PowerShell is always there.
+        let fallback = if cfg!(windows) { "powershell.exe" } else { "bash" };
+        let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.into());
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let started = {
@@ -4498,7 +4501,7 @@ impl Shell {
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child("⇄")
-                                                    .tip("tmux: its Claude runs in claude-loop, opened through tmux (not on aiball's host)"),
+                                                    .tip(format!("{0}: its Claude runs in claude-loop, opened through {0} (not on aiball's host)", crate::mux::program())),
                                             )
                                         })
                                         .when_some(attached, |d, a| {

@@ -114,7 +114,7 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if let Some(agent) = &start.agent {
         params[if start.crew { "crew" } else { "agent" }] = json!(agent);
     }
-    let view: Value = aiball.call("session.start", params)?;
+    let view: Value = aiball.call_starting("session.start", params)?;
     session_of(&view).context("session.start: no session in the answer")
 }
 
@@ -132,7 +132,7 @@ fn session_of(view: &Value) -> Option<String> {
 /// is interrupted: forced, as aiball otherwise waits for it to be idle.
 pub fn move_to(aiball: &Aiball, name: &str, to_host: bool) -> anyhow::Result<()> {
     let mode = if to_host { "host" } else { "tmux" };
-    aiball.call::<Value>("loop.restart", json!({ "name": name, "mode": mode, "force": true })).map(drop).map_err(said)
+    aiball.call_starting::<Value>("loop.restart", json!({ "name": name, "mode": mode, "force": true })).map(drop).map_err(said)
 }
 
 /// The loop's other tmux clients (claude-loop's terminal) made read-only
@@ -150,7 +150,7 @@ pub fn stop(aiball: &Aiball, known: &KnownLoop) -> anyhow::Result<()> {
 /// Starts a stopped loop again where it ran, its conversation resumed.
 /// Answers the session to open.
 pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
-    let view: KnownLoop = aiball.call("loop.restart", json!({ "name": name })).map_err(said)?;
+    let view: KnownLoop = aiball.call_starting("loop.restart", json!({ "name": name })).map_err(said)?;
     Ok(view.session())
 }
 

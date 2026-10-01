@@ -92,7 +92,7 @@ fn restart_rows(loops: &[String], holds: &HashMap<String, String>, known: &[crat
             let known = known.iter().find(|l| l.name == *name);
             let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
             let agent = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
-            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { "tmux" };
+            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { crate::mux::program() };
             let (now, held) = match holds.get(name).map(String::as_str) {
                 Some("wait_inf") => (Mode::Stop, " · held until let go"),
                 Some("wait_10m") => (Mode::Stop, " · held for a while"),
@@ -896,7 +896,7 @@ mod tests {
             rows.iter().map(|r| (r.project.as_str(), r.agent.as_str(), r.now, r.note.as_str(), r.checked)).collect();
         assert_eq!(
             said,
-            vec![("alpha", "a-claude", Some(Mode::Auto), "tmux", true), ("zeta", "z-claude", Some(Mode::Stop), "host · held until let go", true)]
+            vec![("alpha", "a-claude", Some(Mode::Auto), crate::mux::program(), true), ("zeta", "z-claude", Some(Mode::Stop), "host · held until let go", true)]
         );
         assert!(rows.iter().all(|r| r.loop_name.is_some() && !r.fixed));
     }

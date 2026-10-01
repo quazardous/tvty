@@ -753,6 +753,10 @@ impl Comment {
     }
 }
 
+/// How long a loop's start is waited for: Claude resuming its conversation
+/// takes up to a minute.
+const LOOP_START_WAIT: std::time::Duration = std::time::Duration::from_secs(90);
+
 /// aiball's bus, shared by every copy of [`Aiball`]: the calls aiball has
 /// made methods go through it.
 static WIRE: std::sync::OnceLock<crate::wire::Wire> = std::sync::OnceLock::new();
@@ -775,6 +779,18 @@ impl Aiball {
     /// speaks one part of the bus itself (the loops).
     pub fn call<T: DeserializeOwned>(&self, method: &str, params: Value) -> anyhow::Result<T> {
         self.rpc(method, params)
+    }
+
+    /// A method that starts a loop (`session.start`, `loop.restart`): the
+    /// daemon answers once the loop runs, which takes up to a minute while
+    /// Claude resumes its conversation. On a connection of its own, waited
+    /// for as long: on the shared one it would hold up every other call
+    /// behind it, and give up before the loop is there. Blocking: off the UI
+    /// thread.
+    pub fn call_starting<T: DeserializeOwned>(&self, method: &str, params: Value) -> anyhow::Result<T> {
+        let wire = WIRE.get().context("aiball's bus is not open")?;
+        let answer = wire.call_alone(method, params, LOOP_START_WAIT)?;
+        serde_json::from_value(answer).with_context(|| format!("{method}: an answer tvty does not read"))
     }
 
     /// A method of aiball's bus whose answer does not matter.
@@ -1032,14 +1048,14 @@ impl Aiball {
         if let Some(agent) = agent {
             params[if crew { "crew" } else { "agent" }] = json!(agent);
         }
-        let answer: Value = self.rpc("session.start", params)?;
+        let answer: Value = self.call_starting("session.start", params)?;
         answer.get("agent").and_then(Value::as_str).map(str::to_string).context("session.start: no agent in the answer")
     }
 
     /// Starts a terminal the daemon's host holds: `argv` in `cwd`, under
     /// `name`. It lives on without tvty.
     pub fn start_terminal(&self, name: &str, argv: &[String], cwd: &str) -> anyhow::Result<()> {
-        self.rpc_do("session.start", json!({ "name": name, "argv": argv, "cwd": cwd }))
+        self.call_starting::<Value>("session.start", json!({ "name": name, "argv": argv, "cwd": cwd })).map(drop)
     }
 
     /// Removes a terminal the daemon's host holds (its program ended, or not).

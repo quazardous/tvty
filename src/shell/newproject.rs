@@ -622,7 +622,7 @@ impl Shell {
                 "new-project-host",
                 wizard.on_host,
                 "its loops on aiball's host",
-                "Where the loops started in this folder run; off: in tmux.",
+                if cfg!(windows) { "Where the loops started in this folder run; off: in psmux." } else { "Where the loops started in this folder run; off: in tmux." },
                 host_from.as_deref(),
                 |w| w.on_host = !w.on_host,
             ))
@@ -729,7 +729,7 @@ impl Shell {
             .child(item(
                 "1",
                 "Start the agent".into(),
-                format!("\"Start its first session\" starts {agent}'s Claude Code {}, in the project's folder; its terminal opens here, its tickets beside.", if wizard.on_host { "on aiball's host" } else { "in tmux" }),
+                format!("\"Start its first session\" starts {agent}'s Claude Code {}, in the project's folder; its terminal opens here, its tickets beside.", if wizard.on_host { "on aiball's host".into() } else { format!("in {}", crate::mux::program()) }),
             ))
             .child(item(
                 "2",
