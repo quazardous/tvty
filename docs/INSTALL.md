@@ -69,8 +69,10 @@ make install-desktop BIN=$PWD/target/release/tvty
 Terminal Velocity builds and starts on Windows 10 and 11 (x86_64), and its
 releases carry a Windows build. Expect gaps: it needs an aiball recent
 enough to write its machine secret (without it, tvty cannot list or start
-the agents' loops), and the agents' sessions run under psmux. One line in PowerShell
-installs everything:
+the agents' loops). The agents' sessions are held by aiball's session host,
+as on Linux, from an aiball that makes it the default on Windows too; psmux
+is for the loops kept in tmux mode. One line in PowerShell installs
+everything:
 
 ```powershell
 irm https://github.com/quazardous/tvty/releases/latest/download/tvty-setup.ps1 | iex
