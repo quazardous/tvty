@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Windows, full screen: the window's minimize, maximize and close buttons answer (they did nothing). Maximize leaves full screen; close asks about the sessions as ever.
 - In a sheet such as quitting's, "Remember this choice" no longer runs under the buttons when the room is short: it goes on a line of its own.
 - The terminal no longer shows thin dark lines between cells of one background colour (a status bar), seen at display scales where a cell is not a whole number of pixels (125 %).
 - Settings > Layout > Sides: its frames are as wide as the others, its switches in their column.

@@ -299,6 +299,8 @@ pub struct Shell {
     theme_menu: bool,
     /// The title bar's ? menu is open.
     help_menu: bool,
+    /// The window's button pressed, full screen on Windows (see `window_button_at`).
+    window_button_pressed: Option<WindowButton>,
     /// The "New project" wizard, while open.
     new_project: Option<newproject::NewProject>,
     /// The project the options are scoped to, its folders' settings.
@@ -818,6 +820,7 @@ impl Shell {
             switches: 0,
             theme_menu: false,
             help_menu: false,
+            window_button_pressed: None,
             new_project: None,
             project_opts: None,
             scope_select: None,
@@ -5119,6 +5122,28 @@ impl Render for Shell {
             // a button, a menu, a list: only a field takes the focus on a
             // click, the rest never did. A click on a field (the same or
             // another) gives it back at once.
+            // Windows, full screen: GPUI no longer tells the system where the
+            // window's buttons are (its hit test stops there), and the kit
+            // gives them a click of their own only on Linux: they did
+            // nothing. A press and its release on one of them are read here.
+            .when(cfg!(windows) && window.is_fullscreen(), |d| {
+                d.capture_any_mouse_down(cx.listener(|shell, event: &MouseDownEvent, window, _| {
+                    shell.window_button_pressed = (event.button == MouseButton::Left).then(|| window_button_at(window, event.position)).flatten();
+                }))
+                .capture_any_mouse_up(cx.listener(|shell, event: &MouseUpEvent, window, cx| {
+                    let pressed = shell.window_button_pressed.take();
+                    if event.button != MouseButton::Left || pressed.is_none() || pressed != window_button_at(window, event.position) {
+                        return;
+                    }
+                    match pressed {
+                        Some(WindowButton::Minimize) => window.minimize_window(),
+                        // Full screen, maximized already: back to the window.
+                        Some(WindowButton::Maximize) => window.toggle_fullscreen(),
+                        Some(WindowButton::Close) => shell.ask_quit(window, cx),
+                        None => {}
+                    }
+                }))
+            })
             .capture_any_mouse_down(cx.listener(|shell, _, window, cx| {
                 if in_field(window) {
                     shell.leave_field(window, cx);
@@ -5859,4 +5884,33 @@ mod tests {
         assert_eq!(moved(&groups(), Some("gone"), Move::Forth, &HashMap::new()).as_deref(), Some("a1"));
         assert_eq!(moved(&[], None, Move::Forth, &HashMap::new()), None);
     }
+}
+
+/// A button of the window, at the title bar's right.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum WindowButton {
+    Minimize,
+    Maximize,
+    Close,
+}
+
+/// The window's button under `at`, as the kit lays them out: at the title
+/// bar's right, from the right close, maximize, minimize (those the system
+/// offers), each as wide as the kit's own bar is high.
+fn window_button_at(window: &Window, at: Point<Pixels>) -> Option<WindowButton> {
+    let width = window.viewport_size().width;
+    if at.y > px(TITLE_BAR_HEIGHT) || at.x > width {
+        return None;
+    }
+    let side = f32::from(gpui_kit::component::TITLE_BAR_HEIGHT);
+    let from_right = (f32::from(width - at.x) / side).floor() as usize;
+    let offered = window.window_controls();
+    let mut buttons = vec![WindowButton::Close];
+    if offered.maximize {
+        buttons.push(WindowButton::Maximize);
+    }
+    if offered.minimize {
+        buttons.push(WindowButton::Minimize);
+    }
+    buttons.get(from_right).copied()
 }
