@@ -1621,6 +1621,25 @@ impl Shell {
         }
     }
 
+    /// Who has the keys, said for the log: one of tvty's own, else the key
+    /// contexts on the way to it.
+    fn focus_owner(&self, window: &Window, cx: &App) -> String {
+        let Some(focused) = window.focused(cx) else {
+            return "nothing".into();
+        };
+        if focused == self.focus {
+            return "the workspace".into();
+        }
+        if focused == self.page_focus {
+            return "the page shown".into();
+        }
+        if let Some((session, _)) = self.terminals.iter().find(|(_, t)| t.read(cx).focus_handle() == &focused) {
+            return format!("the terminal {session}");
+        }
+        let contexts: Vec<String> = window.context_stack().iter().map(|c| format!("{c:?}")).collect();
+        format!("an element in [{}]", contexts.join(" > "))
+    }
+
     /// The focus when no field nor terminal has it: the page's up, else the
     /// workspace's — so that the keys reach the surface shown, and only it.
     pub(super) fn focus_home(&self, window: &mut Window, cx: &mut App) {
@@ -2027,8 +2046,8 @@ impl Shell {
         // seen elsewhere.
         let focus = terminal.read(cx).focus_handle().clone();
         let name = session.to_string();
-        cx.on_focus_out(&focus, window, move |_, _, window, cx| {
-            let to = if window.focused(cx).is_some() { "another element" } else { "nothing" };
+        cx.on_focus_out(&focus, window, move |shell, _, window, cx| {
+            let to = shell.focus_owner(window, cx);
             log::info!("focus: the terminal {name} lost the keys, to {to} (window active: {})", window.is_window_active());
         })
         .detach();
