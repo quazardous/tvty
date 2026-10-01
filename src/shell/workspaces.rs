@@ -85,9 +85,10 @@ impl Picker {
 
 /// The sessions stopped at quit, as the restart sheet lists them: by
 /// project, each ticked, its mark as it was (▶ on its own, ■ held).
-fn restart_rows(loops: &[String], holds: &HashMap<String, String>, known: &[crate::loops::KnownLoop]) -> Vec<PickRow> {
+fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, String>, known: &[crate::loops::KnownLoop]) -> Vec<PickRow> {
     let mut rows: Vec<PickRow> = loops
         .iter()
+        .chain(still)
         .map(|name| {
             let known = known.iter().find(|l| l.name == *name);
             let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
@@ -98,14 +99,16 @@ fn restart_rows(loops: &[String], holds: &HashMap<String, String>, known: &[crat
                 Some("wait_10m") => (Mode::Stop, " · held for a while"),
                 _ => (Mode::Auto, ""),
             };
+            // Asked to stop when tvty quit, it ran on: listed, not to choose.
+            let ran_on = still.contains(name);
             PickRow {
                 project,
                 agent,
                 loop_name: Some(name.clone()),
                 now: Some(now),
-                note: format!("{place}{held}"),
-                checked: true,
-                fixed: false,
+                note: if ran_on { format!("{place} · ran on: its stop did not take") } else { format!("{place}{held}") },
+                checked: !ran_on,
+                fixed: ran_on,
                 opening: None,
                 kept: None,
             }
@@ -359,8 +362,8 @@ impl Shell {
 
     /// At start: the sessions stopped when tvty quit, offered to restart —
     /// each ticked, its mark as it was (▶ on its own, ■ held).
-    pub(super) fn pick_restart(&mut self, loops: Vec<String>, holds: HashMap<String, String>, cx: &mut Context<Self>) {
-        let rows = restart_rows(&loops, &holds, &self.board.known);
+    pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, holds: HashMap<String, String>, cx: &mut Context<Self>) {
+        let rows = restart_rows(&loops, &still, &holds, &self.board.known);
         self.open_picker(PickFor::Restart(holds), rows, cx);
     }
 
@@ -891,7 +894,7 @@ mod tests {
             KnownLoop { name: "cl-a-1".into(), agent: Some("a-claude".into()), project: Some("alpha".into()), mode: "tmux".into(), ..Default::default() },
         ];
         let holds = HashMap::from([("cl-z-1".to_string(), "wait_inf".to_string()), ("cl-a-1".to_string(), "off".to_string())]);
-        let rows = restart_rows(&["cl-z-1".into(), "cl-a-1".into()], &holds, &known);
+        let rows = restart_rows(&["cl-z-1".into(), "cl-a-1".into()], &[], &holds, &known);
         let said: Vec<(&str, &str, Option<Mode>, &str, bool)> =
             rows.iter().map(|r| (r.project.as_str(), r.agent.as_str(), r.now, r.note.as_str(), r.checked)).collect();
         assert_eq!(
@@ -899,5 +902,14 @@ mod tests {
             vec![("alpha", "a-claude", Some(Mode::Auto), crate::mux::program(), true), ("zeta", "z-claude", Some(Mode::Stop), "host · held until let go", true)]
         );
         assert!(rows.iter().all(|r| r.loop_name.is_some() && !r.fixed));
+    }
+
+    #[test]
+    fn a_session_whose_stop_did_not_take_is_listed_not_to_choose() {
+        let known = vec![KnownLoop { name: "cl-b-1".into(), agent: Some("b-claude".into()), project: Some("beta".into()), mode: "host".into(), ..Default::default() }];
+        let rows = restart_rows(&[], &["cl-b-1".into()], &HashMap::new(), &known);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].fixed && !rows[0].checked);
+        assert_eq!(rows[0].note, "host · ran on: its stop did not take");
     }
 }

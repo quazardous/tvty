@@ -485,6 +485,11 @@ pub struct Workspace {
     /// back when they restart as they were.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub holds_on_quit: HashMap<String, String>,
+    /// The loops asked to stop when tvty quit that still ran when it did:
+    /// at start, said as such, or offered with the others if they stopped
+    /// since.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub still_on_quit: Vec<String>,
     /// Each project's sessions in the order they came, as the list shows
     /// them: a new one last.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -507,6 +512,7 @@ impl Stored for Workspace {
             pings_seen: None,
             stopped_on_quit: Vec::new(),
             holds_on_quit: HashMap::new(),
+            still_on_quit: Vec::new(),
             terminal_order: HashMap::new(),
             standing_history: Vec::new(),
         })

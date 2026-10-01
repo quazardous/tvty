@@ -974,6 +974,16 @@ impl Aiball {
         self.rpc("consumer.backlog", json!({ "consumer_id": agent, "project": project, "limit": "500" }))
     }
 
+    /// The agents whose session runs now, as aiball's sessions say.
+    pub fn running_agents(&self) -> anyhow::Result<Vec<String>> {
+        let sessions: Vec<Value> = self.rpc("session.list", json!({}))?;
+        Ok(sessions
+            .iter()
+            .filter(|s| s.get("running").and_then(Value::as_bool) == Some(true))
+            .filter_map(|s| s.get("agent").and_then(Value::as_str).map(String::from))
+            .collect())
+    }
+
     /// Whether aiball's host runs `agent`'s session, its program up — which
     /// aiball knows before the agent itself says it is there.
     pub fn host_runs(&self, agent: &str) -> anyhow::Result<bool> {

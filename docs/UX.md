@@ -183,7 +183,10 @@ and restarts those left on (aiball's `loop.restart`, each where it ran,
 its conversation resumed) **as they were** — a held one held again
 (`consumer.afk`) — or **fresh**, each booting then running on its own;
 or none, not now. "Remember this choice" keeps the answer, for all of
-them, every time (On start). tvty quits once
+them, every time (On start). A session asked to stop that runs on (the order
+did not reach its loop) is not taken for stopped: tvty waits for its
+session to end, at most 15 s, and at the next start says it ran on — in
+the restart list without a switch, and as an error notice. tvty quits once
 they stopped, 15 s at most. Loops of another machine are never touched.
 
 When the session shown ends (Claude quit, the loop stopped), its terminal

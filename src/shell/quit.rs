@@ -144,7 +144,8 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let (done, wait) = futures::channel::oneshot::channel();
             std::thread::spawn(move || {
-                let stopped: Vec<String> = known
+                let began = std::time::Instant::now();
+                let asked: Vec<crate::loops::KnownLoop> = known
                     .into_iter()
                     .filter(|l| match crate::loops::stop(&aiball, l) {
                         Ok(()) => true,
@@ -153,21 +154,42 @@ impl Shell {
                             false
                         }
                     })
-                    .map(|l| l.name)
                     .collect();
-                let _ = done.send(stopped);
+                // Asked is not stopped: a loop the order did not reach runs
+                // on. Gone once its session is no longer listed.
+                let mut still: Vec<crate::loops::KnownLoop> = asked;
+                let mut stopped: Vec<String> = Vec::new();
+                while !still.is_empty() && began.elapsed() < STOP_WAIT {
+                    match aiball.running_agents() {
+                        Ok(running) => {
+                            let (gone, on): (Vec<_>, Vec<_>) = still.into_iter().partition(|l| l.agent().is_none_or(|a| !running.iter().any(|r| r == a)));
+                            stopped.extend(gone.into_iter().map(|l| l.name));
+                            still = on;
+                        }
+                        Err(error) => log::warn!("quit: the sessions could not be read: {error:#}"),
+                    }
+                    if !still.is_empty() {
+                        std::thread::sleep(Duration::from_millis(400));
+                    }
+                }
+                let still: Vec<String> = still.into_iter().map(|l| l.name).collect();
+                if !still.is_empty() {
+                    log::warn!("quit: still running when tvty quits (their stop did not take): {}", still.join(", "));
+                }
+                let _ = done.send((stopped, still));
             });
-            let timer = cx.background_executor().timer(STOP_WAIT);
-            let stopped = futures::select_biased! {
-                stopped = futures::FutureExt::fuse(wait) => stopped.unwrap_or_default(),
+            let timer = cx.background_executor().timer(STOP_WAIT + Duration::from_secs(2));
+            let (stopped, still) = futures::select_biased! {
+                ended = futures::FutureExt::fuse(wait) => ended.unwrap_or_default(),
                 _ = futures::FutureExt::fuse(timer) => {
                     log::warn!("quit: the loops took longer than {}s to stop", STOP_WAIT.as_secs());
-                    loops
+                    (Vec::new(), loops)
                 }
             };
             let _ = this.update(cx, |shell, cx| {
-                shell.settings.workspace.holds_on_quit = holds.into_iter().filter(|(name, _)| stopped.contains(name)).collect();
+                shell.settings.workspace.holds_on_quit = holds.into_iter().filter(|(name, _)| stopped.contains(name) || still.contains(name)).collect();
                 shell.settings.workspace.stopped_on_quit = stopped;
+                shell.settings.workspace.still_on_quit = still;
                 shell.quit_now(cx);
             });
         })
@@ -182,12 +204,30 @@ impl Shell {
         }
         self.restart_offered = true;
         let running = self.running_loops();
-        let names: Vec<String> = std::mem::take(&mut self.settings.workspace.stopped_on_quit)
+        let known = |n: &String| self.board.known.iter().any(|l| l.name == *n);
+        // Those whose stop did not take when tvty quit: offered with the
+        // others if they stopped since, said as still running otherwise.
+        // (A loop aiball no longer lists as stopped is said, not dropped.)
+        let (still_stopped, still_running): (Vec<String>, Vec<String>) =
+            std::mem::take(&mut self.settings.workspace.still_on_quit).into_iter().partition(|n| known(n) && !running.contains(n));
+        let mut names: Vec<String> = std::mem::take(&mut self.settings.workspace.stopped_on_quit)
             .into_iter()
-            .filter(|n| self.board.known.iter().any(|l| l.name == *n) && !running.contains(n))
+            .filter(|n| known(n) && !running.contains(n))
             .collect();
+        names.extend(still_stopped);
         let holds = std::mem::take(&mut self.settings.workspace.holds_on_quit);
         self.settings.save(cx);
+        if !still_running.is_empty() {
+            let agents: Vec<String> = still_running
+                .iter()
+                .map(|n| self.board.known.iter().find(|l| l.name == *n).and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| n.clone()))
+                .collect();
+            // Said as a failure: it is one, and one's own notices may be off.
+            crate::activity::publish(
+                cx,
+                crate::activity::Activity::failed(None, "stop when tvty quit", format!("{} ran on: the stop did not take", agents.join(", "))),
+            );
+        }
         if names.is_empty() {
             return;
         }
@@ -195,7 +235,7 @@ impl Shell {
             Some("restart") => self.restart_loops(names, holds, true, cx),
             Some("fresh") => self.restart_loops(names, holds, false, cx),
             Some("leave") => {}
-            _ => self.pick_restart(names, holds, cx),
+            _ => self.pick_restart(names, still_running, holds, cx),
         }
     }
 
