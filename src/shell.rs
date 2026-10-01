@@ -589,6 +589,7 @@ impl Shell {
         // Back in the window: the terminal shown takes its size back from
         // the host, if another client took it meanwhile.
         cx.observe_window_activation(window, |shell: &mut Self, window, cx| {
+            log::info!("focus: the window is {}", if window.is_window_active() { "active" } else { "inactive" });
             if window.is_window_active()
                 && let Some(terminal) = shell.selected.as_ref().and_then(|s| shell.terminals.get(s))
             {
@@ -2018,6 +2019,16 @@ impl Shell {
             (None, true) => TerminalView::tmux_copy(session, cx).expect("failed to spawn the terminal"),
         });
         self.watch_end(session.to_string(), &terminal, window, cx);
+        // Where the keys went when the terminal lost them: on Windows it
+        // lost them for good now and then (a click was needed again), not
+        // seen elsewhere.
+        let focus = terminal.read(cx).focus_handle().clone();
+        let name = session.to_string();
+        cx.on_focus_out(&focus, window, move |_, _, window, cx| {
+            let to = if window.focused(cx).is_some() { "another element" } else { "nothing" };
+            log::info!("focus: the terminal {name} lost the keys, to {to} (window active: {})", window.is_window_active());
+        })
+        .detach();
         self.terminals.insert(session.to_string(), terminal.clone());
         Some(terminal)
     }
@@ -5126,7 +5137,7 @@ impl Render for Shell {
                             press_kept(buttons::icon(
                                 "help-button",
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
-                                buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                                buttons::hint(cx, "Menu: about, help, restart, quit", "help.menu"),
                             ))
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 // The bar's own double click (maximize) is not its.

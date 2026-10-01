@@ -1,6 +1,6 @@
 //! The title bar's menu, under the app's icon (F1): where to learn about tvty and to reach its
 //! people — the version and the build, the documentation, the shortcuts,
-//! what changed, the repository, a bug to report — and a restart.
+//! what changed, the repository, a bug to report — a restart, and quitting.
 
 use crate::ui::Named as _;
 use gpui_kit::*;
@@ -31,10 +31,11 @@ enum Entry {
     Aiball,
     Updates,
     Restart,
+    Quit,
 }
 
 impl Entry {
-    const ALL: [Entry; 14] = [
+    const ALL: [Entry; 15] = [
         Entry::About,
         Entry::Options,
         Entry::NewProject,
@@ -49,6 +50,7 @@ impl Entry {
         Entry::Aiball,
         Entry::Updates,
         Entry::Restart,
+        Entry::Quit,
     ];
 
     fn label(self) -> &'static str {
@@ -67,6 +69,7 @@ impl Entry {
             Entry::Aiball => "aiball",
             Entry::Updates => "Updates…",
             Entry::Restart => "Restart tvty",
+            Entry::Quit => "Quit tvty",
         }
     }
 
@@ -84,6 +87,7 @@ impl Entry {
             Entry::Updates => crate::updates::newer(cx).map(|v| format!("{v} is out ↑")).unwrap_or_default(),
             Entry::Shortcuts | Entry::NewProject | Entry::Tips => String::new(),
             Entry::Restart => "sessions kept".into(),
+            Entry::Quit => String::new(),
         }
     }
 
@@ -147,6 +151,8 @@ impl Shell {
             }
             Entry::Shortcuts => self.open_options_page(Section::Shortcuts, None, window, cx),
             Entry::Restart => self.restart_tvty(window, cx),
+            // As the window's close button: its sessions asked about.
+            Entry::Quit => self.ask_quit(window, cx),
             Entry::Tips => self.browse_tips(cx),
             Entry::NewProject => self.open_new_project(window, cx),
             Entry::Megaphone => self.open_message_all(window, cx),
