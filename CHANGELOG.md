@@ -42,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- On a machine that relays to aiball's hub, its own agents' sessions on the host show in the panel again and open: aiball says them only with their loops there.
 - Quitting with sessions to stop waits until they have really ended: one that runs on is said at the next start, instead of silently missing from the restart list.
 - Windows, full screen: the window's minimize, maximize and close buttons answer (they did nothing). Maximize leaves full screen; close asks about the sessions as ever.
 - In a sheet such as quitting's, "Remember this choice" no longer runs under the buttons when the room is short: it goes on a line of its own.

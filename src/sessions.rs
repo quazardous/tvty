@@ -148,6 +148,21 @@ fn placed(
                     c.session = Some(session.clone());
                 }
             }
+            // Behind a relaying node aiball says the session neither with
+            // the agent nor in the host's list: this machine's loop on the
+            // host does, with where to attach.
+            if place == Place::Here && c.session.as_ref().and_then(|s| s.socket()).is_none() {
+                if let Some(running) = known.iter().find(|l| l.on_host() && l.running && l.agent.as_deref() == Some(c.consumer_id.as_str()) && l.attach.as_ref().is_some_and(|a| a.socket.is_some())) {
+                    c.session = Some(crate::aiball::HostedSession {
+                        running: true,
+                        attach: running.attach.clone(),
+                        tmux: None,
+                        clients: running.clients,
+                        interactive: None,
+                        machine: mine.map(str::to_string),
+                    });
+                }
+            }
             c
         })
         .collect();
@@ -449,6 +464,28 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 mod tests {
     use super::{HOSTED_PREFIX, HUB, Place, Status, filter_words, found, group, homes, loop_says, place, placed, project_at};
     use std::collections::HashMap;
+
+    #[test]
+    fn behind_a_relaying_node_an_agent_takes_its_session_from_its_loop_on_the_host() {
+        // As aiball says them on a node: the agent remote, on this machine,
+        // no session with it nor in the host's list; its loop on the host
+        // says where to attach.
+        let mut mine = agent("tvty-win", "/w/tvty", json!(null));
+        mine.machine = Some("node:classy".into());
+        mine.remote = Some(true);
+        let known = vec![crate::loops::KnownLoop {
+            name: "cl-tvty-1".into(),
+            cwd: "/w/tvty".into(),
+            agent: Some("tvty-win".into()),
+            mode: "host".into(),
+            running: true,
+            attach: Some(crate::aiball::AttachPoint { socket: Some("/h/tvty-win/attach.sock".into()) }),
+            ..Default::default()
+        }];
+        let (seen, _) = placed(vec![mine], Some("node:classy"), &known, &[]);
+        assert_eq!(seen[0].remote, Some(false));
+        assert_eq!(seen[0].session.as_ref().and_then(|s| s.socket()), Some("/h/tvty-win/attach.sock"));
+    }
 
     #[test]
     fn a_live_loops_bar_says_its_phase() {
