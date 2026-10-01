@@ -11,6 +11,12 @@ pub trait Tip: StatefulInteractiveElement + Sized {
         let text: SharedString = text.into();
         self.tooltip(move |window, cx| Tooltip::new(text.clone()).build(window, cx))
     }
+
+    /// The same, but silent while `hidden`: an element whose click opens a
+    /// dialogue beside it keeps its tip out of the way of the choices.
+    fn tip_unless(self, hidden: bool, text: impl Into<SharedString>) -> Self {
+        if hidden { self } else { self.tip(text) }
+    }
 }
 
 impl<E: StatefulInteractiveElement + Sized> Tip for E {}

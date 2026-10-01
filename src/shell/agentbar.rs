@@ -171,7 +171,8 @@ impl Shell {
                     .child(man)
                     .when(marks.arming, |d| d.child("…"))
             }))
-            .tip(if marks.arming {
+            // Silent while its choices are open: the tip would cover them.
+            .tip_unless(self.afk_menu, if marks.arming {
                 "armed: the little man shows the mode chosen with F9, in force 3 s after the last press — ▶ or ‖ says the one in force until then"
             } else {
                 "who drives the loop: ▶ on its own, ‖ held for you (or while you type); the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
@@ -350,7 +351,8 @@ impl Shell {
                         }
                     }))
                 })
-                .tip(tip);
+                // Silent while its bar is open: the tip would cover it.
+                .tip_unless(asked, tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
             let other = if hosted { format!("into {mux}") } else { "to aiball's host".to_string() };
             let place_bar = asked.then(|| {
@@ -506,7 +508,7 @@ impl Shell {
                         .when(backlog_open, |d| d.bg(p().active))
                         .when(backlog.is_some_and(|b| b > 0), |d| d.text_color(ink(p().text)))
                         .child(format!("backlog:{}", backlog.map_or("-".to_string(), |n| n.to_string())))
-                        .tip("b: its backlog, the tickets for it to look at; a click lists them")
+                        .tip_unless(backlog_open, "b: its backlog, the tickets for it to look at; a click lists them")
                         .on_click(cx.listener(move |shell, _, _, cx| {
                             shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
                         })),
