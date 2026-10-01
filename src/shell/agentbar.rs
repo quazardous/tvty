@@ -846,7 +846,17 @@ impl Shell {
                     .background_executor()
                     .spawn(async move { crate::loops::detach_others(&aiball, &name, keep) })
                     .await
-                    .map(|_| "closed the other clients of this session".to_string()),
+                    // More than this one left: psmux does not say its
+                    // clients' pids to aiball yet, which closed none.
+                    .and_then(|left| match left {
+                        0 | 1 => Ok("closed the other clients of this session".to_string()),
+                        n => Err(anyhow::anyhow!(
+                            "{} other client{} still attached: {} cannot tell them from this one yet",
+                            n - 1,
+                            if n == 2 { "" } else { "s" },
+                            crate::mux::program()
+                        )),
+                    }),
             };
             let _ = this.update(cx, |shell, cx| {
                 crate::activity::publish(
