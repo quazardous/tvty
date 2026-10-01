@@ -43,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- "Assign ▾" assigns a ticket to the agent that holds it by a claim: its name was marked as already chosen, and a click on it did nothing.
 - In the agent's bar, a chip's choices stay inside the window: short of room, they wrap. The tooltip of the AFK chip, the backlog and the place chip no longer covers the choices it opens: it keeps quiet while they are open.
 - Windows: a click on what takes no keys (a session's row, the agent bar, the ticket panel) no longer takes them from the terminal shown: typing and F9 reach it without another click in it.
 - "+ project" on a folder where a session already runs offers to open it ("Open …, running"), and "Start its first session" opens it rather than starting a second one.

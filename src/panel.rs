@@ -1660,14 +1660,17 @@ impl TicketPanel {
                         Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
                         Some(own) => {
                             for agent in own {
-                                // Marked: its assignee, else whoever holds it (a claim).
-                                let on = ticket.assignee.as_deref().or(ticket.holder()) == Some(agent.as_str());
+                                // Marked: its assignee. Whoever only holds it (a
+                                // claim) is not: a click assigns it to them.
+                                let on = ticket.assignee.as_deref() == Some(agent.as_str());
+                                let claims = !on && ticket.holder() == Some(agent.as_str());
                                 let name = agent.clone();
                                 row = row.child(
                                     buttons::chip(SharedString::from(format!("assign-to-{agent}")), agent.clone())
                                         .py_0p5()
                                         .text_xs()
                                         .chosen(on)
+                                        .when(claims, |d| d.tip(format!("{agent} holds it by a claim: a click assigns it to them")))
                                         .when(!on, |d| {
                                             d.on_click(cx.listener(move |panel, _, window, cx| {
                                                 let name = name.clone();
