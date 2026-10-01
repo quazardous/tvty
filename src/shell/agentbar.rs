@@ -355,11 +355,16 @@ impl Shell {
                 .tip_unless(asked, tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
             let other = if hosted { format!("into {mux}") } else { "to aiball's host".to_string() };
-            // The others can be closed from here: this client has the
-            // controls, on a host that says it can.
+            // The others can be closed from here, this client having the
+            // controls: on a host that says it can, or a loop in tmux (aiball
+            // detaches them there, this terminal's client kept).
             let closable = attached.filter(|_| !copy).and_then(|a| {
-                let attach = self.terminals.get(&session)?.read(cx).attachment()?.clone();
-                attach.can_detach_others().then_some((a, attach))
+                let view = self.terminals.get(&session)?.read(cx);
+                let how = match view.attachment() {
+                    Some(attach) => attach.can_detach_others().then(|| Others::Host(attach.clone()))?,
+                    None => Others::Tmux(known.clone()?, view.child_pid?),
+                };
+                Some((a, how))
             });
             let place_bar = asked.then(|| {
                 let hands_session = session.clone();
@@ -374,7 +379,7 @@ impl Shell {
                                 shell.set_copy(hands_session.clone(), !copy, window, cx);
                             })),
                     );
-                if let Some((a, attach)) = closable {
+                if let Some((a, how)) = closable {
                     let who = if a.others == 1 { "the other client".to_string() } else { format!("the {} other clients", a.others) };
                     row = row.child(
                         buttons::answer("agent-close-others", format!("Close the others ({})", a.others))
@@ -383,7 +388,7 @@ impl Shell {
                             ))
                             .on_click(cx.listener(move |shell, _, _, cx| {
                                 shell.move_asked = None;
-                                shell.close_others(attach.clone(), cx);
+                                shell.close_others(how.clone(), cx);
                             })),
                     );
                 }
@@ -804,28 +809,53 @@ impl Shell {
     }
 }
 
+/// How the session's other clients are closed: by the host this terminal
+/// is attached to, or by aiball for a loop in tmux (its name, and the pid
+/// of this terminal's tmux client, kept).
+#[derive(Clone)]
+pub(super) enum Others {
+    Host(std::sync::Arc<crate::attach::Attach>),
+    Tmux(String, u32),
+}
+
 impl Shell {
-    /// The host closes the session's other clients; how many it closed is
-    /// said once it answers (a host that does not, within a few seconds,
-    /// is said to have closed none).
-    pub(super) fn close_others(&mut self, attach: std::sync::Arc<crate::attach::Attach>, cx: &mut Context<Self>) {
-        attach.detach_others();
+    /// The session's other clients are closed, and it is said: on the
+    /// host, how many once it answers (one that does not, within a few
+    /// seconds, is said to have been asked).
+    pub(super) fn close_others(&mut self, how: Others, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
-            let mut count = None;
-            for _ in 0..30 {
-                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
-                count = attach.take_others_closed();
-                if count.is_some() {
-                    break;
+            let said = match how {
+                Others::Host(attach) => {
+                    attach.detach_others();
+                    let mut count = None;
+                    for _ in 0..30 {
+                        cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+                        count = attach.take_others_closed();
+                        if count.is_some() {
+                            break;
+                        }
+                    }
+                    Ok(match count {
+                        Some(1) => "closed the other client of this session".to_string(),
+                        Some(n) => format!("closed the {n} other clients of this session"),
+                        None => "asked the session's host to close its other clients".to_string(),
+                    })
                 }
-            }
+                Others::Tmux(name, keep) => cx
+                    .background_executor()
+                    .spawn(async move { crate::loops::detach_others(&aiball, &name, keep) })
+                    .await
+                    .map(|_| "closed the other clients of this session".to_string()),
+            };
             let _ = this.update(cx, |shell, cx| {
-                let what = match count {
-                    Some(1) => "closed the other client of this session".to_string(),
-                    Some(n) => format!("closed the {n} other clients of this session"),
-                    None => "asked the session's host to close its other clients".to_string(),
-                };
-                crate::activity::publish(cx, crate::activity::Activity::done(None, what));
+                crate::activity::publish(
+                    cx,
+                    match said {
+                        Ok(what) => crate::activity::Activity::done(None, what),
+                        Err(error) => crate::activity::Activity::failed(None, "close the other clients", short_error(&format!("{error:#}"))),
+                    },
+                );
                 let _ = shell.refresh_now.unbounded_send(());
                 cx.notify();
             });

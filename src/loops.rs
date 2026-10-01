@@ -147,6 +147,13 @@ pub fn others_to_copies(aiball: &Aiball, name: &str, keep: u32) -> anyhow::Resul
     aiball.call::<Value>("loop.clients_readonly", json!({ "name": name, "keep_pid": keep })).map(drop)
 }
 
+/// Detaches the other tmux clients of a loop (claude-loop's terminal,
+/// another tvty): `keep`'s, this terminal's, stays. Answers the clients left.
+pub fn detach_others(aiball: &Aiball, name: &str, keep: u32) -> anyhow::Result<u64> {
+    let left: Value = aiball.call("loop.clients_detach", json!({ "name": name, "keep_pid": keep }))?;
+    Ok(left.get("clients").and_then(Value::as_u64).unwrap_or(0))
+}
+
 /// Stops a loop, keeping its state: it stays restartable.
 pub fn stop(aiball: &Aiball, known: &KnownLoop) -> anyhow::Result<()> {
     let agent = known.agent().with_context(|| format!("{}: no agent to stop it by", known.name))?;
