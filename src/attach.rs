@@ -36,6 +36,10 @@ const SIZE: u8 = 0x08;
 const EXITED: u8 = 0x0a;
 const CLOSED: u8 = 0x0b;
 const ERROR: u8 = 0x0c;
+/// This client closes the session's other clients; the host answers how
+/// many with `detached_others` (hosts whose welcome says the feature).
+const DETACH_OTHERS: u8 = 0x0f;
+const DETACHED_OTHERS: u8 = 0x10;
 
 /// The connection to a session (docs/IPC.md): its `attach.sock`, a Unix
 /// socket, or the loopback port its address file names.
@@ -58,6 +62,13 @@ pub struct Attach {
     /// A client that types and whose size counts; a copy (an observer)
     /// sends neither keys nor sizes.
     interactive: bool,
+    /// What the host said it does beyond version 1 (its welcome's
+    /// `features`): `detach_others`.
+    features: Mutex<Vec<String>>,
+    /// Another client closed this one (`closed` with `detached_by_other`).
+    detached_by_other: std::sync::atomic::AtomicBool,
+    /// How many clients this one's last `detach_others` closed, once said.
+    others_closed: Mutex<Option<u64>>,
 }
 
 impl Attach {
@@ -77,11 +88,14 @@ impl Attach {
             size: Mutex::new(size),
             closed: std::sync::atomic::AtomicBool::new(false),
             interactive,
+            features: Mutex::new(Vec::new()),
+            detached_by_other: std::sync::atomic::AtomicBool::new(false),
+            others_closed: Mutex::new(None),
         });
         let (socket, this) = (socket.to_path_buf(), attach.clone());
         std::thread::Builder::new().name("attach".into()).spawn(move || {
             match this.open(&socket, interactive) {
-                Ok(reader) => read(reader, term, listener),
+                Ok(reader) => read(reader, &this, term, listener),
                 Err(error) => {
                     log::warn!("attach {}: {error:#}", socket.display());
                     listener.send_event(Event::Exit);
@@ -155,6 +169,35 @@ impl Attach {
         }
     }
 
+    /// The host closes the session's other clients (claude-loop's terminal,
+    /// another tvty): this one and the session go on. Only an interactive
+    /// client, on a host that says it can.
+    pub fn detach_others(&self) {
+        if self.can_detach_others() {
+            if let Ok(mut closed) = self.others_closed.lock() {
+                *closed = None;
+            }
+            let _ = self.send(DETACH_OTHERS, b"{}");
+        }
+    }
+
+    /// Whether this client may close the others: interactive, on a host
+    /// whose welcome says `detach_others`.
+    pub fn can_detach_others(&self) -> bool {
+        self.interactive && self.features.lock().is_ok_and(|f| f.iter().any(|f| f == "detach_others"))
+    }
+
+    /// How many clients the last `detach_others` closed, once the host said
+    /// it (taken: said once).
+    pub fn take_others_closed(&self) -> Option<u64> {
+        self.others_closed.lock().ok()?.take()
+    }
+
+    /// Another client closed this one: not an end of the session.
+    pub fn detached_by_other(&self) -> bool {
+        self.detached_by_other.load(std::sync::atomic::Ordering::Relaxed)
+    }
+
     /// Leaves the session (it goes on without this client).
     pub fn close(&self) {
         self.closed.store(true, std::sync::atomic::Ordering::Relaxed);
@@ -211,7 +254,7 @@ fn dial(socket: &Path) -> std::io::Result<(Stream, Option<String>)> {
 }
 
 /// The session's side, until it ends: frames to the terminal.
-fn read<L: EventListener + Clone>(mut stream: Stream, term: Arc<FairMutex<Term<L>>>, listener: L) {
+fn read<L: EventListener + Clone>(mut stream: Stream, attach: &Attach, term: Arc<FairMutex<Term<L>>>, listener: L) {
     let mut parser: ansi::Processor = ansi::Processor::new();
     let mut snapshots = 0usize;
     loop {
@@ -227,6 +270,12 @@ fn read<L: EventListener + Clone>(mut stream: Stream, term: Arc<FairMutex<Term<L
                 // The session's size, which this client shows (cropping it
                 // when smaller, as the protocol says).
                 let value: Value = serde_json::from_slice(&payload).unwrap_or_default();
+                if kind == WELCOME {
+                    let features = value.get("features").and_then(Value::as_array).into_iter().flatten();
+                    if let Ok(mut said) = attach.features.lock() {
+                        *said = features.filter_map(Value::as_str).map(str::to_string).collect();
+                    }
+                }
                 let size = value.get("size").unwrap_or(&value);
                 let (rows, cols) = (
                     size.get("rows").and_then(Value::as_u64).unwrap_or(0) as usize,
@@ -265,8 +314,22 @@ fn read<L: EventListener + Clone>(mut stream: Stream, term: Arc<FairMutex<Term<L
                 }
             }
             CLOSED => {
-                log::info!("attach: the session closed ({})", String::from_utf8_lossy(&payload));
+                let value: Value = serde_json::from_slice(&payload).unwrap_or_default();
+                if value.get("reason").and_then(Value::as_str) == Some("detached_by_other") {
+                    log::info!("attach: another client closed this one; the session goes on");
+                    attach.detached_by_other.store(true, std::sync::atomic::Ordering::Relaxed);
+                } else {
+                    log::info!("attach: the session closed ({value})");
+                }
                 break;
+            }
+            DETACHED_OTHERS => {
+                let value: Value = serde_json::from_slice(&payload).unwrap_or_default();
+                let count = value.get("count").and_then(Value::as_u64).unwrap_or(0);
+                log::info!("attach: {count} other client(s) closed");
+                if let Ok(mut closed) = attach.others_closed.lock() {
+                    *closed = Some(count);
+                }
             }
             ERROR => log::warn!("attach: {}", String::from_utf8_lossy(&payload)),
             _ => {}
@@ -455,6 +518,61 @@ mod tests {
         attach.input(b"q");
         ended.recv_timeout(WAIT).unwrap();
         assert_eq!(line(&term, 1), "k");
+    }
+
+    /// A host that says `detach_others`: two clients, the first closes
+    /// the other, which hears it was detached by another client.
+    #[test]
+    fn a_client_closes_the_others_and_the_other_hears_why() {
+        let socket = scratch("others").join("attach.sock");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(address_file(&socket), json!({ "port": port, "token": "t" }).to_string()).unwrap();
+        std::thread::spawn(move || {
+            let mut clients = Vec::new();
+            for stream in listener.incoming().take(2) {
+                let mut stream = stream.unwrap();
+                read_frame(&mut stream).unwrap();
+                write(&mut stream, WELCOME, json!({ "version": 1, "size": { "rows": 5, "cols": 20 }, "features": ["detach_others"] }).to_string().as_bytes());
+                clients.push(stream);
+            }
+            let (mut first, mut second) = (clients.remove(0), clients.remove(0));
+            while let Ok((kind, _)) = read_frame(&mut first) {
+                if kind == DETACH_OTHERS {
+                    write(&mut second, CLOSED, br#"{"reason":"detached_by_other"}"#);
+                    write(&mut first, DETACHED_OTHERS, br#"{"count":1}"#);
+                }
+            }
+        });
+        let (_, first, _) = attached(&socket, true);
+        for _ in 0..100 {
+            if first.can_detach_others() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        let (_, second, second_ended) = attached(&socket, true);
+        for _ in 0..100 {
+            if second.can_detach_others() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert!(first.can_detach_others());
+        first.detach_others();
+        second_ended.recv_timeout(WAIT).unwrap();
+        assert!(second.detached_by_other());
+        assert!(!first.detached_by_other());
+        let mut count = None;
+        for _ in 0..100 {
+            count = first.take_others_closed();
+            if count.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        assert_eq!(count, Some(1));
+        first.close();
     }
 
     #[test]

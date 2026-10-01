@@ -367,6 +367,14 @@ impl TerminalView {
         }
     }
 
+    /// Its connection to a session aiball's host holds, if it is one.
+    pub fn attachment(&self) -> Option<&Arc<crate::attach::Attach>> {
+        match &self.backend {
+            Backend::Attach(attach) => Some(attach),
+            _ => None,
+        }
+    }
+
     /// Shown: on aiball's host, this client's size becomes the session's
     /// (another client may have typed since). Nothing to do through tmux.
     pub fn take_size(&self) {

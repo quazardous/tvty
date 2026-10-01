@@ -355,6 +355,12 @@ impl Shell {
                 .tip_unless(asked, tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
             let other = if hosted { format!("into {mux}") } else { "to aiball's host".to_string() };
+            // The others can be closed from here: this client has the
+            // controls, on a host that says it can.
+            let closable = attached.filter(|_| !copy).and_then(|a| {
+                let attach = self.terminals.get(&session)?.read(cx).attachment()?.clone();
+                attach.can_detach_others().then_some((a, attach))
+            });
             let place_bar = asked.then(|| {
                 let hands_session = session.clone();
                 let mut row = chipbar::line("agent-place-bar", p().warning)
@@ -368,6 +374,19 @@ impl Shell {
                                 shell.set_copy(hands_session.clone(), !copy, window, cx);
                             })),
                     );
+                if let Some((a, attach)) = closable {
+                    let who = if a.others == 1 { "the other client".to_string() } else { format!("the {} other clients", a.others) };
+                    row = row.child(
+                        buttons::answer("agent-close-others", format!("Close the others ({})", a.others))
+                            .tooltip(format!(
+                                "{who} attached to this session leave it (claude-loop's terminal, another Terminal Velocity); its Claude and this terminal go on"
+                            ))
+                            .on_click(cx.listener(move |shell, _, _, cx| {
+                                shell.move_asked = None;
+                                shell.close_others(attach.clone(), cx);
+                            })),
+                    );
+                }
                 // Moved from here only a loop of this machine.
                 if let Some(name) = known.clone() {
                     let (agent, to_host) = (agent.clone(), !hosted);
@@ -786,6 +805,35 @@ impl Shell {
 }
 
 impl Shell {
+    /// The host closes the session's other clients; how many it closed is
+    /// said once it answers (a host that does not, within a few seconds,
+    /// is said to have closed none).
+    pub(super) fn close_others(&mut self, attach: std::sync::Arc<crate::attach::Attach>, cx: &mut Context<Self>) {
+        attach.detach_others();
+        cx.spawn(async move |this, cx| {
+            let mut count = None;
+            for _ in 0..30 {
+                cx.background_executor().timer(std::time::Duration::from_millis(100)).await;
+                count = attach.take_others_closed();
+                if count.is_some() {
+                    break;
+                }
+            }
+            let _ = this.update(cx, |shell, cx| {
+                let what = match count {
+                    Some(1) => "closed the other client of this session".to_string(),
+                    Some(n) => format!("closed the {n} other clients of this session"),
+                    None => "asked the session's host to close its other clients".to_string(),
+                };
+                crate::activity::publish(cx, crate::activity::Activity::done(None, what));
+                let _ = shell.refresh_now.unbounded_send(());
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     /// F9, wherever the focus is: the shown agent's AFK mode moves one
     /// step (aiball's toggle, claude-loop's own cycle and 3 s arming); a
     /// terminal without an agent gets the key, as it would have.

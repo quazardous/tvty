@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "host · controls +N" offers "Close the others (N)": the other clients attached to the session (claude-loop's terminal, another Terminal Velocity) leave it, its Claude and your terminal go on. A Terminal Velocity closed so says "detached by another client" and attaches again on Enter. Shown when aiball's session host offers it.
 - "Quit tvty" in the title bar's menu, under "Restart tvty": the same as the window's close button, its sessions asked about.
 - At start, the sessions stopped when tvty quit are listed one by one: switch off those not to restart. Every question about several sessions, and the new project's wizard, now open in one large panel.
 - Seven new tips: "File and exit", the ticket panel's pin, a ticket's followers, the thread's order, the terminal held still while you select, workspaces and their Open and Shut.
@@ -42,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- In the agent's bar, the tooltip of the AFK chip, the backlog and the place chip no longer covers the choices it opens: it keeps quiet while they are open.
+- In the agent's bar, a chip's choices stay inside the window: short of room, they wrap. The tooltip of the AFK chip, the backlog and the place chip no longer covers the choices it opens: it keeps quiet while they are open.
 - Windows: a click on what takes no keys (a session's row, the agent bar, the ticket panel) no longer takes them from the terminal shown: typing and F9 reach it without another click in it.
 - "+ project" on a folder where a session already runs offers to open it ("Open …, running"), and "Start its first session" opens it rather than starting a second one.
 - On a machine that relays to aiball's hub, its own agents' sessions on the host show in the panel again and open: aiball says them only with their loops there.

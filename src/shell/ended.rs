@@ -20,6 +20,10 @@ pub(super) struct EndedSession {
     pub project: Option<String>,
     /// How to start its loop again; none for a bare tmux session.
     pub start: Option<Start>,
+    /// Not an end: another client closed this one (its "Close the
+    /// others"). The session goes on; Enter attaches again — never on its
+    /// own, or two windows would close each other in turn.
+    pub detached: bool,
 }
 
 impl Shell {
@@ -69,6 +73,7 @@ impl Shell {
     /// Lets the ended terminal go: a later selection of the same name
     /// attaches afresh. Shown, it leaves the end screen in its place.
     fn session_ended(&mut self, session: &str, window: &mut Window, cx: &mut Context<Self>) {
+        let detached = self.terminals.get(session).and_then(|t| t.read(cx).attachment().map(|a| a.detached_by_other())).unwrap_or(false);
         self.terminals.remove(session);
         self.save_workspace(cx);
         if self.selected.as_deref() != Some(session) {
@@ -112,6 +117,7 @@ impl Shell {
             agent: agent.or_else(|| known.and_then(|l| l.agent().map(str::to_string))),
             project: project.or_else(|| known.and_then(|l| l.project.clone())),
             start,
+            detached,
         });
         self.focus_home(window, cx);
         self.sync_panel(cx);
@@ -125,7 +131,13 @@ impl Shell {
 
     /// Enter on the end screen: its loop starts again; the new session opens
     /// as soon as it runs.
-    pub(super) fn restart_ended(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn restart_ended(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        // Closed by another client: the session runs, it is attached again.
+        if let Some(session) = self.ended_shown().filter(|e| e.detached).map(|e| e.session.clone()) {
+            self.ended = None;
+            self.select(session, window, cx);
+            return;
+        }
         if let Some(start) = self.ended_shown().and_then(|e| e.start.clone()) {
             self.start_loop(start, cx);
         }
@@ -190,7 +202,11 @@ impl Shell {
                     .gap_1()
                     .text_lg()
                     .child(div().font_weight(FontWeight::BOLD).child(who))
-                    .child(div().text_color(p().muted).child("— the session ended")),
+                    .child(div().text_color(p().muted).child(if ended.detached {
+                        "— detached by another client"
+                    } else {
+                        "— the session ended"
+                    })),
             )
             .child(
                 div()
@@ -207,10 +223,16 @@ impl Shell {
                 div()
                     .flex()
                     .gap_3()
-                    .when(ended.start.is_some(), |d| {
+                    .when(ended.detached, |d| {
+                        d.child(
+                            button("ended-reattach", "Attach again", "Enter", true)
+                                .on_click(cx.listener(|shell, _, window, cx| shell.restart_ended(window, cx))),
+                        )
+                    })
+                    .when(!ended.detached && ended.start.is_some(), |d| {
                         d.child(
                             button("ended-restart", if starting { "Starting…" } else { "Restart" }, "Enter", true)
-                                .on_click(cx.listener(|shell, _, _, cx| shell.restart_ended(cx))),
+                                .on_click(cx.listener(|shell, _, window, cx| shell.restart_ended(window, cx))),
                         )
                     })
                     .child(

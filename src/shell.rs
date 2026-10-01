@@ -2381,7 +2381,7 @@ impl Shell {
         }
         if self.ended_shown().is_some() && !m.control && !m.alt && (key == "enter" || key == "escape") {
             if key == "enter" {
-                self.restart_ended(cx);
+                self.restart_ended(window, cx);
             } else {
                 self.close_ended(window, cx);
             }
