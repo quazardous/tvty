@@ -891,6 +891,10 @@ impl Shell {
         if let Some(requests) = crate::control::start() {
             Self::serve_control(requests, window, cx);
         }
+        // Every tvty's inspection: read, never driven (`tvty inspect`).
+        if let Some(requests) = crate::control::start_inspection() {
+            Self::serve_control(requests, window, cx);
+        }
         shell
     }
 

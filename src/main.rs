@@ -75,6 +75,11 @@ fn main() {
         println!("tvty {}", env!("CARGO_PKG_VERSION"));
         return;
     }
+    // `tvty inspect …`: the running tvty read, said and done.
+    if std::env::args().nth(1).as_deref() == Some("inspect") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(control::inspect(&args));
+    }
     // `tvty [SESSION]`: open that tmux session at start.
     let selected = std::env::args().nth(1);
     // One tvty per state directory: a later launch brings the running one

@@ -39,7 +39,7 @@ impl Shell {
     pub(super) fn serve_control(mut requests: futures::channel::mpsc::UnboundedReceiver<Request>, window: &mut Window, cx: &mut Context<Self>) {
         cx.spawn_in(window, async move |this, cx| {
             while let Some(request) = requests.next().await {
-                let answer = carry_out(&request.command, &this, cx).await;
+                let answer = if request.gestures { carry_out(&request.command, &this, cx).await } else { read(&request.command, &this, cx).await };
                 let _ = request.reply.send(answer);
             }
         })
@@ -62,6 +62,19 @@ impl Shell {
             "backlogs": crate::kernel::backlog::store(cx).read(cx).said(),
             "standing": crate::kernel::standing::store(cx).read(cx).said(),
             "place_bar": self.move_asked,
+            // This machine as aiball names it, and the sessions as the panel
+            // placed them: what a missing row is read from.
+            "machine": self.machine,
+            "projects": self.board.projects.iter().map(|p| json!({
+                "name": p.name,
+                "terminals": p.terminals.iter().map(|t| json!({
+                    "session": t.session,
+                    "agent": t.agent,
+                    "hosted": t.attach.is_some(),
+                    "state": t.status.as_ref().map(|s| s.state.clone()),
+                    "online": t.status.as_ref().map(|s| s.online),
+                })).collect::<Vec<_>>(),
+            })).collect::<Vec<_>>(),
             // What is open in the views, said rather than guessed from the
             // buttons on screen.
             "views": {
@@ -94,6 +107,25 @@ impl Shell {
             "wayland_display": std::env::var("WAYLAND_DISPLAY").ok(),
         })
     }
+}
+
+/// What the inspection answers: what is read, never a gesture. The marks
+/// of what is on screen are taken from its first ask on, after a frame.
+async fn read(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWindowContext) -> Value {
+    let cmd = command.get("cmd").and_then(Value::as_str).unwrap_or_default();
+    match cmd {
+        "state" | "focus" => {}
+        "tree" | "query" | "where" | "text" => {
+            if !inspect::enabled() {
+                inspect::enable();
+                if let Err(error) = drawn(cx, false).await {
+                    return json!({ "error": error });
+                }
+            }
+        }
+        other => return json!({ "error": format!("{other:?}: not here, which only reads (state, focus, tree, query, where, text)") }),
+    }
+    carry_out(command, this, cx).await
 }
 
 async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWindowContext) -> Value {
@@ -306,6 +338,10 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "state" => this.update(cx, |shell, cx| shell.said(cx)).map_err(|e| format!("{e:#}")),
+        // Where the keys are, named as the focus trace names it.
+        "focus" => this
+            .update_in(cx, |shell, window, cx| json!({ "to": shell.focus_owner(window, cx), "window_active": window.is_window_active() }))
+            .map_err(|e| format!("{e:#}")),
         // Failure paths, provoked: the bus dropped, a subscription refused.
         "bus-reconnect" => this
             .update(cx, |shell, _| match &shell.wire {
@@ -326,7 +362,7 @@ async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWind
             }
         }
         "inspector" => toggle_inspector(cx),
-        other => Err(format!("{other:?}: no such command (tree, query, frame, settle, text, where, click, dblclick, hover, press, window, hold, selection, key, type, wait, wait-text, state, inspector, bus-reconnect, fault)")),
+        other => Err(format!("{other:?}: no such command (tree, query, frame, settle, text, where, click, dblclick, hover, press, window, hold, selection, key, type, wait, wait-text, state, focus, inspector, bus-reconnect, fault)")),
     };
     match answer {
         Ok(value) => json!({ "ok": value }),

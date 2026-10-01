@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - "host · controls +N" (or "tmux · controls +N") offers "Close the others (N)": the other clients attached to the session (claude-loop's terminal, another Terminal Velocity) leave it, its Claude and your terminal go on. A Terminal Velocity closed so says "detached by another client" and attaches again on Enter. On the host, shown when aiball's session host offers it.
+- `tvty inspect` reads the running tvty, for a diagnosis: `state` (the sessions it placed, this machine as aiball names it, the bus), `focus` (where the keys are), `tree` and `text` (what is on screen). Read only: nothing is clicked or typed; local, behind a secret in the user's state directory.
 - "Quit tvty" in the title bar's menu, under "Restart tvty": the same as the window's close button, its sessions asked about.
 - At start, the sessions stopped when tvty quit are listed one by one: switch off those not to restart. Every question about several sessions, and the new project's wizard, now open in one large panel.
 - Seven new tips: "File and exit", the ticket panel's pin, a ticket's followers, the thread's order, the terminal held still while you select, workspaces and their Open and Shut.

@@ -29,6 +29,9 @@ use tvty_config::Place;
 pub struct Request {
     pub command: Value,
     pub reply: std::sync::mpsc::Sender<Value>,
+    /// From the test's control, which drives tvty; the inspection's only
+    /// reads it.
+    pub gestures: bool,
 }
 
 /// How long a request may take on the UI thread before its caller hears so.
@@ -43,8 +46,17 @@ fn over_tcp() -> bool {
 /// Where the control waits: a socket where there are Unix sockets, else
 /// the file saying the TCP port and its secret.
 pub fn rendezvous() -> Option<PathBuf> {
+    at("tvty-control")
+}
+
+/// Where the inspection waits, as the control does.
+pub fn inspection_rendezvous() -> Option<PathBuf> {
+    at("tvty-inspect")
+}
+
+fn at(name: &str) -> Option<PathBuf> {
     let dir = config::dir(Place::State)?;
-    Some(dir.join(if over_tcp() { "tvty-control.addr" } else { "tvty-control.sock" }))
+    Some(dir.join(format!("{name}.{}", if over_tcp() { "addr" } else { "sock" })))
 }
 
 /// Opens the control when `TVTY_DEBUG_CONTROL` asks for it: the requests,
@@ -57,20 +69,32 @@ pub fn start() -> Option<UnboundedReceiver<Request>> {
     std::env::var_os("TVTY_DEBUG_CONTROL").filter(|v| !v.is_empty())?;
     crate::inspect::enable();
     let path = rendezvous()?;
+    opened(&path, true)
+}
+
+/// Opens the inspection, in every tvty, the user's too: what it shows and
+/// holds, read and never driven (`tvty inspect`). Local only, its secret
+/// in the user's state directory, as the control's.
+pub fn start_inspection() -> Option<UnboundedReceiver<Request>> {
+    opened(&inspection_rendezvous()?, false)
+}
+
+fn opened(path: &std::path::Path, gestures: bool) -> Option<UnboundedReceiver<Request>> {
+    let what = if gestures { "debug control" } else { "inspection" };
     let (tx, rx) = unbounded();
-    match listen(&path, tx) {
+    match listen(path, tx, gestures) {
         Ok(()) => {
-            log::info!("debug control: on, at {}", path.display());
+            log::info!("{what}: on, at {}", path.display());
             Some(rx)
         }
         Err(error) => {
-            log::warn!("debug control: {}: {error:#}", path.display());
+            log::warn!("{what}: {}: {error:#}", path.display());
             None
         }
     }
 }
 
-fn listen(path: &std::path::Path, tx: UnboundedSender<Request>) -> anyhow::Result<()> {
+fn listen(path: &std::path::Path, tx: UnboundedSender<Request>, gestures: bool) -> anyhow::Result<()> {
     let _ = std::fs::remove_file(path);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -95,9 +119,9 @@ fn listen(path: &std::path::Path, tx: UnboundedSender<Request>) -> anyhow::Resul
             match listener.accept() {
                 Ok(conn) => {
                     let (tx, secret) = (tx.clone(), secret.clone());
-                    let _ = std::thread::Builder::new().name("control-client".into()).spawn(move || serve(conn, secret, tx));
+                    let _ = std::thread::Builder::new().name("control-client".into()).spawn(move || serve(conn, secret, tx, gestures));
                 }
-                Err(error) => log::warn!("debug control: {error}"),
+                Err(error) => log::warn!("{}: {error}", if gestures { "debug control" } else { "inspection" }),
             }
             if tx.is_closed() {
                 return;
@@ -109,7 +133,7 @@ fn listen(path: &std::path::Path, tx: UnboundedSender<Request>) -> anyhow::Resul
 
 /// One client: the secret first when there is one, then its requests, one
 /// a line, each answered before the next.
-fn serve(conn: Conn, secret: Option<String>, tx: UnboundedSender<Request>) {
+fn serve(conn: Conn, secret: Option<String>, tx: UnboundedSender<Request>, gestures: bool) {
     let mut writer = match conn.try_clone() {
         Ok(writer) => writer,
         Err(_) => return,
@@ -118,7 +142,7 @@ fn serve(conn: Conn, secret: Option<String>, tx: UnboundedSender<Request>) {
     if let Some(secret) = secret {
         let said = lines.next().and_then(Result::ok);
         if said.as_deref().map(str::trim).and_then(|l| l.strip_prefix("secret ")) != Some(secret.as_str()) {
-            log::warn!("debug control: a connection without the secret, closed");
+            log::warn!("{}: a connection without the secret, closed", if gestures { "debug control" } else { "inspection" });
             return;
         }
     }
@@ -130,7 +154,7 @@ fn serve(conn: Conn, secret: Option<String>, tx: UnboundedSender<Request>) {
         let answer = match serde_json::from_str::<Value>(&line) {
             Ok(command) => {
                 let (reply, answer) = std::sync::mpsc::channel();
-                if tx.unbounded_send(Request { command, reply }).is_err() {
+                if tx.unbounded_send(Request { command, reply, gestures }).is_err() {
                     break;
                 }
                 answer.recv_timeout(ANSWER_WITHIN).unwrap_or_else(|_| json!({ "error": "no answer from the UI thread" }))
@@ -141,4 +165,55 @@ fn serve(conn: Conn, secret: Option<String>, tx: UnboundedSender<Request>) {
             break;
         }
     }
+}
+
+/// `tvty inspect [state | focus | tree [PREFIX] | query ID | where ID | text
+/// ID | JSON]`: asks the running tvty's inspection, prints its answer.
+/// Answers the exit code: 1 when no tvty answered, or it refused.
+pub fn inspect(args: &[String]) -> i32 {
+    let command = match args {
+        [] => json!({ "cmd": "state" }),
+        [json] if json.trim_start().starts_with('{') => match serde_json::from_str(json) {
+            Ok(command) => command,
+            Err(error) => {
+                eprintln!("tvty inspect: not JSON: {error}");
+                return 2;
+            }
+        },
+        [cmd] => json!({ "cmd": cmd }),
+        [cmd, id, ..] => json!({ "cmd": cmd, "id": id }),
+    };
+    match ask(&command) {
+        Ok(answer) => {
+            println!("{}", serde_json::to_string_pretty(&answer).unwrap_or_else(|_| answer.to_string()));
+            i32::from(answer.get("error").is_some())
+        }
+        Err(error) => {
+            eprintln!("tvty inspect: {error:#}");
+            1
+        }
+    }
+}
+
+/// One request to the running tvty's inspection, its answer.
+fn ask(command: &Value) -> anyhow::Result<Value> {
+    use anyhow::Context as _;
+    let path = inspection_rendezvous().context("no state directory")?;
+    let (endpoint, secret) = if over_tcp() {
+        let text = std::fs::read_to_string(&path).with_context(|| format!("{}: no tvty running here (or one older than its inspection)", path.display()))?;
+        let mut lines = text.lines();
+        let endpoint = Endpoint::parse(lines.next().unwrap_or_default())?;
+        (endpoint, lines.next().map(|s| s.trim().to_string()))
+    } else {
+        (Endpoint::Unix(path.clone()), None)
+    };
+    let mut conn = endpoint.connect().with_context(|| format!("{}: no tvty answers", path.display()))?;
+    conn.set_read_timeout(Some(ANSWER_WITHIN + Duration::from_secs(5)))?;
+    if let Some(secret) = secret {
+        writeln!(conn, "secret {secret}")?;
+    }
+    writeln!(conn, "{command}")?;
+    let mut answer = String::new();
+    BufReader::new(conn).read_line(&mut answer)?;
+    serde_json::from_str(&answer).context("tvty's answer is not JSON")
 }
