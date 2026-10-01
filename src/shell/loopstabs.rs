@@ -406,7 +406,7 @@ impl Shell {
                     buttons::switch(
                         "new-session-host",
                         on_host,
-                        "on aiball's host, without tmux",
+                        format!("on aiball's host, without {}", crate::mux::program()),
                         cx.listener(|shell, wanted: &bool, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
                                 form.on_host = *wanted;

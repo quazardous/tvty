@@ -314,7 +314,9 @@ impl Shell {
             let copy = self.copies.contains(&session);
             // Who else is attached: claude-loop's terminal, another tvty.
             let attached = self.attached(&session).filter(|a| a.others > 0);
-            let place = if hosted { "host" } else { "tmux" };
+            // The multiplexer by its name: tmux, or psmux on Windows.
+            let mux = crate::mux::program();
+            let place = if hosted { "host" } else { mux };
             let hands = if copy { "copy" } else { "controls" };
             let label = match (moving, attached) {
                 (true, _) => "moving…".to_string(),
@@ -324,7 +326,7 @@ impl Shell {
             let proxy = bar.as_ref().is_some_and(|b| b.proxy_alive);
             let tip = format!(
                 "its loop runs {}; {}{}{} A click: take or leave the controls, move the loop.",
-                if hosted { "on aiball's session host" } else { "in tmux (claude-loop)" },
+                if hosted { "on aiball's session host".to_string() } else { format!("in {mux} (claude-loop)") },
                 if copy {
                     "this terminal is a copy: you watch, nothing you type reaches its Claude, and the session keeps its size."
                 } else {
@@ -350,7 +352,7 @@ impl Shell {
                 })
                 .tip(tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
-            let other = if hosted { "into tmux" } else { "to aiball's host" };
+            let other = if hosted { format!("into {mux}") } else { "to aiball's host".to_string() };
             let place_bar = asked.then(|| {
                 let hands_session = session.clone();
                 let mut row = chipbar::line("agent-place-bar", p().warning)
@@ -369,7 +371,7 @@ impl Shell {
                     let (agent, to_host) = (agent.clone(), !hosted);
                     row = row
                         .child(
-                            buttons::answer("agent-move-go", if hosted { "Move into tmux" } else { "Move to host" })
+                            buttons::answer("agent-move-go", if hosted { format!("Move into {mux}") } else { "Move to host".to_string() })
                                 .warning()
                                 .tooltip(format!(
                                     "its Claude restarts {other}, resuming its conversation{}",
@@ -736,7 +738,7 @@ impl Shell {
             let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { return };
             let done = cx.background_executor().spawn(async move { crate::loops::move_to(&aiball, &loop_name, to_host) }).await;
             let _ = this.update(cx, |shell, cx| {
-                let place = if to_host { "to aiball's host" } else { "into tmux" };
+                let place = if to_host { "to aiball's host".to_string() } else { format!("into {}", crate::mux::program()) };
                 let activity = match done {
                     Ok(()) => {
                         shell.open_when_running = Some(next.clone());

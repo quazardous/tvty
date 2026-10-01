@@ -156,7 +156,11 @@ fn placed(
 }
 
 const LOOP_PREFIX: &str = "cl-";
-const OTHER_GROUP: &str = "tmux";
+/// The group of the terminals that are no agent's: named after the
+/// multiplexer (tmux, or psmux on Windows).
+fn other_group() -> &'static str {
+    crate::mux::program()
+}
 /// The group of the terminals the daemon's host holds (no agent).
 pub const HOSTED_GROUP: &str = "terminals";
 /// What names a hosted terminal's session, apart from tmux's.
@@ -245,14 +249,14 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
                 let at = board
                     .projects
                     .iter()
-                    .position(|p| p.name == OTHER_GROUP || p.name.to_lowercase() > project.to_lowercase())
+                    .position(|p| p.name == other_group() || p.name.to_lowercase() > project.to_lowercase())
                     .unwrap_or(board.projects.len());
                 board.projects.insert(at, Project { name: project.to_string(), on_board: true, terminals: vec![terminal] });
             }
         }
     }
     if !hosted.is_empty() {
-        let at = board.projects.iter().position(|p| p.name == OTHER_GROUP).unwrap_or(board.projects.len());
+        let at = board.projects.iter().position(|p| p.name == other_group()).unwrap_or(board.projects.len());
         board.projects.insert(at, Project { name: HOSTED_GROUP.into(), on_board: false, terminals: hosted });
     }
     board
@@ -375,7 +379,7 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashM
                 None => (basename(&path), false, c.consumer_id.clone()),
             },
             None if session.starts_with(LOOP_PREFIX) => (basename(&path), false, session.clone()),
-            None => (OTHER_GROUP.to_string(), false, session.clone()),
+            None => (other_group().to_string(), false, session.clone()),
         };
         let entry = projects.entry(project).or_default();
         entry.0 |= on_board;
@@ -388,7 +392,7 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashM
         });
     }
     // Plain tmux sessions last: the projects are what tvty is for.
-    let other = projects.remove(OTHER_GROUP);
+    let other = projects.remove(other_group());
     let mut list: Vec<Project> = projects
         .into_iter()
         .map(|(name, (on_board, terminals))| Project {
@@ -400,7 +404,7 @@ fn group(sessions: Vec<(String, String)>, consumers: &[Consumer], owners: &HashM
     list.sort_by_key(|p| p.name.to_lowercase());
     if let Some((_, terminals)) = other {
         list.push(Project {
-            name: OTHER_GROUP.into(),
+            name: other_group().into(),
             on_board: false,
             terminals,
         });
