@@ -41,6 +41,12 @@ pub struct KnownLoop {
     /// Stopped, and its agent has a loop that runs, or a later one.
     #[serde(default)]
     pub superseded: bool,
+    /// On the host, where a client attaches to it.
+    #[serde(default)]
+    pub attach: Option<crate::aiball::AttachPoint>,
+    /// The clients attached to it.
+    #[serde(default)]
+    pub clients: Option<u32>,
 }
 
 /// What to start: in `cwd`, for `agent` (else the folder's own), as a crew

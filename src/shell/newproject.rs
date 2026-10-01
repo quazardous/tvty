@@ -420,6 +420,12 @@ impl Shell {
     /// Its first session, where the folder now says; the wizard closes.
     fn start_first_session(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(wizard) = self.new_project.as_ref() else { return };
+        // Its agent runs already in this folder: that session, opened.
+        if let Some((session, _)) = self.running_session_in(&expand(wizard.folder.read(cx).value().trim())) {
+            self.close_new_project(window, cx);
+            self.select(session, window, cx);
+            return;
+        }
         let start = Start {
             cwd: expand(wizard.folder.read(cx).value().trim()).display().to_string(),
             project: Some(wizard.name.read(cx).value().trim().to_string()),
@@ -505,6 +511,9 @@ impl Shell {
         let ready = matches!(folder, Folder::Configured(_) | Folder::Fresh { .. });
         // Already on the board: open it rather than set it up again.
         let open = project.filter(|name| self.board.projects.iter().any(|p| p.name == *name));
+        // A session already runs in this folder: opened, not set up again
+        // (nor a second one started), even if the board does not show it.
+        let running = ready.then(|| self.running_session_in(&expand(&typed))).flatten();
         let page = div()
             .flex()
             .flex_col()
@@ -521,6 +530,12 @@ impl Shell {
         let footer = div()
             .flex()
             .gap_3()
+            .children(running.map(|(session, label)| {
+                buttons::secondary("new-project-running", format!("Open {label}, running")).on_click(cx.listener(move |shell, _, window, cx| {
+                    shell.close_new_project(window, cx);
+                    shell.select(session.clone(), window, cx);
+                }))
+            }))
             .children(open.map(|name| {
                 buttons::secondary("new-project-open", format!("Open {name}")).on_click(cx.listener(move |shell, _, window, cx| {
                     shell.close_new_project(window, cx);
@@ -760,9 +775,32 @@ impl Shell {
     }
 }
 
+impl Shell {
+    /// The session a running loop of this machine has in `folder`, and its
+    /// agent's name (else the loop's): what to open instead of starting one.
+    fn running_session_in(&self, folder: &Path) -> Option<(String, String)> {
+        let found = self.live.known_loops().into_iter().find(|l| l.running && same_folder(Path::new(&l.cwd), folder))?;
+        let label = found.agent.clone().unwrap_or_else(|| found.name.clone());
+        Some((found.session(), label))
+    }
+}
+
+/// Whether two paths name one folder: as written, else as the file system
+/// resolves them (on Windows, case and separators aside).
+fn same_folder(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    let plain = |p: &Path| p.display().to_string().replace('\\', "/").trim_end_matches('/').to_string();
+    if cfg!(windows) && plain(a).eq_ignore_ascii_case(&plain(b)) {
+        return true;
+    }
+    matches!((a.canonicalize(), b.canonicalize()), (Ok(x), Ok(y)) if x == y)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{Filled, Folder, folder_of, name_from, name_ok, remote_control_of, to_write};
+    use super::{Filled, Folder, folder_of, name_from, name_ok, remote_control_of, same_folder, to_write};
     use crate::aiball::{ProjectSettings, Setting};
     use serde_json::json;
     use std::path::Path;
@@ -783,6 +821,12 @@ mod tests {
         assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), ProjectSettings::default()))), Folder::Fresh { git: false });
         let set = ProjectSettings { file: Some("/w/.aiball.yaml".to_string()), ..Default::default() };
         assert_eq!(folder_of(&dir.display().to_string(), Some(&(dir.clone(), set.clone()))), Folder::Configured("/w/.aiball.yaml".into()));
+        // The folder a loop runs in, however written.
+        assert!(same_folder(Path::new("/w/tvty"), Path::new("/w/tvty")));
+        assert!(!same_folder(Path::new("/w/tvty"), Path::new("/w/aiball")));
+        if cfg!(windows) {
+            assert!(same_folder(Path::new("C:\\Users\\d\\Tvty\\"), Path::new("c:/users/d/tvty")));
+        }
         // An answer about another folder is not this one's.
         assert_eq!(folder_of(&dir.display().to_string(), Some(&(Path::new("/elsewhere").to_path_buf(), set))), Folder::Checking);
         std::fs::remove_dir_all(&dir).unwrap();
@@ -854,3 +898,4 @@ mod tests {
         assert_eq!(to_write(&bare, true, json!(false)), (None, None));
     }
 }
+

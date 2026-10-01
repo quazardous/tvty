@@ -966,6 +966,34 @@ impl Shell {
         .detach();
     }
 
+    /// This machine's name, as aiball says it (`bus.whoami`), asked again
+    /// every few seconds until said: without it the agents of this machine
+    /// pass for another's when aiball calls them remote (a relaying node).
+    fn ask_machine(&mut self, cx: &mut Context<Self>) {
+        let Some(wire) = self.wire.clone() else { return };
+        cx.spawn(async move |this, cx| {
+            for _ in 0..20 {
+                cx.background_executor().timer(std::time::Duration::from_secs(3)).await;
+                let wire = wire.clone();
+                let whoami = cx.background_executor().spawn(async move { wire.call("bus.whoami", serde_json::json!({})) }).await;
+                match whoami.as_ref().ok().and_then(|v| v["machine"].as_str()) {
+                    Some(machine) => {
+                        log::info!("aiball bus: this machine is {machine} (asked again)");
+                        let machine = machine.to_string();
+                        let _ = this.update(cx, |shell, cx| {
+                            shell.machine = Some(machine);
+                            shell.rebuild(cx);
+                            cx.notify();
+                        });
+                        return;
+                    }
+                    None => log::warn!("aiball bus: this machine is still not said: {}", whoami.err().map(|e| format!("{e:#}")).unwrap_or_else(|| "no machine in the answer".into())),
+                }
+            }
+        })
+        .detach();
+    }
+
     /// Builds the board again from what aiball pushed and the local sessions.
     fn rebuild(&mut self, cx: &mut Context<Self>) {
         // Who the user is, from the humans aiball knows; the bus runs as them.
@@ -1105,9 +1133,17 @@ impl Shell {
                             ),
                             Err(error) => format!("whoami failed: {error:#}"),
                         };
+                        log::info!("aiball bus: this machine is {}", machine.as_deref().unwrap_or("not said"));
+                        let unknown = machine.is_none();
                         this.update(cx, |shell, cx| {
                             shell.wire_whoami = Some(said);
                             shell.machine = machine;
+                            // Not said (the call failed, or came too soon):
+                            // every agent aiball calls remote would be hidden,
+                            // this machine's too. Asked again until said.
+                            if unknown {
+                                shell.ask_machine(cx);
+                            }
                             let updates = shell.live.subscribed(plan, answers);
                             shell.take_updates(updates, cx);
                             shell.subscriptions_said(cx);
