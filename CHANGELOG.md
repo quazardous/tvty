@@ -50,7 +50,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The left panel can no longer be resized narrower than its header: its buttons and the chevron that folds it went out of it (seen on Windows, where the text is wider).
 - In the ticket panel, the thread's order and "more" sit on the line of "← Tickets", and the title keeps its whole width.
 - Starting, moving or restarting a session no longer freezes the panels while it comes up: the tickets, alerts and sessions stay live, and a start that takes long is waited for instead of failing after ten seconds.
-- Windows: the agent bar, the sessions list, the new session and new project forms say "psmux" where they said "tmux". A new terminal (>_) opens PowerShell when no shell is set; it failed without Git Bash.
+- Windows: the agent bar, the sessions list, the restart list at launch, the new session and new project forms say "psmux" where they said "tmux". A new terminal (>_) opens PowerShell when no shell is set; it failed without Git Bash.
 
 ## [0.8.0-beta.1] - 2026-09-30
 
