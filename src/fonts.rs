@@ -40,10 +40,19 @@ fn draws(font: &'static [u8], c: char) -> bool {
     swash::FontRef::from_index(font, 0).is_some_and(|font| font.charmap().map(c) != 0)
 }
 
+thread_local! {
+    /// What [`is_symbol`] answered, a character at a time: asked of every
+    /// cell at every frame, it reads the fonts' tables once a character.
+    static SYMBOL: std::cell::RefCell<std::collections::HashMap<char, bool>> = Default::default();
+}
+
 /// Whether `c` is a symbol to draw from [`SYMBOLS`]: one the terminals' own
 /// font lacks, and that one has.
 pub fn is_symbol(c: char) -> bool {
-    !c.is_ascii() && mono() == MONO[0] && !draws(OWN[0], c) && draws(OWN[4], c)
+    if c.is_ascii() || mono() != MONO[0] {
+        return false;
+    }
+    SYMBOL.with_borrow_mut(|known| *known.entry(c).or_insert_with(|| !draws(OWN[0], c) && draws(OWN[4], c)))
 }
 
 /// Loads tvty's own fonts, then the user's; answers how many of the user's.
