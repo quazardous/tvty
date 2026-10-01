@@ -106,8 +106,10 @@ impl Sheet {
             .border_t_1()
             .border_color(p().border)
             // The setting takes what the answers leave; short of room, it
-            // goes on a line of its own above them.
-            .child(div().flex_1().min_w(px(280.)).children(self.setting))
+            // goes on a line of its own above them. Never narrower than its
+            // text: a smaller floor let it run under the answers (seen on
+            // Windows, where the text is wider).
+            .child(div().flex_grow(1.).children(self.setting))
             .children(self.answers.map(|a| div().flex().flex_none().ml_auto().gap_2().child(a)));
         let card = div()
             .named(SharedString::from(format!("{id}-card")))

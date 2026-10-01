@@ -5126,7 +5126,7 @@ impl Render for Shell {
                             press_kept(buttons::icon(
                                 "help-button",
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
-                                buttons::hint(cx, "Menu: about, help, restart", "help.menu"),
+                                buttons::hint(cx, "Menu: about, help, restart, quit", "help.menu"),
                             ))
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 // The bar's own double click (maximize) is not its.

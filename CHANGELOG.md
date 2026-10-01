@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- "Quit tvty" in the title bar's menu, under "Restart tvty": the same as the window's close button, its sessions asked about.
 - At start, the sessions stopped when tvty quit are listed one by one: switch off those not to restart. Every question about several sessions, and the new project's wizard, now open in one large panel.
 - Seven new tips: "File and exit", the ticket panel's pin, a ticket's followers, the thread's order, the terminal held still while you select, workspaces and their Open and Shut.
 - A ticket's thread has an order in the panel and another full screen: ⇅ sets the one of the view it is in, and Settings > Ticket list > Thread has both. The panel starts newest last, by the reply, whatever the full screen's order.
@@ -41,6 +42,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- In a sheet such as quitting's, "Remember this choice" no longer runs under the buttons when the room is short: it goes on a line of its own.
 - The terminal no longer shows thin dark lines between cells of one background colour (a status bar), seen at display scales where a cell is not a whole number of pixels (125 %).
 - Settings > Layout > Sides: its frames are as wide as the others, its switches in their column.
 - Windows: what the updater keeps in its log, and what its Copy takes, reads the same as on screen and may be pasted anywhere: colour codes taken out, the home folder written `~`, Windows' line ends. The line that updates a development aiball by hand is said to be for PowerShell.
