@@ -5203,6 +5203,18 @@ impl Render for Shell {
                 if in_field(window) {
                     shell.leave_field(window, cx);
                 }
+                // A click on what takes no keys (a row, a chip, the ticket
+                // panel) gives them to the workspace, whose element tracks
+                // its focus: the terminal shown lost them and only another
+                // click in it gave them back. It keeps them.
+                let terminal = shell.selected.as_ref().and_then(|s| shell.terminals.get(s)).map(|t| t.read(cx).focus_handle().clone());
+                if let Some(terminal) = terminal.filter(|t| t.is_focused(window)) {
+                    cx.defer_in(window, move |shell, window, cx| {
+                        if shell.focus.is_focused(window) && shell.page_shown(cx).is_none() {
+                            window.focus(&terminal, cx);
+                        }
+                    });
+                }
             }))
             .child(
                 // A fifth taller than the kit's (34 px): easier to grab.
