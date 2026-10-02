@@ -51,6 +51,8 @@ const SCROLLBACK: u32 = 2000;
 /// How long a session just started may take to listen on its socket.
 const READY_TRIES: u32 = 30;
 const READY_PAUSE: std::time::Duration = std::time::Duration::from_millis(100);
+/// How long a hello waits for the view's own size (in fifths of a pause).
+const SIZE_TRIES: u32 = 50;
 
 /// The way to a session: what the view writes to it.
 pub struct Attach {
@@ -69,6 +71,11 @@ pub struct Attach {
     detached_by_other: std::sync::atomic::AtomicBool,
     /// How many clients this one's last `detach_others` closed, once said.
     others_closed: Mutex<Option<u64>>,
+    /// The view said its real size (`resize`): until then the size held is
+    /// a placeholder, which must not become the session's.
+    sized: std::sync::atomic::AtomicBool,
+    /// Connected before its real size: the focus waits for it.
+    focus_waits: std::sync::atomic::AtomicBool,
 }
 
 impl Attach {
@@ -91,6 +98,8 @@ impl Attach {
             features: Mutex::new(Vec::new()),
             detached_by_other: std::sync::atomic::AtomicBool::new(false),
             others_closed: Mutex::new(None),
+            sized: std::sync::atomic::AtomicBool::new(false),
+            focus_waits: std::sync::atomic::AtomicBool::new(false),
         });
         let (socket, this) = (socket.to_path_buf(), attach.clone());
         std::thread::Builder::new().name("attach".into()).spawn(move || {
@@ -120,25 +129,51 @@ impl Attach {
                 Err(error) => return Err(error.into()),
             }
         };
-        let reader = stream.try_clone()?;
-        *self.stream.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))? = Some(stream);
-        if self.closed.load(std::sync::atomic::Ordering::Relaxed) {
-            self.close();
+        // The size the hello asks for becomes the session's when nobody owns
+        // it: the view's own, once laid out — within a frame or two. Not
+        // known by then, none is asked (the session keeps its size until
+        // this client's first resize and focus).
+        if interactive {
+            for _ in 0..SIZE_TRIES {
+                if self.sized.load(std::sync::atomic::Ordering::Relaxed) {
+                    break;
+                }
+                std::thread::sleep(READY_PAUSE / 5);
+            }
         }
-        let (columns, lines) = *self.size.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))?;
+        let asked = self.sized.load(std::sync::atomic::Ordering::Relaxed).then(|| *self.size.lock().unwrap_or_else(|e| e.into_inner()));
         let mut hello = json!({
             "version": 1,
             "client": "tvty",
             "mode": if interactive { "interactive" } else { "readonly" },
             "view": "stream",
             "scrollback": SCROLLBACK,
-            "size": { "rows": lines, "cols": columns },
         });
+        if let Some((columns, lines)) = asked {
+            hello["size"] = json!({ "rows": lines, "cols": columns });
+        }
         if let Some(token) = token {
             hello["token"] = Value::String(token);
         }
-        self.send(HELLO, hello.to_string().as_bytes())?;
-        // Opened to be shown: this client's size is the one to use.
+        // The hello first, before the stream is this client's: what the view
+        // writes meanwhile (a resize) waits for it.
+        let mut stream = stream;
+        stream.write_all(&frame_of(HELLO, hello.to_string().as_bytes()))?;
+        let reader = stream.try_clone()?;
+        *self.stream.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))? = Some(stream);
+        if self.closed.load(std::sync::atomic::Ordering::Relaxed) {
+            self.close();
+        }
+        // Laid out between the hello and now: the size it did not carry.
+        let now = self.sized.load(std::sync::atomic::Ordering::Relaxed).then(|| *self.size.lock().unwrap_or_else(|e| e.into_inner()));
+        if interactive && now.is_some() && now != asked {
+            let (columns, lines) = now.unwrap_or_default();
+            self.send(RESIZE, json!({ "rows": lines, "cols": columns }).to_string().as_bytes())?;
+        }
+        // Opened to be shown: this client's size is the one to use — once
+        // it is known. The placeholder taken as the session's size would
+        // make its program redraw at it, then again at the real one (Claude
+        // Code leaves both in the history).
         if interactive {
             self.focus();
         }
@@ -157,15 +192,26 @@ impl Attach {
         if let Ok(mut size) = self.size.lock() {
             *size = (columns, lines);
         }
+        self.sized.store(true, std::sync::atomic::Ordering::Relaxed);
         if self.interactive {
             let _ = self.send(RESIZE, json!({ "rows": lines, "cols": columns }).to_string().as_bytes());
+            // Connected before its size was known: it takes the size now.
+            if self.focus_waits.swap(false, std::sync::atomic::Ordering::Relaxed) {
+                self.focus();
+            }
         }
     }
 
     /// This client took focus: its size is the one to use.
+    /// Before its real size is known, the focus waits for it (`resize`).
     pub fn focus(&self) {
-        if self.interactive {
+        if !self.interactive {
+            return;
+        }
+        if self.sized.load(std::sync::atomic::Ordering::Relaxed) {
             let _ = self.send(FOCUS, b"{}");
+        } else {
+            self.focus_waits.store(true, std::sync::atomic::Ordering::Relaxed);
         }
     }
 
@@ -209,16 +255,22 @@ impl Attach {
     }
 
     fn send(&self, kind: u8, payload: &[u8]) -> anyhow::Result<()> {
-        let mut frame = Vec::with_capacity(5 + payload.len());
-        frame.push(kind);
-        frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
-        frame.extend_from_slice(payload);
+        let frame = frame_of(kind, payload);
         let mut stream = self.stream.lock().map_err(|_| anyhow::anyhow!("attach: poisoned"))?;
         // Not connected yet: nothing to write to.
         let Some(stream) = stream.as_mut() else { return Ok(()) };
         stream.write_all(&frame)?;
         Ok(())
     }
+}
+
+/// A frame: `[type][length, big-endian][payload]`.
+fn frame_of(kind: u8, payload: &[u8]) -> Vec<u8> {
+    let mut frame = Vec::with_capacity(5 + payload.len());
+    frame.push(kind);
+    frame.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+    frame.extend_from_slice(payload);
+    frame
 }
 
 /// The file a host that cannot listen on `socket` writes beside it: the
@@ -518,6 +570,64 @@ mod tests {
         attach.input(b"q");
         ended.recv_timeout(WAIT).unwrap();
         assert_eq!(line(&term, 1), "k");
+    }
+
+    /// A view attached before it is laid out says no size of its own: the
+    /// placeholder it holds is not taken as the session's (no `focus`) until
+    /// its real size comes, and then it takes it.
+    #[test]
+    fn the_session_takes_no_size_before_the_view_knows_its_own() {
+        // Laid out before it connects: its hello asks its own size.
+        let early = scratch("sized-early").join("attach.sock");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(address_file(&early), json!({ "port": port, "token": "t" }).to_string()).unwrap();
+        let (told, hellos) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut stream = listener.incoming().next().unwrap().unwrap();
+            if let Ok((HELLO, payload)) = read_frame(&mut stream) {
+                let _ = told.send(serde_json::from_slice::<Value>(&payload).unwrap());
+            }
+        });
+        let (_, attach, _) = attached(&early, true);
+        attach.resize(150, 40);
+        assert_eq!(hellos.recv_timeout(WAIT).unwrap()["size"], json!({ "rows": 40, "cols": 150 }));
+        attach.close();
+
+        let socket = scratch("sized").join("attach.sock");
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::fs::write(address_file(&socket), json!({ "port": port, "token": "t" }).to_string()).unwrap();
+        let (told, tells) = mpsc::channel();
+        let (told_size, sizes) = mpsc::channel();
+        std::thread::spawn(move || {
+            let mut stream = listener.incoming().next().unwrap().unwrap();
+            while let Ok((kind, payload)) = read_frame(&mut stream) {
+                if kind == HELLO {
+                    // What size it asked for, if any.
+                    let hello: Value = serde_json::from_slice(&payload).unwrap();
+                    let _ = told_size.send(hello.get("size").cloned());
+                }
+                let _ = told.send(kind);
+                if kind == HELLO {
+                    write(&mut stream, WELCOME, json!({ "version": 1, "size": { "rows": 40, "cols": 150 } }).to_string().as_bytes());
+                }
+            }
+        });
+        let (_, attach, _) = attached(&socket, true);
+        assert_eq!(tells.recv_timeout(WAIT).unwrap(), HELLO);
+        // Not laid out in time: the hello asks no size (the placeholder
+        // would have become the session's).
+        assert_eq!(sizes.recv_timeout(WAIT).unwrap(), None);
+        // Connected, not laid out yet: nothing more.
+        assert!(tells.recv_timeout(Duration::from_millis(400)).is_err());
+        attach.resize(150, 40);
+        assert_eq!(tells.recv_timeout(WAIT).unwrap(), RESIZE);
+        assert_eq!(tells.recv_timeout(WAIT).unwrap(), FOCUS);
+        // Shown again later: the focus goes at once.
+        attach.focus();
+        assert_eq!(tells.recv_timeout(WAIT).unwrap(), FOCUS);
+        attach.close();
     }
 
     /// A host that says `detach_others`: two clients, the first closes

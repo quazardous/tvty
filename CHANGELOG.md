@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Opening an agent's terminal no longer resizes its session to 80 columns for an instant: Claude Code redrew at that width, then at the real one, and both screens were left in its history (rows mixed up when scrolling back).
 - A Terminal Velocity built from its checkout (a development build) is no longer told that the updater installs a new release: it says to update its checkout, and the updater it opens shows it apart, "Terminal Velocity (development)", with the line that updates it to copy.
 
 ## [0.9.0-beta.1] - 2026-10-02
