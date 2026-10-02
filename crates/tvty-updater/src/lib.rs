@@ -114,6 +114,78 @@ pub fn program(name: &str) -> PathBuf {
     if local.exists() { local } else { PathBuf::from(name) }
 }
 
+// ── A development build ──────────────────────────────────────────────────
+
+/// What a Terminal Velocity run from its checkout tells the updater it
+/// opens: its executable. The updater has no release to give it: it says
+/// how to update it from the checkout.
+pub const DEV_EXE_VAR: &str = "TVTY_DEV_EXE";
+/// And the version it runs.
+pub const DEV_VERSION_VAR: &str = "TVTY_DEV_VERSION";
+
+/// A Terminal Velocity built from its checkout, and run from there: under
+/// the checkout's `target`, or a copy of its build kept there.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DevBuild {
+    /// The checkout: its `Cargo.toml` is Terminal Velocity's.
+    pub checkout: PathBuf,
+    /// The executable that runs.
+    pub running: PathBuf,
+}
+
+impl DevBuild {
+    /// `exe`'s checkout, when it runs from one.
+    pub fn of(exe: &Path) -> Option<Self> {
+        let target = exe.ancestors().skip(1).find(|dir| dir.file_name().is_some_and(|name| name == "target"))?;
+        let checkout = target.parent()?;
+        let manifest = std::fs::read_to_string(checkout.join("Cargo.toml")).ok()?;
+        let ours = manifest.lines().any(|line| line.split_whitespace().collect::<String>() == "name=\"tvty\"");
+        ours.then(|| Self { checkout: checkout.to_path_buf(), running: exe.to_path_buf() })
+    }
+
+    /// The build cargo makes: the release profile's when it runs from it,
+    /// the development one's otherwise.
+    fn release(&self) -> bool {
+        self.running.parent().and_then(Path::file_name).is_some_and(|name| name == "release")
+    }
+
+    fn built(&self) -> PathBuf {
+        self.checkout.join("target").join(if self.release() { "release" } else { "debug" }).join(exe("tvty"))
+    }
+
+    /// The updater built from the same checkout: beside the executable
+    /// when it is there, else cargo's.
+    pub fn updater(&self) -> Option<PathBuf> {
+        let beside = self.running.parent()?.join(exe("tvty-updater"));
+        Some(if beside.exists() { beside } else { self.built().with_file_name(exe("tvty-updater")) })
+    }
+
+    /// Whether the build must then be copied where it runs from (a copy
+    /// the shortcut starts, out of cargo's way).
+    pub fn copied(&self) -> bool {
+        self.built() != self.running
+    }
+
+    /// The line that updates it: the checkout pulled, built, and the build
+    /// copied where it runs from when that is a copy.
+    pub fn update_command(&self) -> String {
+        let quote = |path: &Path| format!("'{}'", path.display());
+        let profile = if self.release() { " --release" } else { "" };
+        let mut steps = vec![
+            format!("git -C {} pull --ff-only", quote(&self.checkout)),
+            format!("cargo build{profile} --manifest-path {}", quote(&self.checkout.join("Cargo.toml"))),
+        ];
+        if self.copied() {
+            steps.push(if cfg!(windows) {
+                format!("Copy-Item {} {}", quote(&self.built()), quote(&self.running))
+            } else {
+                format!("cp {} {}", quote(&self.built()), quote(&self.running))
+            });
+        }
+        steps.join(if cfg!(windows) { "; " } else { " && " })
+    }
+}
+
 // ── Terminal Velocity ────────────────────────────────────────────────────
 
 fn tvty_source() -> ReleaseSource {
@@ -653,7 +725,7 @@ fn runtime() -> tokio::runtime::Runtime {
 
 #[cfg(test)]
 mod tests {
-    use super::{State, Status, latest_tag, older, plain_in, read_aiball_version};
+    use super::{DevBuild, State, Status, latest_tag, older, plain_in, read_aiball_version};
     use std::path::Path;
 
     #[test]
@@ -781,4 +853,33 @@ mod tests {
         assert_eq!(latest_tag(listing).as_deref(), Some("v0.10.0"));
         assert_eq!(latest_tag(""), None);
     }
+
+    #[test]
+    fn a_build_under_its_checkout_is_a_development_build() {
+        let checkout = std::env::temp_dir().join(format!("tvty-devbuild-{}", std::process::id()));
+        std::fs::create_dir_all(checkout.join("target").join("dev")).unwrap();
+        std::fs::write(checkout.join("Cargo.toml"), "[package]
+name = \"tvty\"
+").unwrap();
+        let running = checkout.join("target").join("dev").join(super::exe("tvty"));
+        let dev = DevBuild::of(&running).expect("a development build");
+        assert_eq!(dev.checkout, checkout);
+        // A copy out of cargo's way: built, then copied there.
+        assert!(dev.copied());
+        let command = dev.update_command();
+        assert!(command.starts_with(&format!("git -C '{}' pull --ff-only", checkout.display())), "{command}");
+        assert!(command.contains("cargo build --manifest-path"), "{command}");
+        assert!(command.ends_with(&format!("'{}'", running.display())), "{command}");
+        // cargo's own output: nothing to copy.
+        let built = checkout.join("target").join("debug").join(super::exe("tvty"));
+        assert!(!DevBuild::of(&built).unwrap().copied());
+        // Another project's checkout, or an installed one: none.
+        std::fs::write(checkout.join("Cargo.toml"), "[package]
+name = \"other\"
+").unwrap();
+        assert_eq!(DevBuild::of(&running), None);
+        assert_eq!(DevBuild::of(Path::new("/usr/local/bin/tvty")), None);
+        let _ = std::fs::remove_dir_all(&checkout);
+    }
+
 }
