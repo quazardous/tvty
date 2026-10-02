@@ -389,7 +389,18 @@ impl Shell {
                     .group(SharedString::from(format!("tab-group-{session}")))
                     // Dragged onto another tab, it takes its place.
                     .when(!renaming, |d| d.on_drag(dragged, |drag: &TabDrag, _, _, cx| cx.new(|_| drag.clone())))
-                    .drag_over::<TabDrag>(|style, _, _, _| style.bg(p().hover).border_color(p().accent))
+                    // The tab it would take the place of, in orange; not the
+                    // one moved, over itself.
+                    .drag_over::<TabDrag>({
+                        let here = session.clone();
+                        move |style, drag: &TabDrag, _, _| {
+                            if drag.session == here {
+                                style
+                            } else {
+                                style.bg(crate::theme::drop_target().opacity(0.18)).border_color(crate::theme::drop_target())
+                            }
+                        }
+                    })
                     .on_drop(cx.listener(move |shell, drag: &TabDrag, _, cx| shell.move_tab(drag, &onto, cx)))
                     .when(!renaming, |d| d.tip(if shell {
                         "a terminal on aiball's host, without Claude; a double click (or F2) renames it"

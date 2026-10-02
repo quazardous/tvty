@@ -268,6 +268,12 @@ pub fn tip() -> Hsla {
     if p().bg.l < 0.5 { hsla(270. / 360., 0.75, 0.74, 1.) } else { hsla(270. / 360., 0.6, 0.45, 1.) }
 }
 
+/// Where a dragged tab would go: an orange, apart from the accent's blue
+/// that the tab being moved keeps.
+pub fn drop_target() -> Hsla {
+    if p().bg.l < 0.5 { hsla(28. / 360., 0.9, 0.6, 1.) } else { hsla(28. / 360., 0.85, 0.45, 1.) }
+}
+
 /// What was imported, not typed: a choice filled from a folder's
 /// configuration. A teal, apart from the accent, the states and the tips.
 pub fn imported() -> Hsla {
