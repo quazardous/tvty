@@ -19,6 +19,32 @@ use crate::theme::p;
 use crate::ui::buttons;
 use crate::tip::Tip as _;
 
+/// A tab being dragged: its session, in its group, and what the ghost
+/// under the pointer says.
+#[derive(Clone)]
+pub(super) struct TabDrag {
+    session: String,
+    group: String,
+    label: String,
+}
+
+impl Render for TabDrag {
+    /// The ghost: the tab's name, as a tab.
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2p5()
+            .py_1()
+            .rounded_md()
+            .text_sm()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().accent)
+            .text_color(p().text)
+            .shadow_md()
+            .child(self.label.clone())
+    }
+}
+
 /// How long a start waits for the terminals it opens again to be listed.
 const RESTORE_FOR: std::time::Duration = std::time::Duration::from_secs(15);
 
@@ -63,6 +89,21 @@ impl Shell {
             .iter()
             .filter(|t| self.terminals.contains_key(&t.session) || self.selected.as_deref() == Some(t.session.as_str()))
             .collect()
+    }
+
+    /// A tab dropped on another takes its place, in the tabs and the list;
+    /// the order is the workspace's, kept.
+    fn move_tab(&mut self, drag: &TabDrag, onto: &str, cx: &mut Context<Self>) {
+        let order = self.settings.workspace.terminal_order.entry(drag.group.clone()).or_default();
+        if !sessions::move_onto(order, &drag.session, onto) {
+            return;
+        }
+        let order = order.clone();
+        if let Some(group) = self.board.projects.iter_mut().find(|p| p.name == drag.group) {
+            group.terminals.sort_by_key(|t| order.iter().position(|s| *s == t.session).unwrap_or(usize::MAX));
+        }
+        self.settings.save(cx);
+        cx.notify();
     }
 
     /// × on a tab: tvty's view goes; the terminal shown goes back to the one
@@ -280,6 +321,8 @@ impl Shell {
             let counts = self.counts_of(&group.name, &terminal);
             let renaming = self.tab_renaming.as_deref() == Some(session.as_str());
             let renamed = session.clone();
+            let dragged = TabDrag { session: session.clone(), group: group.name.clone(), label: terminal.label.clone() };
+            let onto = session.clone();
             bar = bar.child(
                 div()
                     .named(SharedString::from(format!("tab-{session}")))
@@ -344,6 +387,10 @@ impl Shell {
                             })),
                     )
                     .group(SharedString::from(format!("tab-group-{session}")))
+                    // Dragged onto another tab, it takes its place.
+                    .when(!renaming, |d| d.on_drag(dragged, |drag: &TabDrag, _, _, cx| cx.new(|_| drag.clone())))
+                    .drag_over::<TabDrag>(|style, _, _, _| style.bg(p().hover).border_color(p().accent))
+                    .on_drop(cx.listener(move |shell, drag: &TabDrag, _, cx| shell.move_tab(drag, &onto, cx)))
                     .when(!renaming, |d| d.tip(if shell {
                         "a terminal on aiball's host, without Claude; a double click (or F2) renames it"
                     } else {

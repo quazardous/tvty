@@ -200,6 +200,18 @@ pub fn stack(terminals: &mut [Terminal], order: &mut Vec<String>, prune: bool) -
     *order != before
 }
 
+/// `moved` dropped on `onto` in a group's order: it takes `onto`'s place,
+/// which moves towards where `moved` came from. Whether it changed.
+pub fn move_onto(order: &mut Vec<String>, moved: &str, onto: &str) -> bool {
+    let (Some(from), Some(to)) = (order.iter().position(|s| s == moved), order.iter().position(|s| s == onto)) else { return false };
+    if from == to {
+        return false;
+    }
+    let session = order.remove(from);
+    order.insert(to, session);
+    true
+}
+
 /// The words of a filter: what the user typed, lowercase, by word.
 pub fn filter_words(text: &str) -> Vec<String> {
     text.split_whitespace().map(str::to_lowercase).collect()
@@ -463,7 +475,7 @@ pub fn window_size(session: &str) -> Option<(u16, u16)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HOSTED_PREFIX, HUB, Place, Status, filter_words, found, group, homes, loop_says, place, placed, project_at};
+    use super::{HOSTED_PREFIX, HUB, Place, Status, filter_words, found, group, homes, loop_says, move_onto, place, placed, project_at};
     use std::collections::HashMap;
 
     #[test]
@@ -710,4 +722,21 @@ mod tests {
         assert!(!super::stack(&mut terminals, &mut order, false));
         assert_eq!(order, ["x", "y"]);
     }
+
+    #[test]
+    fn a_tab_dropped_on_another_takes_its_place() {
+        let order = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
+        let mut tabs = order(&["a", "b", "c", "d"]);
+        // Rightwards: after the one it was dropped on.
+        assert!(move_onto(&mut tabs, "a", "c"));
+        assert_eq!(tabs, order(&["b", "c", "a", "d"]));
+        // Leftwards: before it.
+        assert!(move_onto(&mut tabs, "d", "b"));
+        assert_eq!(tabs, order(&["d", "b", "c", "a"]));
+        // On itself, or on a tab not there: nothing.
+        assert!(!move_onto(&mut tabs, "c", "c"));
+        assert!(!move_onto(&mut tabs, "c", "z"));
+        assert_eq!(tabs, order(&["d", "b", "c", "a"]));
+    }
+
 }
