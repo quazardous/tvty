@@ -153,6 +153,13 @@ impl DevBuild {
         self.checkout.join("target").join(if self.release() { "release" } else { "debug" }).join(exe("tvty"))
     }
 
+    /// The updater built from the same checkout: beside the executable
+    /// when it is there, else cargo's.
+    pub fn updater(&self) -> Option<PathBuf> {
+        let beside = self.running.parent()?.join(exe("tvty-updater"));
+        Some(if beside.exists() { beside } else { self.built().with_file_name(exe("tvty-updater")) })
+    }
+
     /// Whether the build must then be copied where it runs from (a copy
     /// the shortcut starts, out of cargo's way).
     pub fn copied(&self) -> bool {

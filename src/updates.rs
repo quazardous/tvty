@@ -101,8 +101,12 @@ fn dev_build() -> Option<tvty_updater::DevBuild> {
 /// Starts the updater, on its own; `false` when it is not installed. A
 /// development build tells it so: it then says how to update it.
 pub fn open_updater() -> bool {
-    let mut updater = std::process::Command::new(tvty_updater::program("tvty-updater"));
-    if let Some(dev) = dev_build() {
+    let dev = dev_build();
+    // A development build opens the updater built beside it (it knows of
+    // development builds), the installed one otherwise.
+    let beside = dev.as_ref().and_then(|dev| dev.updater()).filter(|path| path.exists());
+    let mut updater = std::process::Command::new(beside.unwrap_or_else(|| tvty_updater::program("tvty-updater")));
+    if let Some(dev) = dev {
         updater.env(tvty_updater::DEV_EXE_VAR, &dev.running).env(tvty_updater::DEV_VERSION_VAR, env!("CARGO_PKG_VERSION"));
     }
     updater
