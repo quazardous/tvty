@@ -248,7 +248,8 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
     for t in live.terminals().into_iter().filter(|t| mine.is_none() || t.machine.is_none() || t.machine.as_deref() == mine) {
         let terminal = Terminal {
             session: format!("{HOSTED_PREFIX}{}", t.name),
-            label: t.name,
+            // The name it was given, else its own.
+            label: t.label.clone().unwrap_or_else(|| t.name.clone()),
             agent: None,
             status: None,
             attach: Some(t.socket),

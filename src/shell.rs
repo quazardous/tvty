@@ -212,6 +212,9 @@ pub struct Shell {
     workspace_name: Entity<InputState>,
     workspace_renaming: Option<String>,
     workspace_deleting: Option<String>,
+    /// A terminal's tab being renamed (its session), and the name typed.
+    tab_renaming: Option<String>,
+    tab_name: Entity<InputState>,
     remember: bool,
     /// The loops are being stopped before tvty quits.
     stopping_all: bool,
@@ -618,6 +621,7 @@ impl Shell {
         let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
         let goto = cx.new(|cx| InputState::new(window, cx).placeholder("#…"));
         let workspace_name = Self::workspace_name_field(window, cx);
+        let tab_name = Self::tab_name_field(window, cx);
         let sliders = option_sliders(window, cx);
         see_through(&crate::config::get::<Preferences>(cx).appearance.clone(), window);
         // Enter: the input says it before any key handler would see it.
@@ -787,6 +791,8 @@ impl Shell {
             workspace_name,
             workspace_renaming: None,
             workspace_deleting: None,
+            tab_renaming: None,
+            tab_name,
             remember: false,
             stopping_all: false,
             quitting: false,
@@ -2376,6 +2382,20 @@ impl Shell {
         if key == "escape" && self.cancel_picker(cx) {
             cx.stop_propagation();
             return;
+        }
+        // A tab being renamed: Esc leaves its name as it was.
+        if key == "escape" && self.tab_renaming.is_some() {
+            self.cancel_tab_rename(window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        // F2: the shown terminal, if it has no Claude, is renamed.
+        if key == "f2" && !m.control && !m.alt && !m.shift {
+            if let Some(session) = self.selected.clone().filter(|s| self.renamable(s)) {
+                self.start_tab_rename(session, window, cx);
+                cx.stop_propagation();
+                return;
+            }
         }
         if self.viewer.is_some() {
             if self.viewer_key(key, window, cx) {

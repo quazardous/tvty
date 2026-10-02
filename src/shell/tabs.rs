@@ -9,6 +9,8 @@ use std::collections::HashSet;
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::Sizable as _;
 
 use super::Shell;
 use crate::panel::dot;
@@ -66,6 +68,71 @@ impl Shell {
     /// × on a tab: tvty's view goes; the terminal shown goes back to the one
     /// used before it. An agent's Claude, a tmux session, go on without it; a
     /// shell on aiball's host has no other life, and stops.
+    /// The field a tab is renamed in: Enter names it, leaving it (or Esc)
+    /// keeps the name it had.
+    pub(super) fn tab_name_field(window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
+        let field = cx.new(|cx| InputState::new(window, cx).placeholder("its name"));
+        cx.subscribe_in(&field, window, |shell: &mut Self, _, event: &InputEvent, window, cx| match event {
+            InputEvent::PressEnter { .. } => shell.commit_tab_rename(window, cx),
+            InputEvent::Blur => {
+                if shell.tab_renaming.take().is_some() {
+                    cx.notify();
+                }
+            }
+            _ => {}
+        })
+        .detach();
+        field
+    }
+
+    /// A terminal of aiball's host without Claude: its name is the user's.
+    pub(super) fn renamable(&self, session: &str) -> bool {
+        session.starts_with(sessions::HOSTED_PREFIX) && self.terminal_of(session).is_some_and(|(_, t)| t.agent.is_none())
+    }
+
+    /// The tab of `session` becomes a field, its name in it, selected.
+    pub(super) fn start_tab_rename(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(label) = self.renamable(&session).then(|| self.terminal_of(&session).map(|(_, t)| t.label.clone())).flatten() else { return };
+        self.tab_renaming = Some(session);
+        self.tab_name.update(cx, |field, cx| {
+            field.set_value(label, window, cx);
+            field.focus(window, cx);
+            field.select_all(window, cx);
+        });
+        cx.notify();
+    }
+
+    pub(super) fn cancel_tab_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.tab_renaming = None;
+        self.focus_terminal(window, cx);
+        cx.notify();
+    }
+
+    /// Enter: aiball names the terminal (empty: its own name back); every
+    /// tvty shows it once aiball says so.
+    fn commit_tab_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(session) = self.tab_renaming.take() else { return };
+        let Some(name) = session.strip_prefix(sessions::HOSTED_PREFIX).map(str::to_string) else { return };
+        let typed = self.tab_name.read(cx).value().trim().to_string();
+        let label = (!typed.is_empty() && typed != name).then_some(typed);
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |_, cx| {
+            let done = cx
+                .background_executor()
+                .spawn({
+                    let name = name.clone();
+                    async move { aiball.label_terminal(&name, label.as_deref()) }
+                })
+                .await;
+            if let Err(error) = done {
+                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, "rename the terminal", format!("{name}: {error:#}"))));
+            }
+        })
+        .detach();
+        self.focus_terminal(window, cx);
+        cx.notify();
+    }
+
     pub(super) fn close_tab(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
         let shell = self
             .terminal_of(&session)
@@ -211,6 +278,8 @@ impl Shell {
             let state = terminal.status.as_ref().and_then(|s| s.colour());
             let shell = terminal.agent.is_none() && terminal.attach.is_some();
             let counts = self.counts_of(&group.name, &terminal);
+            let renaming = self.tab_renaming.as_deref() == Some(session.as_str());
+            let renamed = session.clone();
             bar = bar.child(
                 div()
                     .named(SharedString::from(format!("tab-{session}")))
@@ -229,7 +298,13 @@ impl Shell {
                     // Its Claude's state, as in the list.
                     .when_some(state, |d, colour| d.child(dot(colour)))
                     .when(shell, |d| d.child(div().text_xs().text_color(p().muted).child(">_")))
-                    .child(terminal.label.clone())
+                    .map(|d| {
+                        if renaming {
+                            d.child(div().w(px(160.)).child(Input::new(&self.tab_name).small()))
+                        } else {
+                            d.child(terminal.label.clone())
+                        }
+                    })
                     .children(counts.map(|c| c.badges(format!("tab-{session}"))))
                     // ×: shown on the tab shown, and on the one under the pointer.
                     .child(
@@ -250,11 +325,30 @@ impl Shell {
                             })),
                     )
                     .group(SharedString::from(format!("tab-group-{session}")))
-                    .tip(if shell { "a terminal on aiball's host, without Claude" } else { "ctrl+pgup / ctrl+pgdn: the tab before, after" })
+                    .when(!renaming, |d| d.tip(if shell {
+                        "a terminal on aiball's host, without Claude; a double click (or F2) renames it"
+                    } else {
+                        "ctrl+pgup / ctrl+pgdn: the tab before, after"
+                    }))
+                    // A double click renames a terminal without Claude.
+                    .when(shell, |d| {
+                        d.on_mouse_down(MouseButton::Left, cx.listener(move |shell, event: &MouseDownEvent, window, cx| {
+                            if event.click_count >= 2 {
+                                shell.start_tab_rename(renamed.clone(), window, cx);
+                                cx.stop_propagation();
+                            }
+                        }))
+                    })
                     .on_mouse_down(MouseButton::Middle, cx.listener(move |shell, _, window, cx| {
                         shell.close_tab(middle.clone(), window, cx);
                     }))
-                    .on_click(cx.listener(move |shell, _, window, cx| shell.select(session.clone(), window, cx))),
+                    // The second click of a double click renames: it does not
+                    // select again (that would take the keys from the field).
+                    .on_click(cx.listener(move |shell, event: &ClickEvent, window, cx| {
+                        if event.click_count() < 2 && shell.tab_renaming.as_deref() != Some(session.as_str()) {
+                            shell.select(session.clone(), window, cx)
+                        }
+                    })),
             );
         }
         // A shell where the group works: the project's folder, or home for

@@ -1068,6 +1068,12 @@ impl Aiball {
         self.call_starting::<Value>("session.start", json!({ "name": name, "argv": argv, "cwd": cwd })).map(drop)
     }
 
+    /// Names a terminal the daemon's host holds (`None`: its own name back);
+    /// its key stays. Every client hears the new name.
+    pub fn label_terminal(&self, name: &str, label: Option<&str>) -> anyhow::Result<()> {
+        self.rpc_do("session.label", json!({ "name": name, "label": label }))
+    }
+
     /// Removes a terminal the daemon's host holds (its program ended, or not).
     pub fn stop_terminal(&self, name: &str) -> anyhow::Result<()> {
         // The daemon answers once the host is gone, which it gives up to

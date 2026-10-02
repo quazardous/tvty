@@ -89,6 +89,8 @@ pub struct HostedTerminal {
     pub cwd: Option<String>,
     /// The machine that holds it, when aiball says.
     pub machine: Option<String>,
+    /// The name it was given (`session.label`), shown instead of its own.
+    pub label: Option<String>,
 }
 
 /// Subscribing: what to call, and how to take the answers back.
@@ -560,6 +562,7 @@ impl Live {
                     socket: s.pointer("/attach/socket")?.as_str()?.to_string(),
                     cwd: s.get("cwd").and_then(Value::as_str).map(str::to_string),
                     machine: s.get("machine").and_then(Value::as_str).map(str::to_string),
+                    label: s.get("label").and_then(Value::as_str).filter(|l| !l.is_empty()).map(str::to_string),
                 })
             })
             .collect()
