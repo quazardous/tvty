@@ -95,9 +95,9 @@ impl Shell {
         let Some(label) = self.renamable(&session).then(|| self.terminal_of(&session).map(|(_, t)| t.label.clone())).flatten() else { return };
         self.tab_renaming = Some(session);
         self.tab_name.update(cx, |field, cx| {
+            // The cursor at the end, the name kept: typing adds to it.
             field.set_value(label, window, cx);
             field.focus(window, cx);
-            field.select_all(window, cx);
         });
         cx.notify();
     }
@@ -304,6 +304,25 @@ impl Shell {
                         } else {
                             d.child(terminal.label.clone())
                         }
+                    })
+                    // ✎: renames a terminal without Claude, shown as × is.
+                    .when(shell && !renaming, |d| {
+                        let renamed = session.clone();
+                        d.child(
+                            div()
+                                .named(SharedString::from(format!("tab-rename-{session}")))
+                                .flex_none()
+                                .p_0p5()
+                                .rounded_sm()
+                                .when(!selected, |d| d.opacity(0.).group_hover(SharedString::from(format!("tab-group-{session}")), |s| s.opacity(1.)))
+                                .hover(|d| d.bg(p().hover))
+                                .child(crate::icons::icon(crate::icons::Icon::Rename, p().muted, 12.))
+                                .tip("rename it (or a double click, F2)")
+                                .on_click(cx.listener(move |shell, _, window, cx| {
+                                    cx.stop_propagation();
+                                    shell.start_tab_rename(renamed.clone(), window, cx);
+                                })),
+                        )
                     })
                     .children(counts.map(|c| c.badges(format!("tab-{session}"))))
                     // ×: shown on the tab shown, and on the one under the pointer.

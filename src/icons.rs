@@ -60,6 +60,8 @@ icons! {
     PendingComments => "schedule.svg",
     Sunk => "snooze.svg",
     Unassign => "person_off.svg",
+    // A name to change (a terminal's tab).
+    Rename => "edit.svg",
     // What runs on aiball's hub, seen from another machine.
     Hub => "cloud.svg",
     // The ticket panel held beside the terminal, or let over it.
