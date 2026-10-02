@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0-beta.1] - 2026-10-02
+
 ### Added
 
 - "host · controls +N" (or "tmux · controls +N") offers "Close the others (N)": the other clients attached to the session (claude-loop's terminal, another Terminal Velocity) leave it, its Claude and your terminal go on. A Terminal Velocity closed so says "detached by another client" and attaches again on Enter. On the host, shown when aiball's session host offers it. Under psmux (Windows) it says the others are still attached: aiball cannot tell them apart there yet.
