@@ -70,12 +70,18 @@ struct Updater {
     log: Arc<Mutex<Vec<String>>>,
     failed: bool,
     scroll: ScrollHandle,
+    /// The Terminal Velocity that opened it, when it runs from its
+    /// checkout, and the version it runs.
+    dev: Option<(tvty_updater::DevBuild, Option<String>)>,
 }
 
 impl Updater {
     fn new(cx: &mut Context<Self>) -> Self {
         let icon = Arc::new(Image::from_bytes(ImageFormat::Svg, tvty_updater::ICON.to_vec()));
-        let mut this = Self { icon, tvty: None, aiball: None, missing: Vec::new(), busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new() };
+        let dev = std::env::var_os(tvty_updater::DEV_EXE_VAR)
+            .and_then(|exe| tvty_updater::DevBuild::of(std::path::Path::new(&exe)))
+            .map(|dev| (dev, std::env::var(tvty_updater::DEV_VERSION_VAR).ok()));
+        let mut this = Self { icon, tvty: None, aiball: None, missing: Vec::new(), busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new(), dev };
         this.check(cx);
         this
     }
@@ -308,20 +314,7 @@ impl Updater {
                     .child(div().text_sm().text_color(colour).child(said))
                     .children(versions.filter(|v| !v.is_empty()).map(|v| div().text_sm().text_color(theme.muted_foreground).child(v)))
                     .children(note.map(|n| div().text_xs().text_color(theme.muted_foreground).child(n)))
-                    .children(by_hand.map(|command| {
-                        let copied = command.clone();
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap_2()
-                            .pt_1()
-                            // Where the line is to be pasted.
-                            .child(div().flex_none().text_xs().text_color(theme.muted_foreground).child(if cfg!(windows) { "in PowerShell:" } else { "in a terminal:" }))
-                            .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_xs().font_family("monospace").child(command))
-                            .child(Button::new(SharedString::from(format!("{}-by-hand", program.title()))).label("Copy").small().on_click(move |_, _, cx| {
-                                cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
-                            }))
-                    })),
+                    .children(by_hand.map(|command| by_hand_line(format!("{}-by-hand", program.title()), command, &theme))),
             )
             .when(rollback, |d| {
                 d.child(
@@ -339,6 +332,61 @@ impl Updater {
                     .on_click(cx.listener(move |updater, _, _, cx| updater.run(gesture, cx)))
             }))
     }
+
+    /// The Terminal Velocity that opened the updater, built from its
+    /// checkout: no release replaces it, the line that updates it is said.
+    fn dev_row(&self, cx: &mut Context<Self>) -> Option<impl IntoElement> {
+        let (dev, running) = self.dev.as_ref()?;
+        let theme = cx.theme().clone();
+        let latest = self.tvty.as_ref().and_then(|s| s.latest.clone());
+        let behind = running.as_deref().zip(latest.as_deref()).is_some_and(|(running, latest)| tvty_updater::older(running, latest));
+        let (said, colour) = if behind {
+            ("a development build, behind the latest release: update its checkout", theme.warning)
+        } else {
+            ("a development build: updated from its checkout, by hand, not from here", theme.muted_foreground)
+        };
+        let versions = [running.as_ref().map(|v| format!("running {v}")), latest.map(|v| format!("latest {v}"))].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+        Some(
+            div()
+                .flex()
+                .flex_col()
+                .gap_1()
+                .p_4()
+                .rounded_md()
+                .border_1()
+                .border_color(theme.border)
+                .child(
+                    div()
+                        .flex()
+                        .items_baseline()
+                        .gap_2()
+                        .child(div().text_lg().font_weight(FontWeight::BOLD).child("Terminal Velocity (development)"))
+                        .child(div().text_sm().text_color(theme.muted_foreground).child("the one that opened this window")),
+                )
+                .child(div().text_sm().text_color(colour).child(said))
+                .when(!versions.is_empty(), |d| d.child(div().text_sm().text_color(theme.muted_foreground).child(versions)))
+                .child(div().text_xs().text_color(theme.muted_foreground).child(format!("its checkout: {}", dev.checkout.display())))
+                // A running program is not replaced on Windows, nor rebuilt in place.
+                .when(cfg!(windows), |d| d.child(div().text_xs().text_color(theme.muted_foreground).child("Quit this Terminal Velocity first: Windows does not let a running program be replaced.")))
+                .child(by_hand_line("tvty-dev-by-hand".to_string(), dev.update_command(), &theme)),
+        )
+    }
+}
+
+/// A line to run by hand, where to paste it, and its Copy.
+fn by_hand_line(id: String, command: String, theme: &gpui_kit::component::Theme) -> impl IntoElement {
+    let copied = command.clone();
+    div()
+        .flex()
+        .items_center()
+        .gap_2()
+        .pt_1()
+        // Where the line is to be pasted.
+        .child(div().flex_none().text_xs().text_color(theme.muted_foreground).child(if cfg!(windows) { "in PowerShell:" } else { "in a terminal:" }))
+        .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_xs().font_family("monospace").child(command))
+        .child(Button::new(SharedString::from(id)).label("Copy").small().on_click(move |_, _, cx| {
+            cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
+        }))
 }
 
 impl Render for Updater {
@@ -400,6 +448,7 @@ impl Render for Updater {
                     .children(self.missing_view(cx))
                     .child(self.row(Program::Aiball, cx))
                     .child(self.row(Program::Tvty, cx))
+                    .children(self.dev_row(cx))
                     .child(
                         div()
                             .flex()

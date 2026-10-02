@@ -48,10 +48,13 @@ async fn latest_release(cx: &mut AsyncApp) {
         cx.set_global(Newer(Some(latest.clone())));
         if !said_before && !announced(&latest) {
             remember(&latest);
-            activity::publish(
-                cx,
-                Activity::news("tvty", Kind::Info, None, format!("Terminal Velocity {latest} is out (you run {running}): the menu's Updates… installs it")),
-            );
+            // A build from its checkout is not what a release replaces.
+            let how = if dev_build().is_some() {
+                "this one is a development build: update its checkout (the menu's Updates… says how)"
+            } else {
+                "the menu's Updates… installs it"
+            };
+            activity::publish(cx, Activity::news("tvty", Kind::Info, None, format!("Terminal Velocity {latest} is out (you run {running}): {how}")));
         }
         cx.refresh_windows();
     });
@@ -90,9 +93,19 @@ fn remember(version: &str) {
     }
 }
 
-/// Starts the updater, on its own; `false` when it is not installed.
+/// This Terminal Velocity, when it runs from its checkout.
+fn dev_build() -> Option<tvty_updater::DevBuild> {
+    tvty_updater::DevBuild::of(&std::env::current_exe().ok()?)
+}
+
+/// Starts the updater, on its own; `false` when it is not installed. A
+/// development build tells it so: it then says how to update it.
 pub fn open_updater() -> bool {
-    std::process::Command::new(tvty_updater::program("tvty-updater"))
+    let mut updater = std::process::Command::new(tvty_updater::program("tvty-updater"));
+    if let Some(dev) = dev_build() {
+        updater.env(tvty_updater::DEV_EXE_VAR, &dev.running).env(tvty_updater::DEV_VERSION_VAR, env!("CARGO_PKG_VERSION"));
+    }
+    updater
         .stdin(std::process::Stdio::null())
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
