@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0-beta.1] - 2026-10-02
+
 ### Added
 
 - A terminal without Claude can be renamed in its tab: its ✎, a double click, or F2 when it is shown; the cursor at the end of its name, Enter keeps the name, Esc leaves it, empty gives its own back. aiball keeps the name: it shows in the tab, the sessions' list and the window's title, and in every Terminal Velocity. Needs aiball's `session.label`.
