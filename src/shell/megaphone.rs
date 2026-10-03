@@ -50,8 +50,8 @@ fn until_iso(typed: &str) -> Result<Option<String>, String> {
     }
     let naive = chrono::NaiveDateTime::parse_from_str(typed, "%Y-%m-%d %H:%M")
         .or_else(|_| chrono::NaiveDate::parse_from_str(typed, "%Y-%m-%d").map(|d| d.and_hms_opt(23, 59, 0).unwrap_or_default()))
-        .map_err(|_| format!("until: {typed} is not a date (2026-09-30 18:00)"))?;
-    let local = chrono::Local.from_local_datetime(&naive).single().ok_or_else(|| format!("until: {typed} is not a time here"))?;
+        .map_err(|_| crate::t!("megaphone-not-a-date", typed = typed))?;
+    let local = chrono::Local.from_local_datetime(&naive).single().ok_or_else(|| crate::t!("megaphone-not-a-time", typed = typed))?;
     Ok(Some(local.to_utc().to_rfc3339()))
 }
 
@@ -65,22 +65,22 @@ fn until_local(iso: &str) -> String {
 /// What a message or a release did, loop by loop, said in one line.
 fn results_said(results: &[LoopHold]) -> String {
     if results.is_empty() {
-        return "No agent loop is running.".into();
+        return crate::t!("megaphone-no-loop");
     }
     let names = |f: &dyn Fn(&LoopHold) -> bool| results.iter().filter(|r| f(r)).map(|r| r.consumer_id.clone()).collect::<Vec<_>>();
     let mut said = Vec::new();
     for (label, list) in [
-        ("typed into", names(&|r| r.prompt.as_deref() == Some("delivered"))),
-        ("queued for", names(&|r| r.prompt.as_deref() == Some("spooled"))),
-        ("held", names(&|r| r.hold.as_deref() == Some("armed"))),
-        ("released", names(&|r| r.hold.as_deref() == Some("released"))),
+        ("megaphone-typed-into", names(&|r| r.prompt.as_deref() == Some("delivered"))),
+        ("megaphone-queued-for", names(&|r| r.prompt.as_deref() == Some("spooled"))),
+        ("megaphone-held", names(&|r| r.hold.as_deref() == Some("armed"))),
+        ("megaphone-released", names(&|r| r.hold.as_deref() == Some("released"))),
     ] {
         if !list.is_empty() {
-            said.push(format!("{label} {}", list.join(", ")));
+            said.push(crate::t!(label, names = list.join(", ")));
         }
     }
     for r in results.iter().filter(|r| r.hold.as_deref() == Some("failed")) {
-        said.push(format!("{}: {}", r.consumer_id, r.hold_error.as_deref().unwrap_or("hold not applied")));
+        said.push(format!("{}: {}", r.consumer_id, r.hold_error.clone().unwrap_or_else(|| crate::t!("megaphone-hold-not-applied"))));
     }
     said.join(" · ")
 }
@@ -90,7 +90,7 @@ impl Shell {
     /// wake focus. No project shown: said, nothing opens.
     pub(super) fn open_megaphone(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(project) = self.panel_scope().map(|s| s.project) else {
-            activity::publish(cx, Activity::news("tvty", Kind::Info, None, "A standing instruction and a wake focus are a project's: show one first"));
+            activity::publish(cx, Activity::news("tvty", Kind::Info, None, crate::t!("megaphone-no-project")));
             return;
         };
         self.open_popover(Some(project), window, cx);
@@ -104,18 +104,18 @@ impl Shell {
     fn open_popover(&mut self, project: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
         self.help_menu = false;
         let standing = project.as_ref().and_then(|p| crate::kernel::standing::get(cx, p)).unwrap_or_default();
-        let field = |value: Option<String>, placeholder: &'static str, window: &mut Window, cx: &mut Context<Self>| {
+        let field = |value: Option<String>, placeholder: &str, window: &mut Window, cx: &mut Context<Self>| {
             cx.new(|cx| {
-                let mut state = InputState::new(window, cx).placeholder(placeholder);
+                let mut state = InputState::new(window, cx).placeholder(placeholder.to_string());
                 if let Some(value) = value {
                     state.set_value(value, window, cx);
                 }
                 state
             })
         };
-        let prompt = field(standing.standing_prompt.clone(), "e.g. light debugging first, no big changes", window, cx);
-        let tickets = field(standing.focus_tickets.clone(), "e.g. 2518, 2523++   or   !2180", window, cx);
-        let until = field(standing.focus_until.as_deref().map(until_local), "until (optional): 2026-09-30 18:00", window, cx);
+        let prompt = field(standing.standing_prompt.clone(), &crate::t!("megaphone-prompt-placeholder"), window, cx);
+        let tickets = field(standing.focus_tickets.clone(), &crate::t!("megaphone-tickets-placeholder"), window, cx);
+        let until = field(standing.focus_until.as_deref().map(until_local), &crate::t!("megaphone-until-placeholder"), window, cx);
         let message = cx.new(|cx| TextareaState::new(window, cx).placeholder(DEFAULT_MESSAGE).auto_grow(3, 8));
         // The first box shown takes the keys: the instruction, or the
         // message.
@@ -198,9 +198,9 @@ impl Shell {
                 match done {
                     Ok(standing) => {
                         let said = match (&standing.standing_prompt, standing.focus_active) {
-                            (None, false) => format!("{project}: nothing steers its agents now"),
-                            (Some(prompt), _) => format!("{project}: its agents read \"{prompt}\" at every wake"),
-                            (None, true) => format!("{project}: only its focus wakes its agents"),
+                            (None, false) => crate::t!("megaphone-said-nothing", project = project.clone()),
+                            (Some(prompt), _) => crate::t!("megaphone-said-prompt", project = project.clone(), prompt = prompt.clone()),
+                            (None, true) => crate::t!("megaphone-said-focus", project = project.clone()),
                         };
                         activity::publish(cx, Activity::news("tvty", Kind::Info, None, said));
                         crate::kernel::standing::apply(cx, standing);
@@ -254,7 +254,7 @@ impl Shell {
     pub(super) fn megaphone_view(&self, window: &Window, cx: &mut Context<Self>) -> Option<AnyElement> {
         let m = self.megaphone.as_ref()?;
         let head = |text: String| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
-        let hint = |text: &'static str| div().text_xs().text_color(p().muted).child(text);
+        let hint = |text: String| div().text_xs().text_color(p().muted).child(text);
         let standing = m.project.as_ref().and_then(|p| crate::kernel::standing::get(cx, p));
         let standing = standing.as_ref();
         let mut card = div().flex().flex_col().gap_1p5().p_3().w(px(480.)).text_sm();
@@ -262,8 +262,8 @@ impl Shell {
             Some(project) => {
                 let history = &self.settings.workspace.standing_history;
                 card = card
-                    .child(head(format!("Standing instruction — {project}")))
-                    .child(hint("Put at the head of every wake of its agents, event and backlog alike. Leave one before stepping away; clear it when you are back."))
+                    .child(head(crate::t!("megaphone-standing", project = project.clone())))
+                    .child(hint(crate::t!("megaphone-standing-hint")))
                     .child(Input::new(&m.prompt))
                     // The ones given last, a click away.
                     .when(!history.is_empty(), |d| {
@@ -283,12 +283,8 @@ impl Shell {
                         }
                         d.child(chips)
                     })
-                    .child(head("Wake focus".into()))
-                    .child(hint(
-                        "Only these tickets wake the project's agents, backlog and events. 123, 456 keeps just those; !789 keeps all but it. \
-                         123+ brings its children, 123++ all its descendants, +123 / ++123 its parents, 123~ its linked tickets. Events \
-                         outside stay unread until you clear it.",
-                    ))
+                    .child(head(crate::t!("megaphone-focus")))
+                    .child(hint(crate::t!("megaphone-focus-hint")))
                     .child(div().flex().gap_2().child(div().flex_1().child(Input::new(&m.tickets))).child(div().w(px(170.)).child(Input::new(&m.until))))
                     .children(standing.and_then(|s| s.focus_line.clone()).filter(|l| !l.is_empty()).map(|line| {
                         div().text_xs().text_color(if standing.is_some_and(|s| s.focus_active) { p().info } else { p().muted }).child(line)
@@ -298,8 +294,8 @@ impl Shell {
                             .flex()
                             .justify_end()
                             .gap_2()
-                            .child(buttons::secondary("standing-clear", "Clear").on_click(cx.listener(|shell, _, window, cx| shell.save_standing(true, window, cx))))
-                            .child(buttons::primary("standing-save", "Save").on_click(cx.listener(|shell, _, window, cx| shell.save_standing(false, window, cx)))),
+                            .child(buttons::secondary("standing-clear", crate::t!("megaphone-clear")).on_click(cx.listener(|shell, _, window, cx| shell.save_standing(true, window, cx))))
+                            .child(buttons::primary("standing-save", crate::t!("megaphone-save")).on_click(cx.listener(|shell, _, window, cx| shell.save_standing(false, window, cx)))),
                     );
             }
             None => card = self.message_section(m, card, cx),
@@ -335,19 +331,16 @@ impl Shell {
 
     /// The message to every running agent loop, and what became of it.
     fn message_section(&self, m: &Megaphone, card: Div, cx: &mut Context<Self>) -> Div {
-        let head = |text: &'static str| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
-        let hint = |text: &'static str| div().text_xs().text_color(p().muted).child(text);
+        let head = |text: String| div().pt_2().text_sm().font_weight(FontWeight::BOLD).child(text);
+        let hint = |text: String| div().text_xs().text_color(p().muted).child(text);
         let mut running: Vec<String> = self.board.bars.iter().filter(|(_, b)| !b.stale).map(|(a, _)| a.clone()).collect();
         running.sort();
-        card.child(head("Message to every agent"))
-            .child(hint(
-                "Typed into each running agent session now, whatever it is doing. Send & hold also holds every loop (not AFK ∞): \
-                 no wake starts new work until you release them. Left empty, the text shown is sent.",
-            ))
+        card.child(head(crate::t!("megaphone-message")))
+            .child(hint(crate::t!("megaphone-message-hint")))
             .child(div().text_xs().text_color(p().muted).child(if running.is_empty() {
-                "No agent loop is running.".to_string()
+                crate::t!("megaphone-no-loop")
             } else {
-                format!("{} running: {}", running.len(), running.join(", "))
+                crate::t!("megaphone-running", count = running.len(), names = running.join(", "))
             }))
             .child(Textarea::new(&m.message))
             .child(
@@ -355,9 +348,9 @@ impl Shell {
                     .flex()
                     .justify_end()
                     .gap_2()
-                    .child(buttons::secondary("loops-release", "Release holds").on_click(cx.listener(|shell, _, _, cx| shell.message_loops(None, cx))))
-                    .child(buttons::secondary("loops-send", "Send").on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(false), cx))))
-                    .child(buttons::answer("loops-hold", "Send & hold").danger().on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(true), cx)))),
+                    .child(buttons::secondary("loops-release", crate::t!("megaphone-release")).on_click(cx.listener(|shell, _, _, cx| shell.message_loops(None, cx))))
+                    .child(buttons::secondary("loops-send", crate::t!("megaphone-send")).on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(false), cx))))
+                    .child(buttons::answer("loops-hold", crate::t!("megaphone-send-hold")).danger().on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(true), cx)))),
             )
             .children(m.said.clone().map(|said| div().text_xs().text_color(p().success).child(said)))
     }
@@ -368,12 +361,12 @@ impl Shell {
         let standing = crate::kernel::standing::get(cx, project).filter(|s| s.active())?;
         let mut tip = Vec::new();
         if let Some(prompt) = standing.standing_prompt.as_deref().filter(|p| !p.trim().is_empty()) {
-            tip.push(format!("Standing instruction: {prompt}"));
+            tip.push(crate::t!("megaphone-tip-standing", prompt = prompt));
         }
         if standing.focus_active
             && let Some(line) = standing.focus_line.as_deref().or(standing.focus_tickets.as_deref())
         {
-            tip.push(format!("Wake focus: {}", line.strip_prefix("focus: ").unwrap_or(line)));
+            tip.push(crate::t!("megaphone-tip-focus", focus = line.strip_prefix("focus: ").unwrap_or(line)));
         }
         // No padding: the row is full, the project's name gives way to it.
         use crate::tip::Tip as _;

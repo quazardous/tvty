@@ -66,7 +66,8 @@ impl Shell {
     /// The scope list, made as the options open: Global and the board's
     /// projects, the scope shown chosen.
     pub(super) fn new_scope_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let mut names = vec![Choice::plain(GLOBAL)];
+        // Global by its key; said in the interface's language.
+        let mut names = vec![Choice::new(GLOBAL, crate::t!("projectopts-global"))];
         names.extend(self.board.projects.iter().filter(|p| p.on_board).map(|p| Choice::plain(p.name.clone())));
         let shown = self.remote_layer.clone().unwrap_or_else(|| GLOBAL.into());
         let state = combo::new(names, Some(&shown), window, cx);
@@ -84,7 +85,7 @@ impl Shell {
         div().px_1().children(crate::inspect::mark_if("options-scope")).children(
             self.scope_select
                 .as_ref()
-                .map(|state| combo::view(state, "options-scope", GLOBAL, "a project…").menu_max_h(px(360.)).w_full()),
+                .map(|state| combo::view(state, "options-scope", &crate::t!("projectopts-global"), &crate::t!("projectopts-a-project")).menu_max_h(px(360.)).w_full()),
         )
     }
 
@@ -162,7 +163,7 @@ impl Shell {
             };
             let _ = this.update(cx, |shell, cx| {
                 if let Err(error) = done {
-                    activity::publish(cx, Activity::failed(None, "project settings", format!("{key}: {error:#}")));
+                    activity::publish(cx, Activity::failed(None, &crate::t!("projectopts-failed"), format!("{key}: {error:#}")));
                 }
                 shell.load_project_settings(cx);
             });
@@ -179,7 +180,7 @@ impl Shell {
     /// project overrides.
     pub(super) fn project_sections(&self, cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
         let Some(opts) = self.project_opts.as_ref() else {
-            return vec![(None, option_note("Choose a project above.").into_any_element())];
+            return vec![(None, option_note(crate::t!("projectopts-choose")).into_any_element())];
         };
         vec![(Some("Folder".into()), self.folder_section(opts, cx).into_any_element()), (Some("Board".into()), self.board_section(opts, cx).into_any_element())]
     }
@@ -187,7 +188,7 @@ impl Shell {
     fn folder_section(&self, opts: &ProjectOpts, cx: &mut Context<Self>) -> Div {
         let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(option_group("Folder"));
         if opts.folders.is_empty() {
-            return out.child(option_note("aiball knows no folder of this project on this machine: none of its agents works here."));
+            return out.child(option_note(crate::t!("projectopts-no-folder")));
         }
         let names = short_folders(&opts.folders.iter().map(|(f, _)| f.clone()).collect::<Vec<_>>());
         // Several folders (the lead's, a crew's worktree…): one at a time.
@@ -211,15 +212,12 @@ impl Shell {
         }
         let Some((folder, settings)) = opts.folders.get(opts.chosen) else { return out };
         let settings = match settings {
-            None => return out.child(div().text_sm().text_color(p().muted).child("Asking aiball…")),
-            Some(Err(error)) => return out.child(div().text_sm().text_color(p().danger).child(format!("aiball could not say: {error}"))),
+            None => return out.child(div().text_sm().text_color(p().muted).child(crate::t!("projectopts-asking"))),
+            Some(Err(error)) => return out.child(div().text_sm().text_color(p().danger).child(crate::t!("projectopts-could-not-say", error = error.to_string()))),
             Some(Ok(settings)) => settings,
         };
         let Some(file) = settings.file.as_ref() else {
-            return out.child(div().text_sm().text_color(p().muted).child(format!(
-                "{} has no .aiball.yaml, nor any folder above it: aiball's defaults apply. New project… sets it up.",
-                super::loopstabs::home_short(folder)
-            )));
+            return out.child(div().text_sm().text_color(p().muted).child(crate::t!("projectopts-no-file", folder = super::loopstabs::home_short(folder))));
         };
         // The file written, and the other folders it serves: a change here
         // is theirs too.
@@ -230,9 +228,9 @@ impl Shell {
             .filter(|((f, s), _)| f != folder && matches!(s, Some(Ok(s)) if s.file.as_ref() == Some(file)))
             .map(|(_, name)| name.clone())
             .collect();
-        out = out.child(div().text_sm().text_color(p().muted).child(format!("Written in {}.", super::loopstabs::home_short(file))));
+        out = out.child(div().text_sm().text_color(p().muted).child(crate::t!("projectopts-written-in", file = super::loopstabs::home_short(file))));
         if !shared.is_empty() {
-            out = out.child(div().text_sm().text_color(p().warning).child(format!("It also serves {}: a change here is theirs too.", shared.join(", "))));
+            out = out.child(div().text_sm().text_color(p().warning).child(crate::t!("projectopts-also-serves", others = shared.join(", "))));
         }
         // Each setting as aiball describes it.
         for setting in &settings.settings {
@@ -262,8 +260,8 @@ impl Shell {
             "boolean_or_name" => {
                 let named = setting.value.as_str().filter(|n| !n.is_empty()).map(str::to_string);
                 let on = setting.value.as_bool() == Some(true) || named.is_some();
-                choice(format!("{}-off", setting.key), "off".into(), !on, Json::Bool(false));
-                choice(format!("{}-on", setting.key), named.map_or("on".into(), |n| format!("on: {n}")), on, Json::Bool(true));
+                choice(format!("{}-off", setting.key), crate::t!("settings-off"), !on, Json::Bool(false));
+                choice(format!("{}-on", setting.key), named.map_or(crate::t!("settings-on"), |n| crate::t!("projectopts-on-named", name = n)), on, Json::Bool(true));
             }
             _ => {
                 for option in &setting.options {
@@ -285,14 +283,14 @@ impl Shell {
         let mut out = div().flex().flex_col().gap_2().max_w(px(720.)).child(option_group("Board"));
         let config = self.remote.as_ref().filter(|c| c.project.as_deref() == Some(opts.project.as_str()));
         let Some(config) = config else {
-            return out.child(div().text_sm().text_color(p().muted).child("Reading aiball's config…"));
+            return out.child(div().text_sm().text_color(p().muted).child(crate::t!("settings-aiball-reading")));
         };
         let items = crate::options::remote_items(config);
         let set: Vec<usize> = items.iter().enumerate().filter(|(_, i)| i.modified && !i.inherited).map(|(at, _)| at).collect();
         let note = if set.is_empty() {
-            format!("{} sets none of the board's config: it has the board's values.", opts.project)
+            crate::t!("projectopts-none-set", project = opts.project.clone())
         } else {
-            format!("What {} sets over the board's config; ↺ gives a key back to the board's value.", opts.project)
+            crate::t!("settings-aiball-project", project = opts.project.clone())
         };
         out = out.child(
             div()
@@ -303,7 +301,7 @@ impl Shell {
                 .text_color(p().muted)
                 .child(div().flex_1().min_w_0().child(note))
                 .child(
-                    buttons::chip("options-project-all", "All its keys")
+                    buttons::chip("options-project-all", crate::t!("projectopts-all-keys"))
                         .py_0p5()
                         .border_color(p().accent.opacity(0.6))
                         .text_color(p().accent)
@@ -331,8 +329,8 @@ fn label(name: &str, from: &str) -> Div {
 /// A setting's value as said: `off`, `on`, a name, an option.
 fn value_said(value: &Json) -> String {
     match value {
-        Json::Bool(true) => "on".into(),
-        Json::Bool(false) | Json::Null => "off".into(),
+        Json::Bool(true) => crate::t!("settings-on"),
+        Json::Bool(false) | Json::Null => crate::t!("settings-off"),
         Json::String(text) => text.clone(),
         other => other.to_string(),
     }
