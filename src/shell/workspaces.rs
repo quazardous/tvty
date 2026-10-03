@@ -93,11 +93,11 @@ fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, Stri
             let known = known.iter().find(|l| l.name == *name);
             let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
             let agent = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
-            let place = if known.is_some_and(|l| l.on_host()) { "host" } else { crate::mux::program() };
+            let place = if known.is_some_and(|l| l.on_host()) { crate::t!("workspaces-host") } else { crate::mux::program().to_string() };
             let (now, held) = match holds.get(name).map(String::as_str) {
-                Some("wait_inf") => (Mode::Stop, " · held until let go"),
-                Some("wait_10m") => (Mode::Stop, " · held for a while"),
-                _ => (Mode::Auto, ""),
+                Some("wait_inf") => (Mode::Stop, crate::t!("workspaces-held-for-good")),
+                Some("wait_10m") => (Mode::Stop, crate::t!("workspaces-held-while")),
+                _ => (Mode::Auto, String::new()),
             };
             // Asked to stop when tvty quit, it ran on: listed, not to choose.
             let ran_on = still.contains(name);
@@ -106,7 +106,7 @@ fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, Stri
                 agent,
                 loop_name: Some(name.clone()),
                 now: Some(now),
-                note: if ran_on { format!("{place} · ran on: its stop did not take") } else { format!("{place}{held}") },
+                note: if ran_on { crate::t!("workspaces-ran-on", place = place) } else { format!("{place}{held}") },
                 checked: !ran_on,
                 fixed: ran_on,
                 opening: None,
@@ -121,7 +121,7 @@ fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, Stri
 impl Shell {
     /// The name field of a new or renamed workspace: Enter confirms.
     pub(super) fn workspace_name_field(window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
-        let field = cx.new(|cx| InputState::new(window, cx).placeholder("its name"));
+        let field = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("workspaces-its-name")));
         cx.subscribe_in(&field, window, |shell: &mut Self, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { .. }) {
                 if shell.workspace_renaming.is_some() {
@@ -191,7 +191,7 @@ impl Shell {
     /// "+ workspace": the groups that run, all ticked.
     pub(super) fn pick_new_workspace(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let rows = self.live_sessions().iter().map(|(project, agent)| self.row(project, agent)).collect();
-        let name = self.settings.saved.free_name("Workspace");
+        let name = self.settings.saved.free_name(&crate::t!("workspaces-default-name"));
         self.workspace_name.update(cx, |field, cx| {
             field.set_value(name, window, cx);
             field.focus(window, cx);
@@ -208,7 +208,7 @@ impl Shell {
             for session in &group.sessions {
                 let now = self.mode_now(&session.agent);
                 rows.push(PickRow {
-                    note: if now.is_none() { "does not run: kept as it was".into() } else { String::new() },
+                    note: if now.is_none() { crate::t!("workspaces-not-running") } else { String::new() },
                     kept: Some(session.mode),
                     ..self.row(&group.project, &session.agent)
                 });
@@ -221,7 +221,7 @@ impl Shell {
             // A session new in one of its groups comes with it; another
             // group is an offer.
             let in_group = workspace.groups.iter().any(|g| g.project == project);
-            rows.push(PickRow { checked: in_group, note: if in_group { "new in this group".into() } else { "not in it yet".into() }, ..self.row(&project, &agent) });
+            rows.push(PickRow { checked: in_group, note: crate::t!(if in_group { "workspaces-new-in-group" } else { "workspaces-not-in-yet" }), ..self.row(&project, &agent) });
         }
         self.open_picker(PickFor::Save(name.to_string()), rows, cx);
     }
@@ -239,13 +239,13 @@ impl Shell {
                 }
                 rows.push(PickRow {
                     checked: others.is_empty(),
-                    note: if others.is_empty() { String::new() } else { format!("also in {}", others.join(", ")) },
+                    note: if others.is_empty() { String::new() } else { crate::t!("workspaces-also-in", others = others.join(", ")) },
                     ..self.row(&group.project, &session.agent)
                 });
             }
         }
         if rows.is_empty() {
-            return activity::publish(cx, Activity::done(None, format!("{name}: none of its sessions runs")));
+            return activity::publish(cx, Activity::done(None, crate::t!("workspaces-none-runs", name = name)));
         }
         self.open_picker(PickFor::Shut(name.to_string()), rows, cx);
     }
@@ -269,7 +269,7 @@ impl Shell {
             }
         }
         if rows.iter().all(|r| r.fixed) {
-            return activity::publish(cx, Activity::done(None, format!("{name}: every session is as kept")));
+            return activity::publish(cx, Activity::done(None, crate::t!("workspaces-all-as-kept", name = name)));
         }
         self.open_picker(PickFor::Open(name.to_string()), rows, cx);
     }
@@ -319,7 +319,7 @@ impl Shell {
                         None => groups.push(Group { project: row.project.clone(), sessions: vec![session] }),
                     }
                 }
-                let said = format!("workspace {name} kept: {}", count(groups.len(), "group"));
+                let said = crate::t!("workspaces-kept", name = name.clone(), count = groups.len());
                 self.settings.saved.put(Workspace { name, groups });
                 self.settings.save(cx);
                 activity::publish(cx, Activity::done(None, said));
@@ -370,7 +370,7 @@ impl Shell {
     /// Stops the loops of `rows` (a workspace shut), off the UI thread.
     fn stop_sessions(&mut self, workspace: &str, rows: Vec<PickRow>, cx: &mut Context<Self>) {
         if rows.is_empty() {
-            return activity::publish(cx, Activity::done(None, format!("{workspace} shut: its sessions run on")));
+            return activity::publish(cx, Activity::done(None, crate::t!("workspaces-shut-run-on", name = workspace)));
         }
         let known: Vec<crate::loops::KnownLoop> =
             rows.iter().filter_map(|r| self.board.known.iter().find(|l| Some(&l.name) == r.loop_name.as_ref()).cloned()).collect();
@@ -384,9 +384,9 @@ impl Shell {
             let _ = this.update(cx, |shell, cx| {
                 let done = rows.len() - failed.len() - missing;
                 let said = match failed.first() {
-                    None if missing == 0 => Activity::done(None, format!("{workspace} shut: {} stopped", count(done, "session"))),
-                    None => Activity::failed(None, "shut", format!("{} on no loop of this machine: not stopped", count(missing, "session"))),
-                    Some(error) => Activity::failed(None, "shut", error.clone()),
+                    None if missing == 0 => Activity::done(None, crate::t!("workspaces-shut-stopped", name = workspace.clone(), count = done)),
+                    None => Activity::failed(None, &crate::t!("workspaces-shut"), crate::t!("workspaces-no-loop", count = missing)),
+                    Some(error) => Activity::failed(None, &crate::t!("workspaces-shut"), error.clone()),
                 };
                 activity::publish(cx, said);
                 let _ = shell.refresh_now.unbounded_send(());
@@ -418,11 +418,11 @@ impl Shell {
                     let (cwd, how) = match (idle.get(&row.agent), home) {
                         (Some((name, cwd)), _) => (cwd.clone(), How::Restart(name.clone())),
                         (None, Some((_, _, cwd))) => (cwd.clone(), How::Start { cwd: cwd.clone(), project: project.map(String::from) }),
-                        (None, None) => return How::Nothing(format!("{}: no loop nor folder known to start it", row.agent)),
+                        (None, None) => return How::Nothing(crate::t!("workspaces-nothing-to-start", agent = row.agent.clone())),
                     };
                     // Never in another project's agent's folder.
                     match crate::loops::stranger(&cwd, Some(&row.agent), project, &self.board.homes) {
-                        Some(other) => How::Nothing(format!("{}: {cwd} is {other}'s folder, not started", row.agent)),
+                        Some(other) => How::Nothing(crate::t!("workspaces-astray", agent = row.agent.clone(), cwd = cwd.to_string(), other = other.to_string())),
                         None => how,
                     }
                 });
@@ -465,7 +465,7 @@ impl Shell {
                                     break;
                                 }
                                 Err(error) if !booting || tries >= 15 => {
-                                    failed.push(format!("{}: its mode: {error:#}", row.agent));
+                                    failed.push(crate::t!("workspaces-mode-failed", agent = row.agent.clone(), error = format!("{error:#}")));
                                     break;
                                 }
                                 Err(_) => {
@@ -480,8 +480,8 @@ impl Shell {
                 .await;
             let _ = this.update(cx, |shell, cx| {
                 let said = match failed.first() {
-                    None => Activity::done(None, format!("{workspace} opened: {} set", count(done, "session"))),
-                    Some(error) => Activity::failed(None, &format!("opening {workspace}"), error.clone()),
+                    None => Activity::done(None, crate::t!("workspaces-opened", name = workspace.clone(), count = done)),
+                    Some(error) => Activity::failed(None, &crate::t!("workspaces-opening", name = workspace.clone()), error.clone()),
                 };
                 activity::publish(cx, said);
                 let _ = shell.refresh_now.unbounded_send(());
@@ -496,15 +496,12 @@ impl Shell {
     pub(super) fn picker_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let picker = self.picker.as_ref()?;
         let (title, summary) = match &picker.what {
-            PickFor::Quit => ("Stop the Claude Code sessions too?".to_string(), "On: stopped as tvty quits (they stay restartable). Off: it runs on.".to_string()),
-            PickFor::New => ("A new workspace".to_string(), "On: kept in it, each as it runs now (on its own, or held).".to_string()),
-            PickFor::Save(name) => (format!("Keep {name} as things are now"), "On: in it, each as it runs now. Off: taken out of it.".to_string()),
-            PickFor::Shut(name) => (format!("Shut {name}: stop its sessions?"), "On: stopped. Off: it runs on. A group another workspace has too is left off.".to_string()),
-            PickFor::Open(name) => (format!("Open {name}"), "On: done. Off: left as it is.".to_string()),
-            PickFor::Restart(_) => (
-                "Restart the sessions stopped when tvty quit?".to_string(),
-                "On: restarted, resuming its conversation. As they were: a held session is held again; fresh: each boots, then runs on its own.".to_string(),
-            ),
+            PickFor::Quit => (crate::t!("workspaces-quit-title"), crate::t!("workspaces-quit-summary")),
+            PickFor::New => (crate::t!("workspaces-new-title"), crate::t!("workspaces-new-summary")),
+            PickFor::Save(name) => (crate::t!("workspaces-save-title", name = name.clone()), crate::t!("workspaces-save-summary")),
+            PickFor::Shut(name) => (crate::t!("workspaces-shut-title", name = name.clone()), crate::t!("workspaces-shut-summary")),
+            PickFor::Open(name) => (crate::t!("workspaces-open-title", name = name.clone()), crate::t!("workspaces-open-summary")),
+            PickFor::Restart(_) => (crate::t!("workspaces-restart-title"), crate::t!("workspaces-restart-summary")),
         };
         // By group, in the order they came.
         let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
@@ -521,12 +518,12 @@ impl Shell {
             let all = !free.is_empty() && ticked == free.len();
             // The group's own switch: on when all of it is; how many are, when
             // only some, is said after its name.
-            let some = (!all && ticked > 0).then(|| format!("{ticked} of {}", free.len()));
+            let some = (!all && ticked > 0).then(|| crate::t!("workspaces-some", ticked = ticked, of = free.len()));
             let name = div()
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }))
+                .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { crate::t!("workspaces-no-project") } else { project.to_uppercase() }))
                 .children(some.map(|some| div().text_xs().text_color(p().muted).child(some)));
             // The group's name flips its switch too.
             let head = if free.is_empty() {
@@ -545,7 +542,7 @@ impl Shell {
                         cx.notify();
                     }),
                 )
-                .tip("the whole group")
+                .tip(crate::t!("workspaces-whole-group"))
                 .into_any_element()
             };
             let mut group = div().flex().flex_col().gap_0p5().child(head);
@@ -587,36 +584,46 @@ impl Shell {
             list = list.child(group);
         }
         let ticked = picker.rows.iter().filter(|r| r.checked && !r.fixed).count();
-        let cancel = buttons::secondary("picker-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+        let cancel = buttons::secondary("picker-cancel", crate::t!("workspaces-cancel")).on_click(cx.listener(|shell, _, _, cx| {
             shell.cancel_picker(cx);
         }));
-        let none = |id: &'static str, label: &'static str, cx: &mut Context<Self>| {
+        let none = |id: &'static str, label: String, cx: &mut Context<Self>| {
             buttons::secondary(id, label).on_click(cx.listener(|shell, _, _, cx| shell.picker_answer(false, cx)))
         };
         let go = |label: String, cx: &mut Context<Self>| buttons::primary("picker-go", label).on_click(cx.listener(|shell, _, _, cx| shell.picker_answer(true, cx)));
         let answers = match &picker.what {
-            PickFor::Quit => div().flex().gap_2().child(cancel).child(none("picker-none", "Quit, keep them all running", cx)).child(go(format!("Quit, stop the {ticked} on"), cx)),
-            PickFor::New | PickFor::Save(_) => div().flex().gap_2().child(cancel).child(go("Keep".into(), cx)),
-            PickFor::Shut(_) => div().flex().gap_2().child(cancel).child(none("picker-none", "Shut, keep them all running", cx)).child(go(format!("Shut, stop the {ticked} on"), cx)),
-            PickFor::Open(_) => div().flex().gap_2().child(cancel).child(go(format!("Open, do the {ticked} on"), cx)),
+            PickFor::Quit => div()
+                .flex()
+                .gap_2()
+                .child(cancel)
+                .child(none("picker-none", crate::t!("workspaces-quit-keep"), cx))
+                .child(go(crate::t!("workspaces-quit-stop", count = ticked), cx)),
+            PickFor::New | PickFor::Save(_) => div().flex().gap_2().child(cancel).child(go(crate::t!("workspaces-keep"), cx)),
+            PickFor::Shut(_) => div()
+                .flex()
+                .gap_2()
+                .child(cancel)
+                .child(none("picker-none", crate::t!("workspaces-shut-keep"), cx))
+                .child(go(crate::t!("workspaces-shut-stop", count = ticked), cx)),
+            PickFor::Open(_) => div().flex().gap_2().child(cancel).child(go(crate::t!("workspaces-open-do", count = ticked), cx)),
             PickFor::Restart(_) => div()
                 .flex()
                 .gap_2()
-                .child(none("picker-none", "Not now", cx))
-                .child(buttons::secondary("picker-fresh", format!("Restart the {ticked} fresh")).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(false, cx))))
-                .child(buttons::primary("picker-go", format!("Restart the {ticked} as they were")).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(true, cx)))),
+                .child(none("picker-none", crate::t!("workspaces-not-now"), cx))
+                .child(buttons::secondary("picker-fresh", crate::t!("workspaces-restart-fresh", count = ticked)).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(false, cx))))
+                .child(buttons::primary("picker-go", crate::t!("workspaces-restart-as-were", count = ticked)).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(true, cx)))),
         };
         let remember = self.remember;
         let remembered = match &picker.what {
-            PickFor::Quit => Some("Remember this choice (stop them all, or keep them all)"),
-            PickFor::Restart(_) => Some("Remember this choice (every time, all of them)"),
+            PickFor::Quit => Some(crate::t!("workspaces-remember-quit")),
+            PickFor::Restart(_) => Some(crate::t!("workspaces-remember-restart")),
             _ => None,
         };
         let body = div()
             .flex()
             .flex_col()
             .gap_3()
-            .when(picker.what == PickFor::New, |d| d.child(div().flex().items_center().gap_2().child("Name").child(div().flex_1().child(Input::new(&self.workspace_name)))))
+            .when(picker.what == PickFor::New, |d| d.child(div().flex().items_center().gap_2().child(crate::t!("workspaces-name")).child(div().flex_1().child(Input::new(&self.workspace_name)))))
             .child(div().rounded_md().border_1().border_color(p().border).bg(p().bg).child(list));
         let mut sheet = crate::ui::sheet::Sheet::new("picker", title)
             .summary(summary)
@@ -637,7 +644,7 @@ impl Shell {
                     }),
                 )
                 .text_sm()
-                .tip("Settings > Layout > Sessions changes it"),
+                .tip(crate::t!("workspaces-remember-tip")),
             );
         }
         Some(sheet.render())
@@ -682,7 +689,7 @@ impl Shell {
             }
         }
         self.settings.save(cx);
-        activity::publish(cx, Activity::done(None, format!("{project} is in {name}")));
+        activity::publish(cx, Activity::done(None, crate::t!("workspaces-added", project = project.clone(), name = name)));
         cx.notify();
     }
 
@@ -693,21 +700,21 @@ impl Shell {
         let mut list = div().named("workspaces").flex().flex_col().pb_2();
         list = list.child(
             div().flex().px_3().py_2().child(
-                buttons::link("workspace-new", "+ workspace")
+                buttons::link("workspace-new", crate::t!("workspaces-new"))
                     .text_sm()
-                    .tip("keeps the groups that run now, chosen in a list, under a name")
+                    .tip(crate::t!("workspaces-new-tip"))
                     .on_click(cx.listener(|shell, _, window, cx| shell.pick_new_workspace(window, cx))),
             ),
         );
         if self.settings.saved.workspaces.is_empty() {
-            list = list.child(div().px_3().text_sm().text_color(p().muted).child("No workspace yet: a workspace keeps some groups, and how each of their sessions runs."));
+            list = list.child(div().px_3().text_sm().text_color(p().muted).child(crate::t!("workspaces-none")));
         }
         for workspace in &self.settings.saved.workspaces {
             let name = workspace.name.clone();
             let folded = self.settings.layout.workspaces_folded.contains(&name);
             let renaming = self.workspace_renaming.as_deref() == Some(name.as_str());
             let deleting = self.workspace_deleting.as_deref() == Some(name.as_str());
-            let act = |id: &str, label: &'static str, tip: &'static str| buttons::link(SharedString::from(format!("workspace-{id}-{name}")), label).text_xs().tip(tip);
+            let act = |id: &str, label: String, tip: String| buttons::link(SharedString::from(format!("workspace-{id}-{name}")), label).text_xs().tip(tip);
             let title = if renaming {
                 div().flex_1().min_w_0().child(Input::new(&self.workspace_name).small()).into_any_element()
             } else {
@@ -746,11 +753,11 @@ impl Shell {
                 .border_t_1()
                 .border_color(p().border)
                 .child(title)
-                .child(act("open", "Open", "starts what is stopped and sets each session as kept — asked first").on_click(cx.listener({
+                .child(act("open", crate::t!("workspaces-act-open"), crate::t!("workspaces-act-open-tip")).on_click(cx.listener({
                     let name = name.clone();
                     move |shell, _, _, cx| shell.pick_open_workspace(&name, cx)
                 })))
-                .child(act("shut", "Shut", "stops its sessions — asked first, which; a group another workspace has too is left").on_click(cx.listener({
+                .child(act("shut", crate::t!("workspaces-act-shut"), crate::t!("workspaces-act-shut-tip")).on_click(cx.listener({
                     let name = name.clone();
                     move |shell, _, _, cx| shell.pick_shut_workspace(&name, cx)
                 })));
@@ -761,7 +768,7 @@ impl Shell {
                 .px_3()
                 .pb_1()
                 .text_color(p().muted)
-                .child(act("save", "save", "keeps it again as things are now, or adds a group — chosen in a list").on_click(cx.listener({
+                .child(act("save", crate::t!("workspaces-act-save"), crate::t!("workspaces-act-save-tip")).on_click(cx.listener({
                     let name = name.clone();
                     move |shell, _, _, cx| shell.pick_save_workspace(&name, cx)
                 })))
@@ -771,18 +778,14 @@ impl Shell {
                     d.child(
                         buttons::link(SharedString::from(format!("workspace-add-{name}")), if there { format!("↻ {project}") } else { format!("+ {project}") })
                             .text_xs()
-                            .tip(if there {
-                                "the group shown now, kept again as it runs now"
-                            } else {
-                                "adds the group shown now, its sessions as they run"
-                            })
+                            .tip(crate::t!(if there { "workspaces-again-tip" } else { "workspaces-add-tip" }))
                             .on_click(cx.listener({
                                 let name = name.clone();
                                 move |shell, _, _, cx| shell.add_current_group(&name, cx)
                             })),
                     )
                 })
-                .child(act("rename", "rename", "another name; Enter confirms").on_click(cx.listener({
+                .child(act("rename", crate::t!("workspaces-act-rename"), crate::t!("workspaces-act-rename-tip")).on_click(cx.listener({
                     let name = name.clone();
                     move |shell, _, window, cx| {
                         shell.workspace_renaming = (shell.workspace_renaming.as_deref() != Some(name.as_str())).then(|| name.clone());
@@ -794,7 +797,7 @@ impl Shell {
                     }
                 })))
                 .child(
-                    act("delete", if deleting { "delete: sure?" } else { "delete" }, "forgets the workspace; its sessions are not touched")
+                    act("delete", crate::t!(if deleting { "workspaces-act-delete-sure" } else { "workspaces-act-delete" }), crate::t!("workspaces-act-delete-tip"))
                         .when(deleting, |d| d.text_color(p().danger))
                         .on_click(cx.listener({
                             let name = name.clone();
@@ -824,9 +827,9 @@ impl Shell {
                         .gap_2()
                         .px_3()
                         .pt_1()
-                        .child(div().flex_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "NO PROJECT".to_string() } else { project.to_uppercase() }))
+                        .child(div().flex_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { crate::t!("workspaces-no-project").to_uppercase() } else { project.to_uppercase() }))
                         .child(
-                            buttons::remove(SharedString::from(format!("workspace-drop-{name}-{project}")), "✕", "takes this group out of the workspace (its sessions are not touched)")
+                            buttons::remove(SharedString::from(format!("workspace-drop-{name}-{project}")), "✕", crate::t!("workspaces-drop-tip"))
                                 .text_xs()
                                 .on_click(cx.listener({
                                     let (name, project) = (name.clone(), project.clone());
@@ -843,11 +846,11 @@ impl Shell {
                 for session in &group.sessions {
                     let now = self.mode_now(&session.agent);
                     let differs = now != Some(session.mode);
-                    let said = match now {
-                        None => "stopped",
-                        Some(Mode::Auto) => "runs",
-                        Some(Mode::Stop) => "held",
-                    };
+                    let said = crate::t!(match now {
+                        None => "workspaces-now-stopped",
+                        Some(Mode::Auto) => "workspaces-now-runs",
+                        Some(Mode::Stop) => "workspaces-now-held",
+                    });
                     let live = self.board.projects.iter().flat_map(|p| &p.terminals).find(|t| t.agent.as_deref() == Some(session.agent.as_str())).map(|t| t.session.clone());
                     list = list.child(
                         div()
@@ -862,11 +865,11 @@ impl Shell {
                             .when(live.is_some(), |d| d.cursor_pointer().hover(|d| d.bg(p().hover)))
                             .child(crate::icons::loop_glyph(session.mode.glyph(), if session.mode == Mode::Auto { p().success } else { p().danger }, 9.))
                             .child(div().flex_1().min_w_0().truncate().child(session.agent.clone()))
-                            .child(div().text_xs().text_color(if differs { p().warning } else { p().muted }).child(said))
+                            .child(div().text_xs().text_color(if differs { p().warning } else { p().muted }).child(said.clone()))
                             .tip(format!(
-                                "kept {}; now {said}{}",
-                                if session.mode == Mode::Auto { "on its own" } else { "held" },
-                                if differs { " — Open sets it as kept" } else { "" }
+                                "{}{}",
+                                crate::t!(if session.mode == Mode::Auto { "workspaces-kept-own" } else { "workspaces-kept-held" }, now = said),
+                                if differs { crate::t!("workspaces-open-sets") } else { String::new() }
                             ))
                             .when_some(live, |d, live| d.on_click(cx.listener(move |shell, _, window, cx| shell.select(live.clone(), window, cx)))),
                     );
@@ -875,11 +878,6 @@ impl Shell {
         }
         list.overflow_y_scrollbar().into_any_element()
     }
-}
-
-/// "1 session", "3 groups".
-fn count(n: usize, what: &str) -> String {
-    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
 }
 
 #[cfg(test)]

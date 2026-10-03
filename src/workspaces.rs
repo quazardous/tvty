@@ -149,14 +149,14 @@ impl Opening {
     }
 
     /// What it says beside the session.
-    pub fn said(self) -> &'static str {
-        match self {
-            Self::Start(Mode::Auto) => "stopped: to start, on its own",
-            Self::Start(Mode::Stop) => "stopped: to start, held",
-            Self::Launch => "held: to let go",
-            Self::Hold => "runs on its own: to hold",
-            Self::AsKept => "as kept",
-        }
+    pub fn said(self) -> String {
+        crate::t!(match self {
+            Self::Start(Mode::Auto) => "workspaces-start-own",
+            Self::Start(Mode::Stop) => "workspaces-start-held",
+            Self::Launch => "workspaces-let-go",
+            Self::Hold => "workspaces-to-hold",
+            Self::AsKept => "workspaces-as-kept",
+        })
     }
 }
 
