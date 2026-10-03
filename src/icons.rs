@@ -62,6 +62,8 @@ icons! {
     Unassign => "person_off.svg",
     // A name to change (a terminal's tab).
     Rename => "edit.svg",
+    // What tvty and aiball forget (a stopped session's row).
+    Forget => "delete.svg",
     // What runs on aiball's hub, seen from another machine.
     Hub => "cloud.svg",
     // The ticket panel held beside the terminal, or let over it.

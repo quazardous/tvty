@@ -212,6 +212,8 @@ pub struct Shell {
     workspace_name: Entity<InputState>,
     workspace_renaming: Option<String>,
     workspace_deleting: Option<String>,
+    /// A stopped session's row whose trash asks a second click (its row id).
+    forgetting: Option<String>,
     /// A terminal's tab being renamed (its session), and the name typed.
     tab_renaming: Option<String>,
     tab_name: Entity<InputState>,
@@ -793,6 +795,7 @@ impl Shell {
             workspace_deleting: None,
             tab_renaming: None,
             tab_name,
+            forgetting: None,
             remember: false,
             stopping_all: false,
             quitting: false,

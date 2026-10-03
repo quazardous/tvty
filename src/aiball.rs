@@ -1068,6 +1068,17 @@ impl Aiball {
         self.call_starting::<Value>("session.start", json!({ "name": name, "argv": argv, "cwd": cwd })).map(drop)
     }
 
+    /// Forgets a stopped loop (as `claude-loop rm`): aiball no longer lists
+    /// it; its folder, its `.aiball.yaml` and the tickets stay.
+    pub fn forget_loop(&self, name: &str) -> anyhow::Result<()> {
+        self.rpc_do("loop.remove", json!({ "name": name }))
+    }
+
+    /// Forgets an agent without a loop: its record goes; its tickets stay.
+    pub fn forget_agent(&self, agent: &str) -> anyhow::Result<()> {
+        self.rpc_do("consumer.delete", json!({ "consumer_id": agent }))
+    }
+
     /// Names a terminal the daemon's host holds (`None`: its own name back);
     /// its key stays. Every client hears the new name.
     pub fn label_terminal(&self, name: &str, label: Option<&str>) -> anyhow::Result<()> {

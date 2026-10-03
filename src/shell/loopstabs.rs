@@ -55,6 +55,15 @@ pub(super) struct NewSession {
     busy: bool,
 }
 
+/// What a stopped session's trash forgets.
+#[derive(Clone)]
+enum Forget {
+    /// A stopped loop, and its agent.
+    Loop { name: String, agent: Option<String> },
+    /// An agent without a loop.
+    Agent(String),
+}
+
 impl Shell {
     /// A loop's project as aiball knows its agent; its plate's otherwise (a
     /// plate may name none: a loop moved onto the host keeps only its agent).
@@ -228,7 +237,7 @@ impl Shell {
         let mut list = div().flex().flex_col();
         let words = self.filter_words(cx);
         let heading = |text: String, cx: &mut Context<Self>| div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx));
-        let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start| {
+        let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start, forget: Forget| {
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
             let action = match (busy, astray) {
                 (true, _) => div().saying(SharedString::from(format!("{id}-action")), "starting…").text_xs().text_color(p().accent).child("starting…").into_any_element(),
@@ -242,8 +251,39 @@ impl Shell {
                     .into_any_element(),
                 (false, None) => div().saying(SharedString::from(format!("{id}-action")), "▶ start").text_xs().text_color(p().accent).child("▶ start").into_any_element(),
             };
+            // The trash: shown under the pointer; a first click asks, a
+            // second forgets.
+            let asking = self.forgetting.as_deref() == Some(id.as_str());
+            let trash = {
+                let row_id = id.clone();
+                let who = name.clone();
+                div()
+                    .named(SharedString::from(format!("{id}-forget")))
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap_1()
+                    .px_0p5()
+                    .rounded_sm()
+                    .when(!asking, |d| d.opacity(0.).group_hover(SharedString::from(format!("{id}-group")), |s| s.opacity(1.)))
+                    .hover(|d| d.bg(p().hover))
+                    .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child("forget?")))
+                    .child(crate::icons::icon(crate::icons::Icon::Forget, p().danger, 13.))
+                    .tip(format!("forget {who}: aiball no longer lists it; its folder, its .aiball.yaml and the project's tickets stay — a second click forgets"))
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        cx.stop_propagation();
+                        if shell.forgetting.as_deref() == Some(row_id.as_str()) {
+                            shell.forgetting = None;
+                            shell.forget(forget.clone(), cx);
+                        } else {
+                            shell.forgetting = Some(row_id.clone());
+                        }
+                        cx.notify();
+                    }))
+            };
             div()
                 .named(SharedString::from(id.clone()))
+                .group(SharedString::from(format!("{id}-group")))
                 .relative()
                 .flex()
                 .flex_col()
@@ -254,8 +294,10 @@ impl Shell {
                 .child(
                     div()
                         .flex()
+                        .items_center()
                         .gap_2()
                         .child(div().flex_1().min_w_0().truncate().child(super::marked(&name, &words)))
+                        .child(trash)
                         .child(action),
                 )
                 .child(div().text_xs().text_color(p().muted).truncate().child(home_short(cwd)))
@@ -288,7 +330,8 @@ impl Shell {
                         again: l.on_host().then(|| l.name.clone()),
                         mode: None,
                     };
-                    list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, self.astray(l), cx, start));
+                    let forget = Forget::Loop { name: l.name.clone(), agent: l.agent().map(str::to_string) };
+                    list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, self.astray(l), cx, start, forget));
                 }
             }
             Other::Shut => {
@@ -307,11 +350,50 @@ impl Shell {
                     }
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
                     let astray = crate::loops::stranger(cwd, Some(agent.as_str()), project.as_deref(), &self.board.homes);
-                    list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, astray, cx, start));
+                    list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, astray, cx, start, Forget::Agent(agent.clone())));
                 }
             }
         }
         list.into_any_element()
+    }
+
+    /// A stopped session forgotten: its loop (when it has one) and its
+    /// agent, as aiball knows them; the folder and the tickets stay. The
+    /// lists follow aiball's events.
+    fn forget(&mut self, what: Forget, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let said = match &what {
+                Forget::Loop { name, .. } => name.clone(),
+                Forget::Agent(agent) => agent.clone(),
+            };
+            let done = cx
+                .background_executor()
+                .spawn(async move {
+                    match what {
+                        Forget::Loop { name, agent } => {
+                            aiball.forget_loop(&name)?;
+                            // Its agent, left without a loop, would show
+                            // under SHUT: forgotten with it.
+                            if let Some(agent) = agent {
+                                aiball.forget_agent(&agent)?;
+                            }
+                            Ok::<(), anyhow::Error>(())
+                        }
+                        Forget::Agent(agent) => aiball.forget_agent(&agent),
+                    }
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                match done {
+                    Ok(()) => crate::activity::publish(cx, crate::activity::Activity::done(None, format!("forgot {said}"))),
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("forget {said}"), format!("{error:#}"))),
+                }
+                let _ = shell.refresh_now.unbounded_send(());
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     /// Where a project works: its main loop's directory, or one of its
