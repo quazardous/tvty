@@ -104,6 +104,26 @@ sessions-started-host = started {$agent} on aiball's host in {$cwd}
 sessions-started = started {$agent} in {$cwd}
 sessions-runs-already = {$agent} runs already: opened as a copy
 
+## The badges: a project's, an agent's
+
+sessions-badge-critical = the critical ticket, #{$ticket}, is here: it holds the most open tickets — a click opens it
+sessions-badge-decisions = { $count ->
+    [one] {$count} ticket waiting for your decision
+   *[other] {$count} tickets waiting for your decision
+}
+sessions-badge-unread = { $count ->
+    [one] {$count} ticket with something new for you
+   *[other] {$count} tickets with something new for you
+}
+sessions-light-backlog = { $count ->
+    [one] backlog: {$count} ticket for it to look at
+   *[other] backlog: {$count} tickets for it to look at
+}
+sessions-light-backlog-unknown = backlog: not known until its loop says
+sessions-light-critical = it holds the critical ticket: the one that holds the most open tickets
+sessions-light-events = events: {$count} not seen yet — pings, answers, decisions waiting for it
+sessions-hub-mark = On aiball's hub, another machine: read from here (its state, its tickets), not opened — a session is attached from its own machine.
+
 ## The tabs
 
 sessions-tab-name = its name

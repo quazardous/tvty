@@ -173,6 +173,35 @@ pub struct Tickets {
     pub ctrl_enter_opens: bool,
 }
 
+/// A setting's words, in the interface's language: `setting-<key>` (its
+/// dots as dashes), its description `.about`, a switch's states `.on`,
+/// `.off`; the schema's English where a language has none.
+fn setting_word(setting: &Setting, part: Option<&str>, english: &str) -> String {
+    let mut id = format!("setting-{}", setting.key.replace('.', "-"));
+    if let Some(part) = part {
+        id = format!("{id}.{part}");
+    }
+    if crate::i18n::has(&id) { crate::t!(&id) } else { english.to_string() }
+}
+
+pub fn label_said(setting: &Setting) -> String {
+    setting_word(setting, None, setting.label)
+}
+
+pub fn about_said(setting: &Setting) -> String {
+    setting_word(setting, Some("about"), setting.about)
+}
+
+/// A switch's state, said: `shown` / `hidden`.
+pub fn state_said(setting: &Setting, checked: bool) -> String {
+    match setting.kind {
+        Kind::Toggle { on, off, .. } => {
+            if checked { setting_word(setting, Some("on"), on) } else { setting_word(setting, Some("off"), off) }
+        }
+        _ => String::new(),
+    }
+}
+
 /// Every preference, declared once: its key in `settings.toml`, the options
 /// page and group that show it, what it says, its kind and bounds. The
 /// options pages are built from it, and a hand-edited file checked by it.

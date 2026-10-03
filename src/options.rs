@@ -27,6 +27,12 @@ impl Section {
         Section::About,
     ];
 
+    /// Its title, as said: the page's name in the interface's language.
+    pub fn said(self) -> String {
+        said(self.title())
+    }
+
+    /// Its name, the page's key (the items' `page`).
     pub fn title(self) -> &'static str {
         match self {
             Section::Project => "Project",
@@ -38,6 +44,28 @@ impl Section {
             Section::About => "About",
         }
     }
+}
+
+/// A page's or a group's name (its key, in English), as said: its word
+/// `settings-title-<name>` when there is one — aiball's own groups have
+/// none and show as they come.
+pub fn said(name: &str) -> String {
+    let id = title_id(name);
+    if crate::i18n::has(&id) { crate::t!(&id) } else { name.to_string() }
+}
+
+/// A name's word: `Ticket list` → `settings-title-ticket-list`.
+pub fn title_id(name: &str) -> String {
+    let slug: String = name
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|w| !w.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    format!("settings-title-{slug}")
 }
 
 /// The keys that are not commands (see [`crate::keymap`]): those of what
@@ -69,8 +97,8 @@ pub fn program_items(prefs: &Preferences) -> Vec<Item> {
         .map(|s| {
             let value = match (s.kind, SCHEMA.value(prefs, s.key)) {
                 (Kind::Number { unit, .. }, Some(Value::Number(n))) => shown(n, unit),
-                (Kind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => (if checked { on } else { off }).to_string(),
-                (Kind::Choice, Some(Value::Choice(choice))) => choice.unwrap_or_else(|| "default".into()),
+                (Kind::Toggle { .. }, Some(Value::Toggle(checked))) => crate::settings::state_said(s, checked),
+                (Kind::Choice, Some(Value::Choice(choice))) => choice.unwrap_or_else(|| crate::t!("settings-default")),
                 _ => String::new(),
             };
             Item {
@@ -78,8 +106,9 @@ pub fn program_items(prefs: &Preferences) -> Vec<Item> {
                 key: s.key.to_string(),
                 page: s.page.to_string(),
                 group: s.group.to_string(),
-                label: s.label.to_string(),
-                about: s.about.to_string(),
+                // Said: what the search reads, in the interface's language.
+                label: crate::settings::label_said(s),
+                about: crate::settings::about_said(s),
                 value,
                 modified: SCHEMA.is_modified(prefs, s.key),
                 protected: false,

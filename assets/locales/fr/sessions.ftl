@@ -104,6 +104,26 @@ sessions-started-host = {$agent} démarré sur l'hôte d'aiball dans {$cwd}
 sessions-started = {$agent} démarré dans {$cwd}
 sessions-runs-already = {$agent} tourne déjà : ouvert en copie
 
+## Les badges : ceux d'un projet, d'un agent
+
+sessions-badge-critical = le ticket critique, #{$ticket}, est ici : il retient le plus de tickets ouverts — un clic l'ouvre
+sessions-badge-decisions = { $count ->
+    [one] {$count} ticket attend ta décision
+   *[other] {$count} tickets attendent ta décision
+}
+sessions-badge-unread = { $count ->
+    [one] {$count} ticket avec du nouveau pour toi
+   *[other] {$count} tickets avec du nouveau pour toi
+}
+sessions-light-backlog = { $count ->
+    [one] backlog : {$count} ticket à regarder
+   *[other] backlog : {$count} tickets à regarder
+}
+sessions-light-backlog-unknown = backlog : inconnu tant que sa boucle ne le dit pas
+sessions-light-critical = il tient le ticket critique : celui qui retient le plus de tickets ouverts
+sessions-light-events = événements : {$count} pas encore vus — pings, réponses, décisions qui l'attendent
+sessions-hub-mark = Sur le hub d'aiball, une autre machine : lu d'ici (son état, ses tickets), pas ouvert — une session s'attache depuis sa propre machine.
+
 ## Les onglets
 
 sessions-tab-name = son nom

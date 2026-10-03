@@ -494,14 +494,13 @@ impl Alerts {
         let badge = |what: &str, text: String, colour: Hsla, tip: String| {
             div().named(SharedString::from(format!("{key}-{what}"))).child(pill(text, colour)).tip(tip)
         };
-        let plural = |n: usize, one: &str, many: &str| if n == 1 { format!("1 {one}") } else { format!("{n} {many}") };
         div()
             .flex()
             .items_center()
             .gap_1()
             .when_some(self.critical, |d, ticket| {
                 d.child(
-                    badge("critical", "!".into(), critical(), format!("the critical ticket, #{ticket}, is here: it holds the most open tickets — a click opens it"))
+                    badge("critical", "!".into(), critical(), crate::t!("sessions-badge-critical", ticket = ticket))
                         .cursor_pointer()
                         // Its own gesture, not the row's it sits on.
                         .on_click(move |_, _, cx| {
@@ -511,11 +510,11 @@ impl Alerts {
                 )
             })
             .when(self.decisions > 0, |d| {
-                let tip = format!("{} waiting for your decision", plural(self.decisions, "ticket", "tickets"));
+                let tip = crate::t!("sessions-badge-decisions", count = self.decisions);
                 d.child(badge("decisions", self.decisions.to_string(), decision(), tip))
             })
             .when(self.unread > 0, |d| {
-                let tip = format!("{} with something new for you", plural(self.unread, "ticket", "tickets"));
+                let tip = crate::t!("sessions-badge-unread", count = self.unread);
                 d.child(badge("unread", self.unread.to_string(), unread(), tip))
             })
     }
@@ -559,8 +558,8 @@ impl AgentCounts {
                 .tip(tip)
         };
         let backlog_tip = match self.backlog {
-            Some(n) => format!("backlog: {n} ticket{} for it to look at", if n == 1 { "" } else { "s" }),
-            None => "backlog: not known until its loop says".to_string(),
+            Some(n) => crate::t!("sessions-light-backlog", count = n),
+            None => crate::t!("sessions-light-backlog-unknown"),
         };
         let events = self.events;
         div()
@@ -572,7 +571,7 @@ impl AgentCounts {
                     div()
                         .named(SharedString::from(format!("{key}-critical")))
                         .child(pill("!", critical()))
-                        .tip("it holds the critical ticket: the one that holds the most open tickets"),
+                        .tip(crate::t!("sessions-light-critical")),
                 )
             })
             .child(light("backlog", "b", self.backlog, p().info, backlog_tip))
@@ -581,7 +580,7 @@ impl AgentCounts {
                 "e",
                 Some(events),
                 unread(),
-                format!("events: {events} not seen yet — pings, answers, decisions waiting for it"),
+                crate::t!("sessions-light-events", count = events),
             ))
     }
 }
@@ -614,7 +613,7 @@ impl Shell {
         let wire = crate::aiball::start_wire(&aiball.user, notices);
         let panel = cx.new(|cx| TicketPanel::new(aiball.clone(), window, cx));
         // The options' search: each keystroke filters the page again.
-        let options_search = cx.new(|cx| InputState::new(window, cx).placeholder("Search…"));
+        let options_search = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("settings-search-placeholder")));
         cx.subscribe_in(&options_search, window, |_, _, event: &InputEvent, _, cx| {
             if matches!(event, InputEvent::Change) {
                 cx.notify();
@@ -2760,9 +2759,7 @@ impl Shell {
                 let mut sections = schema(self, "Appearance", cx);
                 sections.push((
                     None,
-                    option_note(
-                        "Your own themes (gpui-component's theme format) go in ~/.config/tvty/themes/: they show here the next time this page opens.",
-                    )
+                    option_note(crate::t!("settings-own-themes"))
                     .into_any_element(),
                 ));
                 sections
@@ -2893,7 +2890,7 @@ impl Shell {
                     .cursor_pointer()
                     .when(chosen, |d| d.bg(p().active).text_color(p().text))
                     .when(!chosen, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
-                    .child(page.title())
+                    .child(page.said())
                     .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, None, window, cx))),
             );
             // The page's groups, under it.
@@ -2910,7 +2907,7 @@ impl Shell {
                         .cursor_pointer()
                         .when(lit, |d| d.text_color(p().accent))
                         .when(!lit, |d| d.text_color(p().muted).hover(|d| d.bg(p().hover)))
-                        .child(group.clone())
+                        .child(crate::options::said(&group))
                         .on_click(cx.listener(move |shell, _, window, cx| shell.open_options_page(page, Some(group.clone()), window, cx))),
                 );
             }
@@ -2922,20 +2919,20 @@ impl Shell {
             .gap_2()
             .p_3()
             .bg(p().surface)
-            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child("Settings"))
+            .child(div().px_2().text_lg().font_weight(FontWeight::BOLD).child(crate::t!("settings-heading")))
             .child(self.options_scope())
             .child(Input::new(&self.options_search).cleanable(true))
-            .child(div().px_2().text_xs().text_color(p().muted).child("@modified: what you changed"))
+            .child(div().px_2().text_xs().text_color(p().muted).child(crate::t!("settings-modified-hint")))
             .child(tree);
 
-        let title: SharedString = if searching { format!("Search: {text}").into() } else { section.title().into() };
+        let title: SharedString = if searching { crate::t!("settings-search", text = text.clone()).into() } else { section.said().into() };
         let title_row = div()
             .flex()
             .items_center()
             .pb_4()
             .child(div().flex_1().min_w_0().truncate().text_xl().font_weight(FontWeight::BOLD).child(title))
             .child(
-                buttons::link("options-close", "✕  Esc")
+                buttons::link("options-close", crate::t!("settings-close"))
                     .text_sm()
                     .on_click(cx.listener(|shell, _, window, cx| shell.toggle_options(window, cx))),
             );
@@ -2949,7 +2946,7 @@ impl Shell {
             .track_scroll(&self.options_scroll)
             .overflow_y_scroll()
             .child(title_row)
-            .when(empty, |d| d.child(option_note("Nothing found. Search a name, a word it says, a key (ctrl+shift+b), a value — or @modified.")))
+            .when(empty, |d| d.child(option_note(crate::t!("settings-nothing-found"))))
             .children(sections.into_iter().map(|(_, section)| section));
         div()
             .named("options")
@@ -3040,7 +3037,7 @@ impl Shell {
             };
             let _ = this.update(cx, |shell, cx| {
                 if let Err(error) = done {
-                    activity::publish(cx, Activity::failed(None, "aiball config", format!("{key}: {error:#}")));
+                    activity::publish(cx, Activity::failed(None, &crate::t!("settings-aiball-failed"), format!("{key}: {error:#}")));
                 }
                 shell.load_remote(cx);
             });
@@ -3064,12 +3061,10 @@ impl Shell {
     fn remote_header(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let _ = cx;
         let note: SharedString = match (&self.remote_error, &self.remote, &self.remote_layer) {
-            (Some(error), _, _) => format!("aiball's config could not be read: {error}. Choose the scope again, top left, to try again.").into(),
-            (None, None, _) => "Reading aiball's config…".into(),
-            (None, Some(_), None) => "The board's own config: what every project gets unless it says otherwise. Choose a project, top left, for its own.".into(),
-            (None, Some(_), Some(project)) => {
-                format!("What {project} says over the board's config; ↺ gives a key back to the board's value.").into()
-            }
+            (Some(error), _, _) => crate::t!("settings-aiball-unreadable", error = error.clone()).into(),
+            (None, None, _) => crate::t!("settings-aiball-reading").into(),
+            (None, Some(_), None) => crate::t!("settings-aiball-board").into(),
+            (None, Some(_), Some(project)) => crate::t!("settings-aiball-project", project = project.clone()).into(),
         };
         div().max_w(px(720.)).text_sm().text_color(p().muted).child(note)
     }
@@ -3124,9 +3119,7 @@ impl Shell {
                     if group == REMOTE_GLOBAL_ONLY || group == REMOTE_PROJECT_ONLY {
                         out = out.child(self.remote_elsewhere_note(in_project, cx));
                     } else if group == REMOTE_IN_FILE {
-                        out = out.child(option_note(
-                            "aiball reads these from each project's .aiball.yaml, not from its config store: change them in that file.",
-                        ));
+                        out = out.child(option_note(crate::t!("settings-aiball-in-file")));
                     }
                     for at in keys {
                         out = out.child(self.remote_row(&config.config[at], &items[at], in_project, words, cx));
@@ -3162,11 +3155,7 @@ impl Shell {
     /// Why the keys gathered last are only shown here, and where they are
     /// set: the board's own in Global, a project's in that project.
     fn remote_elsewhere_note(&self, in_project: bool, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let text = if in_project {
-            "aiball declares these for the whole board: one value for every project, set in Global."
-        } else {
-            "aiball declares these per project only: no board-wide value; choose a project above to set them."
-        };
+        let text = crate::t!(if in_project { "settings-aiball-global-only" } else { "settings-aiball-project-only" });
         div()
             .flex()
             .items_center()
@@ -3176,7 +3165,7 @@ impl Shell {
             .child(div().flex_1().min_w_0().child(text))
             .when(in_project, |d| {
                 d.child(
-                    buttons::chip("options-to-global", "Open Global")
+                    buttons::chip("options-to-global", crate::t!("settings-aiball-open-global"))
                         .py_0p5()
                         .border_color(p().accent.opacity(0.6))
                         .text_color(p().accent)
@@ -3204,7 +3193,7 @@ impl Shell {
             .items_center()
             .gap_2()
             .child(marked(&entry.label, words))
-            .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child("🔒 protected")))
+            .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child(crate::t!("settings-aiball-protected"))))
             // Where it is set, when not in this layer.
             .when(!settable, |d| {
                 d.child(
@@ -3215,20 +3204,20 @@ impl Shell {
                         .border_color(p().border)
                         .text_xs()
                         .text_color(p().muted)
-                        .child(if !entry.writable() {
-                            "set in .aiball.yaml"
+                        .child(crate::t!(if !entry.writable() {
+                            "settings-aiball-set-in-file"
                         } else if in_project {
-                            "board-wide: set in Global"
+                            "settings-aiball-board-wide"
                         } else {
-                            "per project"
-                        }),
+                            "settings-aiball-per-project"
+                        })),
                 )
             });
         let mut about = entry.description.clone();
         // A project without a value of its own shows the board's — or, for
         // a key the board does not have, the default.
         if settable && item.inherited && entry.has_global() {
-            about.push_str(" From the board's config.");
+            about.push_str(&crate::t!("settings-aiball-from-board"));
         }
         let about: SharedString = about.into();
         // Set in this layer: ↺ clears it, back to the default — in a
@@ -3236,7 +3225,7 @@ impl Shell {
         let away = (settable && item.modified).then(|| {
             if in_project && entry.has_global() {
                 let board = if entry.global.is_null() { &entry.default } else { &entry.global };
-                Away { back: "Board", value: crate::options::remote_value(entry, board).into() }
+                Away { back: crate::t!("settings-aiball-board-back").into(), value: crate::options::remote_value(entry, board).into() }
             } else {
                 Away::default(crate::options::remote_value(entry, &entry.default))
             }
@@ -3260,7 +3249,7 @@ impl Shell {
                     label,
                     about,
                     away,
-                    if checked { "on" } else { "off" },
+                    crate::t!(if checked { "settings-on" } else { "settings-off" }),
                     Switch::new(SharedString::from(format!("options-switch-{name}")))
                         .checked(checked)
                         .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.remote_write(name.clone(), Some(Json::Bool(*wanted)), cx))),
@@ -3352,14 +3341,15 @@ impl Shell {
         // Away from its default: the default, as the row shows a value.
         let away = SCHEMA.is_modified(&self.applied, key).then(|| match (setting.kind, SCHEMA.default_value(key)) {
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => Away::default(shown(n, unit)),
-            (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(b))) => Away::default(if b { on } else { off }),
+            (SettingKind::Toggle { .. }, Some(Value::Toggle(b))) => Away::default(crate::settings::state_said(setting, b)),
             _ => Away::default("—"),
         });
+        let (label, about) = (crate::settings::label_said(setting), crate::settings::about_said(setting));
         Some(match (setting.kind, SCHEMA.value(&self.applied, key)) {
             (SettingKind::Number { unit, slider: true, .. }, Some(Value::Number(n))) => option_slider(
                 key.into(),
-                marked(setting.label, words),
-                setting.about.into(),
+                marked(&label, words),
+                about.into(),
                 away,
                 shown(n, unit),
                 self.sliders.get(key)?,
@@ -3368,8 +3358,8 @@ impl Shell {
             .into_any_element(),
             (SettingKind::Number { unit, .. }, Some(Value::Number(n))) => option_stepper(
                 key.into(),
-                marked(setting.label, words),
-                setting.about.into(),
+                marked(&label, words),
+                about.into(),
                 away,
                 shown(n, unit),
                 cx.listener(move |shell, _, _, cx| shell.step_pref(key, -1, cx)),
@@ -3377,12 +3367,12 @@ impl Shell {
                 cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)),
             )
             .into_any_element(),
-            (SettingKind::Toggle { on, off, .. }, Some(Value::Toggle(checked))) => option_switch(
+            (SettingKind::Toggle { .. }, Some(Value::Toggle(checked))) => option_switch(
                 key.into(),
-                marked(setting.label, words),
-                setting.about.into(),
+                marked(&label, words),
+                about.into(),
                 away,
-                if checked { on } else { off },
+                crate::settings::state_said(setting, checked),
                 Switch::new(SharedString::from(format!("options-switch-{key}")))
                     .checked(checked)
                     .on_click(cx.listener(move |shell, wanted: &bool, _, cx| shell.set_pref(key, Value::Toggle(*wanted), cx))),
@@ -3401,16 +3391,16 @@ impl Shell {
         // window's own (none).
         // A short list of its own (what to do with the loops), else themes.
         let fixed: Option<&[(&str, &str)]> = match key {
-            "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
-            "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
-            "mouse.focus" => Some(&[("click", "Click"), ("hover", "Hover")]),
+            "sessions.on_quit" => Some(&[("stop", "settings-quit-stop"), ("keep", "settings-quit-keep")]),
+            "sessions.on_start" => Some(&[("restart", "settings-start-restart"), ("fresh", "settings-start-fresh"), ("leave", "settings-start-leave")]),
+            "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
         let (chosen, default): (Option<SharedString>, Option<SharedString>) = match key {
             "appearance.theme" => (Some(theme::current(cx)), None),
-            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some("Ask".into())),
-            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask".into())),
+            "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
+            "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.
@@ -3418,7 +3408,7 @@ impl Shell {
                 self.applied.appearance.language.clone().map(SharedString::from),
                 Some(crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system())).into()),
             ),
-            _ => (theme::current_terminal(), Some("Same as the window".into())),
+            _ => (theme::current_terminal(), Some(crate::t!("settings-same-as-window").into())),
         };
         let away = SCHEMA.is_modified(&self.applied, key).then(|| {
             Away::default(match &default {
@@ -3437,11 +3427,11 @@ impl Shell {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().font_weight(FontWeight::BOLD).child(setting.label))
+                    .child(div().font_weight(FontWeight::BOLD).child(crate::settings::label_said(setting)))
                     .child(reset_button(key, away.as_ref(), cx.listener(move |shell, _, _, cx| shell.reset_pref(key, cx)))),
             )
             .child(div().text_xs().text_color(p().muted).child(key))
-            .child(div().text_sm().text_color(p().muted).child(setting.about))
+            .child(div().text_sm().text_color(p().muted).child(crate::settings::about_said(setting)))
             .children(away.as_ref().map(away_note))
             .child(div().pb_1());
         let choice = |name: SharedString, label: SharedString, value: Option<SharedString>, on: bool, cx: &mut Context<Self>| {
@@ -3469,7 +3459,9 @@ impl Shell {
         if let Some(fixed) = fixed {
             for (name, label) in fixed {
                 let on = chosen.as_deref() == Some(*name);
-                column = column.child(choice((*name).into(), (*label).into(), Some((*name).into()), on, cx));
+                // The languages by their own names; the rest by their words.
+                let label = if key == "appearance.language" { label.to_string() } else { crate::t!(label) };
+                column = column.child(choice((*name).into(), label.into(), Some((*name).into()), on, cx));
             }
             return column;
         }
@@ -3477,7 +3469,7 @@ impl Shell {
         for (name, dark) in theme::names(cx) {
             if last_dark != Some(dark) {
                 last_dark = Some(dark);
-                column = column.child(div().px_3().pt_2().text_xs().text_color(p().muted).child(if dark { "Dark" } else { "Light" }));
+                column = column.child(div().px_3().pt_2().text_xs().text_color(p().muted).child(crate::t!(if dark { "settings-dark" } else { "settings-light" })));
             }
             let on = chosen.as_ref() == Some(&name);
             column = column.child(choice(name.clone(), name.clone(), Some(name), on, cx));
@@ -3486,16 +3478,11 @@ impl Shell {
     }
 
     fn options_layout(&self, window: &Window, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let sidebar = format!(
-            "{} · {} px",
-            if self.settings.layout.sidebar_open { "open" } else { "folded" },
-            self.sidebar_width(window).round()
-        );
-        let panel = format!(
-            "{} · {} px",
-            if self.settings.layout.panel_open { "open" } else { "folded" },
-            self.panel_width(window).round()
-        );
+        let side = |open: bool, width: f32| {
+            crate::t!("settings-side-said", state = crate::t!(if open { "settings-side-open" } else { "settings-side-folded" }), width = width.round().to_string())
+        };
+        let sidebar = side(self.settings.layout.sidebar_open, f32::from(self.sidebar_width(window)));
+        let panel = side(self.settings.layout.panel_open, f32::from(self.panel_width(window)));
         div()
             .flex()
             .flex_col()
@@ -3503,23 +3490,26 @@ impl Shell {
             .max_w(px(720.))
             .child(option_toggle(
                 "Projects' list",
-                "Over the terminal, on the left. Drag its edge to resize it; its grip folds it.",
+                crate::t!("settings-side-list"),
+                crate::t!("settings-side-list-about"),
                 sidebar,
                 self.settings.layout.sidebar_open,
                 cx.listener(|shell, _: &bool, _, cx| shell.toggle_sidebar(cx)),
             ))
             .child(option_toggle(
                 "Ticket panel",
-                "On the right of the terminal. Drag its edge to resize it; its grip folds it.",
+                crate::t!("settings-side-panel"),
+                crate::t!("settings-side-panel-about"),
                 panel,
                 self.settings.layout.panel_open,
                 cx.listener(|shell, _: &bool, _, cx| shell.toggle_panel(cx)),
             ))
             .child(option_row(
                 "Widths",
-                "Back to the defaults: a list of 290 px, a panel a third of the window.",
+                crate::t!("settings-widths"),
+                crate::t!("settings-widths-about"),
                 String::new(),
-                "Reset",
+                crate::t!("settings-reset"),
                 cx.listener(|shell, _, _, cx| {
                     shell.settings.layout.sidebar_width = None;
                     shell.settings.layout.panel_width = None;
@@ -3534,32 +3524,37 @@ impl Shell {
         let shown = |place| dir(place).map(|d| d.display().to_string()).unwrap_or_default();
         let rows = [
             // The version and the commit it was built from (`+`: with changes not committed).
-            ("Version", help::version()),
-            ("aiball at", crate::aiball::location_said()),
-            ("Acting as", self.aiball.user.clone()),
+            ("settings-about-version", help::version()),
+            ("settings-about-aiball-at", crate::aiball::location_said()),
+            ("settings-about-acting-as", self.aiball.user.clone()),
             (
-                "aiball bus",
+                "settings-about-bus",
                 match (self.wire.as_ref().and_then(|w| w.hello()), &self.wire_whoami) {
-                    (Some(hello), Some(whoami)) => format!("version {}, as {whoami}", hello.version),
-                    (Some(hello), None) => format!("version {}, as {} ({})", hello.version, hello.consumer, hello.kind),
-                    (None, _) => "not connected".to_string(),
+                    (Some(hello), Some(whoami)) => crate::t!("settings-about-bus-said", version = hello.version.clone(), who = whoami.clone()),
+                    (Some(hello), None) => crate::t!(
+                        "settings-about-bus-said-kind",
+                        version = hello.version.clone(),
+                        who = hello.consumer.clone(),
+                        kind = hello.kind.clone()
+                    ),
+                    (None, _) => crate::t!("settings-about-not-connected"),
                 },
             ),
             (
-                "Live board",
+                "settings-about-live",
                 match self.live.subscriptions() {
-                    0 => "not subscribed".to_string(),
-                    n => format!("{n} subscriptions on the bus"),
+                    0 => crate::t!("settings-about-not-subscribed"),
+                    n => crate::t!("settings-about-subscriptions", count = n),
                 },
             ),
-            ("Theme", theme::current(cx).to_string()),
+            ("settings-about-theme", theme::current(cx).to_string()),
             (
-                "Terminal theme",
-                theme::current_terminal().map_or("the window's".to_string(), |name| name.to_string()),
+                "settings-about-terminal-theme",
+                theme::current_terminal().map_or(crate::t!("settings-about-the-windows"), |name| name.to_string()),
             ),
-            ("Settings, shortcuts, themes", shown(Place::Config)),
-            ("Layout and workspace", shown(Place::State)),
-            ("Fonts", shown(Place::Data)),
+            ("settings-about-config", shown(Place::Config)),
+            ("settings-about-state", shown(Place::State)),
+            ("settings-about-fonts", shown(Place::Data)),
         ];
         let mut table = div().flex().flex_col().gap_1().max_w(px(720.)).child(
             div()
@@ -3577,19 +3572,15 @@ impl Shell {
                 ),
         )
         // What it is, and where it lives.
-        .child(div().pb_2().child(
-            "A native terminal for working with many AI coding agents at once: their terminals grouped by \
-             project, each project's tickets beside — the agent asks, you decide, it carries on. \
-             Built on aiball, which runs the agents' loops and their board.",
-        ))
+        .child(div().pb_2().child(crate::t!("settings-about-what")))
         .child(
             div()
                 .flex()
                 .gap_3()
                 .pb_3()
-                .child(buttons::link("about-github", "GitHub ↗").on_click(|_, _, cx| cx.open_url(help::REPOSITORY)))
-                .child(buttons::link("about-aiball", "aiball on GitHub ↗").on_click(|_, _, cx| cx.open_url(help::AIBALL_REPOSITORY)))
-                .child(buttons::link("about-license", "MIT licence ↗").on_click(|_, _, cx| cx.open_url(&format!("{}/blob/main/LICENSE", help::REPOSITORY)))),
+                .child(buttons::link("about-github", crate::t!("settings-about-github")).on_click(|_, _, cx| cx.open_url(help::REPOSITORY)))
+                .child(buttons::link("about-aiball", crate::t!("settings-about-aiball")).on_click(|_, _, cx| cx.open_url(help::AIBALL_REPOSITORY)))
+                .child(buttons::link("about-license", crate::t!("settings-about-license")).on_click(|_, _, cx| cx.open_url(&format!("{}/blob/main/LICENSE", help::REPOSITORY)))),
         )
         // Whose work it is, the years running to this one.
         .child(div().pb_3().text_sm().text_color(p().muted).child(tvty_config::legal::copyright()),
@@ -3602,13 +3593,11 @@ impl Shell {
                     .py_1()
                     .border_b_1()
                     .border_color(p().border)
-                    .child(div().w(px(180.)).flex_none().text_color(p().muted).child(label))
+                    .child(div().w(px(180.)).flex_none().text_color(p().muted).child(crate::t!(label)))
                     .child(div().flex_1().min_w_0().child(value)),
             );
         }
-        table.child(option_note(
-            "Terminal Velocity (tvty). MIT licence. Bundled themes: see themes/README.md.",
-        ))
+        table.child(option_note(crate::t!("settings-about-footer")))
     }
 
     // ── Shortcuts ───────────────────────────────────────────────────────
@@ -4046,7 +4035,7 @@ impl Shell {
         let mut list = div().named("theme-menu-list").flex().flex_col().py_1().text_sm();
         if terminal {
             list = list.child(
-                item("theme-terminal-window".into(), "Same as the window".into(), current.is_none())
+                item("theme-terminal-window".into(), crate::t!("settings-same-as-window").into(), current.is_none())
                     .on_click(cx.listener(|shell, _, _, cx| shell.set_terminal_theme(None, cx))),
             );
         }
@@ -4061,7 +4050,7 @@ impl Shell {
                         .pb_1()
                         .text_xs()
                         .text_color(p().muted)
-                        .child(if dark { "DARK" } else { "LIGHT" }),
+                        .child(crate::t!(if dark { "settings-theme-dark" } else { "settings-theme-light" })),
                 );
             }
             let chosen = current.as_ref() == Some(&name);
@@ -4074,7 +4063,7 @@ impl Shell {
             });
         }
         // Window or terminal: what the list chooses for.
-        let tab = |id: &'static str, label: &'static str, on: bool, to_terminal: bool, cx: &mut Context<Self>| {
+        let tab = |id: &'static str, label: String, on: bool, to_terminal: bool, cx: &mut Context<Self>| {
             div()
                 .named(id)
                 .flex_1()
@@ -4095,8 +4084,8 @@ impl Shell {
         let tabs = div()
             .flex()
             .flex_none()
-            .child(tab("theme-menu-window", "Window", !terminal, false, cx))
-            .child(tab("theme-menu-terminal", "Terminal", terminal, true, cx));
+            .child(tab("theme-menu-window", crate::t!("settings-theme-window"), !terminal, false, cx))
+            .child(tab("theme-menu-terminal", crate::t!("settings-theme-terminal"), terminal, true, cx));
         // The box holds the place under the title bar; the list scrolls in
         // it (the scrollbar's wrapper keeps a size, not a position).
         div()
@@ -4140,7 +4129,7 @@ impl Shell {
                     div()
                         .flex()
                         .justify_between()
-                        .child("Terminal opacity")
+                        .child(crate::t!("settings-theme-opacity"))
                         .child(div().text_color(p().muted).child(format!("{percent:.0} %"))),
                 )
                 .child(Slider::new(slider)),
@@ -5423,6 +5412,7 @@ impl Render for NoPreview {
     }
 }
 
+/// A group's heading: its name said (see [`crate::options::said`]).
 fn option_group(title: &str) -> impl IntoElement + use<> {
     div()
         .pt_4()
@@ -5430,7 +5420,7 @@ fn option_group(title: &str) -> impl IntoElement + use<> {
         .text_xs()
         .font_weight(FontWeight::BOLD)
         .text_color(p().muted)
-        .child(title.to_uppercase())
+        .child(crate::options::said(title).to_uppercase())
 }
 
 /// The groups aiball's page gathers, last, the keys the layer shown cannot
@@ -5441,20 +5431,23 @@ const REMOTE_IN_FILE: &str = "In .aiball.yaml";
 
 /// A search result's heading: where it lives, page › group.
 fn result_heading(page: &str, group: &str) -> impl IntoElement {
-    let path = if group.is_empty() { page.to_string() } else { format!("{page} › {group}") };
+    let (page, group) = (crate::options::said(page), crate::options::said(group));
+    let path = if group.is_empty() { page } else { format!("{page} › {group}") };
     div().pt_4().pb_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(path.to_uppercase())
 }
 
-fn option_note(text: &'static str) -> impl IntoElement {
-    div().py_2().text_sm().text_color(p().muted).child(text)
+fn option_note(text: impl Into<SharedString>) -> impl IntoElement {
+    div().py_2().text_sm().text_color(p().muted).child(text.into())
 }
 
 /// A setting: its name and what it does, its state, one button.
+/// `id` names it, whatever the language (`options-action-<id>`).
 fn option_row(
-    name: &'static str,
-    about: &'static str,
+    id: &'static str,
+    name: String,
+    about: String,
     state: String,
-    action: &'static str,
+    action: String,
     on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
     div()
@@ -5478,7 +5471,7 @@ fn option_row(
         )
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         .child(
-            buttons::chip(SharedString::from(format!("options-action-{name}")), action)
+            buttons::chip(SharedString::from(format!("options-action-{id}")), action)
                 .px_3()
                 .py_1()
                 .on_click(on_click),
@@ -5487,8 +5480,9 @@ fn option_row(
 
 /// As [`option_row`], what it does a switch: on, the side is open.
 fn option_toggle(
-    name: &'static str,
-    about: &'static str,
+    id: &'static str,
+    name: String,
+    about: String,
     state: String,
     on: bool,
     flip: impl Fn(&bool, &mut Window, &mut App) + 'static,
@@ -5514,7 +5508,7 @@ fn option_toggle(
         )
         .child(div().flex_none().text_sm().text_color(p().muted).child(state))
         // The size of the other settings' switches, not a dialog's small one.
-        .child(div().named(SharedString::from(format!("options-action-{name}"))).flex_none().child(Switch::new(SharedString::from(format!("options-switch-{name}"))).checked(on).on_click(flip)))
+        .child(div().named(SharedString::from(format!("options-action-{id}"))).flex_none().child(Switch::new(SharedString::from(format!("options-switch-{id}"))).checked(on).on_click(flip)))
         // The room a setting keeps for its ↺: the switches stand in one column.
         .child(div().flex_none().w(px(104.)))
 }
@@ -5523,13 +5517,13 @@ fn option_toggle(
 /// project `Board`, the board's value) and that value, as shown.
 #[derive(Clone)]
 struct Away {
-    back: &'static str,
+    back: SharedString,
     value: SharedString,
 }
 
 impl Away {
     fn default(value: impl Into<SharedString>) -> Self {
-        Away { back: "Default", value: value.into() }
+        Away { back: crate::t!("settings-default-back").into(), value: value.into() }
     }
 }
 
@@ -5663,7 +5657,7 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
             .text_sm()
             .whitespace_nowrap()
             .text_color(p().accent)
-            .tip(format!("back to {}", away.value))
+            .tip(crate::t!("settings-back-to", value = away.value.to_string()))
             .on_click(reset),
     )
 }
@@ -5674,10 +5668,10 @@ fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut
 /// the pointer, what that means. `id` names it (one per row).
 pub(super) fn hub_mark(id: impl Into<ElementId>) -> Stateful<Div> {
     div()
-        .saying(id, "on hub")
+        .saying(id, crate::t!("sessions-group-on-hub"))
         .flex_none()
         .child(crate::icons::icon(crate::icons::Icon::Hub, p().warning, 17.))
-        .tip("On aiball's hub, another machine: read from here (its state, its tickets), not opened — a session is attached from its own machine.")
+        .tip(crate::t!("sessions-hub-mark"))
 }
 
 fn marked(text: &str, words: &[String]) -> StyledText {
@@ -5712,7 +5706,7 @@ fn option_switch(
     label: impl IntoElement,
     about: SharedString,
     away: Option<Away>,
-    state: &'static str,
+    state: String,
     switch: Switch,
     reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
 ) -> impl IntoElement {
@@ -5755,76 +5749,74 @@ fn options_ticket_list() -> impl IntoElement {
         .flex()
         .flex_col()
         .max_w(px(760.))
-        .child(option_note(
-            "The ticket list as aiball computes it for you: the band, whose turn and the state glyph are aiball's; the stripe is tvty's.",
-        ))
+        .child(option_note(crate::t!("settings-legend-intro")))
         .child(option_group("Order"));
     for band in [Band::Moderate, Band::Decide, Band::AgentOnIt, Band::Open] {
-        let what = match band {
-            Band::Moderate => "the ticket, or comments on it, wait for moderation",
-            Band::Decide => "a plan, a resolution, a wontfix or an escalation waits for your decision",
-            Band::AgentOnIt => "an agent holds it or is on a step",
-            _ => "open, nothing pressing",
-        };
+        let what = crate::t!(match band {
+            Band::Moderate => "settings-legend-band-moderate",
+            Band::Decide => "settings-legend-band-decide",
+            Band::AgentOnIt => "settings-legend-band-working",
+            _ => "settings-legend-band-open",
+        });
         page = page.child(line(
             div().text_xs().text_color(p().muted).child(band.title().to_uppercase()).into_any_element(),
-            format!("{what}; the most recent first"),
+            crate::t!("settings-legend-band", what = what),
         ));
     }
     page = page
-        .child(option_group("State glyph — coloured when it waits on you, muted otherwise"))
+        .child(option_group(&crate::t!("settings-legend-glyph")))
         .child(line(glyph(Glyph::Plan, p().warning), Glyph::Plan.meaning().into()))
         .child(line(glyph(Glyph::Resolution, p().success), Glyph::Resolution.meaning().into()))
         .child(line(glyph(Glyph::Wontfix, p().muted), Glyph::Wontfix.meaning().into()))
         .child(line(glyph(Glyph::Escalation, p().danger), Glyph::Escalation.meaning().into()))
-        .child(line(glyph(Glyph::Step, p().accent), format!("{} — always blue", Glyph::Step.meaning())))
-        .child(line(glyph(Glyph::StalledStep, p().warning), format!("{} — always amber", Glyph::StalledStep.meaning())))
-        .child(line(glyph(Glyph::Rejected, p().danger), format!("{} — always red", Glyph::Rejected.meaning())))
+        .child(line(glyph(Glyph::Step, p().accent), crate::t!("settings-legend-always-blue", what = Glyph::Step.meaning())))
+        .child(line(glyph(Glyph::StalledStep, p().warning), crate::t!("settings-legend-always-amber", what = Glyph::StalledStep.meaning())))
+        .child(line(glyph(Glyph::Rejected, p().danger), crate::t!("settings-legend-always-red", what = Glyph::Rejected.meaning())))
         .child(line(glyph(Glyph::ClosedResolved, p().muted), Glyph::ClosedResolved.meaning().into()))
         .child(line(glyph(Glyph::Closed, p().muted), Glyph::Closed.meaning().into()))
-        .child(option_group("Stripe — whose turn"))
-        .child(line(stripe(p().warning, false), "a decision waits on you, and it is the last message".into()))
-        .child(line(stripe(p().warning, true), "a decision waits on you, but the talk went on after it".into()))
-        .child(line(stripe(p().border, false), "your turn: an agent answered you".into()))
+        .child(option_group(&crate::t!("settings-legend-stripe")))
+        .child(line(stripe(p().warning, false), crate::t!("settings-legend-stripe-solid")))
+        .child(line(stripe(p().warning, true), crate::t!("settings-legend-stripe-dashed")))
+        .child(line(stripe(p().border, false), crate::t!("settings-legend-stripe-yours")))
         .child(line(
             div().h(px(18.)).border_l_1().border_dashed().border_color(p().muted.opacity(0.6)).into_any_element(),
-            "thin and dotted: your word is the last, you wait".into(),
+            crate::t!("settings-legend-stripe-waiting"),
         ))
-        .child(line(div().into_any_element(), "no stripe: the ball is with the agent".into()))
+        .child(line(div().into_any_element(), crate::t!("settings-legend-stripe-none")))
         .child(line(
             div().h(px(18.)).flex().child(crate::panel::hazard()).into_any_element(),
-            "construction tape: the ticket waits for moderation, nothing goes on until you let it through".into(),
+            crate::t!("settings-legend-stripe-tape"),
         ))
-        .child(option_group("The rest"))
+        .child(option_group(&crate::t!("settings-legend-rest")))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::Comments, p().accent, 12., "3").text_xs().text_color(p().accent).into_any_element(),
-            "comments, blue: something new on it for you, unread (its title in bold too)".into(),
+            crate::t!("settings-legend-unread"),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::Comments, p().text, 12., "3").text_xs().text_color(p().text).into_any_element(),
-            "bright, its point on the left: someone else spoke last".into(),
+            crate::t!("settings-legend-others-spoke"),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::CommentsMine, p().muted.opacity(0.55), 12., "3")
                 .text_xs()
                 .text_color(p().muted.opacity(0.55))
                 .into_any_element(),
-            "discreet, its point on the right: you spoke last".into(),
+            crate::t!("settings-legend-you-spoke"),
         ))
         .child(line(
             crate::icons::labelled(crate::icons::Icon::PendingComments, p().warning, 12., "1").text_xs().text_color(p().warning).into_any_element(),
-            "comments waiting for moderation".into(),
+            crate::t!("settings-legend-pending"),
         ))
         .child(line(
-            crate::icons::labelled(crate::icons::Icon::Hot, p().warning, 12., "agent")
+            crate::icons::labelled(crate::icons::Icon::Hot, p().warning, 12., crate::t!("settings-legend-agent"))
                 .text_xs()
                 .text_color(p().muted)
                 .into_any_element(),
-            "the agent holding it; the flame when it was active lately".into(),
+            crate::t!("settings-legend-holder"),
         ))
         .child(line(
             crate::icons::pill(crate::icons::Icon::Critical, "3", p().danger).into_any_element(),
-            "the project's critical ticket: it holds 3 open tickets".into(),
+            crate::t!("settings-legend-critical"),
         ))
         .child(line(
             div()
@@ -5834,7 +5826,7 @@ fn options_ticket_list() -> impl IntoElement {
                 .child(crate::icons::icon(crate::icons::Icon::PriorityHigh, crate::icons::priority_colour("high"), 14.))
                 .child(crate::icons::icon(crate::icons::Icon::PriorityLow, crate::icons::priority_colour("low"), 14.))
                 .into_any_element(),
-            "priority: urgent, high, low (normal shows nothing)".into(),
+            crate::t!("settings-legend-priority"),
         ));
     page
 }

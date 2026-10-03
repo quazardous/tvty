@@ -123,6 +123,12 @@ fn said(index: usize, id: &str, args: Option<&FluentArgs>) -> Option<String> {
     Some(text.into_owned())
 }
 
+/// Whether English has the word `id`: a word built from a name (a page's,
+/// a group's) that may have none.
+pub fn has(id: &str) -> bool {
+    said(0, id, None).is_some()
+}
+
 /// The word `id` (`message` or `message.attribute`) in the language spoken,
 /// else in English, else its id. Use `t!`.
 pub fn text(id: &str, args: Option<&FluentArgs>) -> String {
@@ -499,6 +505,19 @@ mod tests {
         for field in ["intent", "priority", "level", "scope"] {
             built.extend(crate::ui::fields::values(field).iter().map(|value| format!("fields-{field}-{value}")));
         }
+        // Every setting, by its key; every page's and group's title.
+        for setting in crate::settings::SCHEMA.0 {
+            let id = format!("setting-{}", setting.key.replace('.', "-"));
+            built.push(id.clone());
+            built.push(format!("{id}.about"));
+            if matches!(setting.kind, tvty_config::Kind::Toggle { .. }) {
+                built.push(format!("{id}.on"));
+                built.push(format!("{id}.off"));
+            }
+            built.push(crate::options::title_id(setting.page));
+            built.push(crate::options::title_id(setting.group));
+        }
+        built.extend(crate::options::Section::ALL.map(|s| crate::options::title_id(s.title())));
         let missing: Vec<_> = built.iter().filter(|id| !english.contains(id)).collect();
         assert!(missing.is_empty(), "built ids English has not: {missing:?}");
     }
