@@ -417,6 +417,29 @@ fn moved(
     }
 }
 
+/// A project being dragged in the list by its heading: what the ghost
+/// says, and its name.
+#[derive(Clone)]
+struct ProjectDrag(String, String);
+
+impl Render for ProjectDrag {
+    /// The ghost: the project's name, as its heading says it.
+    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+        div()
+            .px_2p5()
+            .py_1()
+            .rounded_md()
+            .text_xs()
+            .font_weight(FontWeight::BOLD)
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().accent)
+            .text_color(p().text)
+            .shadow_md()
+            .child(self.0.clone())
+    }
+}
+
 struct Gallery {
     filter: String,
     /// The card enter opens; when the filter hides it, the first one shown.
@@ -1909,6 +1932,33 @@ impl Shell {
             })
     }
 
+    /// A project dropped on another takes its place in the list: the order
+    /// becomes yours (`sessions.order`), kept in the workspace.
+    fn move_project(&mut self, moved: &str, onto: &str, cx: &mut Context<Self>) {
+        // The order as listed, the projects placed before first (an idle
+        // one keeps its place for when it comes back).
+        let mut order = self.settings.workspace.project_order.clone();
+        for (project, _) in self.live_found(&[]) {
+            if !order.contains(&project.name) {
+                order.push(project.name.clone());
+            }
+        }
+        if !sessions::move_onto(&mut order, moved, onto) {
+            return;
+        }
+        self.settings.workspace.project_order = order;
+        self.settings.save(cx);
+        if self.applied.sessions.order() == crate::settings::Order::Yours {
+            let mut board = std::mem::take(&mut self.board);
+            self.order_groups(&mut board);
+            self.board = board;
+            cx.notify();
+        } else {
+            // The order said yours: the board is built again in it.
+            self.set_pref("sessions.order", Value::Choice(Some("yours".into())), cx);
+        }
+    }
+
     /// Shows `project`'s tickets in the panel, with no session of it open;
     /// the terminal shown stays.
     pub(super) fn show_project(&mut self, project: String, cx: &mut Context<Self>) {
@@ -2123,7 +2173,7 @@ impl Shell {
     /// The projects' list's order: taken once the work is back, then only
     /// grown with the projects that come; alphabetical needs none.
     fn keep_sidebar_order(&mut self, board: &sessions::Board) {
-        if !self.applied.sessions.recent_first {
+        if self.applied.sessions.order() != crate::settings::Order::Recent {
             self.sidebar_order = None;
             return;
         }
@@ -2169,8 +2219,15 @@ impl Shell {
     }
 
     fn order_groups(&self, board: &mut sessions::Board) {
-        if !self.applied.sessions.recent_first {
-            return;
+        match self.applied.sessions.order() {
+            crate::settings::Order::Alpha => return,
+            // As dragged; a project never placed after, alphabetical.
+            crate::settings::Order::Yours => {
+                let order = &self.settings.workspace.project_order;
+                board.projects.sort_by_key(|group| order.iter().position(|n| *n == group.name).unwrap_or(usize::MAX));
+                return;
+            }
+            crate::settings::Order::Recent => {}
         }
         let rank = |group: &sessions::Project| {
             group
@@ -3407,6 +3464,7 @@ impl Shell {
             "sessions.on_quit" => Some(&[("stop", "settings-quit-stop"), ("keep", "settings-quit-keep")]),
             "sessions.on_start" => Some(&[("restart", "settings-start-restart"), ("fresh", "settings-start-fresh"), ("leave", "settings-start-leave")]),
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
+            "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
@@ -3414,6 +3472,7 @@ impl Shell {
             "appearance.theme" => (Some(theme::current(cx)), None),
             "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
+            "sessions.order" => (self.applied.sessions.order.clone().map(SharedString::from), Some(crate::t!("settings-order-recent").into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.
@@ -4487,12 +4546,18 @@ impl Shell {
         let buttons = measured(1)
             // The sessions' own: their order, a project, a terminal.
             .when(!workspaces, |d| {
-                let recent = self.applied.sessions.recent_first;
+                use crate::settings::Order;
+                // Each click, the next order: recent, alphabetical, yours.
+                let (tip, next) = match self.applied.sessions.order() {
+                    Order::Recent => ("sessions-order-recent", Some("alpha")),
+                    Order::Alpha => ("sessions-order-alpha", Some("yours")),
+                    Order::Yours => ("sessions-order-yours", None),
+                };
                 d.child(
                     buttons::link("sessions-order", "⇅")
                         .text_xs()
-                        .tip(crate::t!(if recent { "sessions-order-recent" } else { "sessions-order-alpha" }))
-                        .on_click(cx.listener(move |shell, _, _, cx| shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx))),
+                        .tip(crate::t!(tip))
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.set_pref("sessions.order", Value::Choice(next.map(str::to_string)), cx))),
                 )
                 // A folder made an aiball project, its first session started.
                 .child(
@@ -4577,8 +4642,25 @@ impl Shell {
             let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
             // Fixed heights: the list is laid out on every frame of the
             // shell, and rows the layout must measure cost dearly.
+            let (moved, onto) = (project.name.clone(), project.name.clone());
             list = list.child(
                 div()
+                    .named(SharedString::from(format!("project-row-{}", project.name)))
+                    // Dragged onto another project, it takes its place.
+                    .when(words.is_empty(), |d| {
+                        d.on_drag(ProjectDrag(moved.to_uppercase(), moved), |drag: &ProjectDrag, _, _, cx| cx.new(|_| drag.clone()))
+                            .drag_over::<ProjectDrag>({
+                                let here = project.name.clone();
+                                move |style, drag: &ProjectDrag, _, _| {
+                                    if drag.1 == here {
+                                        style
+                                    } else {
+                                        style.bg(crate::theme::drop_target().opacity(0.18)).border_t_2().border_color(crate::theme::drop_target())
+                                    }
+                                }
+                            })
+                            .on_drop(cx.listener(move |shell, drag: &ProjectDrag, _, cx| shell.move_project(&drag.1, &onto, cx)))
+                    })
                     .h(px(SESSION_HEADING))
                     .flex_none()
                     .overflow_hidden()

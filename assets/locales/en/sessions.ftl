@@ -8,7 +8,8 @@
 sessions-tab-sessions = Sessions
 sessions-tab-workspaces = Workspaces
 sessions-order-recent = the project used last first, as ctrl+tab goes; a click: alphabetical
-sessions-order-alpha = alphabetical; a click: the project used last first, as ctrl+tab goes
+sessions-order-alpha = alphabetical; a click: your order (drag a project by its name)
+sessions-order-yours = your order: drag a project by its name; a click: the project used last first
 sessions-new-project = + project
 sessions-new-project-tip = a folder made an aiball project (aiball init), then its first session
 sessions-new-terminal-tip = a terminal of its own, which outlives tvty
@@ -34,7 +35,7 @@ sessions-no-project = No project
 
 ## A project's heading
 
-sessions-heading-tip = its tickets in the panel, no session opened
+sessions-heading-tip = its tickets in the panel, no session opened; drag it onto another to move it
 sessions-new-session = + session
 sessions-project-options = its settings: where its loops run, Remote Control, its board config
 sessions-project-terminal = a terminal in the project's folder, listed with it

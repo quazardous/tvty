@@ -221,8 +221,12 @@ project's tickets meanwhile; the loop shows under idle.
   arrows move to the stack seen left, right, above, below.
 - **One order everywhere**: the projects' list, the slider and the gallery
   lay the groups out alike — by default the group used last first, as
-  ctrl+tab goes (the groups never used after, alphabetical), or
-  alphabetical: **⇅** in the list's header, or Settings > Layout. The
+  ctrl+tab goes (the groups never used after, alphabetical);
+  alphabetical; or yours: a project's heading dragged onto another takes
+  its place, and the order becomes yours, kept in the workspace (a
+  project never placed goes last; an idle one keeps its place for when it
+  comes back). **⇅** in the list's header steps through the three, or
+  Settings > Layout; going back to yours finds it as it was. The
   projects' list takes that order once, when the work left last time is
   back, and keeps it: a click never moves a project under the pointer
   (projects that come later go last; ⇅ takes it afresh); the slider and

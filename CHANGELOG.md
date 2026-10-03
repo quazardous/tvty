@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The sessions list: drag a project by its name to put the projects in your own order (⇅ steps between recent, alphabetical and yours).
+
 ### Fixed
 
 - The agent bar: the AFK countdown sits on the same line as F9.

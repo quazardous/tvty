@@ -68,11 +68,13 @@ impl Default for Updates {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(default)]
+#[serde(from = "SessionsRead")]
 pub struct Sessions {
-    /// The groups in the order they were used, the latest first (the
-    /// slider's, ctrl+tab), rather than alphabetical.
-    pub recent_first: bool,
+    /// The projects' order, in the list, the slider and the gallery:
+    /// `alpha`, or `yours` (dragged by hand in the list); none: the one
+    /// used last first (the slider's, ctrl+tab).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub order: Option<String>,
     /// Behind a proxy node: the sessions of aiball's hub are listed too (to
     /// read, not to open).
     pub show_hub: bool,
@@ -89,7 +91,51 @@ pub struct Sessions {
 
 impl Default for Sessions {
     fn default() -> Self {
-        Self { recent_first: true, show_hub: false, on_quit: None, on_start: None }
+        Self { order: None, show_hub: false, on_quit: None, on_start: None }
+    }
+}
+
+/// The projects' order, as `sessions.order` says it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Order {
+    Recent,
+    Alpha,
+    Yours,
+}
+
+impl Sessions {
+    pub fn order(&self) -> Order {
+        match self.order.as_deref() {
+            Some("alpha") => Order::Alpha,
+            Some("yours") => Order::Yours,
+            _ => Order::Recent,
+        }
+    }
+}
+
+/// `[sessions]` as read: `recent_first = false`, the order's switch before
+/// it had a third, still says alphabetical.
+#[derive(Deserialize)]
+#[serde(default)]
+struct SessionsRead {
+    order: Option<String>,
+    recent_first: Option<bool>,
+    show_hub: bool,
+    on_quit: Option<String>,
+    on_start: Option<String>,
+}
+
+impl Default for SessionsRead {
+    fn default() -> Self {
+        let Sessions { order, show_hub, on_quit, on_start } = Sessions::default();
+        Self { order, recent_first: None, show_hub, on_quit, on_start }
+    }
+}
+
+impl From<SessionsRead> for Sessions {
+    fn from(read: SessionsRead) -> Self {
+        let order = read.order.or_else(|| (read.recent_first == Some(false)).then(|| "alpha".to_string()));
+        Self { order, show_hub: read.show_hub, on_quit: read.on_quit, on_start: read.on_start }
     }
 }
 
@@ -327,12 +373,12 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: true, on: "show", off: "never" },
     },
     Setting {
-        key: "sessions.recent_first",
+        key: "sessions.order",
         page: "Layout",
         group: "Sessions",
         label: "Order",
-        about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes — or alphabetical. Also the ⇅ in the list's header.",
-        kind: Kind::Toggle { default: true, on: "most recent first", off: "alphabetical" },
+        about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes; alphabetical; or yours, as you drag them in the list by their name. Also the ⇅ in the list's header.",
+        kind: Kind::Choice,
     },
     Setting {
         key: "sessions.show_hub",
@@ -546,6 +592,10 @@ pub struct Workspace {
     /// them: a new one last.
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
     pub terminal_order: HashMap<String, Vec<String>>,
+    /// The projects in the order dragged by hand in the list (the
+    /// `sessions.order` "yours"): a new one last.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub project_order: Vec<String>,
     /// The standing instructions given last (the 📢), newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standing_history: Vec<String>,
@@ -566,6 +616,7 @@ impl Stored for Workspace {
             holds_on_quit: HashMap::new(),
             still_on_quit: Vec::new(),
             terminal_order: HashMap::new(),
+            project_order: Vec::new(),
             standing_history: Vec::new(),
         })
     }
@@ -671,6 +722,15 @@ mod tests {
             assert_ne!(changed, prefs, "{} reaches no field", setting.key);
             assert_eq!(SCHEMA.value(&changed, setting.key), Some(value), "{}", setting.key);
         }
+    }
+
+    #[test]
+    fn the_old_order_switch_still_says_alphabetical() {
+        let read = |text: &str| parse::<Preferences>(text).unwrap().sessions.order();
+        assert_eq!(read("[sessions]\nrecent_first = false\n"), super::Order::Alpha);
+        assert_eq!(read("[sessions]\nrecent_first = true\n"), super::Order::Recent);
+        assert_eq!(read("[sessions]\norder = \"yours\"\nrecent_first = false\n"), super::Order::Yours);
+        assert_eq!(read(""), super::Order::Recent);
     }
 
     #[test]

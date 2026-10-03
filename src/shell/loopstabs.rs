@@ -101,9 +101,18 @@ impl Shell {
         let mut loops = one_per_agent(loops, |l| self.astray(l).is_some());
         loops.sort_by_cached_key(|l| {
             let project = self.loop_project(l);
-            (project.is_none(), project)
+            (project.is_none(), self.placed(project.as_deref()), project)
         });
         loops
+    }
+
+    /// Where `project` stands in the order dragged in the list, when the
+    /// order is yours; else all alike (alphabetical then).
+    fn placed(&self, project: Option<&str>) -> usize {
+        if self.applied.sessions.order() != crate::settings::Order::Yours {
+            return 0;
+        }
+        project.and_then(|name| self.settings.workspace.project_order.iter().position(|n| n == name)).unwrap_or(usize::MAX)
     }
 
     /// The agent of another project whose folder `l` works in, if it does.
@@ -119,7 +128,8 @@ impl Shell {
 
     /// The agents aiball knows with no loop on this machine.
     fn closed(&self, words: &[String]) -> Vec<&(String, Option<String>, String)> {
-        self.board
+        let mut shut = self
+            .board
             .homes
             .iter()
             .filter(|(agent, _, cwd)| {
@@ -127,7 +137,10 @@ impl Shell {
                     && !self.board.projects.iter().any(|p| p.terminals.iter().any(|t| t.agent.as_deref() == Some(agent.as_str())))
             })
             .filter(|(agent, project, cwd)| crate::sessions::found(words, &[project.as_deref().unwrap_or(""), agent, cwd]))
-            .collect()
+            .collect::<Vec<_>>();
+        // By project, as the live ones are.
+        shut.sort_by_cached_key(|(_, project, _)| (project.is_none(), self.placed(project.as_deref()), project.clone()));
+        shut
     }
 
     /// The hub's agents the filter finds.
