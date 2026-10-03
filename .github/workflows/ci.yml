@@ -30,6 +30,11 @@ jobs:
         run: cargo build --locked --workspace
       - name: Tests
         run: cargo test --locked --workspace
+      # How far each language goes, and how much of the interface is
+      # translatable, in the job's summary. Fails only on a real fault (a
+      # file that does not read, a word asked for that English has not).
+      - name: Languages
+        run: cargo run --locked -- i18n --markdown >> "$GITHUB_STEP_SUMMARY"
 
   # What the desktop decides about the window (frame, focus, blur request),
   # under labwc in a headless wbox: the protocols KDE's KWin uses for them.

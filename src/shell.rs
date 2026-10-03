@@ -3404,6 +3404,7 @@ impl Shell {
             "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
             "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
             "mouse.focus" => Some(&[("click", "Click"), ("hover", "Hover")]),
+            "appearance.language" => Some(crate::i18n::NAMES),
             _ => None,
         };
         let (chosen, default): (Option<SharedString>, Option<SharedString>) = match key {
@@ -3412,6 +3413,11 @@ impl Shell {
             "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some("Ask".into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
+            // As the system: the language it speaks, if tvty does.
+            "appearance.language" => (
+                self.applied.appearance.language.clone().map(SharedString::from),
+                Some(crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system())).into()),
+            ),
             _ => (theme::current_terminal(), Some("Same as the window".into())),
         };
         let away = SCHEMA.is_modified(&self.applied, key).then(|| {
@@ -3948,6 +3954,8 @@ impl Shell {
         if was.window_font_size != now.window_font_size {
             theme::set_window_font(now.window_font_size, cx);
         }
+        // Every word drawn again, below (the window refreshed).
+        crate::i18n::set(now.language.as_deref());
         let notifications = &new.notifications;
         notify::set_limits(
             cx,

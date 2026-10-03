@@ -16,6 +16,7 @@ mod emoji;
 mod field;
 mod focusmode;
 mod fonts;
+mod i18n;
 mod composer;
 mod config;
 mod control;
@@ -80,6 +81,11 @@ fn main() {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(control::inspect(&args));
     }
+    // `tvty i18n [LANG] [--markdown]`: how far each language goes, said and done.
+    if std::env::args().nth(1).as_deref() == Some("i18n") {
+        let args: Vec<String> = std::env::args().skip(2).collect();
+        std::process::exit(i18n::report(&args));
+    }
     // `tvty [SESSION]`: open that tmux session at start.
     let selected = std::env::args().nth(1);
     // One tvty per state directory: a later launch brings the running one
@@ -117,6 +123,7 @@ fn main() {
         // The full pages' side column, as last dragged.
         cx.set_global(sidecol::SideWidth(config::get::<settings::Layout>(cx).fields_width));
         let prefs = config::get::<settings::Preferences>(cx).clone();
+        i18n::set(prefs.appearance.language.as_deref());
         bus::init(cx);
         notify::init(
             cx,

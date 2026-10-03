@@ -30,6 +30,9 @@ export CLAUDE_LOOP_STATE_ROOT="$TVTY_ROOT/dev/claude-loop"
 export CL_CLAUDE_CMD="$(cd "$TVTY_ROOT/.." && pwd)/aiball/bin/fake-claude"
 # The debug control (scripts/tvty-ctl): a test tvty is read and driven by id.
 export TVTY_DEBUG_CONTROL=1
+# A test tvty speaks English, what its texts are read against, whatever
+# the machine speaks; TVTY_LANG= (empty) lets Settings choose, to try them.
+export TVTY_LANG="${TVTY_LANG-en}"
 unset TMUX
 mkdir -p "$TMUX_TMPDIR" "$XDG_CONFIG_HOME/tvty" "$XDG_STATE_HOME/tvty" "$CLAUDE_LOOP_STATE_ROOT"
 # What scripts/tvty-ctl --instance test drives: this tvty, in the tests' wbox.

@@ -119,6 +119,9 @@ never shows in — nor touches — the user's own tvty:
   `CL_CLAUDE_CMD` set to fake-claude, so a loop a test starts (the idle
   tab, "+ session") keeps its state apart and costs no token; start them
   in a directory under `dev/loops/`.
+- **English** (`TVTY_LANG=en`): the texts a test reads are the English
+  ones, whatever the machine speaks. `TVTY_LANG= make wbox-up` (empty)
+  lets Settings > Appearance > Language choose, to look at a translation.
 
 `scripts/test-tvty [SESSION]` runs tvty so (starting the throwaway aiball
 if it is not up); it is wbox's command. To look at the test tmux server

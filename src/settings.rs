@@ -116,6 +116,9 @@ pub struct Appearance {
     /// compositor can: KDE).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub terminal_blur: bool,
+    /// The interface's language (`en`, `fr`, `es`); none: the system's.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -174,6 +177,14 @@ pub struct Tickets {
 /// page and group that show it, what it says, its kind and bounds. The
 /// options pages are built from it, and a hand-edited file checked by it.
 pub const SCHEMA: Schema = Schema(&[
+    Setting {
+        key: "appearance.language",
+        page: "Appearance",
+        group: "Language",
+        label: "Language",
+        about: "The interface's language. What people write (tickets, comments, names) stays as written.",
+        kind: Kind::Choice,
+    },
     Setting {
         key: "appearance.terminal_font_size",
         page: "Appearance",
@@ -380,6 +391,7 @@ impl Stored for Preferences {
                 window_font_size: f32_of("window_font_size"),
                 terminal_opacity: None,
                 terminal_blur: false,
+                language: None,
             },
             notifications: Notifications {
                 max: old.get("notify_max").and_then(Value::as_u64).map(|v| v as usize),
