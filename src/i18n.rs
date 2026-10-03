@@ -123,6 +123,11 @@ fn said(index: usize, id: &str, args: Option<&FluentArgs>) -> Option<String> {
     Some(text.into_owned())
 }
 
+/// The word `id` in English, whatever the language spoken.
+pub fn english(id: &str, args: Option<&FluentArgs>) -> Option<String> {
+    said(0, id, args)
+}
+
 /// Whether English has the word `id`: a word built from a name (a page's,
 /// a group's) that may have none.
 pub fn has(id: &str) -> bool {

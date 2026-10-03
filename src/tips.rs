@@ -124,8 +124,9 @@ pub fn all() -> &'static [Tip] {
 /// The text as shown: its keys as the keymap in force has them, its marks
 /// taken out and said as ranges — bold, and code.
 pub fn shown(tip: &Tip, key_of: impl Fn(&str) -> Option<String>) -> (String, Vec<(Range<usize>, Mark)>) {
+    let said = said(tip);
     let mut text = String::new();
-    let mut rest = tip.text.as_str();
+    let mut rest = said.as_str();
     while let Some(start) = rest.find("{key") {
         text.push_str(&rest[..start]);
         let Some(end) = rest[start..].find('}') else { break };
@@ -136,6 +137,36 @@ pub fn shown(tip: &Tip, key_of: impl Fn(&str) -> Option<String>) -> (String, Vec
     }
     text.push_str(rest);
     marks(&text)
+}
+
+/// A tip's text in the interface's language: `tip-<id>` (assets/locales),
+/// its `{key}` marks as Fluent's `{$key}`, a `{key:font.reset}` as
+/// `{$key-font-reset}`, each given back as written. The file's own
+/// English where a language has none.
+pub fn said(tip: &Tip) -> String {
+    let id = format!("tip-{}", tip.id);
+    if !crate::i18n::has(&id) {
+        return tip.text.clone();
+    }
+    let mut args = fluent_bundle::FluentArgs::new();
+    for (name, mark) in key_marks(&tip.text) {
+        args.set(name, mark);
+    }
+    crate::i18n::text(&id, Some(&args))
+}
+
+/// The `{key…}` marks of a tip's text: their Fluent variable, and the mark.
+fn key_marks(text: &str) -> Vec<(String, String)> {
+    let mut marks = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("{key") {
+        let Some(end) = rest[start..].find('}') else { break };
+        let mark = &rest[start..start + end + 1];
+        let name = mark[1..mark.len() - 1].replace([':', '.', '_'], "-");
+        marks.push((name, mark.to_string()));
+        rest = &rest[start + end + 1..];
+    }
+    marks
 }
 
 /// How a part of a tip is set.
@@ -372,6 +403,24 @@ pub fn command_of(action: &str) -> Option<&'static str> {
 
 #[cfg(test)]
 mod tests {
+    use super::key_marks;
+
+    /// English's words for the tips say what their files say: one text,
+    /// not two drifting apart.
+    #[test]
+    fn the_english_tips_are_their_files() {
+        for tip in all() {
+            let id = format!("tip-{}", tip.id);
+            assert!(crate::i18n::has(&id), "no {id} in English");
+            let mut args = fluent_bundle::FluentArgs::new();
+            for (name, mark) in key_marks(&tip.text) {
+                args.set(name, mark);
+            }
+            let english = crate::i18n::english(&id, Some(&args));
+            assert_eq!(english.as_deref(), Some(tip.text.as_str()), "{id}");
+        }
+    }
+
     use std::collections::HashMap;
 
     use super::{FILES, Mark, REST, Seen, Tip, all, parse, pick, shown};
