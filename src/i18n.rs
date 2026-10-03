@@ -12,7 +12,7 @@
 //! how much of the interface asks for its words here rather than writing
 //! them in the code (the CI prints it too).
 //!
-//! `TVTY_LANG` (en, fr, es) overrides the setting: the tests pin English with
+//! `TVTY_LANG` (en, fr, es, de) overrides the setting: the tests pin English with
 //! it, whatever the machine speaks.
 
 use std::sync::OnceLock;
@@ -23,7 +23,7 @@ use fluent_bundle::{FluentArgs, FluentResource};
 
 /// The languages tvty speaks: their code (their folder under
 /// `assets/locales/`) and their name in themselves.
-pub const LANGS: &[(&str, &str)] = &[("en", "English"), ("fr", "Français"), ("es", "Español")];
+pub const LANGS: &[(&str, &str)] = &[("en", "English"), ("fr", "Français"), ("es", "Español"), ("de", "Deutsch")];
 
 /// The words, built in: `<lang>/<surface>.ftl`.
 #[derive(rust_embed::Embed)]
@@ -566,7 +566,8 @@ mod tests {
     fn a_language_is_read_from_a_locale() {
         assert_eq!(LANGS[spoken("fr_FR.UTF-8")].0, "fr");
         assert_eq!(LANGS[spoken("es-AR")].0, "es");
-        assert_eq!(LANGS[spoken("de")].0, "en");
+        assert_eq!(LANGS[spoken("de_AT.UTF-8")].0, "de");
+        assert_eq!(LANGS[spoken("it")].0, "en");
     }
 
     #[test]
