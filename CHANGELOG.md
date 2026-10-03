@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0-beta.1] - 2026-10-03
+
 ### Added
 
 - Starting a session in a folder where Claude Code already has conversations that no loop follows (worked there by hand) asks which to take up: "Resume the last conversation" (its date and first words shown) or "New conversation". The same when a loop is started again and the conversation it recorded is gone. A folder with none, or whose recorded conversation is there, starts without a word. Needs aiball 0.55.
