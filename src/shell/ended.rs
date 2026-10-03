@@ -111,6 +111,7 @@ impl Shell {
             // there, through claude-loop's restart.
             again: l.on_host().then(|| l.name.clone()),
             mode: None,
+            resume: crate::loops::Resume::Ask,
         });
         self.ended = Some(EndedSession {
             session: session.to_string(),

@@ -62,6 +62,21 @@ pub struct Start {
     pub crew: bool,
     pub again: Option<String>,
     pub mode: Option<&'static str>,
+    /// Which conversation its Claude takes up, in a folder where Claude Code
+    /// already has some that no loop follows.
+    pub resume: Resume,
+}
+
+/// A first start's conversation, in a folder where Claude Code has some.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum Resume {
+    /// Not asked yet: tvty asks when there is something to resume.
+    #[default]
+    Ask,
+    /// This one (an id), or the folder's latest (`latest`).
+    Conversation(String),
+    /// A new one.
+    Fresh,
 }
 
 impl KnownLoop {
@@ -119,6 +134,9 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     }
     if let Some(agent) = &start.agent {
         params[if start.crew { "crew" } else { "agent" }] = json!(agent);
+    }
+    if let Resume::Conversation(id) = &start.resume {
+        params["resume"] = json!(id);
     }
     let view: Value = aiball.call_starting("session.start", params)?;
     session_of(&view).context("session.start: no session in the answer")

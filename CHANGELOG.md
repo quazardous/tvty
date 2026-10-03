@@ -26,7 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A stopped session can be forgotten from the sessions' list: a red trash on its row (IDLE or SHUT), under the pointer, a second click to confirm. aiball forgets its loop and its agent; the folder, its .aiball.yaml and the project's tickets stay, and "+ project" on the folder starts afresh. A stopped loop needs aiball's `loop.remove`.
+- Starting a session in a folder where Claude Code already has conversations that no loop follows (worked there by hand) asks which to take up: "Resume the last conversation" (its date and first words shown) or "New conversation". A folder with none, or a loop started again, starts without a word. Needs aiball's `session.conversations`.
+- A stopped session can be forgotten from the sessions' list: a red trash on its row (IDLE or SHUT), under the pointer, a second click to confirm. aiball forgets its loop and its agent; the folder, its .aiball.yaml and the project's tickets stay, and "+ project" on the folder starts afresh. Needs aiball's `loop.remove`.
 - In a new ticket, Ctrl+Enter files it and goes back to where you were ("File and exit"). Settings > Ticket list > New ticket > Ctrl+Enter makes it file and open the ticket instead.
 
 ### Fixed

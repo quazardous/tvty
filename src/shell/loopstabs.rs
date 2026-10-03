@@ -329,6 +329,7 @@ impl Shell {
                         // while its host is up, its program ended.
                         again: l.on_host().then(|| l.name.clone()),
                         mode: None,
+                        resume: crate::loops::Resume::Ask,
                     };
                     let forget = Forget::Loop { name: l.name.clone(), agent: l.agent().map(str::to_string) };
                     list = list.child(row(format!("idle-{}", l.name), name, &l.cwd, self.astray(l), cx, start, forget));
@@ -348,7 +349,7 @@ impl Shell {
                         list = list.child(heading(heading_of.clone(), cx));
                         last = Some(heading_of);
                     }
-                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None };
+                    let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None, resume: crate::loops::Resume::Ask };
                     let astray = crate::loops::stranger(cwd, Some(agent.as_str()), project.as_deref(), &self.board.homes);
                     list = list.child(row(format!("shut-{agent}"), agent.clone(), cwd, astray, cx, start, Forget::Agent(agent.clone())));
                 }
@@ -525,6 +526,7 @@ impl Shell {
                                         again: None,
                                         // Unchecked "on aiball's host": tmux, asked.
                                         mode: (!form.on_host).then_some("tmux"),
+                                        resume: crate::loops::Resume::Ask,
                                     };
                                     if form.on_host {
                                         shell.start_on_host(start, cx);
@@ -603,6 +605,12 @@ impl Shell {
             return;
         }
         if self.astray_start(&start, cx) {
+            return;
+        }
+        // A first start (not a loop started again): which conversation, when
+        // the folder has some no loop follows.
+        if start.again.is_none() && start.resume == crate::loops::Resume::Ask {
+            self.ask_resume(start, cx);
             return;
         }
         self.starting = Some(start.cwd.clone());

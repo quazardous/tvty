@@ -433,6 +433,7 @@ impl Shell {
             crew: wizard.crew,
             again: None,
             mode: None,
+            resume: crate::loops::Resume::Ask,
         };
         self.close_new_project(window, cx);
         self.start_loop(start, cx);

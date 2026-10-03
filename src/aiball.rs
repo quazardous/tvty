@@ -141,6 +141,29 @@ pub struct AgentCounters {
 }
 
 /// An agent's session on aiball's host.
+/// A folder's Claude Code conversations (`session.conversations`).
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Conversations {
+    /// The one a loop of the folder follows already, if it still exists.
+    #[serde(default)]
+    pub tracked: Option<String>,
+    #[serde(default)]
+    pub conversations: Vec<Conversation>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Conversation {
+    pub id: String,
+    #[serde(default)]
+    pub updated_at: Option<String>,
+    /// The user's first words in it, cut short.
+    #[serde(default)]
+    pub first_prompt: Option<String>,
+    /// Another agent's loop that runs on it.
+    #[serde(default)]
+    pub held_by: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct HostedSession {
     #[serde(default)]
@@ -1066,6 +1089,16 @@ impl Aiball {
     /// `name`. It lives on without tvty.
     pub fn start_terminal(&self, name: &str, argv: &[String], cwd: &str) -> anyhow::Result<()> {
         self.call_starting::<Value>("session.start", json!({ "name": name, "argv": argv, "cwd": cwd })).map(drop)
+    }
+
+    /// Claude Code's conversations in `cwd`, newest first, and the one a
+    /// loop of it follows already (`tracked`) — for a crew agent, `crew`.
+    pub fn conversations(&self, cwd: &str, crew: Option<&str>) -> anyhow::Result<Conversations> {
+        let mut params = json!({ "cwd": cwd, "limit": 5 });
+        if let Some(crew) = crew {
+            params["crew"] = json!(crew);
+        }
+        self.rpc("session.conversations", params)
     }
 
     /// Forgets a stopped loop (as `claude-loop rm`): aiball no longer lists

@@ -31,6 +31,7 @@ use crate::notify::{self, Kind, Notice};
 mod agentbar;
 mod control;
 mod ended;
+mod resume;
 mod frame;
 mod help;
 mod megaphone;
@@ -212,6 +213,8 @@ pub struct Shell {
     workspace_name: Entity<InputState>,
     workspace_renaming: Option<String>,
     workspace_deleting: Option<String>,
+    /// A first start waiting to know which conversation to take up.
+    resume_question: Option<resume::ResumeQuestion>,
     /// A stopped session's row whose trash asks a second click (its row id).
     forgetting: Option<String>,
     /// A terminal's tab being renamed (its session), and the name typed.
@@ -796,6 +799,7 @@ impl Shell {
             tab_renaming: None,
             tab_name,
             forgetting: None,
+            resume_question: None,
             remember: false,
             stopping_all: false,
             quitting: false,
@@ -2379,6 +2383,10 @@ impl Shell {
         if key == "escape" && self.goto.read(cx).focus_handle(cx).is_focused(window) {
             self.goto.update(cx, |g, cx| g.set_value("", window, cx));
             self.focus_terminal(window, cx);
+            cx.stop_propagation();
+            return;
+        }
+        if key == "escape" && self.cancel_resume(cx) {
             cx.stop_propagation();
             return;
         }
@@ -5364,6 +5372,7 @@ impl Render for Shell {
             .children(self.tip_view(cx))
             .children(self.quit_dialog())
             .children(self.picker_dialog(cx))
+            .children(self.resume_dialog(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }
