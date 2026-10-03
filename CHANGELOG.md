@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The agent bar: the AFK countdown sits on the same line as F9.
+
 ## [0.12.0-beta.1] - 2026-10-03
 
 ### Added

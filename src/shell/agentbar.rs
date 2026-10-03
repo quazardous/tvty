@@ -164,11 +164,21 @@ impl Shell {
             .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
             .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(crate::t!(word))))
             .children(marks.armed.map(|(man, t)| {
+                // 웃 apart: it comes from a fallback font whose taller ascent,
+                // in one line with the countdown, would sink the digits below
+                // F9's baseline.
+                let rest = man.trim_start_matches('웃').to_string();
                 div()
+                    .relative()
                     .flex()
+                    .items_center()
                     .text_color(tone(t))
-                    .when(marks.arming, |d| d.border_b_1().border_dashed().border_color(tone(t)))
-                    .child(man)
+                    // Drawn over, not laid out: a border's pixel, centred, would lift the digits.
+                    .when(marks.arming, |d| {
+                        d.child(div().absolute().left_0().right_0().bottom_0().border_b_1().border_dashed().border_color(tone(t)))
+                    })
+                    .child("웃")
+                    .when(!rest.is_empty(), |d| d.child(div().child(rest)))
                     .when(marks.arming, |d| d.child("…"))
             }))
             // The key that cycles it, greyed: how to move the loop, at a glance.
