@@ -10,6 +10,8 @@ They are licensed under the **Apache License 2.0**
 
 `cloud.svg` is the outline in a heavier stroke (`cloud_wght600_24px.svg`): a thin one does not read at the size it is drawn.
 
+`stop_circle.svg` is the plain outlined one.
+
 `keep_fill.svg` is the filled pin (`keep_fill1_24px.svg`).
 
 `chat_bubble_mine.svg` is

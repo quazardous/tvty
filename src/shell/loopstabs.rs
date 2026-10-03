@@ -371,6 +371,28 @@ impl Shell {
     /// A stopped session forgotten: its loop (when it has one) and its
     /// agent, as aiball knows them; the folder and the tickets stay. The
     /// lists follow aiball's events.
+    /// Stops an agent's loop through aiball, off the UI thread: it moves to
+    /// the stopped ones, restartable; said once done.
+    pub(super) fn stop_agent_loop(&mut self, agent: String, cx: &mut Context<Self>) {
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let who = agent.clone();
+            let done = cx.background_executor().spawn(async move { crate::loops::stop_agent(&aiball, &who) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                match done {
+                    Ok(()) => crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-stopped", who = agent.clone()))),
+                    Err(error) => crate::activity::publish(
+                        cx,
+                        crate::activity::Activity::failed(None, &crate::t!("sessions-stop-failed-loop", who = agent.clone()), format!("{error:#}")),
+                    ),
+                }
+                let _ = shell.refresh_now.unbounded_send(());
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     fn forget(&mut self, what: Forget, cx: &mut Context<Self>) {
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {

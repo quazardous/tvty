@@ -64,6 +64,8 @@ icons! {
     Rename => "edit.svg",
     // What tvty and aiball forget (a stopped session's row).
     Forget => "delete.svg",
+    // A running loop stopped (a live session's row).
+    Stop => "stop_circle.svg",
     // What runs on aiball's hub, seen from another machine.
     Hub => "cloud.svg",
     // The ticket panel held beside the terminal, or let over it.

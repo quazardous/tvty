@@ -217,6 +217,8 @@ pub struct Shell {
     resume_question: Option<resume::ResumeQuestion>,
     /// A stopped session's row whose trash asks a second click (its row id).
     forgetting: Option<String>,
+    /// A live session's row whose stop asks a second click (its session).
+    stop_asking: Option<String>,
     /// A terminal's tab being renamed (its session), and the name typed.
     tab_renaming: Option<String>,
     tab_name: Entity<InputState>,
@@ -798,6 +800,7 @@ impl Shell {
             tab_renaming: None,
             tab_name,
             forgetting: None,
+            stop_asking: None,
             resume_question: None,
             remember: false,
             stopping_all: false,
@@ -4560,9 +4563,39 @@ impl Shell {
                     .filter(|b| !b.stale)
                     .and_then(|b| b.bar.denials.as_ref().filter(|d| d.last_hour > 0).map(|d| (d.last_hour, b.bar.denials_said())));
                 let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
+                // Its loop stopped from here: shown under the pointer; a
+                // first click asks, a second stops (it stays restartable).
+                let stop = terminal.agent.clone().filter(|_| terminal.status.as_ref().is_some_and(|s| s.online)).map(|agent| {
+                    let asking = self.stop_asking.as_deref() == Some(session.as_str());
+                    let row = session.clone();
+                    div()
+                        .named(SharedString::from(format!("stop-{session}")))
+                        .flex()
+                        .flex_none()
+                        .items_center()
+                        .gap_1()
+                        .px_0p5()
+                        .rounded_sm()
+                        .when(!asking, |d| d.opacity(0.).group_hover(SharedString::from(format!("terminal-{session}-group")), |s| s.opacity(1.)))
+                        .hover(|d| d.bg(p().hover))
+                        .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child(crate::t!("sessions-stop-ask"))))
+                        .child(crate::icons::icon(crate::icons::Icon::Stop, p().danger, 13.))
+                        .tip(crate::t!("sessions-stop-tip", who = agent.clone()))
+                        .on_click(cx.listener(move |shell, _, _, cx| {
+                            cx.stop_propagation();
+                            if shell.stop_asking.as_deref() == Some(row.as_str()) {
+                                shell.stop_asking = None;
+                                shell.stop_agent_loop(agent.clone(), cx);
+                            } else {
+                                shell.stop_asking = Some(row.clone());
+                            }
+                            cx.notify();
+                        }))
+                });
                 list = list.child(
                     div()
                         .named(SharedString::from(format!("terminal-{session}")))
+                        .group(SharedString::from(format!("terminal-{session}-group")))
                         .h(px(height))
                         .flex_none()
                         .overflow_hidden()
@@ -4605,6 +4638,7 @@ impl Shell {
                                                 .when(open, |d| d.child(dot(p().success)).tip(crate::t!("sessions-open"))),
                                         )
                                         .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
+                                        .children(stop)
                                         .when_some(denied.clone(), |d, (count, said)| {
                                             d.child(
                                                 crate::icons::labelled(crate::icons::Icon::Critical, p().warning, 12., count.to_string())

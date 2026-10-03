@@ -179,7 +179,23 @@ pub fn detach_others(aiball: &Aiball, name: &str, keep: u32) -> anyhow::Result<u
 /// Stops a loop, keeping its state: it stays restartable.
 pub fn stop(aiball: &Aiball, known: &KnownLoop) -> anyhow::Result<()> {
     let agent = known.agent().with_context(|| format!("{}: no agent to stop it by", known.name))?;
-    aiball.call::<Value>("consumer.stop_loop", json!({ "consumer_id": agent })).map(drop)
+    stop_agent(aiball, agent)
+}
+
+/// Stops an agent's loop, wherever it runs (tmux or aiball's host): it
+/// stays restartable.
+pub fn stop_agent(aiball: &Aiball, agent: &str) -> anyhow::Result<()> {
+    let answer: Value = aiball.call("consumer.stop_loop", json!({ "consumer_id": agent }))?;
+    stopped(agent, &answer)
+}
+
+/// aiball's answer to a stop: it does not refuse one no loop received, it
+/// says so (`delivered: false`) — not stopped, then.
+fn stopped(agent: &str, answer: &Value) -> anyhow::Result<()> {
+    match answer.get("delivered").and_then(Value::as_bool) {
+        Some(false) => anyhow::bail!("{agent}: no loop of it received the stop (it does not run, or not where aiball can reach it)"),
+        _ => Ok(()),
+    }
 }
 
 /// Starts a stopped loop again where it ran, its conversation resumed.
@@ -207,8 +223,16 @@ fn said(error: anyhow::Error) -> anyhow::Error {
 
 #[cfg(test)]
 mod tests {
-    use super::{KnownLoop, session_of, stranger};
+    use super::{KnownLoop, session_of, stopped, stranger};
     use serde_json::json;
+
+    /// aiball's answers to a stop, as `consumer.stop_loop` gives them.
+    #[test]
+    fn a_stop_no_loop_received_is_a_failure() {
+        assert!(stopped("w-claude", &json!({ "consumer_id": "w-claude", "action": "kill", "delivered": true })).is_ok());
+        let none = stopped("w-claude", &json!({ "consumer_id": "w-claude", "action": "kill", "delivered": false }));
+        assert!(none.unwrap_err().to_string().contains("no loop of it received the stop"));
+    }
 
     #[test]
     fn a_loop_opens_by_its_agent_on_the_host_and_its_session_in_tmux() {
