@@ -28,11 +28,6 @@ fn afk_action(mode: Option<&str>) -> &'static str {
     }
 }
 
-/// "1 session", "3 sessions".
-fn count(n: usize, what: &str) -> String {
-    format!("{n} {what}{}", if n == 1 { "" } else { "s" })
-}
-
 impl Shell {
     /// This machine's loops that run now: known here, their session live.
     fn running_loops(&self) -> Vec<String> {
@@ -82,7 +77,7 @@ impl Shell {
         let exe = match own_binary() {
             Ok(exe) => exe,
             Err(error) => {
-                return crate::activity::publish(cx, crate::activity::Activity::failed(None, "restart tvty", error));
+                return crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("messages-restart-tvty-failed"), error));
             }
         };
         self.quitting = true;
@@ -97,7 +92,7 @@ impl Shell {
             }
             Err(error) => {
                 self.quitting = false;
-                crate::activity::publish(cx, crate::activity::Activity::failed(None, "restart tvty", format!("{}: {error}", exe.display())));
+                crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("messages-restart-tvty-failed"), format!("{}: {error}", exe.display())));
             }
         }
     }
@@ -225,7 +220,7 @@ impl Shell {
             // Said as a failure: it is one, and one's own notices may be off.
             crate::activity::publish(
                 cx,
-                crate::activity::Activity::failed(None, "stop when tvty quit", format!("{} ran on: the stop did not take", agents.join(", "))),
+                crate::activity::Activity::failed(None, &crate::t!("messages-quit-stop-failed"), crate::t!("messages-ran-on", agents = agents.join(", "))),
             );
         }
         if names.is_empty() {
@@ -286,10 +281,12 @@ impl Shell {
                 })
                 .await;
             let _ = this.update(cx, |shell, cx| {
-                let how = if as_they_were { "as they were" } else { "fresh" };
                 let activity = match failed.first() {
-                    None => crate::activity::Activity::done(None, format!("{} restarted {how}, resuming their conversation", count_of(count))),
-                    Some(error) => crate::activity::Activity::failed(None, "restart of the stopped sessions", error.clone()),
+                    None => crate::activity::Activity::done(
+                        None,
+                        crate::t!(if as_they_were { "messages-restarted-as-were" } else { "messages-restarted-fresh" }, count = count),
+                    ),
+                    Some(error) => crate::activity::Activity::failed(None, &crate::t!("messages-restart-failed"), error.clone()),
                 };
                 crate::activity::publish(cx, activity);
                 let _ = shell.refresh_now.unbounded_send(());
@@ -300,7 +297,7 @@ impl Shell {
 
     /// "Stopping…" over everything while the loops stop, before quitting.
     pub(super) fn quit_dialog(&self) -> Option<AnyElement> {
-        self.stopping_all.then(|| dialog(div().child("Stopping the Claude Code sessions, then quitting…")).into_any_element())
+        self.stopping_all.then(|| dialog(div().child(crate::t!("messages-stopping"))).into_any_element())
     }
 }
 
@@ -313,10 +310,6 @@ fn own_binary() -> Result<std::path::PathBuf, String> {
     if path.is_file() { Ok(path) } else { Err(format!("{} is gone", path.display())) }
 }
 
-/// "1 session", "3 sessions".
-fn count_of(n: usize) -> String {
-    count(n, "session")
-}
 
 /// A card over a dimmed window, which takes every click.
 pub(super) fn dialog(body: impl IntoElement) -> Stateful<Div> {

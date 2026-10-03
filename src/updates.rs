@@ -49,12 +49,11 @@ async fn latest_release(cx: &mut AsyncApp) {
         if !said_before && !announced(&latest) {
             remember(&latest);
             // A build from its checkout is not what a release replaces.
-            let how = if dev_build().is_some() {
-                "this one is a development build: update its checkout (the menu's Updates… says how)"
-            } else {
-                "the menu's Updates… installs it"
-            };
-            activity::publish(cx, Activity::news("tvty", Kind::Info, None, format!("Terminal Velocity {latest} is out (you run {running}): {how}")));
+            let how = crate::t!(if dev_build().is_some() { "messages-update-dev" } else { "messages-update-how" });
+            activity::publish(
+                cx,
+                Activity::news("tvty", Kind::Info, None, crate::t!("messages-update-out", latest = latest.clone(), running = running, how = how)),
+            );
         }
         cx.refresh_windows();
     });
@@ -71,7 +70,7 @@ async fn aiball_recent_enough(cx: &mut AsyncApp) {
                     "tvty",
                     Kind::Error,
                     None,
-                    format!("aiball {version} is older than Terminal Velocity needs ({}): the menu's Updates… updates it", tvty_updater::MIN_AIBALL),
+                    crate::t!("messages-aiball-old", version = version.clone(), needs = tvty_updater::MIN_AIBALL),
                 ),
             )
         });

@@ -78,20 +78,20 @@ impl Shell {
 
     pub(super) fn resume_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let question = self.resume_question.as_ref()?;
-        let who = question.start.agent.clone().unwrap_or_else(|| "its agent".into());
+        let who = question.start.agent.clone().unwrap_or_else(|| crate::t!("messages-its-agent"));
         let when = question
             .last
             .updated_at
             .as_deref()
             .and_then(crate::status::parse_time)
-            .map(|at| format!("{} ago", crate::status::ago(crate::status::now().saturating_sub(at))))
-            .unwrap_or_else(|| "some time ago".into());
+            .map(|at| crate::t!("messages-ago", time = crate::status::ago(crate::status::now().saturating_sub(at))))
+            .unwrap_or_else(|| crate::t!("messages-some-time-ago"));
         let said = question.last.first_prompt.clone().unwrap_or_default();
         let body = div()
             .flex()
             .flex_col()
             .gap_2()
-            .child(div().text_sm().text_color(p().muted).child(format!("The last one, {when}:")))
+            .child(div().text_sm().text_color(p().muted).child(crate::t!("messages-last-one", when = when)))
             .child(
                 div()
                     .named("resume-last")
@@ -102,26 +102,19 @@ impl Shell {
                     .border_color(p().border)
                     .bg(p().bg)
                     .text_sm()
-                    .child(if said.is_empty() { "(it says nothing yet)".to_string() } else { format!("“{said}”") }),
+                    .child(if said.is_empty() { crate::t!("messages-says-nothing") } else { crate::t!("messages-quoted", said = said) }),
             )
             .when(question.others > 0, |d| {
-                d.child(div().text_xs().text_color(p().muted).child(format!(
-                    "{} older one{} too: /resume in Claude Code picks among them.",
-                    question.others,
-                    if question.others == 1 { "" } else { "s" }
-                )))
+                d.child(div().text_xs().text_color(p().muted).child(crate::t!("messages-older", count = question.others)))
             });
         let answers = div()
             .flex()
             .gap_2()
-            .child(buttons::secondary("resume-new", "New conversation").on_click(cx.listener(|shell, _, _, cx| shell.answer_resume(false, cx))))
-            .child(buttons::primary("resume-last-go", "Resume the last conversation").on_click(cx.listener(|shell, _, _, cx| shell.answer_resume(true, cx))));
+            .child(buttons::secondary("resume-new", crate::t!("messages-new-conversation")).on_click(cx.listener(|shell, _, _, cx| shell.answer_resume(false, cx))))
+            .child(buttons::primary("resume-last-go", crate::t!("messages-resume-last")).on_click(cx.listener(|shell, _, _, cx| shell.answer_resume(true, cx))));
         Some(
-            crate::ui::sheet::Sheet::new("resume", format!("Start {who}"))
-                .summary(format!(
-                    "Claude Code already has conversations in {}, none of them a loop's: which one does {who} take up?",
-                    super::loopstabs::home_short(&question.start.cwd)
-                ))
+            crate::ui::sheet::Sheet::new("resume", crate::t!("messages-start", who = who.clone()))
+                .summary(crate::t!("messages-resume-question", cwd = super::loopstabs::home_short(&question.start.cwd), who = who))
                 .body(body)
                 .answers(answers)
                 .on_close(cx.listener(|shell, _, _, cx| {

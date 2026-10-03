@@ -308,7 +308,7 @@ pub fn stack(corner: Corner, cx: &App) -> Option<AnyElement> {
                         })),
                 )
                 .child(
-                    crate::ui::buttons::icon(SharedString::from(format!("notice-close-{id}")), "×", "dismiss")
+                    crate::ui::buttons::icon(SharedString::from(format!("notice-close-{id}")), "×", crate::t!("messages-dismiss"))
                         .on_click(move |_, _, cx| {
                             cx.stop_propagation();
                             dismiss(cx, id);

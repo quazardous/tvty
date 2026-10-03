@@ -151,7 +151,7 @@ impl Shell {
     fn tips_off(&mut self, cx: &mut Context<Self>) {
         self.tip = None;
         self.set_pref("tips.show", Value::Toggle(false), cx);
-        activity::publish(cx, Activity::news("tvty", Kind::Info, None, "Tips are off: Settings > Layout > Tips turns them back on"));
+        activity::publish(cx, Activity::news("tvty", Kind::Info, None, crate::t!("messages-tips-off")));
     }
 
     fn tips_again(&mut self, cx: &mut Context<Self>) {
@@ -159,7 +159,7 @@ impl Shell {
         if !self.applied.tips.show {
             self.set_pref("tips.show", Value::Toggle(true), cx);
         }
-        activity::publish(cx, Activity::news("tvty", Kind::Info, None, "Every tip will show again, one at a time"));
+        activity::publish(cx, Activity::news("tvty", Kind::Info, None, crate::t!("messages-tips-again")));
         cx.notify();
     }
 
@@ -183,8 +183,8 @@ impl Shell {
             })
             .collect();
         let title = match card.browsing {
-            Some(at) => format!("Tips · {} / {}", at + 1, tips::all().len()),
-            None => "Did you know?".to_string(),
+            Some(at) => crate::t!("messages-tips-browsing", at = at + 1, of = tips::all().len()),
+            None => crate::t!("messages-tip-title"),
         };
         // The tips' own colour (not the accent's blue, which says other things).
         let violet = crate::theme::tip();
@@ -192,16 +192,16 @@ impl Shell {
             .flex()
             .items_center()
             .child(div().flex_1().text_xs().font_weight(FontWeight::BOLD).text_color(violet).child(title))
-            .child(buttons::remove("tip-close", "✕", "Not now").px_1().on_click(cx.listener(|shell, _, _, cx| shell.tip_close(cx))));
+            .child(buttons::remove("tip-close", "✕", crate::t!("messages-not-now")).px_1().on_click(cx.listener(|shell, _, _, cx| shell.tip_close(cx))));
         let actions = match card.browsing {
             Some(_) => div()
                 .flex()
                 .items_center()
                 .gap_3()
-                .child(buttons::link("tip-back", "‹ Previous").on_click(cx.listener(|shell, _, _, cx| shell.tip_back(cx))))
-                .child(buttons::link("tip-next", "Next ›").on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
+                .child(buttons::link("tip-back", crate::t!("messages-previous")).on_click(cx.listener(|shell, _, _, cx| shell.tip_back(cx))))
+                .child(buttons::link("tip-next", crate::t!("messages-next")).on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
                 .child(div().flex_1())
-                .child(buttons::link("tips-again", "Show them all again").text_xs().on_click(cx.listener(|shell, _, _, cx| shell.tips_again(cx)))),
+                .child(buttons::link("tips-again", crate::t!("messages-show-all-again")).text_xs().on_click(cx.listener(|shell, _, _, cx| shell.tips_again(cx)))),
             None => div()
                 .flex()
                 .items_center()
@@ -223,13 +223,13 @@ impl Shell {
                         .font_weight(FontWeight::MEDIUM)
                         .hover(move |d| d.bg(violet.blend(gpui_kit::white().opacity(0.15))))
                         .active(move |d| d.bg(violet.opacity(0.8)))
-                        .child("Got it")
+                        .child(crate::t!("messages-got-it"))
                         .on_click(cx.listener(|shell, _, _, cx| shell.tip_got(cx))),
                 )
-                .child(buttons::link("tip-next", "Next tip").on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
+                .child(buttons::link("tip-next", crate::t!("messages-next-tip")).on_click(cx.listener(|shell, _, _, cx| shell.tip_next(cx))))
                 .child(div().flex_1())
                 .child(
-                    buttons::link("tips-off", "Turn tips off")
+                    buttons::link("tips-off", crate::t!("messages-turn-off"))
                         .text_xs()
                         .text_color(p().muted)
                         .on_click(cx.listener(|shell, _, _, cx| shell.tips_off(cx))),

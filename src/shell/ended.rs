@@ -64,7 +64,7 @@ impl Shell {
         cx.spawn(async move |_, cx| {
             let done = cx.background_executor().spawn(async move { crate::loops::others_to_copies(&aiball, &name, pid) }).await;
             if let Err(error) = done {
-                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, "make the other terminals copies", format!("{error:#}"))));
+                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("messages-copies-failed"), format!("{error:#}"))));
             }
         })
         .detach();
@@ -180,7 +180,7 @@ impl Shell {
         let name = ended.session.strip_prefix(crate::sessions::HOSTED_PREFIX).unwrap_or(&ended.session).to_string();
         let who = ended.agent.clone().unwrap_or_else(|| name.clone());
         let starting = self.starting.is_some();
-        let button = |id: &'static str, label: &'static str, key: &'static str, primary: bool| {
+        let button = |id: &'static str, label: String, key: &'static str, primary: bool| {
             buttons::chip(id, label)
                 .gap_2()
                 .px_3()
@@ -203,11 +203,7 @@ impl Shell {
                     .gap_1()
                     .text_lg()
                     .child(div().font_weight(FontWeight::BOLD).child(who))
-                    .child(div().text_color(p().muted).child(if ended.detached {
-                        "— detached by another client"
-                    } else {
-                        "— the session ended"
-                    })),
+                    .child(div().text_color(p().muted).child(crate::t!(if ended.detached { "messages-detached" } else { "messages-ended" }))),
             )
             .child(
                 div()
@@ -226,18 +222,18 @@ impl Shell {
                     .gap_3()
                     .when(ended.detached, |d| {
                         d.child(
-                            button("ended-reattach", "Attach again", "Enter", true)
+                            button("ended-reattach", crate::t!("messages-attach-again"), "Enter", true)
                                 .on_click(cx.listener(|shell, _, window, cx| shell.restart_ended(window, cx))),
                         )
                     })
                     .when(!ended.detached && ended.start.is_some(), |d| {
                         d.child(
-                            button("ended-restart", if starting { "Starting…" } else { "Restart" }, "Enter", true)
+                            button("ended-restart", crate::t!(if starting { "messages-starting" } else { "messages-restart" }), "Enter", true)
                                 .on_click(cx.listener(|shell, _, window, cx| shell.restart_ended(window, cx))),
                         )
                     })
                     .child(
-                        button("ended-close", "Close", "Esc", false)
+                        button("ended-close", crate::t!("messages-close"), "Esc", false)
                             .on_click(cx.listener(|shell, _, window, cx| shell.close_ended(window, cx))),
                     ),
             )

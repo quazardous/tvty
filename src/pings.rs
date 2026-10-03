@@ -43,22 +43,18 @@ pub fn missed(mut pings: Vec<PingInfo>, seen: Option<&str>) -> Vec<PingInfo> {
 pub fn missed_text(missed: &[PingInfo]) -> Option<String> {
     let newest = missed.last()?;
     let what = if newest.title.is_empty() { newest.what.clone() } else { format!("{} — {}", newest.title, newest.what) };
-    Some(match missed.len() {
-        1 => format!("{what} · while tvty was closed"),
-        2 => format!("{what} · and 1 more while tvty was closed"),
-        n => format!("{what} · and {} more while tvty was closed", n - 1),
-    })
+    Some(crate::t!("messages-missed", what = what, more = missed.len() - 1))
 }
 
 /// What pinged, in a few words.
 pub fn what_it_is(kind: &str, decision: Option<String>) -> String {
     match (kind, decision.as_deref()) {
-        (_, Some("plan")) => "proposes a plan".into(),
-        (_, Some("resolution")) => "proposes to close".into(),
-        (_, Some("wontfix")) => "proposes to close without a fix".into(),
-        (_, Some("escalation")) => "escalates".into(),
-        ("ticket_created", _) => "a new ticket".into(),
-        _ => "a new comment".into(),
+        (_, Some("plan")) => crate::t!("messages-proposes-plan"),
+        (_, Some("resolution")) => crate::t!("messages-proposes-close"),
+        (_, Some("wontfix")) => crate::t!("messages-proposes-wontfix"),
+        (_, Some("escalation")) => crate::t!("messages-escalates"),
+        ("ticket_created", _) => crate::t!("messages-new-ticket"),
+        _ => crate::t!("messages-new-comment"),
     }
 }
 

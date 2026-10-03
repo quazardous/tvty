@@ -530,7 +530,7 @@ impl Live {
             from: Some(text("by_agent")).filter(|s| !s.is_empty()).unwrap_or_else(|| "aiball".into()),
             message: message.get("id").and_then(Value::as_u64),
             excerpt: crate::thread::excerpt(message.get("body").and_then(Value::as_str), EXCERPT),
-            what: if pending { "a new ticket to moderate".into() } else { crate::pings::what_it_is(&kind, decision.clone()) },
+            what: if pending { crate::t!("messages-new-ticket-moderate") } else { crate::pings::what_it_is(&kind, decision.clone()) },
             urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
             pending,
             proposal: matches!(decision.as_deref(), Some("plan" | "resolution" | "wontfix" | "escalation")),
