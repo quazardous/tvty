@@ -208,7 +208,7 @@ impl TicketPanel {
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
         let reply = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("Reply… (ctrl+enter sends)")
+                .placeholder(crate::t!("tickets-reply-placeholder"))
                 .auto_grow(2, 8)
         });
         // Reject waits for a reason: redraw as the reason is typed. (Ctrl+Enter
@@ -335,7 +335,7 @@ impl TicketPanel {
 
     fn edit_comment_save(&mut self, comment: u64, window: &mut Window, cx: &mut Context<Self>) {
         let body = self.edit_comment.read(cx).value().to_string();
-        self.on_comment("comment edited", move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
+        self.on_comment(&crate::t!("tickets-did-comment-edited"), move |aiball| aiball.edit(comment, json!({ "body": body })), window, cx);
     }
 
     /// What the panel shows, said for the debug control: its project and
@@ -482,24 +482,24 @@ impl TicketPanel {
                 self.move_to = value.filter(|v| Some(v) != self.project().as_ref());
                 cx.notify();
             }
-            (Editing::Tags, Some(name)) => self.change(format!("tagged {name}"), move |aiball, ticket| aiball.add_tag(ticket, &name), window, cx),
+            (Editing::Tags, Some(name)) => self.change(crate::t!("tickets-did-tagged", name = name.clone()), move |aiball, ticket| aiball.add_tag(ticket, &name), window, cx),
             (Editing::Milestone, Some(id)) => {
                 let id = id.parse::<u64>().ok();
-                self.change("milestone set", move |aiball, ticket| aiball.set_milestone(ticket, id), window, cx)
+                self.change(crate::t!("tickets-did-milestone-set"), move |aiball, ticket| aiball.set_milestone(ticket, id), window, cx)
             }
-            (Editing::Milestone, None) => self.change("milestone removed", |aiball, ticket| aiball.set_milestone(ticket, None), window, cx),
-            (Editing::Owner, Some(name)) => self.change(format!("reporter now {name}"), move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx),
+            (Editing::Milestone, None) => self.change(crate::t!("tickets-did-milestone-removed"), |aiball, ticket| aiball.set_milestone(ticket, None), window, cx),
+            (Editing::Owner, Some(name)) => self.change(crate::t!("tickets-did-reporter", name = name.clone()), move |aiball, ticket| aiball.set_owner(ticket, &name), window, cx),
             (Editing::Assignee, Some(name)) => {
-                self.change(format!("assigned to {name}"), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
+                self.change(crate::t!("tickets-did-assigned", name = name.clone()), move |aiball, ticket| aiball.assign(ticket, Some(&name)), window, cx)
             }
-            (Editing::Assignee, None) => self.change("unassigned", |aiball, ticket| aiball.assign(ticket, None), window, cx),
+            (Editing::Assignee, None) => self.change(crate::t!("tickets-did-unassigned"), |aiball, ticket| aiball.assign(ticket, None), window, cx),
             (Editing::Subscribers, Some(name)) => {
-                self.change(format!("{name} now follows it"), move |aiball, ticket| aiball.subscribe(ticket, &name), window, cx)
+                self.change(crate::t!("tickets-did-follows", name = name.clone()), move |aiball, ticket| aiball.subscribe(ticket, &name), window, cx)
             }
-            (Editing::Intent, Some(v)) => self.change(format!("intent {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
-            (Editing::Priority, Some(v)) => self.change(format!("priority {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
-            (Editing::Level, Some(v)) => self.change(format!("level {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "level": v })), window, cx),
-            (Editing::Scope, Some(v)) => self.change(format!("scope {v}"), move |aiball, ticket| aiball.edit(ticket, json!({ "scope": v })), window, cx),
+            (Editing::Intent, Some(v)) => self.change(crate::t!("tickets-did-intent", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
+            (Editing::Priority, Some(v)) => self.change(crate::t!("tickets-did-priority", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
+            (Editing::Level, Some(v)) => self.change(crate::t!("tickets-did-level", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "level": v })), window, cx),
+            (Editing::Scope, Some(v)) => self.change(crate::t!("tickets-did-scope", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "scope": v })), window, cx),
             _ => {}
         }
     }
@@ -508,19 +508,20 @@ impl TicketPanel {
     fn field_picker(&self, editing: Editing) -> Div {
         let Some((_, state)) = self.field_combos.iter().find(|(e, _)| *e == editing) else { return div() };
         let (placeholder, search) = match editing {
-            Editing::Project => ("a project", "a project…"),
-            Editing::Tags => ("add a tag", "a tag…"),
-            Editing::Milestone => ("none", "a milestone…"),
-            Editing::Owner => ("the reporter", "an agent, or you…"),
-            Editing::Subscribers => ("add one", "an agent, or you…"),
-            Editing::Intent => ("intent", "an intent…"),
-            Editing::Priority => ("priority", "a priority…"),
-            Editing::Level => ("level", "a level…"),
-            Editing::Scope => ("scope", "a scope…"),
-            _ => ("nobody", "an agent…"),
+            Editing::Project => ("tickets-pick-project", "tickets-pick-project-search"),
+            Editing::Tags => ("tickets-pick-tag", "tickets-pick-tag-search"),
+            Editing::Milestone => ("tickets-pick-milestone", "tickets-pick-milestone-search"),
+            Editing::Owner => ("tickets-pick-reporter", "tickets-pick-agent-or-you"),
+            Editing::Subscribers => ("tickets-pick-follower", "tickets-pick-agent-or-you"),
+            Editing::Intent => ("tickets-field-intent", "tickets-pick-intent-search"),
+            Editing::Priority => ("tickets-field-priority", "tickets-pick-priority-search"),
+            Editing::Level => ("tickets-field-level", "tickets-pick-level-search"),
+            Editing::Scope => ("tickets-field-scope", "tickets-pick-scope-search"),
+            _ => ("tickets-pick-nobody", "tickets-pick-agent-search"),
         };
+        let (placeholder, search) = (crate::t!(placeholder), crate::t!(search));
         let id = format!("field-{}", format!("{editing:?}").to_lowercase());
-        fields::picker(state, id, placeholder, search, matches!(editing, Editing::Milestone | Editing::Assignee))
+        fields::picker(state, id, &placeholder, &search, matches!(editing, Editing::Milestone | Editing::Assignee))
     }
 
     /// Each field's dropdown told its choices and the one chosen, when
@@ -588,7 +589,7 @@ impl TicketPanel {
             .gap_2()
             .max_h(px(560.))
             .overflow_y_scroll()
-            .child(div().saying("text-editing", format!("Editing #{id}")).text_sm().text_color(p().muted).child(format!("Editing #{id}")))
+            .child(div().saying("text-editing", crate::t!("tickets-editing", id = id)).text_sm().text_color(p().muted).child(crate::t!("tickets-editing", id = id)))
             .child(self.edit_text.clone())
             .when_some(self.text_error.clone(), |d, error| d.child(div().text_sm().text_color(p().danger).child(error)))
             .child(
@@ -596,10 +597,10 @@ impl TicketPanel {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter saves · esc puts it back"))
-                    .child(buttons::secondary("text-cancel", "Cancel").on_click(cx.listener(|panel, _, window, cx| panel.edit_text(false, window, cx))))
+                    .child(div().flex_1().text_xs().text_color(p().muted).child(crate::t!("tickets-edit-keys")))
+                    .child(buttons::secondary("text-cancel", crate::t!("tickets-cancel")).on_click(cx.listener(|panel, _, window, cx| panel.edit_text(false, window, cx))))
                     .child(
-                        buttons::primary("text-save", "Save")
+                        buttons::primary("text-save", crate::t!("tickets-save"))
                             .loading(busy)
                             .disabled(busy)
                             .on_click(cx.listener(|panel, _, window, cx| panel.save_text(window, cx))),
@@ -624,14 +625,14 @@ impl TicketPanel {
         let title = self.edit_text.read(cx).title(cx).trim().to_string();
         let body = self.edit_text.read(cx).body(cx);
         if title.is_empty() {
-            self.text_error = Some("A title first.".into());
+            self.text_error = Some(crate::t!("tickets-title-first"));
             self.edit_text.update(cx, |text, cx| text.focus_title(window, cx));
             cx.notify();
             return;
         }
         let Some(ticket) = self.detail.as_ref().map(|d| d.ticket) else { return };
         self.gesture(
-            "title and body edited".into(),
+            crate::t!("tickets-did-edited"),
             String::new(),
             move |aiball| aiball.edit(ticket, json!({ "title": title, "body": body })),
             |panel, _, _| panel.editing_text = false,
@@ -644,7 +645,7 @@ impl TicketPanel {
         let text = self.relation_target.read(cx).value().to_string();
         let Ok(target) = text.trim().trim_start_matches(['#', 'B', '.']).parse::<u64>() else { return };
         self.relation_target.update(cx, |input, cx| input.set_value("", window, cx));
-        self.change(format!("related to #{target} ({kind})"), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
+        self.change(crate::t!("tickets-did-related", target = target, kind = kind.replace('_', " ")), move |aiball, ticket| aiball.relate(ticket, target, kind), window, cx);
     }
 
     pub fn set_pinned(&mut self, pinned: bool, cx: &mut Context<Self>) {
@@ -897,7 +898,7 @@ impl TicketPanel {
                             crate::bus::emit(cx, crate::bus::Signal::BoardChanged);
                             if !what.is_empty() {
                                 let said = match title {
-                                    Some(title) => format!("{title} — {what}"),
+                                    Some(title) => crate::t!("tickets-did-on", title = title, what = what),
                                     None => what,
                                 };
                                 crate::activity::publish(cx, crate::activity::Activity::done(about, said).quoting(quote));
@@ -931,9 +932,9 @@ impl TicketPanel {
         let body = self.reply.read(cx).value().trim().to_string();
         // What it says: the gesture, and the reply that carries its why.
         let what = match (what.is_empty(), body.is_empty()) {
-            (true, _) => "reply posted".to_string(),
+            (true, _) => crate::t!("tickets-did-reply"),
             (false, true) => what.to_string(),
-            (false, false) => format!("{what}, with a reply"),
+            (false, false) => crate::t!("tickets-did-with-reply", what = what),
         };
         let Some(detail) = self.detail.as_ref() else {
             return;
@@ -984,11 +985,11 @@ impl TicketPanel {
             let at = std::time::SystemTime::now() + std::time::Duration::from_secs(h * 3600);
             crate::status::format_time(at)
         });
-        self.act(if until.is_some() { "snoozed" } else { "woken" }, move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
+        self.act(&crate::t!(if until.is_some() { "tickets-did-snoozed" } else { "tickets-did-woken" }), move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
     }
 
     fn set_priority(&mut self, priority: &'static str, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(&format!("priority {priority}"), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
+        self.act(&crate::t!("tickets-did-priority", value = crate::t!(&format!("tickets-priority-{priority}"))), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
     }
 
     /// Assigns the open ticket to `who`, or releases it; the menu closes.
@@ -996,7 +997,7 @@ impl TicketPanel {
         if let Some(detail) = self.detail.as_mut() {
             detail.menu = None;
         }
-        let said = who.as_ref().map_or("unassigned".to_string(), |w| format!("assigned to {w}"));
+        let said = who.as_ref().map_or(crate::t!("tickets-did-unassigned"), |w| crate::t!("tickets-did-assigned", name = w.clone()));
         self.change(said, move |aiball, ticket| aiball.assign(ticket, who.as_deref()), window, cx);
     }
 
@@ -1068,15 +1069,15 @@ impl TicketPanel {
     }
 
     fn decide(&mut self, message: u64, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(if accept { "decision accepted" } else { "decision rejected" }, move |aiball, _, _| aiball.decide(message, accept), window, cx);
+        self.act(&crate::t!(if accept { "tickets-did-accepted" } else { "tickets-did-rejected" }), move |aiball, _, _| aiball.decide(message, accept), window, cx);
     }
 
     fn moderate(&mut self, message: u64, approve: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(if approve { "approved" } else { "rejected in moderation" }, move |aiball, _, _| aiball.moderate(message, approve), window, cx);
+        self.act(&crate::t!(if approve { "tickets-did-approved" } else { "tickets-did-rejected-moderation" }), move |aiball, _, _| aiball.moderate(message, approve), window, cx);
     }
 
     fn set_closed(&mut self, closed: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(if closed { "closed" } else { "reopened" }, move |aiball, project, ticket| aiball.set_closed(project, ticket, closed), window, cx);
+        self.act(&crate::t!(if closed { "tickets-did-closed" } else { "tickets-did-reopened" }), move |aiball, project, ticket| aiball.set_closed(project, ticket, closed), window, cx);
     }
 
     fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -1097,7 +1098,7 @@ impl TicketPanel {
 
     fn list(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.scope.is_none() {
-            return hint("No aiball project on this terminal.").into_any_element();
+            return hint(crate::t!("tickets-no-project")).into_any_element();
         }
         let user = self.aiball.user.as_str();
         // Bands first, from "it is yours" to "it runs by itself"; the most
@@ -1118,7 +1119,7 @@ impl TicketPanel {
         // whole rather than letting them overlap.
         let mut list = crate::accordion::list("ticket-list").pb_1();
         if self.tickets.is_empty() {
-            return list.child(hint("No open ticket.")).into_any_element();
+            return list.child(hint(crate::t!("tickets-none-open"))).into_any_element();
         }
         let mut at = 0;
         let mut above: Option<SharedString> = None;
@@ -1178,8 +1179,11 @@ impl TicketPanel {
         let group: SharedString = format!("ticket-row-{id}").into();
         let sunk_mark = sunk.as_ref().map(|(until, left)| {
             let agent = self.sunk_for.as_ref().map(|(a, _)| a.clone()).unwrap_or_default();
-            div().flex().flex_none().items_center().gap_1().child(left.clone()).child(icons::icon(Icon::Sunk, p().muted, 13.)).named(("sunk", id)).tip(format!(
-                "sunk in {agent}'s backlog until {until} (in {left}): its loop won't bring it up before, unless the thread moves"
+            div().flex().flex_none().items_center().gap_1().child(left.clone()).child(icons::icon(Icon::Sunk, p().muted, 13.)).named(("sunk", id)).tip(crate::t!(
+                "tickets-sunk",
+                agent = agent,
+                until = until.clone(),
+                left = left.clone()
             ))
         });
         let lit = crate::notify::lit(cx, id);
@@ -1187,7 +1191,7 @@ impl TicketPanel {
         let glyph_colour = |glyph: Glyph| glyph_colour(glyph, yours);
         let speaker = ticket.last_speaker.as_deref().map(|s| {
             if s == self.aiball.user {
-                "you".to_string()
+                crate::t!("tickets-you")
             } else {
                 s.to_string()
             }
@@ -1275,7 +1279,7 @@ impl TicketPanel {
         let Some(thread) = &detail.thread else {
             return match &detail.error {
                 Some(error) => hint(error.clone()).into_any_element(),
-                None => hint("Loading…").into_any_element(),
+                None => hint(crate::t!("tickets-loading")).into_any_element(),
             };
         };
         let ticket = &thread.ticket;
@@ -1309,10 +1313,10 @@ impl TicketPanel {
             // Full screen, the title and body are edited where they read.
             .when(self.full, |d| {
                 d.child(
-                    buttons::link("text-edit", "✎ edit")
+                    buttons::link("text-edit", crate::t!("tickets-edit"))
                         .text_xs()
                         .font_weight(FontWeight::NORMAL)
-                        .tip("Edit the title and the body")
+                        .tip(crate::t!("tickets-edit-tip"))
                         .on_click(cx.listener(|panel, _, window, cx| panel.edit_text(true, window, cx))),
                 )
             });
@@ -1320,11 +1324,11 @@ impl TicketPanel {
         // screen they end the title's line; in the panel they sit on the
         // line of the way back, so that the title keeps its whole width.
         let tools = [
-            buttons::link("thread-order", if self.newest() { "⇅ newest first" } else { "⇅ newest last" })
+            buttons::link("thread-order", crate::t!(if self.newest() { "tickets-newest-first" } else { "tickets-newest-last" }))
                 .text_xs()
                 .font_weight(FontWeight::NORMAL)
                 .on_click(cx.listener(|panel, _, _, cx| panel.flip_order(cx))),
-            buttons::link("thread-full", if self.full { "✕  Esc" } else { "⤢ more" })
+            buttons::link("thread-full", crate::t!(if self.full { "tickets-close-full" } else { "tickets-more" }))
                 .text_xs()
                 .font_weight(FontWeight::NORMAL)
                 .on_click(cx.listener(|panel, _, _, cx| {
@@ -1352,7 +1356,7 @@ impl TicketPanel {
         let mut chips: Vec<AnyElement> = Vec::new();
         if let Some(holder) = ticket.holder() {
             let hot = row.is_some_and(|r| r.hot);
-            let text = format!("held by {holder}");
+            let text = crate::t!("tickets-held-by", holder = holder);
             chips.push(if hot {
                 icons::labelled(Icon::Hot, p().warning, 12., text).into_any_element()
             } else {
@@ -1362,19 +1366,20 @@ impl TicketPanel {
         {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
+            let said = format!("{} ▾", crate::t!(&format!("tickets-priority-{priority}")));
             let label = match icons::priority(&priority) {
-                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., format!("{priority} ▾")),
-                None => div().child(format!("{priority} ▾")),
+                Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., said),
+                None => div().child(said),
             };
             chips.push(
                 buttons::chip("priority-chip", label)
-                    .tip("the priority: a click changes it")
+                    .tip(crate::t!("tickets-priority-tip"))
                     .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Priority, cx)))
                     .into_any_element(),
             );
         }
         if let Some(until) = ticket.postponed_until.as_deref() {
-            chips.push(div().child(format!("snoozed until {}", until.get(..16).unwrap_or(until).replace('T', " "))).into_any_element());
+            chips.push(div().child(crate::t!("tickets-snoozed-until", until = until.get(..16).unwrap_or(until).replace('T', " "))).into_any_element());
         }
         if let Some(critical) = &ticket.critical {
             chips.push(icons::pill(Icon::Critical, critical.said(), p().danger).into_any_element());
@@ -1382,24 +1387,24 @@ impl TicketPanel {
         if let Some(usage) = &ticket.token_usage {
             let total = usage.tokens_in + usage.tokens_out + usage.cache_w;
             if total > 0 {
-                chips.push(div().child(format!("{} tok", count(total))).into_any_element());
+                chips.push(div().child(crate::t!("tickets-tokens", count = count(total))).into_any_element());
             }
         }
         for relation in &ticket.relations {
             // aiball gives a relation as seen from this ticket, a reciprocal
             // one's kind already turned round.
-            let verb = match relation.kind.as_str() {
-                "depends_on" => "depends on",
-                "blocks" => "blocks",
+            let verb = crate::t!(match relation.kind.as_str() {
+                "depends_on" => "tickets-rel-depends",
+                "blocks" => "tickets-rel-blocks",
                 _ => continue,
-            };
+            });
             let target = relation.target_ticket_id;
             let glyph = self
                 .tickets
                 .iter()
                 .find(|t| t.id == target)
                 .and_then(|row| rowstate::of(row, &user).glyph);
-            let stage = relation.target_stage.clone().filter(|_| glyph.is_none());
+            let stage = relation.target_stage.as_deref().filter(|_| glyph.is_none()).map(stage_said);
             chips.push(
                 div()
                     .flex()
@@ -1416,7 +1421,7 @@ impl TicketPanel {
         // the thread's. Full screen it heads the talk, whole.
         let summary_open = self.full || self.summary_open;
         let summary = read.summary.clone().map(|(text, by)| {
-            let label = div().text_xs().text_color(p().muted).child(format!("Where it stands · {}", who(&by, &user)));
+            let label = div().text_xs().text_color(p().muted).child(crate::t!("tickets-where-it-stands", who = who(&by, &user)));
             let label = if self.full {
                 label.into_any_element()
             } else {
@@ -1455,11 +1460,11 @@ impl TicketPanel {
         // Under the priority's chip, where its ▾ points.
         let priority_menu = (detail.menu == Some(Menu::Priority)).then(|| {
             let current = ticket.priority.clone().unwrap_or_else(|| "normal".into());
-            let mut row = div().flex().flex_wrap().items_center().gap_1().child(div().text_xs().text_color(p().muted).child("Priority"));
+            let mut row = div().flex().flex_wrap().items_center().gap_1().child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-priority-label")));
             for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
                 let on = current == priority;
                 row = row.child(
-                    buttons::chip(id, priority)
+                    buttons::chip(id, crate::t!(&format!("tickets-priority-{priority}")))
                         .py_0p5()
                         .text_xs()
                         .chosen(on)
@@ -1503,7 +1508,7 @@ impl TicketPanel {
                         .flex()
                         .items_center()
                         .gap_2()
-                        .child(buttons::link("back", "← Tickets").text_sm().on_click(cx.listener(|panel, _, _, cx| {
+                        .child(buttons::link("back", crate::t!("tickets-back")).text_sm().on_click(cx.listener(|panel, _, _, cx| {
                             panel.detail = None;
                             cx.notify();
                         })))
@@ -1563,12 +1568,12 @@ impl TicketPanel {
         let unmoderated = ticket.status == "pending";
         let decision = read.active.clone().filter(|a| a.by != user).map(|active| {
             let message = active.message;
-            let accept = match active.kind.as_str() {
-                "resolution" => "Accept → close",
-                "wontfix" => "Accept → close, no fix",
-                "escalation" => "Done → accept",
-                _ => "Accept → go",
-            };
+            let accept = crate::t!(match active.kind.as_str() {
+                "resolution" => "tickets-accept-close",
+                "wontfix" => "tickets-accept-wontfix",
+                "escalation" => "tickets-accept-escalation",
+                _ => "tickets-accept-plan",
+            });
             div()
                 .flex()
                 .flex_col()
@@ -1586,18 +1591,14 @@ impl TicketPanel {
                                     icons::of_kind(&active.kind),
                                     p().warning,
                                     16.,
-                                    {
-                                        let noun = reading::kind_noun(&active.kind);
-                                        let article = if noun.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
-                                        format!("{} proposes {article} {noun}", active.by)
-                                    },
+                                    crate::t!(&format!("tickets-proposes-{}", reading::kind_key(&active.kind)), who = active.by.clone()),
                                 )),
                         )
                         .when(unmoderated, |d| {
-                            d.child(div().flex_none().text_xs().text_color(p().muted).child("decided once the ticket is approved"))
+                            d.child(div().flex_none().text_xs().text_color(p().muted).child(crate::t!("tickets-decided-once-approved")))
                         })
                         .when(!unmoderated, |d| d.child(
-                            buttons::answer("reject", "Reject")
+                            buttons::answer("reject", crate::t!("tickets-reject"))
                                 .danger()
                                 .disabled(detail.busy || !typed)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, window, cx))),
@@ -1610,7 +1611,7 @@ impl TicketPanel {
                         )),
                 )
                 .when(!typed && !unmoderated, |d| {
-                    d.child(div().text_xs().text_color(p().muted).child("To reject, say why below first."))
+                    d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-reject-say-why")))
                 })
         });
         let moderation = unmoderated.then(|| {
@@ -1619,15 +1620,15 @@ impl TicketPanel {
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(div().flex_1().child("This ticket waits for moderation"))
+                .child(div().flex_1().child(crate::t!("tickets-waits-moderation")))
                 .child(
-                    buttons::answer("moderate-reject", "Reject")
+                    buttons::answer("moderate-reject", crate::t!("tickets-reject"))
                         .danger()
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    buttons::answer("moderate-approve", "Approve")
+                    buttons::answer("moderate-approve", crate::t!("tickets-approve"))
                         .success()
                         .disabled(detail.busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
@@ -1641,23 +1642,23 @@ impl TicketPanel {
                 panel.complete_mention(name, window, cx)
             })
         });
-        let chip = |id: &'static str, label: &'static str| buttons::chip(id, label).py_0p5().text_xs();
+        let chip = |id: &'static str, label: String| buttons::chip(id, label).py_0p5().text_xs();
         // The priority's choices open under its chip, in the head.
         let menu = detail.menu.filter(|menu| *menu != Menu::Priority).map(|menu| {
             let row = div().flex().flex_wrap().items_center().gap_1();
             match menu {
                 Menu::Priority => row,
                 Menu::Snooze => row
-                    .child(div().text_xs().text_color(p().muted).child("Snooze for"))
-                    .child(chip("snooze-1h", "1 hour").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
-                    .child(chip("snooze-1d", "a day").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
-                    .child(chip("snooze-1w", "a week").on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
+                    .child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-snooze-for")))
+                    .child(chip("snooze-1h", crate::t!("tickets-snooze-hour")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
+                    .child(chip("snooze-1d", crate::t!("tickets-snooze-day")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
+                    .child(chip("snooze-1w", crate::t!("tickets-snooze-week")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
                 Menu::Assignee => {
-                    let mut row = row.child(div().text_xs().text_color(p().muted).child("Assign to"));
+                    let mut row = row.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-assign-to")));
                     let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
                     match own {
                         None => row = row.child(div().text_xs().text_color(p().muted).child("…")),
-                        Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child("the project has no agent")),
+                        Some(own) if own.is_empty() => row = row.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-no-agent"))),
                         Some(own) => {
                             for agent in own {
                                 // Marked: its assignee. Whoever only holds it (a
@@ -1670,7 +1671,7 @@ impl TicketPanel {
                                         .py_0p5()
                                         .text_xs()
                                         .chosen(on)
-                                        .when(claims, |d| d.tip(format!("{agent} holds it by a claim: a click assigns it to them")))
+                                        .when(claims, |d| d.tip(crate::t!("tickets-claim-assigns", agent = agent.clone())))
                                         .when(!on, |d| {
                                             d.on_click(cx.listener(move |panel, _, window, cx| {
                                                 let name = name.clone();
@@ -1686,7 +1687,7 @@ impl TicketPanel {
                         row = row.child(
                             buttons::chip("assign-release", icons::icon(Icon::Unassign, p().muted, 14.))
                                 .py_0p5()
-                                .tip(format!("unassign: takes it back from {holder}; nobody holds it, it waits for whoever takes it"))
+                                .tip(crate::t!("tickets-unassign-tip", holder = holder))
                                 .on_click(cx.listener(|panel, _, window, cx| panel.assign_to(None, window, cx))),
                         );
                     }
@@ -1736,7 +1737,7 @@ impl TicketPanel {
                     .border_1()
                     .border_color(p().border)
                     .child(if text.trim().is_empty() {
-                        div().text_color(p().muted).child("Nothing to preview yet.")
+                        div().text_color(p().muted).child(crate::t!("tickets-nothing-to-preview"))
                     } else {
                         self.rich_text("reply-preview".into(), &crate::images::preview(&text, &self.images, false), cx)
                     })
@@ -1755,11 +1756,7 @@ impl TicketPanel {
             })
             .children(mentions)
             .when(!detail.answers.is_empty(), |d| {
-                d.child(div().text_xs().text_color(p().muted).child(format!(
-                    "Sending answers {} question{}.",
-                    detail.answers.len(),
-                    if detail.answers.len() > 1 { "s" } else { "" }
-                )))
+                d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-sending-answers", count = detail.answers.len())))
             })
             .child(
                 div()
@@ -1767,25 +1764,25 @@ impl TicketPanel {
                     .items_center()
                     .gap_2()
                     .child(
-                        buttons::secondary("close", if closed { "Reopen" } else { "Close" })
+                        buttons::secondary("close", crate::t!(if closed { "tickets-reopen" } else { "tickets-close" }))
                             .disabled(detail.busy)
                             .on_click(cx.listener(move |panel, _, window, cx| panel.set_closed(!closed, window, cx))),
                     )
                     .when(!closed, |d| {
                         d.child(if snoozed {
-                            buttons::secondary("wake", "Wake")
+                            buttons::secondary("wake", crate::t!("tickets-wake"))
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, window, cx| panel.snooze(None, window, cx)))
                         } else {
-                            buttons::secondary("snooze", "Snooze ▾")
+                            buttons::secondary("snooze", crate::t!("tickets-snooze"))
                                 .disabled(detail.busy)
                                 .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Snooze, cx)))
                         })
                         // Who it is assigned to, as Snooze: the project's agents below.
                         .child(
                             buttons::secondary("assign", match ticket.assignee.as_deref() {
-                                Some(assignee) => format!("→ {assignee} ▾"),
-                                None => "Assign ▾".to_string(),
+                                Some(assignee) => crate::t!("tickets-assigned-menu", who = assignee),
+                                None => crate::t!("tickets-assign"),
                             })
                             .disabled(detail.busy)
                             .on_click(cx.listener(|panel, _, _, cx| {
@@ -1796,7 +1793,7 @@ impl TicketPanel {
                     })
                     .child(div().flex_1())
                     .child(
-                        buttons::chip("quiet", "without notifying")
+                        buttons::chip("quiet", crate::t!("tickets-without-notifying"))
                             .py_0p5()
                             .text_xs()
                             .when(!quiet, |d| d.text_color(p().muted))
@@ -1811,7 +1808,7 @@ impl TicketPanel {
                     .child(
                         crate::tips::target(
                             "panel.reply",
-                            buttons::primary("send", "Reply")
+                            buttons::primary("send", crate::t!("tickets-reply"))
                                 .loading(detail.busy)
                                 .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
                         )
@@ -1865,17 +1862,17 @@ impl TicketPanel {
         let count = said.last().map(|last| {
             let mine = last.by_agent == user;
             let colour = if mine { p().muted.opacity(0.55) } else { p().text };
-            let who = if mine { "you".to_string() } else { last.by_agent.clone() };
+            let who = if mine { crate::t!("tickets-you") } else { last.by_agent.clone() };
             icons::labelled(
                 if mine { Icon::CommentsMine } else { Icon::Comments },
                 colour,
                 13.,
-                format!("{} comment{} · {who} spoke last", said.len(), if said.len() == 1 { "" } else { "s" }),
+                crate::t!("tickets-comments-spoke", count = said.len(), who = who),
             )
             .text_xs()
             .text_color(colour)
         });
-        let fold = buttons::link("fold-all", if self.full_folded { "unfold all" } else { "fold before the summary" })
+        let fold = buttons::link("fold-all", crate::t!(if self.full_folded { "tickets-unfold-all" } else { "tickets-fold-before-summary" }))
             .text_xs()
             .on_click(cx.listener(|panel, _, _, cx| {
                 panel.full_folded = !panel.full_folded;
@@ -1949,9 +1946,9 @@ impl TicketPanel {
     fn invariants(&self, ticket: &TicketHeader, turn: Option<Div>, chips: Div, user: &str, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let editing = self.editing;
         let busy = self.detail.as_ref().is_some_and(|d| d.busy);
-        let label = |text: &'static str| div().w(px(96.)).flex_none().text_color(p().muted).child(text);
+        let label = |text: String| div().w(px(96.)).flex_none().text_color(p().muted).child(text);
         // A row: a click opens its choices, when it has some.
-        let row = |id: &'static str, text: &'static str, value: String, edit: Option<Editing>, cx: &mut Context<Self>| {
+        let row = |id: &'static str, text: String, value: String, edit: Option<Editing>, cx: &mut Context<Self>| {
             let open = edit.is_some() && edit == editing;
             div()
                 .named(id)
@@ -1982,7 +1979,7 @@ impl TicketPanel {
                 }))
         };
         let choices = || div().flex().flex_wrap().gap_1().pl(px(100.)).pb_1();
-        let group = |title: &'static str| {
+        let group = |title: String| {
             div()
                 .pt_3()
                 .pb_1()
@@ -1993,10 +1990,10 @@ impl TicketPanel {
         };
         let date = |when: &str| when.get(..16).map(|w| w.replace('T', " ")).unwrap_or_else(|| when.to_string());
         let lifecycle = match (ticket.closed, ticket.resolved) {
-            (true, true) => "closed, resolved".to_string(),
-            (true, false) => "closed".to_string(),
-            (false, _) if ticket.status == "pending" => "waits for moderation".to_string(),
-            (false, _) => "open".to_string(),
+            (true, true) => crate::t!("tickets-lifecycle-closed-resolved"),
+            (true, false) => crate::t!("tickets-lifecycle-closed"),
+            (false, _) if ticket.status == "pending" => crate::t!("tickets-lifecycle-moderation"),
+            (false, _) => crate::t!("tickets-lifecycle-open"),
         };
 
         let mut col = div()
@@ -2006,11 +2003,11 @@ impl TicketPanel {
             // Room for the scrollbar.
             .pr_3()
             .text_sm()
-            .child(group("State"))
+            .child(group(crate::t!("tickets-group-state")))
             .children(turn)
             .child(div().pt_1().child(chips))
-            .child(row("inv-lifecycle", "lifecycle", lifecycle, None, cx))
-            .children(ticket.postponed_until.as_deref().map(|until| row("inv-snoozed", "snoozed", format!("until {}", date(until)), None, cx)));
+            .child(row("inv-lifecycle", crate::t!("tickets-lifecycle"), lifecycle, None, cx))
+            .children(ticket.postponed_until.as_deref().map(|until| row("inv-snoozed", crate::t!("tickets-snoozed"), crate::t!("tickets-until", date = date(until)), None, cx)));
 
         // ── Fields: the new ticket's widgets, each chosen at once ──
         use fields::field;
@@ -2022,45 +2019,44 @@ impl TicketPanel {
                     let name = tag.clone();
                     move |panel, _, window, cx| {
                         let name = name.clone();
-                        panel.change(format!("tag {name} removed"), move |aiball, ticket| aiball.remove_tag(ticket, &name), window, cx)
+                        panel.change(crate::t!("tickets-did-tag-removed", name = name.clone()), move |aiball, ticket| aiball.remove_tag(ticket, &name), window, cx)
                     }
                 }));
                 fields::tag(format!("tag-on-{tag}"), &tag, drop)
             })
             .collect();
         col = col
-            .child(group("Fields"))
-            .child(field("intent", self.field_picker(Editing::Intent)))
-            .child(field("priority", self.field_picker(Editing::Priority)))
-            .child(field("level", self.field_picker(Editing::Level)))
-            .child(field("scope", self.field_picker(Editing::Scope)))
+            .child(group(crate::t!("tickets-group-fields")))
+            .child(field(crate::t!("tickets-field-intent"), self.field_picker(Editing::Intent)))
+            .child(field(crate::t!("tickets-field-priority"), self.field_picker(Editing::Priority)))
+            .child(field(crate::t!("tickets-field-level"), self.field_picker(Editing::Level)))
+            .child(field(crate::t!("tickets-field-scope"), self.field_picker(Editing::Scope)))
             .child(fields::scope_note(ticket.scope.as_deref().unwrap_or("default")))
-            .child(field("tags", fields::tags(tag_chips, self.field_picker(Editing::Tags))))
-            .child(field("milestone", self.field_picker(Editing::Milestone)));
+            .child(field(crate::t!("tickets-field-tags"), fields::tags(tag_chips, self.field_picker(Editing::Tags))))
+            .child(field(crate::t!("tickets-field-milestone"), self.field_picker(Editing::Milestone)));
 
         // ── People ──
         let claim = match &ticket.claimant {
-            Some(claimant) if ticket.held.lapsed() => format!("{} (lapsed)", who(claimant, user)),
-            Some(claimant) => format!(
-                "{}{}",
-                who(claimant, user),
-                ticket.claim_until.as_deref().map(|u| format!(", until {}", date(u))).unwrap_or_default()
-            ),
+            Some(claimant) if ticket.held.lapsed() => crate::t!("tickets-lapsed", who = who(claimant, user)),
+            Some(claimant) => match ticket.claim_until.as_deref() {
+                Some(until) => crate::t!("tickets-claim-until", who = who(claimant, user), date = date(until)),
+                None => who(claimant, user),
+            },
             None => "—".into(),
         };
         col = col
-            .child(group("People"))
+            .child(group(crate::t!("tickets-group-people")))
             .child(field(
-                "reporter",
+                crate::t!("tickets-field-reporter"),
                 div()
                     .flex()
                     .flex_col()
                     .gap_0p5()
                     .child(self.field_picker(Editing::Owner))
-                    .child(div().text_xs().text_color(p().muted).child(format!("filed {}", date(&ticket.created_at)))),
+                    .child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-filed", date = date(&ticket.created_at)))),
             ))
-            .child(fields::said("claimed by", claim))
-            .child(field("assigned to", self.field_picker(Editing::Assignee)));
+            .child(fields::said(crate::t!("tickets-field-claimed"), claim))
+            .child(field(crate::t!("tickets-field-assigned"), self.field_picker(Editing::Assignee)));
         // Who follows the ticket by their own choice, or muted it: each
         // with the ✕ that puts them back to what their role says.
         let subscribers = self.detail.as_ref().and_then(|d| d.subscribers.clone());
@@ -2073,25 +2069,25 @@ impl TicketPanel {
                     let name = name.clone();
                     move |panel, _, window, cx| {
                         let name = name.clone();
-                        panel.change(format!("{name} no longer follows it"), move |aiball, ticket| aiball.unsubscribe(ticket, &name), window, cx)
+                        panel.change(crate::t!("tickets-did-unfollows", name = name.clone()), move |aiball, ticket| aiball.unsubscribe(ticket, &name), window, cx)
                     }
                 }));
                 // Muted: greyed, and said under the pointer (the column is narrow).
                 fields::tag(format!("subscriber-{name}"), &who(&name, user), drop).when(s.muted, |d| {
-                    d.opacity(0.55).tip("muted: not notified of this ticket, even by its role — ✕ puts it back to what its role says")
+                    d.opacity(0.55).tip(crate::t!("tickets-muted"))
                 })
             })
             .collect();
         col = col.child(crate::tips::target(
             "ticket.followers",
-            field("followers", fields::tags(chips, self.field_picker(Editing::Subscribers)))
+            field(crate::t!("tickets-field-followers"), fields::tags(chips, self.field_picker(Editing::Subscribers)))
                 .named("inv-subscribers")
-                .tip("Who follows this ticket by their own choice (or muted it). The project's owners are notified by their role: they are not listed here."),
+                .tip(crate::t!("tickets-followers-tip")),
         ));
 
         // ── Links ──
         let (parent, parent_project) = (ticket.id, self.project());
-        col = col.child(group("Links")).child(
+        col = col.child(group(crate::t!("tickets-group-links"))).child(
             div()
                 .named("inv-sub-ticket")
                 .flex()
@@ -2101,14 +2097,15 @@ impl TicketPanel {
                 .rounded_sm()
                 .cursor_pointer()
                 .hover(|d| d.bg(p().hover))
-                .child(label("sub-ticket"))
-                .child(div().flex_1().text_color(p().accent).child("+ a new one"))
+                .child(label(crate::t!("tickets-sub-ticket")))
+                .child(div().flex_1().text_color(p().accent).child(crate::t!("tickets-new-sub")))
                 .on_click(cx.listener(move |_, _, _, cx| {
                     crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project: parent_project.clone(), parent: Some(parent) })
                 })),
         );
         // A row of references: its label, then each one a link.
-        let refs = |text: &'static str, ids: Vec<u64>| {
+        // `key` names its links (the debug control's ids, whatever the language).
+        let refs = |key: &'static str, text: String, ids: Vec<u64>| {
             div()
                 .flex()
                 .gap_2()
@@ -2116,11 +2113,11 @@ impl TicketPanel {
                 .px_1()
                 .child(label(text))
                 .child(div().flex_1().min_w_0().flex().flex_wrap().gap_2().children(
-                    ids.into_iter().map(|id| ticketref::link(SharedString::from(format!("inv-ref-{text}-{id}")), id, None)),
+                    ids.into_iter().map(|id| ticketref::link(SharedString::from(format!("inv-ref-{key}-{id}")), id, None)),
                 ))
         };
         if let Some(parent) = ticket.parent_ticket_id {
-            col = col.child(refs("sub-ticket of", vec![parent]));
+            col = col.child(refs("sub-ticket of", crate::t!("tickets-sub-ticket-of"), vec![parent]));
         }
         if !ticket.sub_tickets.is_empty() {
             let subs: Vec<u64> = ticket
@@ -2128,29 +2125,29 @@ impl TicketPanel {
                 .iter()
                 .filter_map(|t| t.get("id").and_then(|id| id.as_u64()).or_else(|| t.as_u64()))
                 .collect();
-            col = col.child(refs("sub-tickets", subs));
+            col = col.child(refs("sub-tickets", crate::t!("tickets-sub-tickets"), subs));
         }
         for relation in &ticket.relations {
             // As seen from this ticket (a reciprocal's kind already turned
             // round by aiball); only "duplicates" keeps its word both ways.
-            let verb = match (relation.kind.as_str(), relation.reciprocal) {
-                ("depends_on", _) => "depends on",
-                ("blocks", _) => "blocks",
-                ("relates_to", _) => "relates to",
-                ("duplicates", false) => "duplicates",
-                ("duplicates", true) => "duplicated by",
-                ("parent_of", _) => "parent of",
-                ("child_of", _) => "child of",
+            let verb = crate::t!(match (relation.kind.as_str(), relation.reciprocal) {
+                ("depends_on", _) => "tickets-rel-depends",
+                ("blocks", _) => "tickets-rel-blocks",
+                ("relates_to", _) => "tickets-rel-relates",
+                ("duplicates", false) => "tickets-rel-duplicates",
+                ("duplicates", true) => "tickets-rel-duplicated",
+                ("parent_of", _) => "tickets-rel-parent",
+                ("child_of", _) => "tickets-rel-child",
                 _ => continue,
-            };
+            });
             let target = relation.target_ticket_id;
-            let stage = relation.target_stage.clone().map(|s| format!(" ({s})")).unwrap_or_default();
+            let stage = relation.target_stage.as_deref().map(|s| format!(" ({})", stage_said(s))).unwrap_or_default();
             // Only a relation made on this ticket can be undone from here.
             let remove = (!relation.reciprocal).then(|| {
-                buttons::remove(SharedString::from(format!("unrelate-{target}")), "✕", "remove this relation")
+                buttons::remove(SharedString::from(format!("unrelate-{target}")), "✕", crate::t!("tickets-remove-relation"))
                     .text_xs()
                     .on_click(cx.listener(move |panel, _, window, cx| {
-                        panel.change(format!("relation to #{target} removed"), move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
+                        panel.change(crate::t!("tickets-did-unrelated", target = target), move |aiball, ticket| aiball.relate(ticket, target, "ignored"), window, cx)
                     }))
             });
             col = col.child(
@@ -2174,8 +2171,8 @@ impl TicketPanel {
         }
         col = col.child(row(
             "inv-relate",
-            "relate",
-            if editing == Some(Editing::Relation) { "to…".into() } else { "+ a ticket".into() },
+            crate::t!("tickets-relate"),
+            crate::t!(if editing == Some(Editing::Relation) { "tickets-relate-to" } else { "tickets-relate-add" }),
             Some(Editing::Relation),
             cx,
         ));
@@ -2184,7 +2181,12 @@ impl TicketPanel {
             for (id, kind) in [("rel-depends", "depends_on"), ("rel-blocks", "blocks"), ("rel-relates", "relates_to"), ("rel-dup", "duplicates")] {
                 list = list.child(choice(
                     id.into(),
-                    kind.replace('_', " "),
+                    crate::t!(match kind {
+                        "depends_on" => "tickets-rel-depends",
+                        "blocks" => "tickets-rel-blocks",
+                        "relates_to" => "tickets-rel-relates",
+                        _ => "tickets-rel-duplicates",
+                    }),
                     false,
                     cx,
                     Box::new(move |panel, window, cx| panel.add_relation(kind, window, cx)),
@@ -2196,27 +2198,33 @@ impl TicketPanel {
         // ── Elsewhere: chosen, then moved (a move is seen by everyone on
         // the ticket) ──
         let move_to = self.move_to.clone().map(|to| {
-            buttons::answer("move-ticket", format!("Move to {to}"))
+            buttons::answer("move-ticket", crate::t!("tickets-move-to", project = to.clone()))
                 .warning()
                 .on_click(cx.listener(move |panel, _, window, cx| {
                     let name = to.clone();
                     panel.move_to = None;
-                    panel.change(format!("moved to {name}"), move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
+                    panel.change(crate::t!("tickets-did-moved", project = name.clone()), move |aiball, ticket| aiball.move_ticket(ticket, &name), window, cx)
                 }))
         });
-        col = col.child(group("Project")).child(field(
-            "project",
+        col = col.child(group(crate::t!("tickets-group-project"))).child(field(
+            crate::t!("tickets-field-project"),
             div().flex().flex_wrap().items_center().gap_2().child(self.field_picker(Editing::Project)).children(move_to),
         ));
 
         if let Some(usage) = &ticket.token_usage {
             col = col
-                .child(group("Tokens"))
-                .child(row("inv-tokens", "in · out", format!("{} · {}", count(usage.tokens_in), count(usage.tokens_out)), None, cx))
-                .child(row("inv-cache", "cache", format!("{} written · {} read", count(usage.cache_w), count(usage.cache_r)), None, cx));
+                .child(group(crate::t!("tickets-group-tokens")))
+                .child(row("inv-tokens", crate::t!("tickets-in-out"), format!("{} · {}", count(usage.tokens_in), count(usage.tokens_out)), None, cx))
+                .child(row(
+                    "inv-cache",
+                    crate::t!("tickets-cache"),
+                    crate::t!("tickets-cache-said", written = count(usage.cache_w), read = count(usage.cache_r)),
+                    None,
+                    cx,
+                ));
         }
         if ticket.has_payload {
-            col = col.child(group("Payload")).child(div().text_color(p().muted).child("this ticket carries a payload (see the web UI)"));
+            col = col.child(group(crate::t!("tickets-group-payload"))).child(div().text_color(p().muted).child(crate::t!("tickets-payload")));
         }
 
         // As dragged, or its default: on a wide screen the rest goes to
@@ -2250,13 +2258,13 @@ impl TicketPanel {
                 .flex()
                 .gap_1()
                 .child(
-                    buttons::answer(("comment-reject", id), "Reject")
+                    buttons::answer(("comment-reject", id), crate::t!("tickets-reject"))
                         .danger()
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, false, window, cx))),
                 )
                 .child(
-                    buttons::answer(("comment-approve", id), "Approve")
+                    buttons::answer(("comment-approve", id), crate::t!("tickets-approve"))
                         .success()
                         .disabled(busy)
                         .on_click(cx.listener(move |panel, _, window, cx| panel.moderate(id, true, window, cx))),
@@ -2273,7 +2281,7 @@ impl TicketPanel {
             questions_row = questions_row.child(
                 buttons::chip(
                     SharedString::from(format!("question-{}-{}", comment.id, question.id)),
-                    div().flex_none().text_color(p().accent).child(if queued { "✓ in the reply" } else { "Answer" }),
+                    div().flex_none().text_color(p().accent).child(crate::t!(if queued { "tickets-in-reply" } else { "tickets-answer" })),
                 )
                 .gap_2()
                 .py_0p5()
@@ -2321,7 +2329,7 @@ impl TicketPanel {
                                 .flex()
                                 .gap_2()
                                 .justify_end()
-                                .child(buttons::secondary(("comment-cancel", comment.id), "Cancel").on_click(
+                                .child(buttons::secondary(("comment-cancel", comment.id), crate::t!("tickets-cancel")).on_click(
                                     cx.listener(|panel, _, _, cx| {
                                         panel.comment_editing = None;
                                         cx.notify();
@@ -2329,7 +2337,7 @@ impl TicketPanel {
                                 ))
                                 .child({
                                     let id = comment.id;
-                                    buttons::primary(("comment-save", comment.id), "Save")
+                                    buttons::primary(("comment-save", comment.id), crate::t!("tickets-save"))
                                         .loading(busy)
                                         .on_click(cx.listener(move |panel, _, window, cx| panel.edit_comment_save(id, window, cx)))
                                 }),
@@ -2361,7 +2369,7 @@ impl TicketPanel {
             .when(votes.up > 0, |d| d.child(format!("+{}", votes.up)))
             .when(votes.down > 0, |d| d.child(format!("−{}", votes.down)))
             .child(
-                buttons::icon(("comment-menu", id), "⋯", "the comment's actions")
+                buttons::icon(("comment-menu", id), "⋯", crate::t!("tickets-comment-actions"))
                     .on_click(cx.listener(move |panel, _, _, cx| {
                         panel.comment_menu = if panel.comment_menu == Some(id) { None } else { Some(id) };
                         panel.confirm_delete = None;
@@ -2383,19 +2391,19 @@ impl TicketPanel {
         };
         let mut row = div().flex().flex_wrap().gap_1().pb_1();
         if let Some(body) = comment.body.clone() {
-            row = row.child(item("edit", "Edit".into(), p().text).on_click(cx.listener(move |panel, _, window, cx| {
+            row = row.child(item("edit", crate::t!("tickets-edit-comment"), p().text).on_click(cx.listener(move |panel, _, window, cx| {
                 panel.edit_comment_start(id, body.clone(), window, cx)
             })));
         }
         let confirming = self.confirm_delete == Some(id);
         row = row.child(
-            item("delete", if confirming { "Really delete?".into() } else { "Delete".into() }, p().danger).on_click(cx.listener(
+            item("delete", crate::t!(if confirming { "tickets-really-delete" } else { "tickets-delete" }), p().danger).on_click(cx.listener(
                 move |panel, _, window, cx| {
                     if busy {
                         return;
                     }
                     if panel.confirm_delete == Some(id) {
-                        panel.on_comment("comment deleted", move |aiball| aiball.delete_comment(id), window, cx);
+                        panel.on_comment(&crate::t!("tickets-did-deleted"), move |aiball| aiball.delete_comment(id), window, cx);
                     } else {
                         panel.confirm_delete = Some(id);
                         cx.notify();
@@ -2411,21 +2419,24 @@ impl TicketPanel {
                 continue;
             }
             row = row.child(
-                item(&format!("classify-{kind}"), format!("as {}", reading::kind_noun(kind)), p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(&format!("comment made a {}", reading::kind_noun(kind)), move |aiball| aiball.classify(id, kind), window, cx))),
+                item(&format!("classify-{kind}"), crate::t!("tickets-classify-as", noun = reading::kind_noun(kind)), p().text).on_click(cx.listener(
+                    move |panel, _, window, cx| {
+                        panel.on_comment(&crate::t!("tickets-did-classified", noun = reading::kind_noun(kind)), move |aiball| aiball.classify(id, kind), window, cx)
+                    },
+                )),
             );
         }
         if current.is_some() {
             row = row.child(
-                item("untag", "no decision".into(), p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment("comment made plain", move |aiball| aiball.untag(id), window, cx))),
+                item("untag", crate::t!("tickets-no-decision"), p().text)
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(&crate::t!("tickets-did-plain"), move |aiball| aiball.untag(id), window, cx))),
             );
         }
         if comment.by_agent != user && entry.decision.is_none() {
             let step = entry.step.is_some();
             row = row.child(
-                item("step", if step { "not a step".into() } else { "a step".into() }, p().text)
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(if step { "step unmarked" } else { "step marked" }, move |aiball| aiball.set_step(id, !step), window, cx))),
+                item("step", crate::t!(if step { "tickets-not-a-step" } else { "tickets-a-step" }), p().text)
+                    .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(&crate::t!(if step { "tickets-did-step-unmarked" } else { "tickets-did-step-marked" }), move |aiball| aiball.set_step(id, !step), window, cx))),
             );
         }
         let mine = comment.votes_summary.as_ref().and_then(|v| v.mine).unwrap_or(0);
@@ -2434,13 +2445,13 @@ impl TicketPanel {
             row = row.child(
                 item(key, if on { format!("{label} ✓") } else { label.to_string() }, p().text).on_click(cx.listener(move |panel, _, window, cx| {
                     let value = if on { 0 } else { value };
-                    panel.on_comment("voted", move |aiball| aiball.vote(id, value), window, cx)
+                    panel.on_comment(&crate::t!("tickets-did-voted"), move |aiball| aiball.vote(id, value), window, cx)
                 })),
             );
         }
         row = row.child(
-            item("resurface", "Resurface".into(), p().text)
-                .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment("comment resurfaced", move |aiball| aiball.resurface(id), window, cx))),
+            item("resurface", crate::t!("tickets-resurface"), p().text)
+                .on_click(cx.listener(move |panel, _, window, cx| panel.on_comment(&crate::t!("tickets-did-resurfaced"), move |aiball| aiball.resurface(id), window, cx))),
         );
         if let Some(hashid) = comment.hashid.clone() {
             row = row.child(item("copy", format!("#C.{hashid}"), p().muted).on_click(cx.listener(move |panel, _, _, cx| {
@@ -2488,14 +2499,14 @@ impl TicketPanel {
                 let short = at.as_deref().and_then(crate::status::resume_short);
                 let on_ticket = on_ticket.filter(|_| latest);
                 let tip = [
-                    short.is_some().then(|| at.as_deref().and_then(crate::status::resume_full)).flatten().map(|t| format!("the agent resumes at {t}")),
-                    on_ticket.map(|n| format!("{} when #{n} moves (a reply, a decision, a close)", if short.is_some() { "or" } else { "the agent resumes" })),
+                    short.is_some().then(|| at.as_deref().and_then(crate::status::resume_full)).flatten().map(|t| crate::t!("tickets-resumes-at", at = t)),
+                    on_ticket.map(|n| crate::t!(if short.is_some() { "tickets-or-when" } else { "tickets-resumes-when" }, ticket = n)),
                 ]
                 .into_iter()
                 .flatten()
                 .collect::<Vec<_>>()
                 .join(", ");
-                d.child(div().text_color(colour).child(icons::labelled(Icon::Step, colour, 12., "step"))).when(
+                d.child(div().text_color(colour).child(icons::labelled(Icon::Step, colour, 12., crate::t!("tickets-step")))).when(
                     short.is_some() || on_ticket.is_some(),
                     |d| {
                         d.child(
@@ -2504,14 +2515,14 @@ impl TicketPanel {
                                 .flex()
                                 .gap_1()
                                 .text_color(colour)
-                                .child("resumes")
+                                .child(crate::t!("tickets-resumes"))
                                 .children(short.clone())
                                 .children(on_ticket.map(|n| {
                                     div()
                                         .named(("resume-on", id))
                                         .flex()
                                         .gap_1()
-                                        .child(if short.is_some() { "or on" } else { "on" })
+                                        .child(crate::t!(if short.is_some() { "tickets-resumes-or-on" } else { "tickets-resumes-on" }))
                                         .child(
                                             ticketref::link(("resume-ticket", id), n, None),
                                         )
@@ -2521,12 +2532,12 @@ impl TicketPanel {
                     },
                 )
             })
-            .when(pending, |d| d.child(pill("to moderate", p().warning)))
+            .when(pending, |d| d.child(pill(crate::t!("tickets-to-moderate"), p().warning)))
             .when(fold.is_some(), |d| {
                 d.rounded_sm()
                     .cursor_pointer()
                     .hover(|d| d.bg(p().hover))
-                    .tip(if fold == Some(true) { "fold" } else { "unfold" })
+                    .tip(crate::t!(if fold == Some(true) { "tickets-fold" } else { "tickets-unfold" }))
                     .on_click(cx.listener(move |panel, _, _, cx| panel.toggle_fold(id, cx)))
             })
     }
@@ -2548,7 +2559,7 @@ impl Render for TicketPanel {
             .border_color(p().border)
             // First, the chevron that folds the panel towards the window's edge.
             .child(
-                buttons::icon("collapse", "›", buttons::hint(cx, "Fold the ticket panel", "panel.toggle"))
+                buttons::icon("collapse", "›", buttons::hint(cx, &crate::t!("tickets-fold-panel"), "panel.toggle"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(CollapsePanel))),
             )
             // Then its pin: held beside the terminal, or let over it.
@@ -2556,7 +2567,7 @@ impl Render for TicketPanel {
                 let pinned = self.pinned;
                 crate::tips::target(
                     "panel.pin",
-                    buttons::icon("panel-pin", icons::pin(pinned, if pinned { p().accent } else { p().muted }, 15.), "Pinned: the panel stays beside the terminal. Not pinned: it lies over it")
+                    buttons::icon("panel-pin", icons::pin(pinned, if pinned { p().accent } else { p().muted }, 15.), crate::t!("tickets-pinned"))
                         .on_click(cx.listener(move |_, _, _, cx| cx.emit(PinChanged(!pinned)))),
                 )
             })
@@ -2571,10 +2582,10 @@ impl Render for TicketPanel {
                     self.scope
                         .as_ref()
                         .map(|s| s.project.clone())
-                        .unwrap_or_else(|| "Tickets".into()),
+                        .unwrap_or_else(|| crate::t!("tickets-title").into()),
                 ))
                 .when(self.scope.as_ref().is_some_and(|s| s.sessionless), |d| {
-                    d.child(div().text_xs().text_color(p().muted).child("no session open"))
+                    d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-no-session")))
                 })
                 // What the project's tickets ask of you, as its row in the
                 // sessions list counts it: the critical one, decisions, unread.
@@ -2589,17 +2600,17 @@ impl Render for TicketPanel {
                     .scope
                     .as_ref()
                     .is_some_and(|s| cx.try_global::<crate::shell::Steered>().is_some_and(|g| g.0.contains(&s.project)));
-                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, "The project's standing instruction and wake focus", "project.megaphone"))
+                buttons::icon("megaphone", icons::megaphone(if steered { p().accent } else { p().muted }, 15.), buttons::hint(cx, &crate::t!("tickets-megaphone"), "project.megaphone"))
                     // Lit while something steers them (not dimmed otherwise: an
                     // emoji does not fade).
                     .when(steered, |d| d.bg(p().active).border_1().border_color(p().accent).rounded_sm())
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenMegaphone)))
             })
             .child(
-                buttons::chip("new-ticket", "+ New")
+                buttons::chip("new-ticket", crate::t!("tickets-new"))
                     .text_xs()
                     .text_color(p().accent)
-                    .tip(buttons::hint(cx, "A new ticket", "ticket.new"))
+                    .tip(buttons::hint(cx, &crate::t!("tickets-new-tip"), "ticket.new"))
                     .on_click(cx.listener(|panel, _, _, cx| {
                         let project = panel.scope.as_ref().map(|s| s.project.clone());
                         crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
@@ -2607,7 +2618,7 @@ impl Render for TicketPanel {
             )
             .child(buttons::separator())
             .child(
-                buttons::icon("full-list", "⤢", buttons::hint(cx, "The ticket list, full screen", "list.full"))
+                buttons::icon("full-list", "⤢", buttons::hint(cx, &crate::t!("tickets-full-list"), "list.full"))
                     .on_click(cx.listener(|_, _, _, cx| cx.emit(OpenFullList))),
             );
         let content = match &self.detail {
@@ -2630,9 +2641,20 @@ fn hint(text: impl Into<SharedString>) -> impl IntoElement {
     div().p_3().text_color(p().muted).child(text.into())
 }
 
+/// A ticket's stage as aiball names it (`open`, `closed-resolved`…), said;
+/// one it adds later shows as it comes.
+fn stage_said(stage: &str) -> String {
+    match stage {
+        "rejected" | "closed-resolved" | "closed" | "resolved" | "blocked" | "snoozed" | "pending" | "open" => {
+            crate::t!(&format!("tickets-stage-{stage}"))
+        }
+        other => other.to_string(),
+    }
+}
+
 /// "you" for the user, else the name.
 fn who(name: &str, user: &str) -> String {
-    if name == user { "you".into() } else { name.to_string() }
+    if name == user { crate::t!("tickets-you") } else { name.to_string() }
 }
 
 /// A folded comment's one line; a click unfolds it, as its head does.
@@ -2864,7 +2886,7 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<D
             icons::labelled(Icon::PendingComments, p().warning, 12., n.to_string())
                 .text_color(p().warning)
                 .named("comments")
-                .tip(format!("{n} comment{} waiting for moderation", if n == 1 { "" } else { "s" })),
+                .tip(crate::t!("tickets-pending-comments", count = n)),
         );
     }
     if ticket.comment_count == 0 && ticket.last_speaker.is_none() {
@@ -2872,25 +2894,25 @@ pub(crate) fn comment_count(ticket: &TicketRow, user: &str) -> Option<Stateful<D
     }
     let mine = ticket.last_speaker.as_deref() == Some(user);
     let (colour, tip) = if ticket.unread {
-        (p().accent, "unread: something new on it for you")
+        (p().accent, "tickets-unread")
     } else if mine {
-        (p().muted.opacity(0.55), "you spoke last")
+        (p().muted.opacity(0.55), "tickets-you-spoke-last")
     } else {
-        (p().text, "someone else spoke last")
+        (p().text, "tickets-someone-spoke-last")
     };
     let n = ticket.comment_count;
     Some(
         icons::labelled(if mine && !ticket.unread { Icon::CommentsMine } else { Icon::Comments }, colour, 12., n.to_string())
             .text_color(colour)
             .named("comments")
-            .tip(format!("{n} comment{} — {tip}", if n == 1 { "" } else { "s" })),
+            .tip(crate::t!("tickets-comments-tip", count = n, why = crate::t!(tip))),
     )
 }
 
 /// Who holds the ticket, and the flame when it was active lately.
 pub(crate) fn holder_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
     let holder = ticket.holder()?.to_string();
-    let tip = if ticket.hot { format!("held by {holder}, active on it lately") } else { format!("held by {holder}") };
+    let tip = crate::t!(if ticket.hot { "tickets-held-hot" } else { "tickets-held-by" }, holder = holder.clone());
     Some(if ticket.hot {
         icons::labelled(Icon::Hot, p().warning, 12., holder).named("holder").tip(tip)
     } else {
@@ -2907,9 +2929,9 @@ pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
         icons::pill(Icon::Critical, quiet.map_or(holds.to_string(), |q| format!("{holds} · {q}")), p().danger)
             .named("critical")
             .tip(format!(
-                "the project's critical ticket: it holds {holds} open ticket{}{}",
-                if holds == 1 { "" } else { "s" },
-                quiet.map(|q| format!(", quiet for {q}")).unwrap_or_default()
+                "{}{}",
+                crate::t!("tickets-critical", holds = holds),
+                quiet.map(|q| crate::t!("tickets-critical-quiet", quiet = q)).unwrap_or_default()
             )),
     )
 }
@@ -2929,8 +2951,8 @@ pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketR
         .filter(|at| glyph == Glyph::Step && crate::status::resume_short(at).is_some())
         .and_then(crate::status::resume_full);
     let tip = match resume {
-        Some(at) => format!("step — the agent resumes at {at}"),
-        None => glyph.meaning().to_string(),
+        Some(at) => crate::t!("tickets-step-resumes", at = at),
+        None => glyph.meaning(),
     };
     div().child(icons::icon(icons::of_glyph(glyph), colour, size)).named("glyph").tip(tip)
 }
@@ -2940,9 +2962,9 @@ pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketR
 fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
     let noun = reading::kind_noun(kind);
     match state {
-        DecisionState::Pending => icons::pill(icons::of_kind(kind), format!("{noun} · pending"), p().warning).into_any_element(),
-        DecisionState::Accepted => icons::pill(Icon::Resolution, format!("{noun} accepted"), p().success).into_any_element(),
-        DecisionState::Rejected => icons::pill(Icon::Rejected, format!("{noun} rejected"), p().danger).into_any_element(),
+        DecisionState::Pending => icons::pill(icons::of_kind(kind), crate::t!("tickets-decision-pending", noun = noun.clone(), kind = reading::kind_key(kind)), p().warning).into_any_element(),
+        DecisionState::Accepted => icons::pill(Icon::Resolution, crate::t!("tickets-decision-accepted", noun = noun.clone(), kind = reading::kind_key(kind)), p().success).into_any_element(),
+        DecisionState::Rejected => icons::pill(Icon::Rejected, crate::t!("tickets-decision-rejected", noun = noun.clone(), kind = reading::kind_key(kind)), p().danger).into_any_element(),
         DecisionState::Superseded => div()
             .flex_none()
             .px_1p5()
@@ -2951,7 +2973,7 @@ fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
             .border_1()
             .border_color(p().border)
             .text_color(p().muted)
-            .child(format!("{noun} · superseded"))
+            .child(crate::t!("tickets-decision-superseded", noun = noun.clone(), kind = reading::kind_key(kind)))
             .into_any_element(),
     }
 }
@@ -3004,10 +3026,10 @@ pub(crate) fn left(when: &str) -> Option<String> {
 /// A duration, as short: under a minute is `now`, then minutes, hours, days.
 fn span(seconds: u64) -> String {
     match seconds {
-        0..60 => "now".into(),
-        60..3600 => format!("{}m", seconds / 60),
-        3600..86400 => format!("{}h", seconds / 3600),
-        _ => format!("{}d", seconds / 86400),
+        0..60 => crate::t!("common-now"),
+        60..3600 => crate::t!("common-minutes", n = seconds / 60),
+        3600..86400 => crate::t!("common-hours", n = seconds / 3600),
+        _ => crate::t!("common-days", n = seconds / 86400),
     }
 }
 

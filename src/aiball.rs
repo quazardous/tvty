@@ -563,8 +563,8 @@ impl Critical {
     /// What it holds back, and for how long: "holds 2 · quiet 9 d".
     pub fn said(&self) -> String {
         match self.quiet() {
-            Some(quiet) => format!("holds {} · quiet {quiet}", self.holds),
-            None => format!("holds {}", self.holds),
+            Some(quiet) => crate::t!("tickets-critical-said-quiet", holds = self.holds, quiet = quiet),
+            None => crate::t!("tickets-critical-said", holds = self.holds),
         }
     }
 }

@@ -237,7 +237,7 @@ pub fn plain_line(line: &str) -> String {
                 if !out.is_empty() && !out.ends_with(' ') {
                     out.push(' ');
                 }
-                out.push_str(&if images == 1 { "🖼 image".to_string() } else { format!("🖼 {images} images") });
+                out.push_str(&crate::t!("tickets-images", count = images));
                 images = 0;
             }
             rest = tail.trim_start_matches(|c: char| c == ' ' && tail.trim_start().starts_with("!["));
@@ -254,25 +254,36 @@ pub fn plain_line(line: &str) -> String {
 fn verb(event: &Comment) -> String {
     let source = event.source_ticket_id.map(|id| format!(" #{id}")).unwrap_or_default();
     match event.kind.as_str() {
-        "ticket_closed" => "closed the ticket".into(),
-        "ticket_reopened" => "reopened the ticket".into(),
-        "ticket_resolved" => "marked it resolved".into(),
-        "ticket_blocked" => "flagged it to be decided".into(),
-        "claim_taken_over" => "took over the claim".into(),
-        "ticket_sub_added" => format!("added a sub-ticket{source}"),
-        "ticket_referenced" => format!("referenced it from{source}"),
-        "dependency_closed" => format!("a dependency closed{source}"),
-        "dependency_rejected" => format!("a dependency was rejected{source}"),
-        "related_closed" => format!("a related ticket closed{source}"),
-        "ticket_relation" => format!("linked{source}"),
+        "ticket_closed" => crate::t!("tickets-event-closed"),
+        "ticket_reopened" => crate::t!("tickets-event-reopened"),
+        "ticket_resolved" => crate::t!("tickets-event-resolved"),
+        "ticket_blocked" => crate::t!("tickets-event-blocked"),
+        "claim_taken_over" => crate::t!("tickets-event-taken-over"),
+        "ticket_sub_added" => crate::t!("tickets-event-sub-added", source = source),
+        "ticket_referenced" => crate::t!("tickets-event-referenced", source = source),
+        "dependency_closed" => crate::t!("tickets-event-dependency-closed", source = source),
+        "dependency_rejected" => crate::t!("tickets-event-dependency-rejected", source = source),
+        "related_closed" => crate::t!("tickets-event-related-closed", source = source),
+        "ticket_relation" => crate::t!("tickets-event-linked", source = source),
         other => other.replace('_', " "),
     }
 }
 
 /// What a decision kind asks of the one who takes it.
-pub fn kind_noun(kind: &str) -> &str {
+pub fn kind_noun(kind: &str) -> String {
+    crate::t!(match kind {
+        "wontfix" => "tickets-kind-wontfix",
+        "escalation" => "tickets-kind-escalation",
+        "resolution" => "tickets-kind-resolution",
+        _ => "tickets-kind-plan",
+    })
+}
+
+/// A decision kind's id suffix (`plan`, `resolution`, `wontfix`,
+/// `escalation`): the words that differ by kind are whole sentences.
+pub fn kind_key(kind: &str) -> &'static str {
     match kind {
-        "wontfix" => "closing without a fix",
+        "wontfix" => "wontfix",
         "escalation" => "escalation",
         "resolution" => "resolution",
         _ => "plan",
@@ -299,41 +310,42 @@ pub fn glyph(thread: &Thread, reading: &Reading) -> Option<Glyph> {
 /// the list's reading of the ticket, when it has one; `now` in seconds.
 pub fn sentence(thread: &Thread, reading: &Reading, row: Option<&RowState>, stalled: bool, user: &str, now: u64) -> String {
     let ticket = &thread.ticket;
-    let who = |name: &str| if name == user { "you".to_string() } else { name.to_string() };
+    let you = crate::t!("tickets-you");
+    let who = |name: &str| if name == user { you.clone() } else { name.to_string() };
     if ticket.closed {
         return match (ticket.resolved, ticket.resolved_by.as_deref()) {
-            (true, Some(by)) => format!("Closed, resolved by {}", who(by)),
-            (true, None) => "Closed, resolved".into(),
-            (false, _) => "Closed without a resolution".into(),
+            (true, Some(by)) => crate::t!("tickets-closed-resolved-by", who = who(by)),
+            (true, None) => crate::t!("tickets-closed-resolved"),
+            (false, _) => crate::t!("tickets-closed-unresolved"),
         };
     }
     if ticket.status == "pending" {
-        return "Yours: this ticket waits for moderation".into();
+        return crate::t!("tickets-yours-moderation");
     }
     if let Some(active) = &reading.active {
-        let noun = kind_noun(&active.kind);
+        let kind = kind_key(&active.kind);
         return if active.by == user {
-            format!("Your {noun} waits for a decision")
+            crate::t!(&format!("tickets-your-proposal-{kind}"))
         } else if active.kind == "escalation" {
-            format!("Yours: {} escalates — act, then accept", active.by)
+            crate::t!("tickets-yours-escalates", who = active.by.clone())
         } else {
-            format!("Yours: accept or reject {}'s {noun}", active.by)
+            crate::t!(&format!("tickets-yours-decide-{kind}"), who = active.by.clone())
         };
     }
     let holder = ticket.holder().map(who);
     if let Some(step) = &ticket.step {
-        let agent = holder.clone().unwrap_or_else(|| "an agent".into());
+        let agent = holder.clone().unwrap_or_else(|| crate::t!("tickets-an-agent"));
         if stalled {
-            return format!("{agent}'s step went quiet");
+            return crate::t!("tickets-step-quiet", agent = agent);
         }
-        let mut line = format!("{agent} is on a step");
+        let mut line = crate::t!("tickets-on-step", agent = agent);
         if let Some(at) = step.resume_at.as_deref().and_then(crate::status::parse_time) {
             if at > now {
-                line.push_str(&format!(" · resumes in {}", span(at - now)));
+                line.push_str(&crate::t!("tickets-step-resumes-in", span = span(at - now)));
             }
         }
         if let Some(ticket) = step.resume_on_ticket {
-            line.push_str(&format!(" · waits on #{ticket}"));
+            line.push_str(&crate::t!("tickets-step-waits-on", ticket = ticket));
         }
         return line;
     }
@@ -345,14 +357,14 @@ pub fn sentence(thread: &Thread, reading: &Reading, row: Option<&RowState>, stal
         .map(|c| c.by_agent.as_str());
     match row.map(|r| r.turn) {
         Some(Turn::You) => match (last, holder.as_deref()) {
-            (Some(speaker), _) if speaker != user => format!("Yours: answer {speaker}"),
+            (Some(speaker), _) if speaker != user => crate::t!("tickets-yours-answer", who = speaker),
             // Someone else holds it (assigned, claimed): not nobody.
-            (_, Some(holder)) if holder != "you" => format!("{holder} holds it: you spoke last"),
-            _ => "Yours: nobody else is on it".into(),
+            (_, Some(holder)) if holder != you.as_str() => crate::t!("tickets-holds-you-spoke", holder = holder),
+            _ => crate::t!("tickets-yours-nobody"),
         },
         Some(Turn::Them) => match holder {
-            Some(holder) => format!("{holder}'s turn: you spoke last"),
-            None => "Their turn: you spoke last".into(),
+            Some(holder) => crate::t!("tickets-their-turn-of", holder = holder),
+            None => crate::t!("tickets-their-turn"),
         },
         _ => String::new(),
     }
@@ -360,9 +372,9 @@ pub fn sentence(thread: &Thread, reading: &Reading, row: Option<&RowState>, stal
 
 fn span(seconds: u64) -> String {
     match seconds {
-        0..60 => "under a minute".into(),
-        60..3600 => format!("{} min", seconds / 60),
-        _ => format!("{} h", seconds / 3600),
+        0..60 => crate::t!("tickets-span-under-minute"),
+        60..3600 => crate::t!("tickets-span-minutes", n = seconds / 60),
+        _ => crate::t!("tickets-span-hours", n = seconds / 3600),
     }
 }
 

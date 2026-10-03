@@ -472,6 +472,29 @@ mod tests {
         assert!(unknown.is_empty(), "words asked for and not in English: {unknown:?}");
     }
 
+    /// The words whose id is built as tvty runs (`tickets-proposes-{kind}`):
+    /// the sources' scan cannot see them.
+    #[test]
+    fn every_built_word_exists() {
+        let english: Vec<String> = read(LANGS[0].0).0.into_iter().flat_map(|(_, ids)| ids).collect();
+        let mut built = Vec::new();
+        for kind in ["plan", "resolution", "wontfix", "escalation"] {
+            built.push(format!("tickets-proposes-{kind}"));
+            built.push(format!("tickets-your-proposal-{kind}"));
+        }
+        for kind in ["plan", "resolution", "wontfix"] {
+            built.push(format!("tickets-yours-decide-{kind}"));
+        }
+        for stage in ["rejected", "closed-resolved", "closed", "resolved", "blocked", "snoozed", "pending", "open"] {
+            built.push(format!("tickets-stage-{stage}"));
+        }
+        for priority in ["urgent", "high", "normal", "low"] {
+            built.push(format!("tickets-priority-{priority}"));
+        }
+        let missing: Vec<_> = built.iter().filter(|id| !english.contains(id)).collect();
+        assert!(missing.is_empty(), "built ids English has not: {missing:?}");
+    }
+
     #[test]
     fn written_words_are_told_from_code() {
         let source = "fn f() {\n    div().child(\"Stop them\")\n        .named(\"stop the loop\");\n    // \"a comment says\"\n    let c = '\"';\n    x(\"some-id\", \"a::path b\", t!(\"i18n-test-plural\"));\n}\n";

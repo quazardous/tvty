@@ -45,14 +45,14 @@ impl Band {
         })
     }
 
-    pub fn title(self) -> &'static str {
-        match self {
-            Band::Moderate => "To moderate",
-            Band::Decide => "Waiting on you",
-            Band::AgentOnIt => "Agents on it",
-            Band::Open => "Open",
-            Band::Closed => "Closed",
-        }
+    pub fn title(self) -> String {
+        crate::t!(match self {
+            Band::Moderate => "tickets-band-moderate",
+            Band::Decide => "tickets-band-decide",
+            Band::AgentOnIt => "tickets-band-working",
+            Band::Open => "tickets-band-open",
+            Band::Closed => "tickets-band-closed",
+        })
     }
 }
 
@@ -98,18 +98,18 @@ impl Glyph {
         })
     }
 
-    pub fn meaning(self) -> &'static str {
-        match self {
-            Glyph::Escalation => "an agent escalates: it needs you to act",
-            Glyph::Plan => "a plan is proposed",
-            Glyph::Resolution => "a resolution is proposed",
-            Glyph::Wontfix => "closing without a fix is proposed",
-            Glyph::StalledStep => "an agent's step went quiet",
-            Glyph::Step => "an agent is on a step (then: continue)",
-            Glyph::Rejected => "the last plan or resolution was rejected",
-            Glyph::ClosedResolved => "closed, resolved",
-            Glyph::Closed => "closed without a resolution",
-        }
+    pub fn meaning(self) -> String {
+        crate::t!(match self {
+            Glyph::Escalation => "tickets-glyph-escalation",
+            Glyph::Plan => "tickets-glyph-plan",
+            Glyph::Resolution => "tickets-glyph-resolution",
+            Glyph::Wontfix => "tickets-glyph-wontfix",
+            Glyph::StalledStep => "tickets-glyph-stalled",
+            Glyph::Step => "tickets-glyph-step",
+            Glyph::Rejected => "tickets-glyph-rejected",
+            Glyph::ClosedResolved => "tickets-glyph-closed-resolved",
+            Glyph::Closed => "tickets-glyph-closed",
+        })
     }
 }
 

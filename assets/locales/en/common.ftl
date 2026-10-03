@@ -7,3 +7,10 @@ i18n-test-plural = { $count ->
     [one] {$count} ticket
    *[other] {$count} tickets
 }
+
+## Short durations: "now", "3m", "2h", "5d"
+
+common-now = now
+common-minutes = {$n}m
+common-hours = {$n}h
+common-days = {$n}d

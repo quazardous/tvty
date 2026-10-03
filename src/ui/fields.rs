@@ -20,22 +20,22 @@ pub fn group(title: &'static str) -> Div {
 }
 
 /// A field: its name, and its widget beside it, wrapping.
-pub fn field(name: &'static str, widget: impl IntoElement) -> Div {
+pub fn field(name: impl Into<SharedString>, widget: impl IntoElement) -> Div {
     div()
         .flex()
         .gap_2()
         .py_1()
-        .child(div().w(px(LABEL_WIDTH)).flex_none().pt_0p5().text_color(p().muted).child(name))
+        .child(div().w(px(LABEL_WIDTH)).flex_none().pt_0p5().text_color(p().muted).child(name.into()))
         .child(div().flex_1().min_w_0().child(widget))
 }
 
 /// A field that says, not chosen here: its name, and its value.
-pub fn said(name: &'static str, value: impl IntoElement) -> Div {
+pub fn said(name: impl Into<SharedString>, value: impl IntoElement) -> Div {
     div()
         .flex()
         .gap_2()
         .py_1()
-        .child(div().w(px(LABEL_WIDTH)).flex_none().text_color(p().muted).child(name))
+        .child(div().w(px(LABEL_WIDTH)).flex_none().text_color(p().muted).child(name.into()))
         .child(div().flex_1().min_w_0().child(value))
 }
 
