@@ -132,6 +132,8 @@ pub struct Shell {
     sidebar_order: Option<Vec<String>>,
     /// The project dragged in the list now, if one is: its block glows.
     dragging_project: Rc<RefCell<Option<String>>>,
+    /// A project's block's width in the list, for the copy dragged.
+    block_width: Rc<Cell<Pixels>>,
     /// When tvty started: a work left with terminals gone for good never
     /// ends its restoring, and the list's order is taken a moment after.
     began: std::time::Instant,
@@ -419,38 +421,38 @@ fn moved(
     }
 }
 
-/// A project being dragged in the list: its name, and its block as it was
-/// when the drag began (its heading, its sessions), drawn under the pointer
-/// as that copy, not live.
+/// A project being dragged in the list, by name.
 #[derive(Clone)]
 struct ProjectDrag {
     name: String,
-    heading: String,
-    rows: Vec<String>,
 }
 
-impl Render for ProjectDrag {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .w(px(SIDEBAR_WIDTH - 60.))
-            .flex()
-            .flex_col()
-            .gap_1()
-            .px_3()
-            .py_2()
-            .rounded_md()
-            .bg(p().surface)
-            .opacity(0.92)
-            .shadow(vec![halo(p().accent, false)])
-            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(self.heading.clone()))
-            .children(self.rows.iter().map(|row| div().flex().items_center().gap_1().truncate().child(div().text_color(p().success).child("●")).child(row.clone())))
+/// What follows the pointer while a project is dragged: its block, drawn
+/// as the list draws it, at its width.
+struct ProjectGhost {
+    name: String,
+    shell: WeakEntity<Shell>,
+    width: Pixels,
+}
+
+impl Render for ProjectGhost {
+    fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let name = self.name.clone();
+        let block = self.shell.upgrade().and_then(|shell| {
+            shell.update(cx, |shell, cx| {
+                let found = shell.live_found(&[]);
+                let (project, shown) = found.into_iter().find(|(p, _)| p.name == name)?;
+                Some(shell.project_block(project, shown, &[], None, cx))
+            })
+        });
+        div().w(self.width).rounded_md().bg(p().surface).opacity(0.95).shadow(vec![edge(p().accent)]).children(block)
     }
 }
 
-/// A glow around a block, in `colour`: inside its bounds (`inset`), where
-/// a scrolled list does not clip it.
-fn halo(colour: Hsla, inset: bool) -> BoxShadow {
-    BoxShadow { color: colour.opacity(0.8), offset: point(px(0.), px(0.)), blur_radius: px(8.), spread_radius: px(1.), inset }
+/// A sharp line around a block, in `colour`, drawn inside its bounds: it
+/// moves nothing, and a scrolled list does not clip it.
+fn edge(colour: Hsla) -> BoxShadow {
+    BoxShadow { color: colour, offset: point(px(0.), px(0.)), blur_radius: px(0.), spread_radius: px(2.), inset: true }
 }
 
 struct Gallery {
@@ -795,6 +797,7 @@ impl Shell {
             recent: Vec::new(),
             sidebar_order: None,
             dragging_project: Rc::default(),
+            block_width: Rc::new(Cell::new(px(SIDEBAR_WIDTH - 60.))),
             began: std::time::Instant::now(),
             panel,
             settings: Settings::current(cx),
@@ -4628,6 +4631,249 @@ impl Shell {
     }
 
     /// The sessions that run, by project; "+ session" opens one.
+    /// A project's block in the list: its heading, its form for a new
+    /// session when open, its sessions. The list's, and the copy dragged.
+    fn project_block(&self, project: &sessions::Project, shown: Vec<&Terminal>, words: &[String], target: Option<&str>, cx: &mut Context<Self>) -> Div {
+        let tickets = self.board.tickets.get(&project.name);
+        let critical = self.board.critical.get(&project.name).copied();
+        // A project shows the sum of what it asks, collapsed or not.
+        let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
+        // Fixed heights: the list is laid out on every frame of the
+        // shell, and rows the layout must measure cost dearly.
+        // The project's block, its heading and its sessions: dragged
+        // onto another project, it takes its place.
+        let mut block = div().flex().flex_col();
+        block = block.child(
+            div()
+                .named(SharedString::from(format!("project-row-{}", project.name)))
+                .h(px(SESSION_HEADING))
+                .flex_none()
+                .overflow_hidden()
+                .flex()
+                .items_center()
+                .gap_1()
+                .px_3()
+                .pt_2()
+                .pb_1()
+                .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
+                .child(alerts.badges(format!("project-{}", project.name)))
+                // Something steers its agents (the 📢).
+                .children(self.steered_mark(&project.name, cx))
+                .when(project.on_board, |d| {
+                    let name = project.name.clone();
+                    d.child(
+                        buttons::link(SharedString::from(format!("new-session-{name}")), crate::t!("sessions-new-session"))
+                            .text_xs()
+                            .on_click(cx.listener(move |shell, _, window, cx| {
+                                shell.ask_new_session(name.clone(), window, cx)
+                            })),
+                    )
+                })
+                // Its options: its folders' settings, its layer of the board's config.
+                .when(project.on_board, |d| {
+                    let name = project.name.clone();
+                    d.child(
+                        buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", crate::t!("sessions-project-options"))
+                            .text_xs()
+                            .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
+                    )
+                })
+                // A plain shell in the project's folder, listed with it.
+                .when(project.on_board, |d| {
+                    let name = project.name.clone();
+                    d.child(
+                        buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
+                            .text_xs()
+                            .tip(crate::t!("sessions-project-terminal"))
+                            .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
+                    )
+                }),
+        )
+        .children(self.new_session_form(&project.name, cx));
+        for terminal in shown {
+            let session = terminal.session.clone();
+            let selected = self.selected.as_deref() == Some(session.as_str());
+            let aimed = target.as_deref() == Some(session.as_str());
+            let open = self.terminals.contains_key(&session);
+            // Others attached to it: seen before it is opened.
+            let attached = self.attached(&session).filter(|a| a.others > 0);
+            let counts = self.counts_of(&project.name, terminal);
+            let state = terminal.status.as_ref().and_then(|s| s.colour());
+            let restart = terminal
+                .agent
+                .as_ref()
+                .and_then(|a| self.board.bars.get(a))
+                .is_some_and(|b| !b.stale && b.bar.alerts.restart_needed);
+            // Its tool calls refused lately: a flag on its row.
+            let denied = terminal
+                .agent
+                .as_ref()
+                .and_then(|a| self.board.bars.get(a))
+                .filter(|b| !b.stale)
+                .and_then(|b| b.bar.denials.as_ref().filter(|d| d.last_hour > 0).map(|d| (d.last_hour, b.bar.denials_said())));
+            let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
+            // Its loop stopped from here: shown under the pointer; a
+            // first click asks, a second stops (it stays restartable).
+            let stop = terminal.agent.clone().filter(|_| terminal.status.as_ref().is_some_and(|s| s.online)).map(|agent| {
+                let asking = self.stop_asking.as_deref() == Some(session.as_str());
+                let row = session.clone();
+                div()
+                    .named(SharedString::from(format!("stop-{session}")))
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap_1()
+                    .px_0p5()
+                    .rounded_sm()
+                    .when(!asking, |d| d.opacity(0.).group_hover(SharedString::from(format!("terminal-{session}-group")), |s| s.opacity(1.)))
+                    .hover(|d| d.bg(p().hover))
+                    .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child(crate::t!("sessions-stop-ask"))))
+                    .child(crate::icons::icon(crate::icons::Icon::Stop, p().danger, 13.))
+                    .tip(crate::t!("sessions-stop-tip", who = agent.clone()))
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        cx.stop_propagation();
+                        if shell.stop_asking.as_deref() == Some(row.as_str()) {
+                            shell.stop_asking = None;
+                            shell.stop_agent_loop(agent.clone(), cx);
+                        } else {
+                            shell.stop_asking = Some(row.clone());
+                        }
+                        cx.notify();
+                    }))
+            });
+            block = block.child(
+                div()
+                    .named(SharedString::from(format!("terminal-{session}")))
+                    .group(SharedString::from(format!("terminal-{session}-group")))
+                    .h(px(height))
+                    .flex_none()
+                    .overflow_hidden()
+                    .flex()
+                    .gap_2()
+                    .pl_1()
+                    .pr_3()
+                    .py_1()
+                    .cursor_pointer()
+                    .when(selected, |d| d.bg(p().active).text_color(p().text))
+                    .when(!selected, |d| d.hover(|d| d.bg(p().hover)))
+                    // Where Enter goes, while filtering.
+                    .when(aimed && !selected, |d| d.bg(p().hover))
+                    .when(aimed, |d| d.border_l_2().border_color(p().accent))
+                    // The loop's state colour: working, idle, starting.
+                    .child(
+                        div()
+                            .w(px(3.))
+                            .flex_none()
+                            .rounded_sm()
+                            .when_some(state, |d, colour| d.bg(colour)),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap_0p5()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap_2()
+                                    // Green: the terminal already runs in tvty.
+                                    .child(
+                                        div()
+                                            .named("open")
+                                            .w(px(7.))
+                                            .when(open, |d| d.child(dot(p().success)).tip(crate::t!("sessions-open"))),
+                                    )
+                                    .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
+                                    .children(stop)
+                                    .when_some(denied.clone(), |d, (count, said)| {
+                                        d.child(
+                                            crate::icons::labelled(crate::icons::Icon::Critical, p().warning, 12., count.to_string())
+                                                .named("denied")
+                                                .text_xs()
+                                                .text_color(p().warning)
+                                                .tip(said.unwrap_or_default()),
+                                        )
+                                    })
+                                    // Its Claude runs in claude-loop (through tmux), not on aiball's host.
+                                    .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
+                                        d.child(
+                                            div()
+                                                .named("looped")
+                                                .text_xs()
+                                                .text_color(p().muted)
+                                                .child("⇄")
+                                                .tip(crate::t!("sessions-looped", mux = crate::mux::program())),
+                                        )
+                                    })
+                                    .when_some(attached, |d, a| {
+                                        d.child(
+                                            div()
+                                                .named("attached")
+                                                .text_xs()
+                                                .text_color(if a.typing > 0 { p().warning } else { p().muted })
+                                                .child(format!("+{}", a.others))
+                                                .tip(format!(
+                                                    "{}{}",
+                                                    crate::t!("sessions-attached", others = a.others, typing = a.typing),
+                                                    if a.typing > 0 { crate::t!("sessions-attached-copy") } else { String::new() }
+                                                )),
+                                        )
+                                    })
+                                    // A shell the host holds, without Claude.
+                                    .when(terminal.agent.is_none() && terminal.attach.is_some(), |d| {
+                                        d.child(
+                                            div()
+                                                .named("shell")
+                                                .text_xs()
+                                                .text_color(p().muted)
+                                                .child(">_")
+                                                .tip(crate::t!("sessions-host-shell")),
+                                        )
+                                    })
+                                    // Its Claude Code waits for a restart (the button is on its bar).
+                                    .when(restart, |d| {
+                                        d.child(
+                                            div()
+                                                .named("restart")
+                                                .text_color(p().warning)
+                                                .child("⟳")
+                                                .tip(crate::t!("sessions-update")),
+                                        )
+                                    })
+                                    .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
+                            )
+                            .when_some(terminal.status.as_ref(), |d, status| {
+                                // Its model beside its state: yellow, ↑, when a newer one of its family is out.
+                                let model = terminal
+                                    .agent
+                                    .as_ref()
+                                    .and_then(|a| self.board.bars.get(a))
+                                    .filter(|b| !b.stale)
+                                    .and_then(|b| b.bar.model.clone())
+                                    .map(|model| {
+                                        let newer = model.newer.is_some();
+                                        div()
+                                            .named(SharedString::from(format!("row-model-{}", terminal.session)))
+                                            .flex_none()
+                                            .text_size(px(11.))
+                                            .text_color(if newer { p().warning } else { p().muted })
+                                            .child(if newer { format!("· {} ↑", model.name) } else { format!("· {}", model.name) })
+                                            .tip(model.said())
+                                    });
+                                d.child(div().flex().items_center().gap_1().child(status.line(self.armed_of(terminal).as_deref())).children(model))
+                            }),
+                    )
+                    .on_click(cx.listener(move |shell, _, window, cx| {
+                        shell.select(session.clone(), window, cx)
+                    })),
+            );
+        }
+        block
+    }
+
     pub(super) fn live_list(&self, cx: &mut Context<Self>) -> Div {
         let mut list = div().flex().flex_col();
         let words = self.filter_words(cx);
@@ -4650,270 +4896,39 @@ impl Shell {
             }
         }
         for (project, shown) in found {
-            let tickets = self.board.tickets.get(&project.name);
-            let critical = self.board.critical.get(&project.name).copied();
-            // A project shows the sum of what it asks, collapsed or not.
-            let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
-            // Fixed heights: the list is laid out on every frame of the
-            // shell, and rows the layout must measure cost dearly.
-            // The project's block, its heading and its sessions: dragged
-            // onto another project, it takes its place.
-            let mut block = div().flex().flex_col();
-            block = block.child(
-                div()
-                    .named(SharedString::from(format!("project-row-{}", project.name)))
-                    .h(px(SESSION_HEADING))
-                    .flex_none()
-                    .overflow_hidden()
-                    .flex()
-                    .items_center()
-                    .gap_1()
-                    .px_3()
-                    .pt_2()
-                    .pb_1()
-                    .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
-                    .child(alerts.badges(format!("project-{}", project.name)))
-                    // Something steers its agents (the 📢).
-                    .children(self.steered_mark(&project.name, cx))
-                    .when(project.on_board, |d| {
-                        let name = project.name.clone();
-                        d.child(
-                            buttons::link(SharedString::from(format!("new-session-{name}")), crate::t!("sessions-new-session"))
-                                .text_xs()
-                                .on_click(cx.listener(move |shell, _, window, cx| {
-                                    shell.ask_new_session(name.clone(), window, cx)
-                                })),
-                        )
-                    })
-                    // Its options: its folders' settings, its layer of the board's config.
-                    .when(project.on_board, |d| {
-                        let name = project.name.clone();
-                        d.child(
-                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", crate::t!("sessions-project-options"))
-                                .text_xs()
-                                .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
-                        )
-                    })
-                    // A plain shell in the project's folder, listed with it.
-                    .when(project.on_board, |d| {
-                        let name = project.name.clone();
-                        d.child(
-                            buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
-                                .text_xs()
-                                .tip(crate::t!("sessions-project-terminal"))
-                                .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
-                        )
-                    }),
-            )
-            .children(self.new_session_form(&project.name, cx));
-            let rows = shown.iter().map(|t| t.label.clone()).collect::<Vec<_>>();
-            for terminal in shown {
-                let session = terminal.session.clone();
-                let selected = self.selected.as_deref() == Some(session.as_str());
-                let aimed = target.as_deref() == Some(session.as_str());
-                let open = self.terminals.contains_key(&session);
-                // Others attached to it: seen before it is opened.
-                let attached = self.attached(&session).filter(|a| a.others > 0);
-                let counts = self.counts_of(&project.name, terminal);
-                let state = terminal.status.as_ref().and_then(|s| s.colour());
-                let restart = terminal
-                    .agent
-                    .as_ref()
-                    .and_then(|a| self.board.bars.get(a))
-                    .is_some_and(|b| !b.stale && b.bar.alerts.restart_needed);
-                // Its tool calls refused lately: a flag on its row.
-                let denied = terminal
-                    .agent
-                    .as_ref()
-                    .and_then(|a| self.board.bars.get(a))
-                    .filter(|b| !b.stale)
-                    .and_then(|b| b.bar.denials.as_ref().filter(|d| d.last_hour > 0).map(|d| (d.last_hour, b.bar.denials_said())));
-                let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
-                // Its loop stopped from here: shown under the pointer; a
-                // first click asks, a second stops (it stays restartable).
-                let stop = terminal.agent.clone().filter(|_| terminal.status.as_ref().is_some_and(|s| s.online)).map(|agent| {
-                    let asking = self.stop_asking.as_deref() == Some(session.as_str());
-                    let row = session.clone();
-                    div()
-                        .named(SharedString::from(format!("stop-{session}")))
-                        .flex()
-                        .flex_none()
-                        .items_center()
-                        .gap_1()
-                        .px_0p5()
-                        .rounded_sm()
-                        .when(!asking, |d| d.opacity(0.).group_hover(SharedString::from(format!("terminal-{session}-group")), |s| s.opacity(1.)))
-                        .hover(|d| d.bg(p().hover))
-                        .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child(crate::t!("sessions-stop-ask"))))
-                        .child(crate::icons::icon(crate::icons::Icon::Stop, p().danger, 13.))
-                        .tip(crate::t!("sessions-stop-tip", who = agent.clone()))
-                        .on_click(cx.listener(move |shell, _, _, cx| {
-                            cx.stop_propagation();
-                            if shell.stop_asking.as_deref() == Some(row.as_str()) {
-                                shell.stop_asking = None;
-                                shell.stop_agent_loop(agent.clone(), cx);
-                            } else {
-                                shell.stop_asking = Some(row.clone());
-                            }
-                            cx.notify();
-                        }))
-                });
-                block = block.child(
-                    div()
-                        .named(SharedString::from(format!("terminal-{session}")))
-                        .group(SharedString::from(format!("terminal-{session}-group")))
-                        .h(px(height))
-                        .flex_none()
-                        .overflow_hidden()
-                        .flex()
-                        .gap_2()
-                        .pl_1()
-                        .pr_3()
-                        .py_1()
-                        .cursor_pointer()
-                        .when(selected, |d| d.bg(p().active).text_color(p().text))
-                        .when(!selected, |d| d.hover(|d| d.bg(p().hover)))
-                        // Where Enter goes, while filtering.
-                        .when(aimed && !selected, |d| d.bg(p().hover))
-                        .when(aimed, |d| d.border_l_2().border_color(p().accent))
-                        // The loop's state colour: working, idle, starting.
-                        .child(
-                            div()
-                                .w(px(3.))
-                                .flex_none()
-                                .rounded_sm()
-                                .when_some(state, |d, colour| d.bg(colour)),
-                        )
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .gap_0p5()
-                                .flex_1()
-                                .min_w_0()
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap_2()
-                                        // Green: the terminal already runs in tvty.
-                                        .child(
-                                            div()
-                                                .named("open")
-                                                .w(px(7.))
-                                                .when(open, |d| d.child(dot(p().success)).tip(crate::t!("sessions-open"))),
-                                        )
-                                        .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
-                                        .children(stop)
-                                        .when_some(denied.clone(), |d, (count, said)| {
-                                            d.child(
-                                                crate::icons::labelled(crate::icons::Icon::Critical, p().warning, 12., count.to_string())
-                                                    .named("denied")
-                                                    .text_xs()
-                                                    .text_color(p().warning)
-                                                    .tip(said.unwrap_or_default()),
-                                            )
-                                        })
-                                        // Its Claude runs in claude-loop (through tmux), not on aiball's host.
-                                        .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
-                                            d.child(
-                                                div()
-                                                    .named("looped")
-                                                    .text_xs()
-                                                    .text_color(p().muted)
-                                                    .child("⇄")
-                                                    .tip(crate::t!("sessions-looped", mux = crate::mux::program())),
-                                            )
-                                        })
-                                        .when_some(attached, |d, a| {
-                                            d.child(
-                                                div()
-                                                    .named("attached")
-                                                    .text_xs()
-                                                    .text_color(if a.typing > 0 { p().warning } else { p().muted })
-                                                    .child(format!("+{}", a.others))
-                                                    .tip(format!(
-                                                        "{}{}",
-                                                        crate::t!("sessions-attached", others = a.others, typing = a.typing),
-                                                        if a.typing > 0 { crate::t!("sessions-attached-copy") } else { String::new() }
-                                                    )),
-                                            )
-                                        })
-                                        // A shell the host holds, without Claude.
-                                        .when(terminal.agent.is_none() && terminal.attach.is_some(), |d| {
-                                            d.child(
-                                                div()
-                                                    .named("shell")
-                                                    .text_xs()
-                                                    .text_color(p().muted)
-                                                    .child(">_")
-                                                    .tip(crate::t!("sessions-host-shell")),
-                                            )
-                                        })
-                                        // Its Claude Code waits for a restart (the button is on its bar).
-                                        .when(restart, |d| {
-                                            d.child(
-                                                div()
-                                                    .named("restart")
-                                                    .text_color(p().warning)
-                                                    .child("⟳")
-                                                    .tip(crate::t!("sessions-update")),
-                                            )
-                                        })
-                                        .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
-                                )
-                                .when_some(terminal.status.as_ref(), |d, status| {
-                                    // Its model beside its state: yellow, ↑, when a newer one of its family is out.
-                                    let model = terminal
-                                        .agent
-                                        .as_ref()
-                                        .and_then(|a| self.board.bars.get(a))
-                                        .filter(|b| !b.stale)
-                                        .and_then(|b| b.bar.model.clone())
-                                        .map(|model| {
-                                            let newer = model.newer.is_some();
-                                            div()
-                                                .named(SharedString::from(format!("row-model-{}", terminal.session)))
-                                                .flex_none()
-                                                .text_size(px(11.))
-                                                .text_color(if newer { p().warning } else { p().muted })
-                                                .child(if newer { format!("· {} ↑", model.name) } else { format!("· {}", model.name) })
-                                                .tip(model.said())
-                                        });
-                                    d.child(div().flex().items_center().gap_1().child(status.line(self.armed_of(terminal).as_deref())).children(model))
-                                }),
-                        )
-                        .on_click(cx.listener(move |shell, _, window, cx| {
-                            shell.select(session.clone(), window, cx)
-                        })),
-                );
-            }
+            let block = self.project_block(project, shown, &words, target.as_deref(), cx);
             let name = project.name.clone();
             let dragged = cx.has_active_drag() && self.dragging_project.borrow().as_deref() == Some(name.as_str());
-            let drag = ProjectDrag { name: name.clone(), heading: name.to_uppercase(), rows };
             let dragging = self.dragging_project.clone();
+            let (shell, width) = (cx.entity().downgrade(), self.block_width.clone());
             list = list.child(
                 div()
                     .named(SharedString::from(format!("project-block-{name}")))
+                    .relative()
                     .rounded_md()
-                    // The one moved, in blue, where it was.
-                    .when(dragged, |d| d.shadow(vec![halo(p().accent, true)]))
+                    // The one moved, edged in blue, where it was.
+                    .when(dragged, |d| d.shadow(vec![edge(p().accent)]))
                     .when(words.is_empty(), |d| {
-                        d.on_drag(drag, move |drag: &ProjectDrag, _, _, cx| {
+                        d.on_drag(ProjectDrag { name: name.clone() }, move |drag: &ProjectDrag, _, _, cx| {
                             *dragging.borrow_mut() = Some(drag.name.clone());
-                            cx.new(|_| drag.clone())
+                            cx.new(|_| ProjectGhost { name: drag.name.clone(), shell: shell.clone(), width: width.get() })
                         })
                         // The one it would take the place of, in yellow.
                         .drag_over::<ProjectDrag>({
                             let here = name.clone();
                             move |style, drag: &ProjectDrag, _, _| {
-                                if drag.name == here { style } else { style.shadow(vec![halo(p().warning, true)]) }
+                                if drag.name == here { style } else { style.shadow(vec![edge(p().warning)]) }
                             }
                         })
                         .on_drop(cx.listener(move |shell, drag: &ProjectDrag, _, cx| {
                             shell.dragging_project.borrow_mut().take();
                             shell.move_project(&drag.name, &name, cx)
                         }))
+                    })
+                    // Its width, for the copy that follows the pointer.
+                    .child({
+                        let width = self.block_width.clone();
+                        canvas(move |bounds, _, _| width.set(bounds.size.width), |_, _, _, _| {}).absolute().inset_0()
                     })
                     .child(block),
             );
