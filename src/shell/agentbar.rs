@@ -171,6 +171,12 @@ impl Shell {
                     .child(man)
                     .when(marks.arming, |d| d.child("…"))
             }))
+            // The key that cycles it, greyed: how to move the loop, at a glance.
+            .children(crate::keymap::current(cx).keys_of("afk.cycle").first().map(|key| {
+                // On the bar's yellow while it boots (the chip then says a word).
+                let colour = if marks.word.is_some() { tone(Tone::Boot) } else { p().muted.opacity(0.7) };
+                div().named("agent-afk-key").pl_0p5().text_color(colour).child(key.pretty())
+            }))
             // Silent while its choices are open: the tip would cover them.
             .tip_unless(self.afk_menu, crate::t!(if marks.arming { "agentbar-afk-arming-tip" } else { "agentbar-afk-tip" }))
             .on_click(cx.listener(|shell, _, _, cx| {
