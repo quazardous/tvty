@@ -2,7 +2,9 @@
 //! Language) or the system's. Only tvty's own words: what people wrote
 //! (tickets, comments, names) is shown as it is.
 //!
-//! The words live in `assets/locales/<lang>/tvty.ftl` (Fluent), built in.
+//! The words live in `assets/locales/<lang>/<surface>.ftl` (Fluent), built
+//! in: a folder per language, the same files in each, a file per surface
+//! of the interface (`agentbar`, `tickets`…), `common` for words they share.
 //! English is the reference: a word missing from another language is said
 //! in English, and one missing from English shows its id.
 //!
@@ -19,16 +21,28 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentArgs, FluentResource};
 
-/// The languages tvty speaks: their code, their name in themselves, their
-/// words.
-pub const LANGS: &[(&str, &str, &str)] = &[
-    ("en", "English", include_str!("../assets/locales/en/tvty.ftl")),
-    ("fr", "Français", include_str!("../assets/locales/fr/tvty.ftl")),
-    ("es", "Español", include_str!("../assets/locales/es/tvty.ftl")),
-];
+/// The languages tvty speaks: their code (their folder under
+/// `assets/locales/`) and their name in themselves.
+pub const LANGS: &[(&str, &str)] = &[("en", "English"), ("fr", "Français"), ("es", "Español")];
 
-/// The languages, by code and name (Settings' choice).
-pub const NAMES: &[(&str, &str)] = &[("en", "English"), ("fr", "Français"), ("es", "Español")];
+/// The words, built in: `<lang>/<surface>.ftl`.
+#[derive(rust_embed::Embed)]
+#[folder = "assets/locales/"]
+struct Locales;
+
+/// A language's files: their name (`agentbar`) and their words, by name.
+fn files(code: &str) -> Vec<(String, String)> {
+    let prefix = format!("{code}/");
+    let mut files: Vec<_> = Locales::iter()
+        .filter_map(|path| {
+            let name = path.strip_prefix(prefix.as_str())?.strip_suffix(".ftl")?.to_string();
+            let words = String::from_utf8(Locales::get(&path)?.data.into_owned()).ok()?;
+            Some((name, words))
+        })
+        .collect();
+    files.sort();
+    files
+}
 
 /// The language spoken now (an index in `LANGS`).
 static CURRENT: AtomicUsize = AtomicUsize::new(0);
@@ -38,17 +52,19 @@ fn bundles() -> &'static [FluentBundle<FluentResource>] {
     BUNDLES.get_or_init(|| {
         LANGS
             .iter()
-            .map(|(code, _, words)| {
+            .map(|(code, _)| {
                 let lang = code.parse().expect("a language code");
                 let mut bundle = FluentBundle::new_concurrent(vec![lang]);
                 // No isolation marks around a value: they show in a GPUI text.
                 bundle.set_use_isolating(false);
-                let resource = FluentResource::try_new(words.to_string()).unwrap_or_else(|(resource, errors)| {
-                    log::warn!("i18n: {code}: {errors:?}");
-                    resource
-                });
-                if let Err(errors) = bundle.add_resource(resource) {
-                    log::warn!("i18n: {code}: {errors:?}");
+                for (name, words) in files(code) {
+                    let resource = FluentResource::try_new(words).unwrap_or_else(|(resource, errors)| {
+                        log::warn!("i18n: {code}/{name}: {errors:?}");
+                        resource
+                    });
+                    if let Err(errors) = bundle.add_resource(resource) {
+                        log::warn!("i18n: {code}/{name}: {errors:?}");
+                    }
                 }
                 bundle
             })
@@ -60,7 +76,7 @@ fn bundles() -> &'static [FluentBundle<FluentResource>] {
 /// letters). English when tvty does not speak it.
 fn spoken(locale: &str) -> usize {
     let code = locale.get(..2).unwrap_or("").to_ascii_lowercase();
-    LANGS.iter().position(|(c, _, _)| *c == code).unwrap_or(0)
+    LANGS.iter().position(|(c, _)| *c == code).unwrap_or(0)
 }
 
 /// The language a choice names: the setting's (`None`: the system's), unless
@@ -135,8 +151,7 @@ macro_rules! t {
 
 // ── Coverage: `tvty i18n` ────────────────────────────────────────────
 
-/// Every message and attribute of a language's file, by id; Err: what
-/// does not read.
+/// Every message and attribute of a file, by id; Err: what does not read.
 fn ids(words: &str) -> Result<Vec<String>, String> {
     let resource = FluentResource::try_new(words.to_string()).map_err(|(_, errors)| format!("{errors:?}"))?;
     let mut ids = Vec::new();
@@ -152,23 +167,53 @@ fn ids(words: &str) -> Result<Vec<String>, String> {
     Ok(ids)
 }
 
+/// A language's ids, file by file, and its faults: a file that does not
+/// read, an id said twice (the second is lost).
+fn read(code: &str) -> (Vec<(String, Vec<String>)>, Vec<String>) {
+    let mut faults = Vec::new();
+    let mut seen = std::collections::HashMap::new();
+    let mut read = Vec::new();
+    for (name, words) in files(code) {
+        match ids(&words) {
+            Ok(ids) => {
+                for id in &ids {
+                    if let Some(first) = seen.insert(id.clone(), name.clone()) {
+                        faults.push(format!("{code}/{name}.ftl: {id} is already in {code}/{first}.ftl"));
+                    }
+                }
+                read.push((name, ids));
+            }
+            Err(e) => faults.push(format!("{code}/{name}.ftl: {e}")),
+        }
+    }
+    (read, faults)
+}
+
 /// One language against English: the words it has, those it misses, those
-/// English has not (left over).
+/// English has not (left over) — as `file: id` — and file by file, its
+/// words against English's.
 struct Coverage {
     code: &'static str,
     has: usize,
     missing: Vec<String>,
     extra: Vec<String>,
+    by_file: Vec<usize>,
 }
 
-fn coverage(english: &[String], words: &str, code: &'static str) -> Result<Coverage, String> {
-    let theirs = ids(words)?;
-    Ok(Coverage {
-        code,
-        has: english.iter().filter(|id| theirs.contains(id)).count(),
-        missing: english.iter().filter(|id| !theirs.contains(id)).cloned().collect(),
-        extra: theirs.into_iter().filter(|id| !english.contains(id)).collect(),
-    })
+fn coverage(english: &[(String, Vec<String>)], theirs: &[(String, Vec<String>)], code: &'static str) -> Coverage {
+    let in_their = |file: &str, id: &String| theirs.iter().any(|(f, ids)| f == file && ids.contains(id));
+    let mut c = Coverage { code, has: 0, missing: Vec::new(), extra: Vec::new(), by_file: Vec::new() };
+    for (file, ids) in english {
+        let has = ids.iter().filter(|id| in_their(file, id)).count();
+        c.has += has;
+        c.by_file.push(has);
+        c.missing.extend(ids.iter().filter(|id| !in_their(file, id)).map(|id| format!("{file}: {id}")));
+    }
+    let in_english = |file: &str, id: &String| english.iter().any(|(f, ids)| f == file && ids.contains(id));
+    for (file, ids) in theirs {
+        c.extra.extend(ids.iter().filter(|id| !in_english(file, id)).map(|id| format!("{file}: {id}")));
+    }
+    c
 }
 
 /// The string literals of a Rust source, outside comments, with their line
@@ -292,11 +337,8 @@ fn percent(part: usize, whole: usize) -> f64 {
 pub fn report(args: &[String]) -> i32 {
     let markdown = args.iter().any(|a| a == "--markdown");
     let only = args.iter().find(|a| !a.starts_with('-'));
-    let mut faults = Vec::new();
-    let english = ids(LANGS[0].2).unwrap_or_else(|e| {
-        faults.push(format!("en: {e}"));
-        Vec::new()
-    });
+    let (english_files, mut faults) = read(LANGS[0].0);
+    let english: Vec<String> = english_files.iter().flat_map(|(_, ids)| ids.clone()).collect();
     let mut out = String::new();
     let row = |out: &mut String, cells: &[String]| {
         if markdown {
@@ -305,41 +347,54 @@ pub fn report(args: &[String]) -> i32 {
             out.push_str(&format!("{:<24}{}\n", cells[0], cells[1..].iter().map(|c| format!("{c:>12}")).collect::<String>()));
         }
     };
-    let head = |out: &mut String, title: &str, cells: &[&str]| {
+    let head = |out: &mut String, title: &str, cells: &[String]| {
         if markdown {
             out.push_str(&format!("### {title}\n\n| {} |\n|{}\n", cells.join(" | "), "---|".repeat(cells.len())));
         } else {
             out.push_str(&format!("{title}\n"));
-            row(out, &cells.iter().map(|c| c.to_string()).collect::<Vec<_>>());
+            row(out, cells);
         }
     };
+    let cells = |names: &[&str]| names.iter().map(|n| n.to_string()).collect::<Vec<_>>();
 
-    head(&mut out, "Languages", &["language", "coverage", "missing", "left over"]);
-    let mut asked_missing = None;
-    for (code, name, words) in LANGS {
-        match coverage(&english, words, code) {
-            Ok(c) => {
-                row(
-                    &mut out,
-                    &[
-                        format!("{code} {name}"),
-                        format!("{:.0} %", percent(c.has, english.len())),
-                        c.missing.len().to_string(),
-                        c.extra.len().to_string(),
-                    ],
-                );
-                if only.is_some_and(|o| o == c.code) {
-                    asked_missing = Some(c);
-                }
-            }
-            Err(e) => faults.push(format!("{code}: {e}")),
+    head(&mut out, "Languages", &cells(&["language", "coverage", "missing", "left over"]));
+    let mut all = Vec::new();
+    for (code, name) in LANGS {
+        let (theirs, their_faults) = read(code);
+        if *code != LANGS[0].0 {
+            faults.extend(their_faults);
         }
+        let c = coverage(&english_files, &theirs, code);
+        row(
+            &mut out,
+            &[
+                format!("{code} {name}"),
+                format!("{:.0} %", percent(c.has, english.len())),
+                c.missing.len().to_string(),
+                c.extra.len().to_string(),
+            ],
+        );
+        all.push(c);
+    }
+
+    out.push('\n');
+    let mut columns = vec!["file".to_string(), "words".to_string()];
+    columns.extend(all.iter().skip(1).map(|c| c.code.to_string()));
+    head(&mut out, "Files", &columns);
+    for (at, (file, ids)) in english_files.iter().enumerate() {
+        let mut cells = vec![format!("{file}.ftl"), ids.len().to_string()];
+        cells.extend(all.iter().skip(1).map(|c| format!("{:.0} %", percent(c.by_file[at], ids.len()))));
+        row(&mut out, &cells);
     }
 
     let files = sources();
     if !files.is_empty() {
         out.push('\n');
-        head(&mut out, "Migration (an estimate: words asked for, against words still written in the code)", &["file", "asked", "written", "migrated"]);
+        head(
+            &mut out,
+            "Migration (an estimate: words asked for, against words still written in the code)",
+            &cells(&["file", "asked", "written", "migrated"]),
+        );
         let (mut asked, mut written) = (0, 0);
         for (name, source) in &files {
             let m = migration(source, &english);
@@ -354,13 +409,13 @@ pub fn report(args: &[String]) -> i32 {
         row(&mut out, &["all".into(), asked.to_string(), written.to_string(), format!("{:.0} %", percent(asked, asked + written))]);
     }
 
-    if let Some(c) = asked_missing {
+    if let Some(c) = only.and_then(|o| all.iter().find(|c| c.code == o)) {
         out.push_str(&format!("\n{} misses {} word(s):\n", c.code, c.missing.len()));
         for id in &c.missing {
             out.push_str(&format!("  {id}\n"));
         }
         if !c.extra.is_empty() {
-            out.push_str(&format!("{} has {} word(s) English has not:\n", c.code, c.extra.len()));
+            out.push_str(&format!("{} has {} word(s) English has not there:\n", c.code, c.extra.len()));
             for id in &c.extra {
                 out.push_str(&format!("  {id}\n"));
             }
@@ -392,12 +447,16 @@ pub fn report(args: &[String]) -> i32 {
 mod tests {
     use super::*;
 
-    /// Every language's file reads, and has no word English has not.
+    /// Every language's files read, say each word once, and have no word
+    /// English has not (in the same file).
     #[test]
     fn every_language_reads() {
-        let english = ids(LANGS[0].2).unwrap();
-        for (code, _, words) in LANGS {
-            let c = coverage(&english, words, code).unwrap_or_else(|e| panic!("{code}: {e}"));
+        let (english, faults) = read(LANGS[0].0);
+        assert!(faults.is_empty(), "{faults:?}");
+        for (code, _) in LANGS {
+            let (theirs, faults) = read(code);
+            assert!(faults.is_empty(), "{faults:?}");
+            let c = coverage(&english, &theirs, code);
             assert!(c.extra.is_empty(), "{code} has words English has not: {:?}", c.extra);
         }
     }
@@ -405,7 +464,7 @@ mod tests {
     /// Every `t!("…")` of the sources names a word English has.
     #[test]
     fn every_word_asked_for_exists() {
-        let english = ids(LANGS[0].2).unwrap();
+        let english: Vec<String> = read(LANGS[0].0).0.into_iter().flat_map(|(_, ids)| ids).collect();
         let unknown: Vec<_> = sources()
             .iter()
             .flat_map(|(name, source)| migration(source, &english).unknown.into_iter().map(move |id| format!("{name}: {id}")))
@@ -447,7 +506,9 @@ mod tests {
     }
 
     #[test]
-    fn the_names_follow_the_languages() {
-        assert_eq!(NAMES.iter().map(|(c, n)| (*c, *n)).collect::<Vec<_>>(), LANGS.iter().map(|(c, n, _)| (*c, *n)).collect::<Vec<_>>());
+    fn every_language_has_its_folder() {
+        for (code, _) in LANGS {
+            assert!(!files(code).is_empty(), "no assets/locales/{code}/");
+        }
     }
 }

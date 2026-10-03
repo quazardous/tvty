@@ -39,15 +39,16 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 tungstenite = "0.30.0"
 fluent-bundle = "0.16.0"
 fluent-syntax = "0.12.0"
+# The interface's words (assets/locales), built in. In a debug build,
+# rust-embed would read them — and the kit's icons, the window's minimize,
+# maximize and close among them — from the sources of the machine that
+# built it: on any other machine (Windows Sandbox, where the tests run)
+# they would be missing. Embedded instead, as a release does.
+rust-embed = { version = "8", features = ["debug-embed"] }
 unic-langid = "0.9.6"
 sys-locale = "0.3.2"
 
-# In a debug build, rust-embed reads the kit's icons (the window's minimize,
-# maximize and close among them) from the sources of the machine that built
-# it: on any other Windows — Windows Sandbox, where the tests run — they are
-# blank. Embedded instead, as a release does.
 [target.'cfg(windows)'.dependencies]
-rust-embed = { version = "8", features = ["debug-embed"] }
 # Already built for GPUI: a window program still writes to the console it
 # was started from (src/main.rs).
 windows-sys = { version = "0.61", features = ["Win32_System_Console"] }

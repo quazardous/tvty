@@ -1,11 +1,6 @@
-# L'interface de tvty, en français. Mêmes ids que l'anglais
-# (assets/locales/en/tvty.ftl), qui fait référence.
-
-# Vérifie les pluriels (src/i18n.rs).
-i18n-test-plural = { $count ->
-    [one] {$count} ticket
-   *[other] {$count} tickets
-}
+# L'interface de tvty, en français. Mêmes fichiers et mêmes ids que
+# l'anglais (assets/locales/en/), qui fait référence.
+# Réglages.
 
 ## Réglages > Apparence > Langue
 

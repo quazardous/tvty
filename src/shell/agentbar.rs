@@ -26,12 +26,12 @@ use crate::tip::Tip as _;
 /// The bar's height: the terminal gives it that much, once.
 pub const BAR_HEIGHT: f32 = 24.;
 
-/// What the AFK chip offers: aiball's action, its label, the bar's glyph
+/// What the AFK chip offers: aiball's action, its label's word, the bar's glyph
 /// for it (▶ runs, ‖ paused, ■ stopped) and the armed mode it sets.
 const AFK_ACTIONS: &[(&str, &str, &str, Tone, &str)] = &[
-    ("off", "auto", "▶", Tone::Green, "off"),
-    ("arm_10m", "hold 10 min", "‖", Tone::Orange, "wait_10m"),
-    ("arm_inf", "hold", "■", Tone::Red, "wait_inf"),
+    ("off", "agentbar-afk-auto", "▶", Tone::Green, "off"),
+    ("arm_10m", "agentbar-afk-hold-10m", "‖", Tone::Orange, "wait_10m"),
+    ("arm_inf", "agentbar-afk-hold", "■", Tone::Red, "wait_inf"),
 ];
 
 /// An agent's backlog, open over the bar: whose, in which project (the
@@ -62,7 +62,7 @@ enum Tone {
 struct AfkMarks {
     /// A glyph alone: it is drawn in a glyph's box.
     in_force: Option<(&'static str, Tone)>,
-    /// A word instead, while the loop boots: text at the bar's size.
+    /// A word instead, while the loop boots: text at the bar's size (its id).
     word: Option<(&'static str, Tone)>,
     armed: Option<(String, Tone)>,
     arming: bool,
@@ -70,7 +70,7 @@ struct AfkMarks {
 
 fn afk_marks(presence: Option<&str>, armed: Option<&str>, left: Option<u64>) -> AfkMarks {
     if presence == Some("boot") {
-        return AfkMarks { in_force: None, word: Some(("… boot", Tone::Boot)), armed: None, arming: false };
+        return AfkMarks { in_force: None, word: Some(("agentbar-afk-boot", Tone::Boot)), armed: None, arming: false };
     }
     let in_force = match (presence, armed) {
         (Some("loop"), _) => Some(("▶", Tone::Green)),
@@ -101,16 +101,16 @@ fn until(at: Option<&str>) -> Option<u64> {
 }
 
 /// A backlog tier's name.
-fn tier(t: Option<i64>) -> &'static str {
-    match t {
-        Some(-1) => "critical",
-        Some(0) => "hot",
-        Some(1) => "yours",
-        Some(2) => "your decision pending",
-        Some(3) => "waiting on them",
-        Some(4) => "blocked",
-        _ => "other",
-    }
+fn tier(t: Option<i64>) -> String {
+    crate::t!(match t {
+        Some(-1) => "agentbar-tier-critical",
+        Some(0) => "agentbar-tier-hot",
+        Some(1) => "agentbar-tier-yours",
+        Some(2) => "agentbar-tier-decision",
+        Some(3) => "agentbar-tier-waiting",
+        Some(4) => "agentbar-tier-blocked",
+        _ => "agentbar-tier-other",
+    })
 }
 
 impl Shell {
@@ -162,7 +162,7 @@ impl Shell {
             .hover(|d| d.bg(p().hover))
             .when(self.afk_menu, |d| d.bg(p().active))
             .children(marks.in_force.map(|(glyph, t)| crate::icons::loop_glyph(glyph, tone(t), 9.)))
-            .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(word)))
+            .children(marks.word.map(|(word, t)| div().text_color(tone(t)).child(crate::t!(word))))
             .children(marks.armed.map(|(man, t)| {
                 div()
                     .flex()
@@ -172,11 +172,7 @@ impl Shell {
                     .when(marks.arming, |d| d.child("…"))
             }))
             // Silent while its choices are open: the tip would cover them.
-            .tip_unless(self.afk_menu, if marks.arming {
-                "armed: the little man shows the mode chosen with F9, in force 3 s after the last press — ▶ or ‖ says the one in force until then"
-            } else {
-                "who drives the loop: ▶ on its own, ‖ held for you (or while you type); the little man is the AFK mode — grey: you are away, the loop runs on its own; the seconds of a 10 min hold; ∞ held. F9 cycles it (auto → 10 min → ∞), in force 3 s after the last press; a click chooses"
-            })
+            .tip_unless(self.afk_menu, crate::t!(if marks.arming { "agentbar-afk-arming-tip" } else { "agentbar-afk-tip" }))
             .on_click(cx.listener(|shell, _, _, cx| {
                 shell.afk_menu = !shell.afk_menu;
                 cx.notify();
@@ -186,7 +182,7 @@ impl Shell {
             let armed = bar.as_ref().map(|b| b.afk.mode.clone());
             for &(action, label, glyph, t, mode) in AFK_ACTIONS {
                 let target = agent.clone();
-                let label = div().flex().items_center().gap_1().child(crate::icons::loop_glyph(glyph, tone(t), 9.)).child(label);
+                let label = div().flex().items_center().gap_1().child(crate::icons::loop_glyph(glyph, tone(t), 9.)).child(crate::t!(label));
                 row = row.child(
                     buttons::chip(SharedString::from(format!("agent-afk-{action}")), label)
                         // The mode armed now.
@@ -199,11 +195,11 @@ impl Shell {
 
         // ── What its Claude does ──
         let phase = bar.as_ref().map(|b| b.phase.clone()).or_else(|| status.as_ref().map(|s| s.state.clone()));
-        let what = match phase.as_deref() {
-            Some("busy") => "working",
-            Some("boot") => "starting",
-            _ => "idle",
-        };
+        let what = crate::t!(match phase.as_deref() {
+            Some("busy") => "agentbar-working",
+            Some("boot") => "agentbar-starting",
+            _ => "agentbar-idle",
+        });
         let booting = phase.as_deref() == Some("boot");
         // On the bar's yellow while its loop boots, every text in one ink.
         let ink = |colour: Hsla| if booting { crate::theme::on(p().warning) } else { colour };
@@ -213,7 +209,7 @@ impl Shell {
             // or a compaction shows.
             Some(b) if b.phase == "boot" => b.boot.as_ref().and_then(|boot| {
                 let started = parse_time(&boot.started_at)?;
-                let left = until(boot.deadline_at.as_deref()).map(|s| format!(" · {}s left", s)).unwrap_or_default();
+                let left = until(boot.deadline_at.as_deref()).map(|s| crate::t!("agentbar-boot-left", seconds = s)).unwrap_or_default();
                 Some(format!(" · {}{left}", ago(now().saturating_sub(started))))
             }),
             _ => status
@@ -231,11 +227,7 @@ impl Shell {
                 _ => p().muted,
             })
             .child(format!("{what}{since}{info}"))
-            .tip(if booting {
-                "its loop is starting: Claude loads, may resume its conversation or compact; the loop wakes it once the boot ends (30 s at least, longer while a resume or a compaction shows)"
-            } else {
-                "what its Claude does, and since when"
-            });
+            .tip(crate::t!(if booting { "agentbar-boot-tip" } else { "agentbar-state-tip" }));
         // Claude Code updated itself: a click restarts it — its loop waits
         // for Claude's next idle (at once when it is), and its bar says a
         // restart is pending meanwhile, whoever asked for it.
@@ -246,10 +238,11 @@ impl Shell {
             let target = agent.clone();
             // An offer until clicked: its word names the cause, not a state.
             let (word, tip) = match (restarting, armed) {
-                (true, _) => ("restarting…", "its Claude restarts, resuming its conversation"),
-                (_, true) => ("restart pending", "a restart is asked: its Claude restarts as soon as it is idle, resuming its conversation"),
-                _ => ("update", "its Claude Code installed an update: a click asks to restart it (at once if idle, otherwise as soon as it is idle), resuming its conversation"),
+                (true, _) => ("agentbar-restarting", "agentbar-restarting-tip"),
+                (_, true) => ("agentbar-restart-pending", "agentbar-restart-pending-tip"),
+                _ => ("agentbar-update", "agentbar-update-tip"),
             };
+            let (word, tip) = (crate::t!(word), crate::t!(tip));
             let chip = buttons::chip_if("agent-restart", "⟳", !restarting && !armed)
                 .child(word)
                 .border_color(p().warning)
@@ -269,17 +262,17 @@ impl Shell {
             // Said before done: a restart interrupts nothing, it waits.
             let line = asked.then(|| {
                 chipbar::line("agent-restart-bar", p().warning)
-                    .child(item().child(if busy { "Restart its Claude once it is idle?" } else { "Restart its Claude now?" }))
+                    .child(item().child(crate::t!(if busy { "agentbar-restart-ask-busy" } else { "agentbar-restart-ask" })))
                     .child(
-                        buttons::answer("agent-restart-go", "Restart")
+                        buttons::answer("agent-restart-go", crate::t!("agentbar-restart"))
                             .warning()
-                            .tooltip("its conversation is resumed")
+                            .tooltip(crate::t!("agentbar-restart-resumed"))
                             .on_click(cx.listener(move |shell, _, _, cx| {
                                 shell.restart_asked = None;
                                 shell.restart_claude(target.clone(), cx)
                             })),
                     )
-                    .child(buttons::secondary("agent-restart-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                    .child(buttons::secondary("agent-restart-cancel", crate::t!("agentbar-cancel")).on_click(cx.listener(|shell, _, _, cx| {
                         shell.restart_asked = None;
                         cx.notify();
                     })))
@@ -317,27 +310,22 @@ impl Shell {
             let attached = self.attached(&session).filter(|a| a.others > 0);
             // The multiplexer by its name: tmux, or psmux on Windows.
             let mux = crate::mux::program();
-            let place = if hosted { "host" } else { mux };
-            let hands = if copy { "copy" } else { "controls" };
+            let place = if hosted { crate::t!("agentbar-place-host") } else { mux.to_string() };
+            let hands = crate::t!(if copy { "agentbar-hands-copy" } else { "agentbar-hands-controls" });
             let label = match (moving, attached) {
-                (true, _) => "moving…".to_string(),
+                (true, _) => crate::t!("agentbar-moving"),
                 (false, Some(a)) => format!("{place} · {hands} +{}", a.others),
                 (false, None) => format!("{place} · {hands}"),
             };
             let proxy = bar.as_ref().is_some_and(|b| b.proxy_alive);
-            let tip = format!(
-                "its loop runs {}; {}{}{} A click: take or leave the controls, move the loop.",
-                if hosted { "on aiball's session host".to_string() } else { format!("in {mux} (claude-loop)") },
-                if copy {
-                    "this terminal is a copy: you watch, nothing you type reaches its Claude, and the session keeps its size."
-                } else {
-                    "you have the controls, shared with any other client: the size follows who types last."
-                },
-                attached
-                    .map(|a| format!(" {} other client{} attached ({} with the controls).", a.others, if a.others == 1 { "" } else { "s" }, a.typing))
-                    .unwrap_or_default(),
-                if proxy { " The terminal proxy in front of Claude is alive." } else { "" },
-            );
+            let mut tip = vec![
+                if hosted { crate::t!("agentbar-runs-hosted") } else { crate::t!("agentbar-runs-mux", mux = mux) },
+                crate::t!(if copy { "agentbar-copy-tip" } else { "agentbar-controls-tip" }),
+            ];
+            tip.extend(attached.map(|a| crate::t!("agentbar-others-attached", others = a.others, typing = a.typing)));
+            tip.extend(proxy.then(|| crate::t!("agentbar-proxy-alive")));
+            tip.push(crate::t!("agentbar-place-click"));
+            let tip = tip.join(" ");
             let chip = buttons::chip_if("agent-place", label, !moving)
                 .px_1()
                 .border_color(ink(if asked || copy { p().warning } else { p().border }))
@@ -354,7 +342,6 @@ impl Shell {
                 // Silent while its bar is open: the tip would cover it.
                 .tip_unless(asked, tip);
             let busy = bar.as_ref().is_some_and(|b| b.phase != "idle");
-            let other = if hosted { format!("into {mux}") } else { "to aiball's host".to_string() };
             // The others can be closed from here, this client having the
             // controls: on a host that says it can, or a loop in tmux (aiball
             // detaches them there, this terminal's client kept).
@@ -370,22 +357,19 @@ impl Shell {
                 let hands_session = session.clone();
                 let mut row = chipbar::line("agent-place-bar", p().warning)
                     .when_some(attached.filter(|a| a.typing > 0 && !hosted), |d, _| {
-                        d.child(item().text_color(p().warning).child("claude-loop's terminal types into it too"))
+                        d.child(item().text_color(p().warning).child(crate::t!("agentbar-others-type")))
                     })
                     .child(
-                        buttons::answer("agent-hands", if copy { "Take the controls" } else { "Leave for a copy" })
+                        buttons::answer("agent-hands", crate::t!(if copy { "agentbar-take-controls" } else { "agentbar-leave-copy" }))
                             .on_click(cx.listener(move |shell, _, window, cx| {
                                 shell.move_asked = None;
                                 shell.set_copy(hands_session.clone(), !copy, window, cx);
                             })),
                     );
                 if let Some((a, how)) = closable {
-                    let who = if a.others == 1 { "the other client".to_string() } else { format!("the {} other clients", a.others) };
                     row = row.child(
-                        buttons::answer("agent-close-others", format!("Close the others ({})", a.others))
-                            .tooltip(format!(
-                                "{who} attached to this session leave it (claude-loop's terminal, another Terminal Velocity); its Claude and this terminal go on"
-                            ))
+                        buttons::answer("agent-close-others", crate::t!("agentbar-close-others", others = a.others))
+                            .tooltip(crate::t!("agentbar-close-others-tip", others = a.others))
                             .on_click(cx.listener(move |shell, _, _, cx| {
                                 shell.move_asked = None;
                                 shell.close_others(how.clone(), cx);
@@ -397,17 +381,21 @@ impl Shell {
                     let (agent, to_host) = (agent.clone(), !hosted);
                     row = row
                         .child(
-                            buttons::answer("agent-move-go", if hosted { format!("Move into {mux}") } else { "Move to host".to_string() })
-                                .warning()
-                                .tooltip(format!(
-                                    "its Claude restarts {other}, resuming its conversation{}",
-                                    if busy { " — it works now: the move interrupts it" } else { "" }
-                                ))
+                            buttons::answer(
+                                "agent-move-go",
+                                if hosted { crate::t!("agentbar-move-into", mux = mux) } else { crate::t!("agentbar-move-to-host") },
+                            )
+                            .warning()
+                            .tooltip(format!(
+                                "{}{}",
+                                if hosted { crate::t!("agentbar-move-tip-into", mux = mux) } else { crate::t!("agentbar-move-tip-to-host") },
+                                if busy { crate::t!("agentbar-move-interrupts") } else { String::new() }
+                            ))
                                 .on_click(cx.listener(move |shell, _, _, cx| shell.move_loop(agent.clone(), name.clone(), to_host, cx))),
                         );
                 }
                 row.child(
-                    buttons::secondary("agent-move-cancel", "Cancel").on_click(cx.listener(|shell, _, _, cx| {
+                    buttons::secondary("agent-move-cancel", crate::t!("agentbar-cancel")).on_click(cx.listener(|shell, _, _, cx| {
                         shell.move_asked = None;
                         cx.notify();
                     })),
@@ -430,14 +418,11 @@ impl Shell {
                 .border_color(ink(if rc.on { p().accent } else { p().border }))
                 .text_color(ink(if rc.on { p().accent } else { p().muted }))
                 .child("RC")
-                .tip(if rc.on {
-                    "Remote Control is on: this Claude can be taken up from claude.ai and the mobile app"
-                } else {
-                    "Remote Control is off. /rc in the session turns it on; a folder's loops get it from the project's settings"
-                })
+                .tip(crate::t!(if rc.on { "agentbar-rc-on" } else { "agentbar-rc-off" }))
         });
         // The model its Claude ran its last turn on; a newer one of its
         // family out: yellow, ↑.
+        let all = crate::t!("agentbar-all", count = counts.all.map_or("-".to_string(), |n| n.to_string()));
         let model_item = bar.as_ref().and_then(|b| b.model.as_ref()).map(|model| {
             let newer = model.newer.is_some();
             item()
@@ -479,28 +464,24 @@ impl Shell {
                 .child(if online {
                     state.into_any_element()
                 } else {
-                    item().text_color(ink(p().danger)).child("offline").into_any_element()
+                    item().text_color(ink(p().danger)).child(crate::t!("agentbar-offline")).into_any_element()
                 })
-                .children(dialog.map(|_| item().text_color(ink(p().warning)).child("waits for an answer")))
+                .children(dialog.map(|_| item().text_color(ink(p().warning)).child(crate::t!("agentbar-dialog"))))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
                     d.when_some(b.limit_said(), |d, limit| d.child(loud(limit.into())))
-                        .when(a.trust_dialog, |d| d.child(loud("trust this folder?".into())))
-                        .when(a.not_logged_in, |d| d.child(loud("not logged in".into())))
-                        .when(a.api_unreachable, |d| d.child(loud("API unreachable".into())))
-                        .when(a.link_down, |d| d.child(loud("loop link down".into())))
-                        .when(a.daemon_down, |d| d.child(loud("aiball unreachable".into())))
+                        .when(a.trust_dialog, |d| d.child(loud(crate::t!("agentbar-trust").into())))
+                        .when(a.not_logged_in, |d| d.child(loud(crate::t!("agentbar-not-logged-in").into())))
+                        .when(a.api_unreachable, |d| d.child(loud(crate::t!("agentbar-api-unreachable").into())))
+                        .when(a.link_down, |d| d.child(loud(crate::t!("agentbar-link-down").into())))
+                        .when(a.daemon_down, |d| d.child(loud(crate::t!("agentbar-aiball-unreachable").into())))
                         .when(b.prompt.visible, |d| {
                             d.child(
                                 item()
                                     .named("agent-prompt")
                                     .text_color(ink(if b.prompt.has_input { p().accent } else { p().muted }))
                                     .child("❯")
-                                    .tip(if b.prompt.has_input {
-                                        "Claude's prompt is on screen, with text not sent yet"
-                                    } else {
-                                        "Claude's prompt is on screen, empty"
-                                    }),
+                                    .tip(crate::t!(if b.prompt.has_input { "agentbar-prompt-input" } else { "agentbar-prompt-empty" })),
                             )
                         })
                         .when(b.human_typing, |d| {
@@ -509,18 +490,18 @@ impl Shell {
                                     .named("agent-typing")
                                     .text_color(ink(p().danger))
                                     .child("⌨")
-                                    .tip("a human typed in its terminal a moment ago: the loop holds off"),
+                                    .tip(crate::t!("agentbar-typing")),
                             )
                         })
-                        .when(b.zen, |d| d.child(item().named("agent-zen").child("zen").tip("zen mode: the loop keeps quiet")))
+                        .when(b.zen, |d| d.child(item().named("agent-zen").child(crate::t!("agentbar-zen")).tip(crate::t!("agentbar-zen-tip"))))
                 })
                 .child(sep())
                 // As claude-loop's line counts them (a: b: e:), in words.
                 .child(
                     item()
-                        .saying("agent-all", format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
-                        .child(format!("all:{}", counts.all.map_or("-".to_string(), |n| n.to_string())))
-                        .tip("a: all the project's open tickets"),
+                        .saying("agent-all", all.clone())
+                        .child(all)
+                        .tip(crate::t!("agentbar-all-tip")),
                 )
                 .child(
                     item()
@@ -531,8 +512,8 @@ impl Shell {
                         .hover(|d| d.bg(p().hover))
                         .when(backlog_open, |d| d.bg(p().active))
                         .when(backlog.is_some_and(|b| b > 0), |d| d.text_color(ink(p().text)))
-                        .child(format!("backlog:{}", backlog.map_or("-".to_string(), |n| n.to_string())))
-                        .tip_unless(backlog_open, "b: its backlog, the tickets for it to look at; a click lists them")
+                        .child(crate::t!("agentbar-backlog", count = backlog.map_or("-".to_string(), |n| n.to_string())))
+                        .tip_unless(backlog_open, crate::t!("agentbar-backlog-tip"))
                         .on_click(cx.listener(move |shell, _, _, cx| {
                             shell.toggle_backlog(target.0.clone(), target.1.clone(), cx)
                         })),
@@ -541,15 +522,15 @@ impl Shell {
                     item()
                         .named("agent-events")
                         .when(unseen > 0, |d| d.text_color(ink(p().text)))
-                        .child(format!("events:{unseen}"))
-                        .tip("e: its events not seen yet — pings, answers, decisions waiting for it"),
+                        .child(crate::t!("agentbar-events", count = unseen))
+                        .tip(crate::t!("agentbar-events-tip")),
                 )
                 .child(
                     item()
                         .named("agent-holds")
                         .when(holds > 0, |d| d.text_color(ink(p().text)))
-                        .child(format!("holds:{holds}"))
-                        .tip("the tickets it holds"),
+                        .child(crate::t!("agentbar-holds", count = holds))
+                        .tip(crate::t!("agentbar-holds-tip")),
                 )
                 .when(pending || wake.is_some(), |d| {
                     d.child(
@@ -558,10 +539,7 @@ impl Shell {
                             .when(wake.is_some(), |d| d.text_color(ink(p().text)))
                             .child("✉")
                             .children(wake.map(ago))
-                            .tip(match wake {
-                                Some(_) => "work waits for the loop: it wakes its Claude on it when the countdown ends",
-                                None => "work waits for the loop (events or backlog)",
-                            }),
+                            .tip(crate::t!(if wake.is_some() { "agentbar-wake-tip" } else { "agentbar-pending-tip" })),
                     )
                 })
                 .child(div().flex_1())
@@ -612,13 +590,13 @@ impl Shell {
             .shadow_lg()
             .text_sm()
             .text_color(p().text)
-            .child(div().text_xs().text_color(p().muted).pb_1().child(format!("{}'s backlog", view.agent)));
+            .child(div().text_xs().text_color(p().muted).pb_1().child(crate::t!("agentbar-backlog-of", agent = view.agent.clone())));
         let read = crate::kernel::backlog::get(cx, &view.agent, &view.project);
         match &read {
-            None => list = list.child(div().text_color(p().muted).child("reading…")),
-            Some(Err(error)) => list = list.child(div().text_color(p().danger).child(format!("backlog: {}", short_error(error)))),
+            None => list = list.child(div().text_color(p().muted).child(crate::t!("agentbar-reading"))),
+            Some(Err(error)) => list = list.child(div().text_color(p().danger).child(crate::t!("agentbar-backlog-error", error = short_error(error)))),
             Some(Ok(backlog)) if backlog.rows.iter().all(|r| r.backlog_tier.is_none()) => {
-                list = list.child(div().text_color(p().muted).child("nothing in its backlog"));
+                list = list.child(div().text_color(p().muted).child(crate::t!("agentbar-backlog-empty")));
             }
             Some(Ok(backlog)) => {
                 let mut rows: Vec<_> = backlog.rows.iter().filter(|r| r.backlog_tier.is_some()).collect();
@@ -738,9 +716,9 @@ impl Shell {
                 let activity = match done {
                     Ok(()) => {
                         shell.restarts_asked.insert(agent.clone(), std::time::Instant::now());
-                        crate::activity::Activity::done(None, format!("{agent}'s Claude restarts once idle, resuming its conversation"))
+                        crate::activity::Activity::done(None, crate::t!("agentbar-restart-done", agent = agent.clone()))
                     }
-                    Err(error) => crate::activity::Activity::failed(None, &format!("restart of {agent}'s Claude"), short_error(&format!("{error:#}"))),
+                    Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-restart-failed", agent = agent.clone()), short_error(&format!("{error:#}"))),
                 };
                 crate::activity::publish(cx, activity);
                 cx.notify();
@@ -764,16 +742,31 @@ impl Shell {
             let Ok(aiball) = this.read_with(cx, |shell, _| shell.aiball.clone()) else { return };
             let done = cx.background_executor().spawn(async move { crate::loops::move_to(&aiball, &loop_name, to_host) }).await;
             let _ = this.update(cx, |shell, cx| {
-                let place = if to_host { "to aiball's host".to_string() } else { format!("into {}", crate::mux::program()) };
+                let mux = crate::mux::program();
                 let activity = match done {
                     Ok(()) => {
                         shell.open_when_running = Some(next.clone());
                         let _ = shell.refresh_now.unbounded_send(());
-                        crate::activity::Activity::done(None, format!("{agent} moved {place}, its conversation resumed"))
+                        crate::activity::Activity::done(
+                            None,
+                            if to_host {
+                                crate::t!("agentbar-moved-to-host", agent = agent.clone())
+                            } else {
+                                crate::t!("agentbar-moved-into", agent = agent.clone(), mux = mux)
+                            },
+                        )
                     }
                     Err(error) => {
                         shell.moves.remove(&agent);
-                        crate::activity::Activity::failed(None, &format!("move of {agent} {place}"), short_error(&format!("{error:#}")))
+                        crate::activity::Activity::failed(
+                            None,
+                            &if to_host {
+                                crate::t!("agentbar-move-failed-to-host", agent = agent.clone())
+                            } else {
+                                crate::t!("agentbar-move-failed-into", agent = agent.clone(), mux = mux)
+                            },
+                            short_error(&format!("{error:#}")),
+                        )
                     }
                 };
                 crate::activity::publish(cx, activity);
@@ -798,7 +791,7 @@ impl Shell {
                     }
                     Err(error) => crate::activity::publish(
                         cx,
-                        crate::activity::Activity::failed(None, &format!("hold of {agent_name}"), short_error(&format!("{error:#}"))),
+                        crate::activity::Activity::failed(None, &crate::t!("agentbar-hold-failed", agent = agent_name.clone()), short_error(&format!("{error:#}"))),
                     ),
                 }
                 cx.notify();
@@ -837,9 +830,8 @@ impl Shell {
                         }
                     }
                     Ok(match count {
-                        Some(1) => "closed the other client of this session".to_string(),
-                        Some(n) => format!("closed the {n} other clients of this session"),
-                        None => "asked the session's host to close its other clients".to_string(),
+                        Some(n) => crate::t!("agentbar-closed-others", count = n),
+                        None => crate::t!("agentbar-closed-others-asked"),
                     })
                 }
                 Others::Tmux(name, keep) => cx
@@ -849,13 +841,8 @@ impl Shell {
                     // More than this one left: psmux does not say its
                     // clients' pids to aiball yet, which closed none.
                     .and_then(|left| match left {
-                        0 | 1 => Ok("closed the other clients of this session".to_string()),
-                        n => Err(anyhow::anyhow!(
-                            "{} other client{} still attached: {} cannot tell them from this one yet",
-                            n - 1,
-                            if n == 2 { "" } else { "s" },
-                            crate::mux::program()
-                        )),
+                        0 | 1 => Ok(crate::t!("agentbar-closed-others-all")),
+                        n => Err(anyhow::anyhow!(crate::t!("agentbar-others-left", count = n - 1, mux = crate::mux::program()))),
                     }),
             };
             let _ = this.update(cx, |shell, cx| {
@@ -863,7 +850,7 @@ impl Shell {
                     cx,
                     match said {
                         Ok(what) => crate::activity::Activity::done(None, what),
-                        Err(error) => crate::activity::Activity::failed(None, "close the other clients", short_error(&format!("{error:#}"))),
+                        Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-close-others-failed"), short_error(&format!("{error:#}"))),
                     },
                 );
                 let _ = shell.refresh_now.unbounded_send(());
@@ -940,7 +927,7 @@ mod tests {
         assert_eq!((typing.in_force, typing.arming), (Some(("‖", Tone::Orange)), false));
         // Booting: the boot alone, as a word — never in a glyph's box.
         let boot = afk_marks(Some("boot"), Some("off"), None);
-        assert_eq!((boot.in_force, boot.word), (None, Some(("… boot", Tone::Boot))));
+        assert_eq!((boot.in_force, boot.word), (None, Some(("agentbar-afk-boot", Tone::Boot))));
         // Whatever the state, the glyph's box gets a glyph alone.
         for presence in [None, Some("boot"), Some("loop"), Some("wait"), Some("stop")] {
             for armed in [None, Some("off"), Some("wait_10m"), Some("wait_inf")] {

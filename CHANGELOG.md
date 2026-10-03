@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Settings > Appearance > Language: the interface in English, French or Spanish (by default, the system's). Its words are being moved over surface by surface; one not yet translated shows in English. `tvty i18n` says how far each language goes.
+- Settings > Appearance > Language: the interface in English, French or Spanish (by default, the system's). Its words are being moved over surface by surface, the agent's bar first; one not yet translated shows in English. `tvty i18n` says how far each language goes.
 - An agent whose tool calls Claude Code refused in the last hour (auto mode's classifier, a deny rule) shows a warning and their count on its row in the sessions' list, the reason under the pointer; folded, its mark turns to the warning colour. A refused agent stops there. Needs aiball 0.55.
 
 ## [0.11.0-beta.1] - 2026-10-03

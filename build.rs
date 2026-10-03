@@ -22,6 +22,9 @@ fn main() {
     println!("cargo:rerun-if-changed=.git/HEAD");
     println!("cargo:rerun-if-changed=.git/refs/heads");
     println!("cargo:rerun-if-changed=.git/index");
+    // The words built in (src/i18n.rs): a file added there is one rust-embed
+    // does not know yet, so tvty is built again whenever the folder moves.
+    println!("cargo:rerun-if-changed=assets/locales");
     windows_icon();
 }
 

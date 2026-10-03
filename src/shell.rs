@@ -3404,7 +3404,7 @@ impl Shell {
             "sessions.on_quit" => Some(&[("stop", "Stop them"), ("keep", "Keep them running")]),
             "sessions.on_start" => Some(&[("restart", "Restart them as they were"), ("fresh", "Restart them fresh"), ("leave", "Leave them stopped")]),
             "mouse.focus" => Some(&[("click", "Click"), ("hover", "Hover")]),
-            "appearance.language" => Some(crate::i18n::NAMES),
+            "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
         let (chosen, default): (Option<SharedString>, Option<SharedString>) = match key {
