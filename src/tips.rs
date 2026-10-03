@@ -91,6 +91,9 @@ tip_files![
     "held-selection",
     "workspaces",
     "workspace-open",
+    "project-order",
+    "language",
+    "stop-session",
 ];
 
 /// A tip's file read: its header, then its text.

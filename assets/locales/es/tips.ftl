@@ -40,3 +40,6 @@ tip-thread-order = **⇅** da la vuelta al hilo: recientes primero o al final, e
 tip-held-selection = Seleccionar texto en un terminal lo **mantiene quieto** mientras copias: la salida del agente espera, nada se desplaza bajo el ratón.
 tip-workspaces = Un **espacio** guarda un conjunto de proyectos y cómo corre cada uno de sus agentes, solo ▶ o retenido ■. **+ espacio** guarda lo que corre ahora bajo un nombre.
 tip-workspace-open = **Abrir** en un espacio arranca lo que guarda y libera lo que en él corre solo; **Cerrar** para sus sesiones, dejando las que comparten otros espacios.
+tip-project-order = Arrastra un proyecto de la lista sobre otro para ponerlos en tu orden; **⇅** pasa de reciente primero a alfabético y al tuyo.
+tip-language = Las dos letras de la barra de título hacen hablar a tvty en otro idioma: inglés, francés, español o alemán.
+tip-stop-session = Sobre un agente activo de la lista, **⏹** detiene su bucle: un primer clic pregunta, un segundo detiene. Se queda ahí, listo para volver.

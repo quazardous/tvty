@@ -40,3 +40,6 @@ tip-thread-order = **⇅** stellt den Thread auf den Kopf: das Neueste zuerst od
 tip-held-selection = Text in einem Terminal auswählen **hält es an**, während du kopierst: Die Ausgabe des Agenten wartet, nichts scrollt unter der Maus davon.
 tip-workspaces = Ein **Arbeitsbereich** speichert eine Reihe von Projekten und wie jeder ihrer Agenten läuft, selbstständig ▶ oder gehalten ■. **+ Arbeitsbereich** speichert, was jetzt läuft, unter einem Namen.
 tip-workspace-open = **Öffnen** eines Arbeitsbereichs startet, was er speichert, und gibt frei, was er selbstständig laufen lässt; **Schließen** stoppt seine Sitzungen, die mit anderen Arbeitsbereichen geteilten bleiben unberührt.
+tip-project-order = Zieh ein Projekt in der Liste auf ein anderes, um sie in deine Reihenfolge zu bringen; **⇅** wechselt zwischen zuletzt, alphabetisch und deiner.
+tip-language = Die zwei Buchstaben in der Titelleiste lassen tvty eine andere Sprache sprechen: Englisch, Französisch, Spanisch oder Deutsch.
+tip-stop-session = Über einem laufenden Agent in der Liste stoppt **⏹** seinen Loop: ein erster Klick fragt, ein zweiter stoppt. Er bleibt da, um neu zu starten.

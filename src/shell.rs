@@ -4570,12 +4570,13 @@ impl Shell {
                     Order::Alpha => ("sessions-order-alpha", Some("yours")),
                     Order::Yours => ("sessions-order-yours", None),
                 };
-                d.child(
+                d.child(crate::tips::target(
+                    "sessions.order",
                     buttons::link("sessions-order", "⇅")
                         .text_xs()
                         .tip(crate::t!(tip))
                         .on_click(cx.listener(move |shell, _, _, cx| shell.set_pref("sessions.order", Value::Choice(next.map(str::to_string)), cx))),
-                )
+                ))
                 // A folder made an aiball project, its first session started.
                 .child(
                     buttons::link("new-project", crate::t!("sessions-new-project"))
@@ -5577,7 +5578,8 @@ impl Render for Shell {
                         .mr_2(),
                     )
                     // The language spoken, by its two letters; a click lists them all.
-                    .child(
+                    .child(crate::tips::target(
+                        "title.language",
                         press_kept(buttons::icon(
                             "language-button",
                             crate::i18n::LANGS[crate::i18n::spoken_now()].0.to_uppercase(),
@@ -5592,7 +5594,7 @@ impl Render for Shell {
                         }))
                         .flex_none()
                         .mr_2(),
-                    )
+                    ))
                     // A message to every running agent: the whole board's —
                     // not from behind a proxy node, where aiball refuses it.
                     .children((!self.away_from_hub()).then(||

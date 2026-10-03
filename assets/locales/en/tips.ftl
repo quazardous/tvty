@@ -40,3 +40,6 @@ tip-thread-order = **⇅** turns the thread upside down: newest first or last, i
 tip-held-selection = Selecting text in a terminal **holds it still** while you copy: the agent's output waits, nothing scrolls away under the mouse.
 tip-workspaces = A **workspace** keeps a set of projects and how each of their agents runs, on its own ▶ or held ■. **+ workspace** keeps what runs now under a name.
 tip-workspace-open = A workspace's **Open** starts what it keeps and lets go what it runs on its own; **Shut** stops its sessions, those other workspaces share left alone.
+tip-project-order = Drag a project in the list onto another to put them in your own order; **⇅** steps between recent first, alphabetical and yours.
+tip-language = The two letters in the title bar speak tvty in another language: English, French, Spanish or German.
+tip-stop-session = Over a running agent in the list, **⏹** stops its loop: a first click asks, a second stops. It stays there, to start again.
