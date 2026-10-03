@@ -63,6 +63,22 @@ fn short_folders(folders: &[String]) -> Vec<String> {
 }
 
 impl Shell {
+    /// Settings > Appearance > Language, as a dropdown, made as the options
+    /// open: the system's, then each language by its own name.
+    pub(super) fn new_language_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let mut choices = vec![Choice::new("auto", crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system())))];
+        choices.extend(crate::i18n::LANGS.iter().map(|(code, name)| Choice::new(*code, *name)));
+        let chosen = self.applied.appearance.language.clone().unwrap_or_else(|| "auto".into());
+        let state = combo::new(choices, Some(&chosen), window, cx);
+        cx.subscribe_in(&state, window, |shell, _, event: &ComboEvent<combo::Choices>, _, cx| {
+            let ComboEvent::Confirm(Some(code)) = event else { return };
+            let value = (code != "auto").then(|| code.to_string());
+            shell.set_pref("appearance.language", tvty_config::Value::Choice(value), cx);
+        })
+        .detach();
+        self.language_select = Some(state);
+    }
+
     /// The scope list, made as the options open: Global and the board's
     /// projects, the scope shown chosen.
     pub(super) fn new_scope_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {

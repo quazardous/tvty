@@ -92,6 +92,11 @@ pub fn system() -> usize {
     spoken(&sys_locale::get_locale().unwrap_or_default())
 }
 
+/// The language spoken now (an index in `LANGS`).
+pub fn spoken_now() -> usize {
+    CURRENT.load(Ordering::Relaxed)
+}
+
 /// A language's name in itself ("Français").
 pub fn name(index: usize) -> &'static str {
     LANGS[index].1
@@ -124,6 +129,7 @@ fn said(index: usize, id: &str, args: Option<&FluentArgs>) -> Option<String> {
 }
 
 /// The word `id` in English, whatever the language spoken.
+#[cfg(test)]
 pub fn english(id: &str, args: Option<&FluentArgs>) -> Option<String> {
     said(0, id, args)
 }

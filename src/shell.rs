@@ -307,6 +307,8 @@ pub struct Shell {
     /// The theme list is open, under the title bar; on the terminals'
     /// themes rather than the window's.
     theme_menu: bool,
+    /// The title bar's language list, open.
+    language_menu: bool,
     /// The title bar's ? menu is open.
     help_menu: bool,
     /// The window's button pressed, full screen on Windows (see `window_button_at`).
@@ -317,6 +319,8 @@ pub struct Shell {
     project_opts: Option<projectopts::ProjectOpts>,
     /// The options' scope list, while they are open.
     scope_select: Option<Entity<projectopts::ScopeSelect>>,
+    /// Settings > Appearance > Language's dropdown, while the options are open.
+    language_select: Option<Entity<projectopts::ScopeSelect>>,
     /// What steers each project's agents (the 📢), and its popover.
     megaphone: Option<megaphone::Megaphone>,
     /// The decorations the compositor granted, as last logged: said once,
@@ -834,11 +838,13 @@ impl Shell {
             waiting: None,
             switches: 0,
             theme_menu: false,
+            language_menu: false,
             help_menu: false,
             window_button_pressed: None,
             new_project: None,
             project_opts: None,
             scope_select: None,
+            language_select: None,
             megaphone: None,
             decorations_said: None,
             os_title: String::new(),
@@ -2484,6 +2490,9 @@ impl Shell {
         } else if key == "escape" && self.help_menu {
             self.help_menu = false;
             cx.notify();
+        } else if key == "escape" && self.language_menu {
+            self.language_menu = false;
+            cx.notify();
         } else if key == "escape" && self.theme_menu {
             self.theme_menu = false;
             cx.notify();
@@ -2723,6 +2732,7 @@ impl Shell {
             self.load_remote(cx);
             self.load_project_settings(cx);
             self.new_scope_select(window, cx);
+            self.new_language_select(window, cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.
             let focus = self.options_search.read(cx).focus_handle(cx);
             window.focus(&focus, cx);
@@ -3456,6 +3466,12 @@ impl Shell {
                 }))
         };
         let mut column = column;
+        // The language: a dropdown (the system's, then each language).
+        if key == "appearance.language"
+            && let Some(state) = &self.language_select
+        {
+            return column.child(div().max_w(px(280.)).child(crate::ui::combo::view(state, "options-language", "", "")));
+        }
         if let Some(label) = default {
             column = column.child(choice("default".into(), label, None, chosen.is_none(), cx));
         }
@@ -3948,6 +3964,11 @@ impl Shell {
         }
         // Every word drawn again, below (the window refreshed).
         crate::i18n::set(now.language.as_deref());
+        // The settings' dropdown follows a choice made elsewhere (the title bar).
+        if let Some(state) = self.language_select.clone() {
+            let chosen = now.language.clone().unwrap_or_else(|| "auto".into());
+            state.update(cx, |state, cx| state.set_selected_value(&chosen, window, cx));
+        }
         let notifications = &new.notifications;
         notify::set_limits(
             cx,
@@ -4002,6 +4023,7 @@ impl Shell {
 
     fn toggle_theme_menu(&mut self, cx: &mut Context<Self>) {
         self.theme_menu = !self.theme_menu;
+        self.language_menu = false;
         if self.theme_menu {
             // A theme file dropped or edited meanwhile shows now.
             theme::load(cx);
@@ -4137,6 +4159,66 @@ impl Shell {
                 )
                 .child(Slider::new(slider)),
         )
+    }
+
+    /// The title bar's language list, under its button: the system's, then
+    /// each language by its own name, the one spoken ticked. The same choice
+    /// as Settings > Appearance > Language.
+    fn language_menu_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        let chosen = self.applied.appearance.language.clone();
+        let item = |id: &'static str, label: String, on: bool, value: Option<&'static str>, cx: &mut Context<Self>| {
+            div()
+                .named(SharedString::from(format!("language-menu-{id}")))
+                .flex()
+                .items_center()
+                .gap_2()
+                .px_3()
+                .py_1()
+                .cursor_pointer()
+                .when(on, |d| d.bg(p().active))
+                .hover(|d| d.bg(p().hover))
+                .child(div().w(px(10.)).child(if on { "✓" } else { "" }))
+                .child(label)
+                .on_click(cx.listener(move |shell, _, _, cx| {
+                    shell.language_menu = false;
+                    shell.set_pref("appearance.language", Value::Choice(value.map(str::to_string)), cx);
+                }))
+        };
+        let system = crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system()));
+        let mut list = div().flex().flex_col().py_1().text_sm().child(item("auto", system, chosen.is_none(), None, cx));
+        for (code, name) in crate::i18n::LANGS {
+            list = list.child(item(code, name.to_string(), chosen.as_deref() == Some(*code), Some(*code), cx));
+        }
+        div()
+            .named("language-menu")
+            .absolute()
+            .occlude()
+            .top(px(36.))
+            .right_2()
+            .w(px(240.))
+            .rounded_md()
+            .bg(p().surface)
+            .border_1()
+            .border_color(p().border)
+            .shadow_lg()
+            .child(list)
+    }
+
+    /// Under the language list, the rest of the window: a click there
+    /// closes it.
+    fn language_menu_backdrop(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
+        div()
+            .named("language-menu-backdrop")
+            .absolute()
+            .inset_0()
+            .occlude()
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(|shell, _, _, cx| {
+                    shell.language_menu = false;
+                    cx.notify();
+                }),
+            )
     }
 
     /// Under the theme list, the rest of the window: a click there closes
@@ -5203,6 +5285,9 @@ impl Render for Shell {
         let menu = self.theme_menu.then(|| {
             div().absolute().inset_0().child(self.theme_menu_backdrop(cx)).child(self.theme_menu_view(cx))
         });
+        let language_menu = self.language_menu.then(|| {
+            div().absolute().inset_0().child(self.language_menu_backdrop(cx)).child(self.language_menu_view(cx))
+        });
         div()
             .named("window")
             // The window's keys and commands, for the whole of it: the title
@@ -5360,6 +5445,23 @@ impl Render for Shell {
                         .flex_none()
                         .mr_2(),
                     )
+                    // The language spoken, by its two letters; a click lists them all.
+                    .child(
+                        press_kept(buttons::icon(
+                            "language-button",
+                            crate::i18n::LANGS[crate::i18n::spoken_now()].0.to_uppercase(),
+                            crate::t!("setting-appearance-language"),
+                        ))
+                        .text_xs()
+                        .on_click(cx.listener(|shell, _, _, cx| {
+                            cx.stop_propagation();
+                            shell.theme_menu = false;
+                            shell.language_menu = !shell.language_menu;
+                            cx.notify();
+                        }))
+                        .flex_none()
+                        .mr_2(),
+                    )
                     // A message to every running agent: the whole board's —
                     // not from behind a proxy node, where aiball refuses it.
                     .children((!self.away_from_hub()).then(||
@@ -5403,6 +5505,7 @@ impl Render for Shell {
             )
             .child(body)
             .children(menu)
+            .children(language_menu)
             .children(self.help_menu_view(cx))
             .children(self.megaphone_view(window, cx))
             // Above everything, the full screens and the gallery included.
@@ -5682,7 +5785,8 @@ fn away_note(away: &Away) -> impl IntoElement + use<> {
 /// `↺ Default`: back to the default, only where there is one to go back
 /// to; its room kept otherwise, so that the rows line up.
 fn reset_button(key: &str, away: Option<&Away>, reset: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> impl IntoElement {
-    let slot = div().flex_none().w(px(104.)).flex().justify_end();
+    // At least the room of "↺ Default"; a longer word widens it.
+    let slot = div().flex_none().min_w(px(104.)).flex().justify_end();
     let Some(away) = away else { return slot };
     slot.child(
         buttons::chip(SharedString::from(format!("options-reset-{key}")), format!("↺ {}", away.back))
