@@ -72,6 +72,37 @@ pub fn switch(id: impl Into<SharedString>, on: bool, label: impl Into<SharedStri
     div().named(id).flex().flex_none().items_center().child(if label.is_empty() { switch } else { switch.label(label) })
 }
 
+/// A switch and what it is about, side by side: a click on either flips
+/// it, as an HTML label does its checkbox. `label` may be any element (a
+/// name, a glyph, a note under it); the row's other children come after.
+pub fn switch_with(
+    id: impl Into<SharedString>,
+    on: bool,
+    label: impl IntoElement,
+    flip: impl Fn(&bool, &mut Window, &mut App) + 'static,
+) -> Stateful<Div> {
+    let id: SharedString = id.into();
+    let flip = std::rc::Rc::new(flip);
+    let by_switch = flip.clone();
+    div()
+        .named(SharedString::from(format!("{id}-row")))
+        .flex()
+        .items_center()
+        .gap_2()
+        .child(switch(id.clone(), on, "", move |wanted, window, cx| by_switch(wanted, window, cx)))
+        .child(
+            div()
+                .named(SharedString::from(format!("{id}-label")))
+                .flex()
+                .items_center()
+                .gap_2()
+                .min_w_0()
+                .cursor_pointer()
+                .child(label)
+                .on_click(move |_, window, cx| flip(&!on, window, cx)),
+        )
+}
+
 pub fn link(id: impl Into<ElementId>, label: impl Said) -> Stateful<Div> {
     base(id, Hover::Plain, label.said()).px_1().text_color(p().accent).child(label)
 }

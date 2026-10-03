@@ -582,26 +582,19 @@ impl Shell {
                 .flex()
                 .flex_col()
                 .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_3()
-                        .child(
-                            buttons::switch(
-                                id,
-                                on,
-                                "",
-                                cx.listener(move |shell, _: &bool, _, cx| {
-                                    if let Some(wizard) = shell.new_project.as_mut() {
-                                        flip(wizard);
-                                    }
-                                    shell.preview_init(cx);
-                                    cx.notify();
-                                }),
-                            ),
-                        )
-                        .child(div().text_color(if said.is_some() { imported } else { p().text }).child(label))
-                        .children(origin(said)),
+                    // Its words flip it too, as an HTML label does.
+                    buttons::switch_with(
+                        id,
+                        on,
+                        div().flex().items_center().gap_3().child(div().text_color(if said.is_some() { imported } else { p().text }).child(label)).children(origin(said)),
+                        cx.listener(move |shell, _: &bool, _, cx| {
+                            if let Some(wizard) = shell.new_project.as_mut() {
+                                flip(wizard);
+                            }
+                            shell.preview_init(cx);
+                            cx.notify();
+                        }),
+                    ),
                 )
                 .child(div().pl_10().text_xs().text_color(p().muted).child(about))
         };

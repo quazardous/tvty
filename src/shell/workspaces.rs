@@ -522,30 +522,32 @@ impl Shell {
             // The group's own switch: on when all of it is; how many are, when
             // only some, is said after its name.
             let some = (!all && ticked > 0).then(|| format!("{ticked} of {}", free.len()));
-            let head = div()
+            let name = div()
                 .flex()
                 .items_center()
                 .gap_2()
-                .when(!free.is_empty(), |d| {
-                    d.child(
-                        buttons::switch(
-                            format!("pick-group-{project}"),
-                            all,
-                            "",
-                            cx.listener(move |shell, wanted: &bool, _, cx| {
-                                if let Some(picker) = shell.picker.as_mut() {
-                                    for i in &free {
-                                        picker.rows[*i].checked = *wanted;
-                                    }
-                                }
-                                cx.notify();
-                            }),
-                        )
-                        .tip("the whole group"),
-                    )
-                })
                 .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(if project.is_empty() { "no project".into() } else { project.to_uppercase() }))
                 .children(some.map(|some| div().text_xs().text_color(p().muted).child(some)));
+            // The group's name flips its switch too.
+            let head = if free.is_empty() {
+                name.into_any_element()
+            } else {
+                buttons::switch_with(
+                    format!("pick-group-{project}"),
+                    all,
+                    name,
+                    cx.listener(move |shell, wanted: &bool, _, cx| {
+                        if let Some(picker) = shell.picker.as_mut() {
+                            for i in &free {
+                                picker.rows[*i].checked = *wanted;
+                            }
+                        }
+                        cx.notify();
+                    }),
+                )
+                .tip("the whole group")
+                .into_any_element()
+            };
             let mut group = div().flex().flex_col().gap_0p5().child(head);
             for i in indexes {
                 let row = &picker.rows[i];
@@ -554,14 +556,23 @@ impl Shell {
                     Some(Mode::Stop) => ("■", p().danger),
                     None => ("·", p().muted),
                 };
-                let tick = if row.fixed {
+                // What the row says: the loop's glyph, its agent, a note.
+                let said = div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(crate::icons::loop_glyph(glyph, colour, 9.))
+                    .child(div().text_color(if row.fixed { p().muted } else { p().text }).child(row.agent.clone()))
+                    .child(div().text_xs().text_color(p().muted).child(row.note.clone()));
+                let line = if row.fixed {
                     // A switch's width: the names stay in one column.
-                    div().w(px(28.)).flex_none().into_any_element()
+                    div().flex().items_center().gap_2().child(div().w(px(28.)).flex_none()).child(said).into_any_element()
                 } else {
-                    buttons::switch(
+                    // The row's words flip its switch too.
+                    buttons::switch_with(
                         format!("pick-{}", row.agent),
                         row.checked,
-                        "",
+                        said,
                         cx.listener(move |shell, wanted: &bool, _, cx| {
                             if let Some(row) = shell.picker.as_mut().and_then(|p| p.rows.get_mut(i)) {
                                 row.checked = *wanted;
@@ -571,17 +582,7 @@ impl Shell {
                     )
                     .into_any_element()
                 };
-                group = group.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap_2()
-                        .pl_2()
-                        .child(tick)
-                        .child(crate::icons::loop_glyph(glyph, colour, 9.))
-                        .child(div().text_color(if row.fixed { p().muted } else { p().text }).child(row.agent.clone()))
-                        .child(div().text_xs().text_color(p().muted).child(row.note.clone())),
-                );
+                group = group.child(div().pl_2().child(line));
             }
             list = list.child(group);
         }
