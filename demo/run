@@ -87,6 +87,8 @@ tvty() {
     export CLAUDE_LOOP_STATE_ROOT="$DIR/loops"
     # The pictures click by name (scripts/tvty-ctl).
     export TVTY_DEBUG_CONTROL=1
+    # The README is in English, whatever this machine speaks.
+    export TVTY_LANG=en
     exec "$ROOT/target/debug/tvty" "$@"
 }
 
