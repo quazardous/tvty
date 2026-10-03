@@ -14,3 +14,4 @@ common-now = maint.
 common-minutes = {$n} min
 common-hours = {$n} h
 common-days = {$n} j
+common-seconds = {$n} s

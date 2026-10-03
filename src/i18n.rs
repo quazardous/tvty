@@ -139,7 +139,7 @@ pub fn text(id: &str, args: Option<&FluentArgs>) -> String {
 /// `t!("tickets-open", count = n)`.
 #[macro_export]
 macro_rules! t {
-    ($id:expr) => {
+    ($id:expr $(,)?) => {
         $crate::i18n::text($id, None)
     };
     ($id:expr, $($name:ident = $value:expr),+ $(,)?) => {{
@@ -488,6 +488,14 @@ mod tests {
         for stage in ["rejected", "closed-resolved", "closed", "resolved", "blocked", "snoozed", "pending", "open"] {
             built.push(format!("tickets-stage-{stage}"));
         }
+        for group in ["live", "idle", "shut", "on-hub"] {
+            built.push(format!("sessions-group-{group}"));
+        }
+        // Chosen in a match, then asked for: `t!(tip)`, `t!(mode)`.
+        built.extend(
+            ["sessions-new-tab-project", "sessions-new-tab-home", "sessions-mark-held-for-good", "sessions-mark-held-while", "sessions-mark-own"]
+                .map(String::from),
+        );
         for field in ["intent", "priority", "level", "scope"] {
             built.extend(crate::ui::fields::values(field).iter().map(|value| format!("fields-{field}-{value}")));
         }

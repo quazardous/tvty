@@ -140,11 +140,11 @@ impl Shell {
     fn hub_list(&self, found: &[crate::sessions::HubAgent], words: &[String], cx: &mut Context<Self>) -> AnyElement {
         let mut list = div().flex().flex_col();
         if found.is_empty() {
-            list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No session on the hub" } else { "No session found on the hub" }));
+            list = list.child(div().px_3().text_color(p().muted).child(crate::t!(if words.is_empty() { "sessions-none-hub" } else { "sessions-none-hub-found" })));
         }
         let mut last: Option<String> = None;
         for hub in found {
-            let project = hub.project.clone().unwrap_or_else(|| "No project".into());
+            let project = hub.project.clone().unwrap_or_else(|| crate::t!("sessions-no-project"));
             if last.as_deref() != Some(project.as_str()) {
                 list = list.child(div().flex().px_3().pt_2().pb_1().text_xs().text_color(p().muted).child(project.to_uppercase()));
                 last = Some(project);
@@ -205,7 +205,7 @@ impl Shell {
                 above: (i > 0).then(|| SharedString::from(format!("sessions-{}", groups[i - 1].0))),
                 last: i + 1 == sections,
                 id: SharedString::from(format!("sessions-{}", word.replace(' ', "-"))),
-                title: word.to_string(),
+                title: crate::t!(&format!("sessions-group-{}", word.replace(' ', "-"))),
                 count,
                 folded,
                 // Two sessions, or the line saying there is none.
@@ -240,16 +240,26 @@ impl Shell {
         let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start, forget: Forget| {
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
             let action = match (busy, astray) {
-                (true, _) => div().saying(SharedString::from(format!("{id}-action")), "starting…").text_xs().text_color(p().accent).child("starting…").into_any_element(),
+                (true, _) => div()
+                    .saying(SharedString::from(format!("{id}-action")), crate::t!("sessions-starting"))
+                    .text_xs()
+                    .text_color(p().accent)
+                    .child(crate::t!("sessions-starting"))
+                    .into_any_element(),
                 // Refused: said why on hover.
                 (false, Some(other)) => div()
-                    .saying(SharedString::from(format!("{id}-astray")), format!("⚠ {other}'s folder"))
+                    .saying(SharedString::from(format!("{id}-astray")), crate::t!("sessions-astray", other = other))
                     .text_xs()
                     .text_color(p().danger)
-                    .child(format!("⚠ {other}'s folder"))
-                    .tip(format!("{other} works in {}: started here, this agent would resume its conversation. Not started.", home_short(cwd)))
+                    .child(crate::t!("sessions-astray", other = other))
+                    .tip(crate::t!("sessions-astray-tip", other = other, cwd = home_short(cwd)))
                     .into_any_element(),
-                (false, None) => div().saying(SharedString::from(format!("{id}-action")), "▶ start").text_xs().text_color(p().accent).child("▶ start").into_any_element(),
+                (false, None) => div()
+                    .saying(SharedString::from(format!("{id}-action")), crate::t!("sessions-start"))
+                    .text_xs()
+                    .text_color(p().accent)
+                    .child(crate::t!("sessions-start"))
+                    .into_any_element(),
             };
             // The trash: shown under the pointer; a first click asks, a
             // second forgets.
@@ -267,9 +277,9 @@ impl Shell {
                     .rounded_sm()
                     .when(!asking, |d| d.opacity(0.).group_hover(SharedString::from(format!("{id}-group")), |s| s.opacity(1.)))
                     .hover(|d| d.bg(p().hover))
-                    .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child("forget?")))
+                    .when(asking, |d| d.child(div().text_xs().text_color(p().danger).child(crate::t!("sessions-forget-ask"))))
                     .child(crate::icons::icon(crate::icons::Icon::Forget, p().danger, 13.))
-                    .tip(format!("forget {who}: aiball no longer lists it; its folder, its .aiball.yaml and the project's tickets stay — a second click forgets"))
+                    .tip(crate::t!("sessions-forget-tip", who = who.clone()))
                     .on_click(cx.listener(move |shell, _, _, cx| {
                         cx.stop_propagation();
                         if shell.forgetting.as_deref() == Some(row_id.as_str()) {
@@ -307,12 +317,12 @@ impl Shell {
             Other::Idle => {
                 let loops = self.inactive(&words);
                 if loops.is_empty() {
-                    list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No stopped loop" } else { "No stopped loop found" }));
+                    list = list.child(div().px_3().text_color(p().muted).child(crate::t!(if words.is_empty() { "sessions-none-stopped" } else { "sessions-none-stopped-found" })));
                 }
                 let mut last: Option<String> = None;
                 for l in loops {
                     let known = self.loop_project(l);
-                    let project = known.clone().unwrap_or_else(|| "No project".into());
+                    let project = known.clone().unwrap_or_else(|| crate::t!("sessions-no-project"));
                     if last.as_deref() != Some(project.as_str()) {
                         list = list.child(heading(project.clone(), cx));
                         last = Some(project);
@@ -338,13 +348,13 @@ impl Shell {
             Other::Shut => {
                 let homes = self.closed(&words);
                 if homes.is_empty() {
-                    list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No agent without a loop" } else { "No agent found" }));
+                    list = list.child(div().px_3().text_color(p().muted).child(crate::t!(if words.is_empty() { "sessions-none-shut" } else { "sessions-none-shut-found" })));
                 }
                 let mut homes = homes;
                 homes.sort_by_key(|(_, project, _)| (project.is_none(), project.clone().unwrap_or_default().to_lowercase()));
                 let mut last: Option<String> = None;
                 for (agent, project, cwd) in homes {
-                    let heading_of = project.clone().unwrap_or_else(|| "No project".into());
+                    let heading_of = project.clone().unwrap_or_else(|| crate::t!("sessions-no-project"));
                     if last.as_deref() != Some(heading_of.as_str()) {
                         list = list.child(heading(heading_of.clone(), cx));
                         last = Some(heading_of);
@@ -387,8 +397,8 @@ impl Shell {
                 .await;
             let _ = this.update(cx, |shell, cx| {
                 match done {
-                    Ok(()) => crate::activity::publish(cx, crate::activity::Activity::done(None, format!("forgot {said}"))),
-                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("forget {said}"), format!("{error:#}"))),
+                    Ok(()) => crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-forgot", who = said.clone()))),
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-forget-failed", who = said.clone()), format!("{error:#}"))),
                 }
                 let _ = shell.refresh_now.unbounded_send(());
                 cx.notify();
@@ -424,8 +434,8 @@ impl Shell {
         let home = self.board.homes.iter().find(|h| h.1.as_deref() == Some(project.as_str()));
         let cwd_value = self.project_folder(&project).unwrap_or_default();
         let agent_value = known.and_then(|l| l.agent.clone()).or_else(|| home.map(|h| h.0.clone())).unwrap_or_default();
-        let cwd = cx.new(|cx| InputState::new(window, cx).placeholder("working directory").default_value(cwd_value));
-        let agent = cx.new(|cx| InputState::new(window, cx).placeholder("agent").default_value(agent_value));
+        let cwd = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-form-cwd")).default_value(cwd_value));
+        let agent = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-form-agent")).default_value(agent_value));
         // The directory is checked as it is typed.
         cx.subscribe(&cwd, |_, _, event: &gpui_kit::component::input::InputEvent, cx| {
             if matches!(event, gpui_kit::component::input::InputEvent::Change) {
@@ -459,24 +469,24 @@ impl Shell {
                 .text_xs()
                 .child(Input::new(&form.cwd).small())
                 .child(
-                    div().text_color(if exists || cwd.is_empty() { p().muted } else { p().danger }).child(
+                    div().text_color(if exists || cwd.is_empty() { p().muted } else { p().danger }).child(crate::t!(
                         if cwd.is_empty() {
-                            "where its Claude works"
+                            "sessions-form-where"
                         } else if exists && on_host {
-                            "aiball's host starts it here"
+                            "sessions-form-host-here"
                         } else if exists {
-                            "claude-loop starts here"
+                            "sessions-form-loop-here"
                         } else {
-                            "no such directory"
+                            "sessions-form-no-dir"
                         },
-                    ),
+                    )),
                 )
                 .child(Input::new(&form.agent).small())
                 .child(
                     buttons::switch(
                         "new-session-crew",
                         crew,
-                        "a crew agent, next to the main loop",
+                        crate::t!("sessions-form-crew"),
                         cx.listener(|shell, wanted: &bool, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
                                 form.crew = *wanted;
@@ -489,7 +499,7 @@ impl Shell {
                     buttons::switch(
                         "new-session-host",
                         on_host,
-                        format!("on aiball's host, without {}", crate::mux::program()),
+                        crate::t!("sessions-form-on-host", mux = crate::mux::program()),
                         cx.listener(|shell, wanted: &bool, _, cx| {
                             if let Some(form) = shell.new_session.as_mut() {
                                 form.on_host = *wanted;
@@ -504,14 +514,14 @@ impl Shell {
                         .gap_2()
                         .justify_end()
                         .child(
-                            buttons::secondary("new-session-cancel", "Cancel")
+                            buttons::secondary("new-session-cancel", crate::t!("sessions-form-cancel"))
                                 .on_click(cx.listener(|shell, _, _, cx| {
                                     shell.new_session = None;
                                     cx.notify();
                                 })),
                         )
                         .child(
-                            buttons::primary("new-session-start", "Start")
+                            buttons::primary("new-session-start", crate::t!("sessions-form-start"))
                                 .loading(form.busy)
                                 .disabled(form.busy || !exists)
                                 .on_click(cx.listener(|shell, _, _, cx| {
@@ -545,9 +555,9 @@ impl Shell {
     /// said.
     fn astray_start(&self, start: &Start, cx: &mut Context<Self>) -> bool {
         let Some(other) = crate::loops::stranger(&start.cwd, start.agent.as_deref(), start.project.as_deref(), &self.board.homes) else { return false };
-        let agent = start.agent.clone().unwrap_or_else(|| "a loop".into());
-        let why = format!("{} is {other}'s folder: {agent} would resume its conversation", home_short(&start.cwd));
-        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start", why));
+        let agent = start.agent.clone().unwrap_or_else(|| crate::t!("sessions-a-loop"));
+        let why = crate::t!("sessions-astray-said", cwd = home_short(&start.cwd), other = other, agent = agent);
+        crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-start-failed"), why));
         true
     }
 
@@ -572,7 +582,7 @@ impl Shell {
                     Ok(agent) => {
                         shell.new_session = None;
                         shell.open_when_running = Some(format!("{}{agent}", crate::sessions::HOSTED_PREFIX));
-                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {agent} on aiball's host in {}", home_short(&start.cwd))));
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-started-host", agent = agent.clone(), cwd = home_short(&start.cwd))));
                     }
                     // Its loop runs already (on the host, or claude-loop's
                     // in tmux): opened as a copy, as claude-loop joins one;
@@ -583,13 +593,13 @@ impl Shell {
                         shell.copies.insert(session.clone());
                         shell.open_when_running = Some(session);
                         let agent = start.agent.clone().unwrap_or_default();
-                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-runs-already", agent = agent.clone())));
                     }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {
                             form.busy = false;
                         }
-                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start on the host", format!("{error:#}")));
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-start-host-failed"), format!("{error:#}")));
                     }
                 }
                 cx.notify();
@@ -640,12 +650,12 @@ impl Shell {
                         shell.new_session = None;
                         shell.open_when_running = Some(name.clone());
                         if started {
-                            crate::activity::publish(cx, crate::activity::Activity::done(None, format!("started {name} in {}", home_short(&start.cwd))));
+                            crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-started", agent = name.clone(), cwd = home_short(&start.cwd))));
                         }
                         if copy {
                             shell.copies.insert(name.clone());
                             let agent = start.agent.clone().unwrap_or_default();
-                            crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
+                            crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-runs-already", agent = agent.clone())));
                         }
                         let _ = shell.refresh_now.unbounded_send(());
                     }
@@ -657,13 +667,13 @@ impl Shell {
                         shell.copies.insert(session.clone());
                         shell.open_when_running = Some(session);
                         let agent = start.agent.clone().unwrap_or_default();
-                        crate::activity::publish(cx, crate::activity::Activity::done(None, format!("{agent} runs already: opened as a copy")));
+                        crate::activity::publish(cx, crate::activity::Activity::done(None, crate::t!("sessions-runs-already", agent = agent.clone())));
                     }
                     Err(error) => {
                         if let Some(form) = shell.new_session.as_mut() {
                             form.busy = false;
                         }
-                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "start", format!("{error:#}")));
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-start-failed"), format!("{error:#}")));
                     }
                 }
                 cx.notify();

@@ -39,22 +39,22 @@ impl Status {
                 .named("status")
                 .text_size(px(11.))
                 .text_color(p().muted)
-                .child("offline")
-                .tip("its loop is not connected to aiball");
+                .child(crate::t!("sessions-offline"))
+                .tip(crate::t!("sessions-offline-tip"));
         }
-        let who = match self.driver.as_str() {
-            "stop" if for_good => "held until let go (a human is typing in it): the loop does not wake it",
-            "stop" => "a human is typing in it: the loop waits",
-            "wait" if for_good => "held until let go: the loop does not wake it",
-            "wait" => "held a while: the loop does not wake it",
-            "boot" => "starting",
-            _ => "the loop drives it on its own",
-        };
-        let doing = match self.state.as_str() {
-            "busy" => "Claude is working",
-            "boot" => "Claude is starting",
-            _ => "Claude is idle",
-        };
+        let who = crate::t!(match self.driver.as_str() {
+            "stop" if for_good => "sessions-held-typing-for-good",
+            "stop" => "sessions-typing",
+            "wait" if for_good => "sessions-held-for-good",
+            "wait" => "sessions-held-while",
+            "boot" => "sessions-starting-state",
+            _ => "sessions-loop-drives",
+        });
+        let doing = crate::t!(match self.state.as_str() {
+            "busy" => "sessions-claude-working",
+            "boot" => "sessions-claude-starting",
+            _ => "sessions-claude-idle",
+        });
         let (glyph, glyph_colour) = match self.driver.as_str() {
             _ if for_good => ("■", p().danger),
             "stop" => ("✎", p().danger),
@@ -62,11 +62,11 @@ impl Status {
             "boot" => ("…", p().warning),
             _ => ("▶", p().success),
         };
-        let what = match self.state.as_str() {
-            "busy" => "working",
-            "boot" => "starting",
-            _ => "idle",
-        };
+        let what = crate::t!(match self.state.as_str() {
+            "busy" => "sessions-working",
+            "boot" => "sessions-starting-state",
+            _ => "sessions-idle",
+        });
         let since = self.since.map(|since| ago(now().saturating_sub(since)));
         div()
             .named("status")
@@ -100,10 +100,10 @@ pub(crate) fn now() -> u64 {
 /// `42s`, `3m`, `2h`, `5d`.
 pub(crate) fn ago(seconds: u64) -> String {
     match seconds {
-        0..60 => format!("{seconds}s"),
-        60..3600 => format!("{}m", seconds / 60),
-        3600..86400 => format!("{}h", seconds / 3600),
-        _ => format!("{}d", seconds / 86400),
+        0..60 => crate::t!("common-seconds", n = seconds),
+        60..3600 => crate::t!("common-minutes", n = seconds / 60),
+        3600..86400 => crate::t!("common-hours", n = seconds / 3600),
+        _ => crate::t!("common-days", n = seconds / 86400),
     }
 }
 

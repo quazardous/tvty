@@ -14,3 +14,4 @@ common-now = now
 common-minutes = {$n}m
 common-hours = {$n}h
 common-days = {$n}d
+common-seconds = {$n}s

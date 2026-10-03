@@ -623,7 +623,7 @@ impl Shell {
         .detach();
         // The sessions' filter: each keystroke filters the list again, from
         // its first session found.
-        let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder("Filter…  ctrl+shift+f"));
+        let sessions_filter = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-filter")));
         let goto = cx.new(|cx| InputState::new(window, cx).placeholder("#…"));
         let workspace_name = Self::workspace_name_field(window, cx);
         let tab_name = Self::tab_name_field(window, cx);
@@ -1192,9 +1192,9 @@ impl Shell {
     fn bus_mark(&self) -> Option<Stateful<Div>> {
         let failing = self.bus_state.failing();
         let (colour, tip) = if self.bus_state.down() {
-            (p().danger, "aiball's bus is down: tvty connects again; the lists may be behind meanwhile".to_string())
+            (p().danger, crate::t!("sessions-bus-down"))
         } else if !failing.is_empty() {
-            (p().warning, format!("subscribing to {} failed: tried again, read whole; the lists may be behind meanwhile", failing.join(", ")))
+            (p().warning, crate::t!("sessions-bus-failing", what = failing.join(", ")))
         } else {
             return None;
         };
@@ -1897,7 +1897,7 @@ impl Shell {
                 d.cursor_pointer()
                     .hover(|d| d.text_color(p().text))
                     .on_click(cx.listener(move |shell, _, _, cx| shell.show_project(name.clone(), cx)))
-                    .tip("its tickets in the panel, no session opened")
+                    .tip(crate::t!("sessions-heading-tip"))
             })
     }
 
@@ -1941,7 +1941,7 @@ impl Shell {
     /// is, how it is doing, and that it is not opened from here.
     fn hub_view(&self, hub: &sessions::HubAgent) -> AnyElement {
         div()
-            .saying("hub-session", format!("{} — on hub", hub.agent))
+            .saying("hub-session", crate::t!("sessions-on-hub", agent = hub.agent.clone()))
             .size_full()
             .flex()
             .flex_col()
@@ -4243,8 +4243,8 @@ impl Shell {
                 let (glyph, said) = loop_mark(&status.state, presence, bar.map(|b| b.afk.mode.as_str()));
                 // Why it is held, when a usage limit holds it.
                 let mut tip = match bar.and_then(|b| b.limit_said()) {
-                    Some(limit) => format!("{agent}: {said} — {limit}"),
-                    None => format!("{agent}: {said}"),
+                    Some(limit) => crate::t!("sessions-mark-limit", agent = agent.clone(), said = said, limit = limit),
+                    None => crate::t!("sessions-mark-tip", agent = agent.clone(), said = said),
                 };
                 if let Some(denied) = denied {
                     tip.push_str(&format!(" — {denied}"));
@@ -4351,7 +4351,7 @@ impl Shell {
         let workspaces = self.settings.layout.sidebar_tab == "workspaces";
         let content = if workspaces { self.workspaces_tab(cx) } else { self.sessions_list(cx) };
         // The panel's two tabs: every session, or the workspaces kept.
-        let tab = |id: &'static str, label: &'static str, to: &'static str, on: bool, cx: &mut Context<Self>| {
+        let tab = |id: &'static str, label: String, to: &'static str, on: bool, cx: &mut Context<Self>| {
             buttons::link(id, label)
                 .text_sm()
                 .font_weight(FontWeight::BOLD)
@@ -4403,8 +4403,11 @@ impl Shell {
             .gap_1()
             .child(
                 measured(0)
-                    .child(tab("sidebar-tab-sessions", "Sessions", "", !workspaces, cx))
-                    .child(crate::tips::target("sidebar.workspaces", tab("sidebar-tab-workspaces", "Workspaces", "workspaces", workspaces, cx))),
+                    .child(tab("sidebar-tab-sessions", crate::t!("sessions-tab-sessions"), "", !workspaces, cx))
+                    .child(crate::tips::target(
+                        "sidebar.workspaces",
+                        tab("sidebar-tab-workspaces", crate::t!("sessions-tab-workspaces"), "workspaces", workspaces, cx),
+                    )),
             )
             .child(div().flex_1());
         let buttons = measured(1)
@@ -4414,31 +4417,27 @@ impl Shell {
                 d.child(
                     buttons::link("sessions-order", "⇅")
                         .text_xs()
-                        .tip(if recent {
-                            "the project used last first, as ctrl+tab goes; a click: alphabetical"
-                        } else {
-                            "alphabetical; a click: the project used last first, as ctrl+tab goes"
-                        })
+                        .tip(crate::t!(if recent { "sessions-order-recent" } else { "sessions-order-alpha" }))
                         .on_click(cx.listener(move |shell, _, _, cx| shell.set_pref("sessions.recent_first", Value::Toggle(!recent), cx))),
                 )
                 // A folder made an aiball project, its first session started.
                 .child(
-                    buttons::link("new-project", "+ project")
+                    buttons::link("new-project", crate::t!("sessions-new-project"))
                         .text_xs()
-                        .tip("a folder made an aiball project (aiball init), then its first session")
+                        .tip(crate::t!("sessions-new-project-tip"))
                         .on_click(cx.listener(|shell, _, window, cx| shell.open_new_project(window, cx))),
                 )
                 // A shell the daemon holds: it outlives tvty.
                 .child(
                     buttons::link("new-terminal", ">_")
                         .text_xs()
-                        .tip("a terminal of its own, which outlives tvty")
+                        .tip(crate::t!("sessions-new-terminal-tip"))
                         .on_click(cx.listener(|shell, _, _, cx| shell.new_terminal(cx))),
                 )
             })
             .child(buttons::separator())
             .child(
-                buttons::icon("sidebar-collapse", "‹", buttons::hint(cx, "Fold the sessions' list", "sidebar.toggle"))
+                buttons::icon("sidebar-collapse", "‹", buttons::hint(cx, &crate::t!("sessions-fold"), "sidebar.toggle"))
                     .on_click(cx.listener(|shell, _, _, cx| shell.toggle_sidebar(cx))),
             );
         let header = header.child(buttons);
@@ -4482,12 +4481,12 @@ impl Shell {
         let found = self.live_found(&words);
         let target = self.filter_target(&words);
         if found.is_empty() {
-            list = list.child(div().px_3().text_color(p().muted).child(if words.is_empty() { "No session" } else { "No session found" }));
+            list = list.child(div().px_3().text_color(p().muted).child(crate::t!(if words.is_empty() { "sessions-none" } else { "sessions-none-found" })));
             // No project on the board yet: where to begin.
             if words.is_empty() && !self.board.projects.iter().any(|p| p.on_board) {
                 list = list.child(
                     div().px_3().pt_2().child(
-                        buttons::chip("first-project", "Set up your first project")
+                        buttons::chip("first-project", crate::t!("sessions-first-project"))
                             .px_3()
                             .py_1()
                             .border_color(p().accent)
@@ -4522,7 +4521,7 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            buttons::link(SharedString::from(format!("new-session-{name}")), "+ session")
+                            buttons::link(SharedString::from(format!("new-session-{name}")), crate::t!("sessions-new-session"))
                                 .text_xs()
                                 .on_click(cx.listener(move |shell, _, window, cx| {
                                     shell.ask_new_session(name.clone(), window, cx)
@@ -4533,7 +4532,7 @@ impl Shell {
                     .when(project.on_board, |d| {
                         let name = project.name.clone();
                         d.child(
-                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", "its settings: where its loops run, Remote Control, its board config")
+                            buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", crate::t!("sessions-project-options"))
                                 .text_xs()
                                 .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                         )
@@ -4544,7 +4543,7 @@ impl Shell {
                         d.child(
                             buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
                                 .text_xs()
-                                .tip("a terminal in the project's folder, listed with it")
+                                .tip(crate::t!("sessions-project-terminal"))
                                 .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
                         )
                     }),
@@ -4614,7 +4613,7 @@ impl Shell {
                                             div()
                                                 .named("open")
                                                 .w(px(7.))
-                                                .when(open, |d| d.child(dot(p().success)).tip("open in tvty: its terminal runs here")),
+                                                .when(open, |d| d.child(dot(p().success)).tip(crate::t!("sessions-open"))),
                                         )
                                         .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
                                         .when_some(denied.clone(), |d, (count, said)| {
@@ -4634,7 +4633,7 @@ impl Shell {
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child("⇄")
-                                                    .tip(format!("{0}: its Claude runs in claude-loop, opened through {0} (not on aiball's host)", crate::mux::program())),
+                                                    .tip(crate::t!("sessions-looped", mux = crate::mux::program())),
                                             )
                                         })
                                         .when_some(attached, |d, a| {
@@ -4645,11 +4644,9 @@ impl Shell {
                                                     .text_color(if a.typing > 0 { p().warning } else { p().muted })
                                                     .child(format!("+{}", a.others))
                                                     .tip(format!(
-                                                        "{} other client{} attached (claude-loop's terminal, another tvty), {} with the controls{}",
-                                                        a.others,
-                                                        if a.others == 1 { "" } else { "s" },
-                                                        a.typing,
-                                                        if a.typing > 0 { ": opened here as a copy" } else { "" }
+                                                        "{}{}",
+                                                        crate::t!("sessions-attached", others = a.others, typing = a.typing),
+                                                        if a.typing > 0 { crate::t!("sessions-attached-copy") } else { String::new() }
                                                     )),
                                             )
                                         })
@@ -4661,7 +4658,7 @@ impl Shell {
                                                     .text_xs()
                                                     .text_color(p().muted)
                                                     .child(">_")
-                                                    .tip("a terminal on aiball's host, without Claude"),
+                                                    .tip(crate::t!("sessions-host-shell")),
                                             )
                                         })
                                         // Its Claude Code waits for a restart (the button is on its bar).
@@ -4671,7 +4668,7 @@ impl Shell {
                                                     .named("restart")
                                                     .text_color(p().warning)
                                                     .child("⟳")
-                                                    .tip("its Claude Code installed an update: restart it from its bar"),
+                                                    .tip(crate::t!("sessions-update")),
                                             )
                                         })
                                         .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),
@@ -4941,7 +4938,7 @@ impl Render for Shell {
                 .justify_center()
                 .bg(p().bg.opacity(crate::terminal::opacity()))
                 .text_color(p().muted)
-                .child("Pick a terminal on the left · ctrl+shift+space shows them all")
+                .child(crate::t!("sessions-pick"))
                 .into_any_element(),
         };
         // The strip stays in the layout, open or folded, so the terminal
@@ -5075,8 +5072,8 @@ impl Render for Shell {
         let title = match (self.hub_agent_shown(), self.selected.as_deref().and_then(|s| self.terminal_of(s))) {
             // Not this machine's: said first of all.
             (Some(hub), _) => match &hub.project {
-                Some(project) => format!("{NAME} — {project} · {} · on hub", hub.agent),
-                None => format!("{NAME} — {} · on hub", hub.agent),
+                Some(project) => crate::t!("sessions-window-hub-project", name = NAME, project = project.clone(), agent = hub.agent.clone()),
+                None => crate::t!("sessions-window-hub", name = NAME, agent = hub.agent.clone()),
             },
             (None, Some((project, terminal))) => format!("{NAME} — {project} · {}", terminal.label),
             (None, None) => NAME.to_string(),
@@ -5293,7 +5290,7 @@ impl Render for Shell {
                             press_kept(buttons::icon(
                                 "help-button",
                                 img(crate::icons::APP).size(px(20.)).flex_none(),
-                                buttons::hint(cx, "Menu: about, help, restart, quit", "help.menu"),
+                                buttons::hint(cx, &crate::t!("sessions-menu"), "help.menu"),
                             ))
                             .on_click(cx.listener(|shell, _, _, cx| {
                                 // The bar's own double click (maximize) is not its.
@@ -5322,7 +5319,7 @@ impl Render for Shell {
                             // A light background: a box to type in, even at rest.
                             .rounded_md()
                             .bg(p().hover)
-                            .tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g")
+                            .tip(crate::t!("sessions-goto"))
                             // A double click selects in it: it does not maximize.
                             .on_click(|_, _, cx| cx.stop_propagation())
                             .child(Input::new(&self.goto).xsmall().appearance(self.goto.read(cx).focus_handle(cx).is_focused(window))),
@@ -5330,7 +5327,7 @@ impl Render for Shell {
                     .child(
                         crate::tips::target(
                             "title.theme",
-                            press_kept(buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, "The colour themes — the next one", "theme.next")))
+                            press_kept(buttons::icon("theme-button", format!("◐ {theme_name}"), buttons::hint(cx, &crate::t!("sessions-themes"), "theme.next")))
                                 .text_xs()
                                 .on_click(cx.listener(|shell, _, _, cx| {
                                     cx.stop_propagation();
@@ -5348,7 +5345,7 @@ impl Render for Shell {
                         press_kept(buttons::icon(
                             "message-all",
                             crate::icons::icon(crate::icons::Icon::MessageAgents, p().muted, 15.).group_hover("message-all", |s| s.text_color(p().text)),
-                            "A message to every running agent: send, send & hold, release holds",
+                            crate::t!("sessions-message-all"),
                         ))
                         .group("message-all")
                             .mr_1()
@@ -5358,7 +5355,7 @@ impl Render for Shell {
                             })),
                     ))
                     .child(
-                        press_kept(buttons::icon("options-button", "⚙", buttons::hint(cx, "Settings", "options.toggle")))
+                        press_kept(buttons::icon("options-button", "⚙", buttons::hint(cx, &crate::t!("sessions-settings"), "options.toggle")))
                             .mr_2()
                             .text_sm()
                             .on_click(cx.listener(|shell, _, window, cx| {
@@ -5378,7 +5375,7 @@ impl Render for Shell {
                             .text_sm()
                             .text_color(p().muted)
                             .child(self.aiball.user.clone())
-                            .tip("who tvty acts as on aiball's board"),
+                            .tip(crate::t!("sessions-user")),
                     ),
             )
             .child(body)
@@ -5862,17 +5859,17 @@ fn see_through(appearance: &crate::settings::Appearance, window: &mut Window) {
 /// and its state and mode in words.
 fn loop_mark(state: &str, presence: &str, armed: Option<&str>) -> (Option<&'static str>, String) {
     let (glyph, mode) = match (presence, armed) {
-        (_, Some("wait_inf")) => (Some("■"), "held until let go"),
-        ("wait" | "stop", _) | (_, Some("wait_10m")) => (Some("‖"), "held for a while"),
-        ("loop", _) => (Some("▶"), "on its own"),
+        (_, Some("wait_inf")) => (Some("■"), "sessions-mark-held-for-good"),
+        ("wait" | "stop", _) | (_, Some("wait_10m")) => (Some("‖"), "sessions-mark-held-while"),
+        ("loop", _) => (Some("▶"), "sessions-mark-own"),
         _ => (None, ""),
     };
-    let state = match state {
-        "busy" => "working",
-        "boot" => "booting",
-        _ => "idle",
-    };
-    (glyph, if mode.is_empty() { state.to_string() } else { format!("{state}, {mode}") })
+    let state = crate::t!(match state {
+        "busy" => "sessions-working",
+        "boot" => "sessions-booting",
+        _ => "sessions-idle",
+    });
+    (glyph, if mode.is_empty() { state } else { format!("{state}, {}", crate::t!(mode)) })
 }
 
 /// A mark of a folded side: a dot, or a glyph, in a colour, with what it

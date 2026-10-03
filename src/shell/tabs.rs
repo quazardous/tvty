@@ -112,7 +112,7 @@ impl Shell {
     /// The field a tab is renamed in: Enter names it, leaving it (or Esc)
     /// keeps the name it had.
     pub(super) fn tab_name_field(window: &mut Window, cx: &mut Context<Self>) -> Entity<InputState> {
-        let field = cx.new(|cx| InputState::new(window, cx).placeholder("its name"));
+        let field = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-tab-name")));
         cx.subscribe_in(&field, window, |shell: &mut Self, _, event: &InputEvent, window, cx| match event {
             InputEvent::PressEnter { .. } => shell.commit_tab_rename(window, cx),
             InputEvent::Blur => {
@@ -166,7 +166,7 @@ impl Shell {
                 })
                 .await;
             if let Err(error) = done {
-                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, "rename the terminal", format!("{name}: {error:#}"))));
+                let _ = cx.update(|cx| crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-rename-failed"), format!("{name}: {error:#}"))));
             }
         })
         .detach();
@@ -203,7 +203,7 @@ impl Shell {
                     // rather than left running out of sight.
                     let _ = this.update(cx, |shell, cx| {
                         shell.stopping.remove(&hidden);
-                        crate::activity::publish(cx, crate::activity::Activity::failed(None, "stop the terminal", format!("{name}: {error:#}")));
+                        crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-stop-failed"), format!("{name}: {error:#}")));
                         shell.rebuild(cx);
                     });
                 })
@@ -360,7 +360,7 @@ impl Shell {
                                 .when(!selected, |d| d.opacity(0.).group_hover(SharedString::from(format!("tab-group-{session}")), |s| s.opacity(1.)))
                                 .hover(|d| d.bg(p().hover))
                                 .child(crate::icons::icon(crate::icons::Icon::Rename, p().muted, 12.))
-                                .tip("rename it (or a double click, F2)")
+                                .tip(crate::t!("sessions-rename-tip"))
                                 .on_click(cx.listener(move |shell, _, window, cx| {
                                     cx.stop_propagation();
                                     shell.start_tab_rename(renamed.clone(), window, cx);
@@ -380,7 +380,7 @@ impl Shell {
                             .when(!selected, |d| d.opacity(0.).group_hover(SharedString::from(format!("tab-group-{session}")), |s| s.opacity(1.)))
                             .hover(|d| d.bg(p().hover).text_color(p().text))
                             .child("×")
-                            .tip(if shell { "close: stops this terminal" } else { "close the tab: its Claude goes on" })
+                            .tip(crate::t!(if shell { "sessions-close-shell" } else { "sessions-close-tab" }))
                             .on_click(cx.listener(move |shell, _, window, cx| {
                                 cx.stop_propagation();
                                 shell.close_tab(closing.clone(), window, cx);
@@ -402,11 +402,7 @@ impl Shell {
                         }
                     })
                     .on_drop(cx.listener(move |shell, drag: &TabDrag, _, cx| shell.move_tab(drag, &onto, cx)))
-                    .when(!renaming, |d| d.tip(if shell {
-                        "a terminal on aiball's host, without Claude; a double click (or F2) renames it"
-                    } else {
-                        "ctrl+pgup / ctrl+pgdn: the tab before, after"
-                    }))
+                    .when(!renaming, |d| d.tip(crate::t!(if shell { "sessions-tab-shell-tip" } else { "sessions-tab-tip" })))
                     // A double click renames a terminal without Claude.
                     .when(shell, |d| {
                         d.on_mouse_down(MouseButton::Left, cx.listener(move |shell, event: &MouseDownEvent, window, cx| {
@@ -431,9 +427,9 @@ impl Shell {
         // A shell where the group works: the project's folder, or home for
         // the host's own terminals (no project); nothing for tmux's.
         let new = if group.on_board {
-            Some(("a terminal in the project's folder", Some(group.name.clone())))
+            Some(("sessions-new-tab-project", Some(group.name.clone())))
         } else if group.name == sessions::HOSTED_GROUP {
-            Some(("a terminal in the home directory", None))
+            Some(("sessions-new-tab-home", None))
         } else {
             None
         };
@@ -442,7 +438,7 @@ impl Shell {
                 buttons::link("tab-new", "+")
                     .self_center()
                     .px_2()
-                    .tip(tip)
+                    .tip(crate::t!(tip))
                     .on_click(cx.listener(move |shell, _, _, cx| match &project {
                         Some(project) => shell.new_project_terminal(project, cx),
                         None => shell.new_terminal(cx),

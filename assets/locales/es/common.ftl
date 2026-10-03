@@ -14,3 +14,4 @@ common-now = ahora
 common-minutes = {$n} min
 common-hours = {$n} h
 common-days = {$n} d
+common-seconds = {$n} s
