@@ -25,7 +25,8 @@ done
 # daemon keeps its own socket and config below.
 TMUX_TMPDIR="$ROOT/dev/tmux"; export TMUX_TMPDIR; unset TMUX
 mkdir -p "$TMUX_TMPDIR"
-AIBALL="$(dirname "$ROOT")/aiball"
+# TVTY_AIBALL_SRC: another aiball checkout (a patched copy, to try a fix).
+AIBALL="${TVTY_AIBALL_SRC:-$(dirname "$ROOT")/aiball}"
 DIR="$ROOT/dev/fake-aiball"
 HOME_DIR="$DIR/home"
 SOCK="$HOME_DIR/sock"

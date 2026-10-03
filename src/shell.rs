@@ -4227,15 +4227,20 @@ impl Shell {
             .filter_map(|t| {
                 let agent = t.agent.as_ref()?;
                 let status = t.status.as_ref()?;
-                let colour = status.colour().unwrap_or(p().muted.opacity(0.4));
                 let bar = self.board.bars.get(agent).filter(|b| !b.stale).map(|b| &b.bar);
+                // Refused lately: the warning colour, whatever it does.
+                let denied = bar.and_then(|b| b.denials_said());
+                let colour = if denied.is_some() { p().warning } else { status.colour().unwrap_or(p().muted.opacity(0.4)) };
                 let presence = bar.map(|b| b.presence.as_str()).unwrap_or(status.driver.as_str());
                 let (glyph, said) = loop_mark(&status.state, presence, bar.map(|b| b.afk.mode.as_str()));
                 // Why it is held, when a usage limit holds it.
-                let tip = match bar.and_then(|b| b.limit_said()) {
+                let mut tip = match bar.and_then(|b| b.limit_said()) {
                     Some(limit) => format!("{agent}: {said} — {limit}"),
                     None => format!("{agent}: {said}"),
                 };
+                if let Some(denied) = denied {
+                    tip.push_str(&format!(" — {denied}"));
+                }
                 Some(Mark { colour, glyph, tip: Some(tip) })
             })
             .collect()
@@ -4551,6 +4556,13 @@ impl Shell {
                     .as_ref()
                     .and_then(|a| self.board.bars.get(a))
                     .is_some_and(|b| !b.stale && b.bar.alerts.restart_needed);
+                // Its tool calls refused lately: a flag on its row.
+                let denied = terminal
+                    .agent
+                    .as_ref()
+                    .and_then(|a| self.board.bars.get(a))
+                    .filter(|b| !b.stale)
+                    .and_then(|b| b.bar.denials.as_ref().filter(|d| d.last_hour > 0).map(|d| (d.last_hour, b.bar.denials_said())));
                 let height = if terminal.status.is_some() { SESSION_ROW } else { SESSION_ROW_BARE };
                 list = list.child(
                     div()
@@ -4597,6 +4609,15 @@ impl Shell {
                                                 .when(open, |d| d.child(dot(p().success)).tip("open in tvty: its terminal runs here")),
                                         )
                                         .child(div().flex_1().min_w_0().truncate().child(marked(&terminal.label, &words)))
+                                        .when_some(denied.clone(), |d, (count, said)| {
+                                            d.child(
+                                                crate::icons::labelled(crate::icons::Icon::Critical, p().warning, 12., count.to_string())
+                                                    .named("denied")
+                                                    .text_xs()
+                                                    .text_color(p().warning)
+                                                    .tip(said.unwrap_or_default()),
+                                            )
+                                        })
                                         // Its Claude runs in claude-loop (through tmux), not on aiball's host.
                                         .when(terminal.agent.is_some() && terminal.attach.is_none(), |d| {
                                             d.child(

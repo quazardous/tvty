@@ -229,6 +229,24 @@ pub struct AgentBar {
     /// the first turn ends, or from an older loop.
     #[serde(default)]
     pub model: Option<BarModel>,
+    /// The tool calls Claude Code refused it (its auto mode's classifier,
+    /// a deny rule): a refused agent stops there. None after an hour without
+    /// one, or from a loop older than aiball 0.55.
+    #[serde(default)]
+    pub denials: Option<BarDenials>,
+}
+
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct BarDenials {
+    #[serde(default)]
+    pub last_hour: u32,
+    #[serde(default)]
+    pub total: u32,
+    #[serde(default)]
+    pub last_at: Option<String>,
+    /// As Claude Code gives it ("Auto-Mode Bypass").
+    #[serde(default)]
+    pub last_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -302,6 +320,24 @@ pub struct LimitResets {
 
 impl AgentBar {
     /// "usage limit reached", and when it resets if said.
+    /// Its refused tool calls in the last hour, said: how many, how long
+    /// since the last, and why. None without any.
+    pub fn denials_said(&self) -> Option<String> {
+        let d = self.denials.as_ref().filter(|d| d.last_hour > 0)?;
+        let ago = d
+            .last_at
+            .as_deref()
+            .and_then(crate::status::parse_time)
+            .map(|at| format!(", the last {} ago", crate::status::ago(crate::status::now().saturating_sub(at))))
+            .unwrap_or_default();
+        let why = d.last_reason.as_deref().filter(|r| !r.is_empty()).map(|r| format!(": {r}")).unwrap_or_default();
+        Some(format!(
+            "{} tool call{} refused by Claude Code in the last hour{ago}{why} — a refused agent stops there",
+            d.last_hour,
+            if d.last_hour == 1 { "" } else { "s" }
+        ))
+    }
+
     pub fn limit_said(&self) -> Option<String> {
         self.alerts.limit_reached.then(|| match &self.limit_resets {
             Some(resets) if !resets.text.is_empty() => format!("usage limit reached · resets {}", resets.text),

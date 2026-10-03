@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- An agent whose tool calls Claude Code refused in the last hour (auto mode's classifier, a deny rule) shows a warning and their count on its row in the sessions' list, the reason under the pointer; folded, its mark turns to the warning colour. A refused agent stops there. Needs aiball 0.55.
+
 ## [0.11.0-beta.1] - 2026-10-03
 
 ### Added
