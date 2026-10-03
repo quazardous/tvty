@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- The sessions list: drag a project by its name to put the projects in your own order (⇅ steps between recent, alphabetical and yours).
+- The sessions list: drag a project, anywhere on it, to put the projects in your own order (⇅ steps between recent, alphabetical and yours).
 - In French, Spanish and German too: aiball's settings, the agent bar's passing word, how long a critical ticket went quiet, and a new project's steps.
 - The terminal has a scrollbar, like the rest of tvty: it says where you are in the history (tmux's too), and a drag or a click scrolls it. Its place is always kept, so nothing shifts when it fills.
 

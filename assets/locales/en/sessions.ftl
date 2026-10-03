@@ -8,8 +8,8 @@
 sessions-tab-sessions = Sessions
 sessions-tab-workspaces = Workspaces
 sessions-order-recent = the project used last first, as ctrl+tab goes; a click: alphabetical
-sessions-order-alpha = alphabetical; a click: your order (drag a project by its name)
-sessions-order-yours = your order: drag a project by its name; a click: the project used last first
+sessions-order-alpha = alphabetical; a click: your order (drag a project)
+sessions-order-yours = your order: drag a project; a click: the project used last first
 sessions-new-project = + project
 sessions-new-project-tip = a folder made an aiball project (aiball init), then its first session
 sessions-new-terminal-tip = a terminal of its own, which outlives tvty

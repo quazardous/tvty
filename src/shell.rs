@@ -130,6 +130,8 @@ pub struct Shell {
     /// the pointer (the slider keeps the order of use live). Projects that
     /// come later go last; ⇅ takes the order afresh.
     sidebar_order: Option<Vec<String>>,
+    /// The project dragged in the list now, if one is: its block glows.
+    dragging_project: Rc<RefCell<Option<String>>>,
     /// When tvty started: a work left with terminals gone for good never
     /// ends its restoring, and the list's order is taken a moment after.
     began: std::time::Instant,
@@ -417,27 +419,38 @@ fn moved(
     }
 }
 
-/// A project being dragged in the list by its heading: what the ghost
-/// says, and its name.
+/// A project being dragged in the list: its name, and its block as it was
+/// when the drag began (its heading, its sessions), drawn under the pointer
+/// as that copy, not live.
 #[derive(Clone)]
-struct ProjectDrag(String, String);
+struct ProjectDrag {
+    name: String,
+    heading: String,
+    rows: Vec<String>,
+}
 
 impl Render for ProjectDrag {
-    /// The ghost: the project's name, as its heading says it.
     fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
         div()
-            .px_2p5()
-            .py_1()
+            .w(px(SIDEBAR_WIDTH - 60.))
+            .flex()
+            .flex_col()
+            .gap_1()
+            .px_3()
+            .py_2()
             .rounded_md()
-            .text_xs()
-            .font_weight(FontWeight::BOLD)
             .bg(p().surface)
-            .border_1()
-            .border_color(p().accent)
-            .text_color(p().text)
-            .shadow_md()
-            .child(self.0.clone())
+            .opacity(0.92)
+            .shadow(vec![halo(p().accent, false)])
+            .child(div().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(self.heading.clone()))
+            .children(self.rows.iter().map(|row| div().flex().items_center().gap_1().truncate().child(div().text_color(p().success).child("●")).child(row.clone())))
     }
+}
+
+/// A glow around a block, in `colour`: inside its bounds (`inset`), where
+/// a scrolled list does not clip it.
+fn halo(colour: Hsla, inset: bool) -> BoxShadow {
+    BoxShadow { color: colour.opacity(0.8), offset: point(px(0.), px(0.)), blur_radius: px(8.), spread_radius: px(1.), inset }
 }
 
 struct Gallery {
@@ -781,6 +794,7 @@ impl Shell {
             selected: None,
             recent: Vec::new(),
             sidebar_order: None,
+            dragging_project: Rc::default(),
             began: std::time::Instant::now(),
             panel,
             settings: Settings::current(cx),
@@ -4642,25 +4656,12 @@ impl Shell {
             let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
             // Fixed heights: the list is laid out on every frame of the
             // shell, and rows the layout must measure cost dearly.
-            let (moved, onto) = (project.name.clone(), project.name.clone());
-            list = list.child(
+            // The project's block, its heading and its sessions: dragged
+            // onto another project, it takes its place.
+            let mut block = div().flex().flex_col();
+            block = block.child(
                 div()
                     .named(SharedString::from(format!("project-row-{}", project.name)))
-                    // Dragged onto another project, it takes its place.
-                    .when(words.is_empty(), |d| {
-                        d.on_drag(ProjectDrag(moved.to_uppercase(), moved), |drag: &ProjectDrag, _, _, cx| cx.new(|_| drag.clone()))
-                            .drag_over::<ProjectDrag>({
-                                let here = project.name.clone();
-                                move |style, drag: &ProjectDrag, _, _| {
-                                    if drag.1 == here {
-                                        style
-                                    } else {
-                                        style.bg(crate::theme::drop_target().opacity(0.18)).border_t_2().border_color(crate::theme::drop_target())
-                                    }
-                                }
-                            })
-                            .on_drop(cx.listener(move |shell, drag: &ProjectDrag, _, cx| shell.move_project(&drag.1, &onto, cx)))
-                    })
                     .h(px(SESSION_HEADING))
                     .flex_none()
                     .overflow_hidden()
@@ -4705,6 +4706,7 @@ impl Shell {
                     }),
             )
             .children(self.new_session_form(&project.name, cx));
+            let rows = shown.iter().map(|t| t.label.clone()).collect::<Vec<_>>();
             for terminal in shown {
                 let session = terminal.session.clone();
                 let selected = self.selected.as_deref() == Some(session.as_str());
@@ -4756,7 +4758,7 @@ impl Shell {
                             cx.notify();
                         }))
                 });
-                list = list.child(
+                block = block.child(
                     div()
                         .named(SharedString::from(format!("terminal-{session}")))
                         .group(SharedString::from(format!("terminal-{session}-group")))
@@ -4886,6 +4888,35 @@ impl Shell {
                         })),
                 );
             }
+            let name = project.name.clone();
+            let dragged = cx.has_active_drag() && self.dragging_project.borrow().as_deref() == Some(name.as_str());
+            let drag = ProjectDrag { name: name.clone(), heading: name.to_uppercase(), rows };
+            let dragging = self.dragging_project.clone();
+            list = list.child(
+                div()
+                    .named(SharedString::from(format!("project-block-{name}")))
+                    .rounded_md()
+                    // The one moved, in blue, where it was.
+                    .when(dragged, |d| d.shadow(vec![halo(p().accent, true)]))
+                    .when(words.is_empty(), |d| {
+                        d.on_drag(drag, move |drag: &ProjectDrag, _, _, cx| {
+                            *dragging.borrow_mut() = Some(drag.name.clone());
+                            cx.new(|_| drag.clone())
+                        })
+                        // The one it would take the place of, in yellow.
+                        .drag_over::<ProjectDrag>({
+                            let here = name.clone();
+                            move |style, drag: &ProjectDrag, _, _| {
+                                if drag.name == here { style } else { style.shadow(vec![halo(p().warning, true)]) }
+                            }
+                        })
+                        .on_drop(cx.listener(move |shell, drag: &ProjectDrag, _, cx| {
+                            shell.dragging_project.borrow_mut().take();
+                            shell.move_project(&drag.name, &name, cx)
+                        }))
+                    })
+                    .child(block),
+            );
         }
         list
     }

@@ -377,7 +377,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Layout",
         group: "Sessions",
         label: "Order",
-        about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes; alphabetical; or yours, as you drag them in the list by their name. Also the ⇅ in the list's header.",
+        about: "The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes; alphabetical; or yours, as you drag them in the list. Also the ⇅ in the list's header.",
         kind: Kind::Choice,
     },
     Setting {

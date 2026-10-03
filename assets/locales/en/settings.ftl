@@ -48,7 +48,7 @@ setting-tips-show = Show tips
     .on = show
     .off = never
 setting-sessions-order = Order
-    .about = The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes; alphabetical; or yours, as you drag them in the list by their name. Also the ⇅ in the list's header.
+    .about = The projects in the list, the slider and the gallery: the one used last first, as ctrl+tab goes; alphabetical; or yours, as you drag them in the list. Also the ⇅ in the list's header.
 setting-sessions-show_hub = The hub's sessions
     .about = When this machine reaches aiball through a proxy node: list the sessions that run on aiball's hub too, apart, under "on hub". They are read from here (state, tickets), never opened: a session is attached from its own machine. The sessions of other nodes are never listed.
     .on = listed
@@ -78,7 +78,7 @@ setting-tickets-ctrl_enter_opens = Ctrl+Enter
     .on = files and opens it
     .off = files and exits
 
-## The pages and groups, by their name (settings-title-<name>)
+## The pages and groups, (settings-title-<name>)
 
 settings-title-project = Project
 settings-title-appearance = Appearance
