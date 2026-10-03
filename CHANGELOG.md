@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0-beta.1] - 2026-10-03
+
 ### Added
 
 - Settings > Appearance > Language: the interface in English, French, Spanish or German (by default, the system's), live; also from the title bar, after the theme (its two letters, a click lists them). Text boxes already made keep their hint in the old language until the next start. What people write (tickets, comments, names) stays as written; the few words aiball sends ready-made stay in English for now. `tvty i18n` says how far each language goes.
