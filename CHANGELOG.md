@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The agent bar: the AFK countdown sits on the same line as F9.
+- Typing in a new ticket, the ticket list or the settings no longer lags while agents write behind them.
+- A new ticket: Ctrl+Enter no longer flashes the button it does not press.
 
 ## [0.12.0-beta.1] - 2026-10-03
 

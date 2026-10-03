@@ -458,7 +458,9 @@ impl NewTicketForm {
 
 impl Render for NewTicketForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let busy = self.filing.is_some() || self.text.read(cx).uploading();
+        // An image on its way: neither files yet. One filing leaves the
+        // other as it was: greyed, it flashed at every Ctrl+Enter.
+        let uploading = self.text.read(cx).uploading();
         let words = div()
             .flex_1()
             .min_w_0()
@@ -486,18 +488,18 @@ impl Render for NewTicketForm {
                         buttons::answer("new-ticket-file-exit", crate::t!("newticket-file-exit"))
                             // Filled in the warning colour, beside the accent of "File the ticket".
                             .warning()
-                            // Filled, unless greyed while the other files it.
-                            .when(!(busy && self.filing != Some(false)), |b| b.bg(p().warning).text_color(p().bg))
+                            // Filled, unless greyed while an image uploads.
+                            .when(!uploading, |b| b.bg(p().warning).text_color(p().bg))
                             // At work: its spinner (the kit spins an icon only).
                             .when(self.filing == Some(false), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
-                            .disabled(busy && self.filing != Some(false))
+                            .disabled(uploading)
                             .tooltip(crate::t!("newticket-file-exit-tip"))
                             .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
                     ))
                     .child(
                         buttons::primary("new-ticket-file", crate::t!("newticket-file"))
                             .when(self.filing == Some(true), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
-                            .disabled(busy && self.filing != Some(true))
+                            .disabled(uploading)
                             .on_click(cx.listener(|form, _, window, cx| form.submit(true, window, cx))),
                     ),
             );

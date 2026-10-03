@@ -5243,7 +5243,10 @@ impl Render for Shell {
             .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
             .text_color(p().text)
             .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
-            .child(
+            // Under a page that covers it all, the workspace is left out:
+            // its terminals, still talking, would redraw the window at their
+            // pace behind it, and the keys typed in the page would wait.
+            .when(!(covered || gallery.is_some()), |d| d.child(
                 // The workspace: the terminals, the sessions list, the panel
                 // beside them — its key context, the shell's own focus.
                 div()
@@ -5265,7 +5268,7 @@ impl Render for Shell {
                     )
                     .child(right)
                     .children(slider),
-            )
+            ))
             .child(keep_focus)
             .children(gallery.map(|g| surface("Gallery", g.into_any_element())))
             .children(full_list.map(|l| surface("FullList", l.into_any_element())))
