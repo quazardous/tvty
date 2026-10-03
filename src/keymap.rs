@@ -129,6 +129,13 @@ commands! {
     "terminal.back_tab", TERMINAL, ["shift-tab"], "Shift+Tab, to the program", SendBackTab;
 }
 
+/// What a command does, in the interface's language: `keys-<name>` (its
+/// dots and underscores as dashes); its English where a language has none.
+pub fn said(command: &Command) -> String {
+    let id = format!("keys-{}", command.name.replace(['.', '_'], "-"));
+    if crate::i18n::has(&id) { crate::t!(&id) } else { command.what.to_string() }
+}
+
 /// The contexts, outermost first.
 pub const CONTEXTS: &[&str] = &[WINDOW, WORKSPACE, TERMINAL];
 

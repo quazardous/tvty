@@ -69,15 +69,16 @@ pub fn title_id(name: &str) -> String {
 }
 
 /// The keys that are not commands (see [`crate::keymap`]): those of what
-/// is up, and the mouse's. `(keys, what they do)`.
-pub const FIXED_KEYS: &[(&str, &str)] = &[
-    ("Esc", "Close the gallery, the slider, the theme list, the options, the full list"),
-    ("Arrows", "In the slider and the gallery: move to the card seen there"),
-    ("Drag · double click · triple click", "In a terminal: select text · a word · a line — copied to the primary selection"),
-    ("Middle click", "In a terminal: paste the primary selection"),
-    ("Right click", "In a terminal: Copy, Paste — on a link, Open link, Copy link"),
-    ("Ctrl+click", "In a terminal, on a link: open it"),
-    ("Mouse wheel", "Scroll the history"),
+/// is up, and the mouse's. Each a word (`keys-fixed-<what>`): what they
+/// do, and the keys themselves as its `.keys` (several apart by " · ").
+pub const FIXED_KEYS: &[&str] = &[
+    "keys-fixed-esc",
+    "keys-fixed-arrows",
+    "keys-fixed-select",
+    "keys-fixed-middle-click",
+    "keys-fixed-right-click",
+    "keys-fixed-ctrl-click",
+    "keys-fixed-wheel",
 ];
 
 // ── What the pages list, as items (see `tvty_config::items`) ─────────
@@ -198,7 +199,7 @@ pub fn shortcut_items(map: &Keymap) -> Vec<Item> {
                 key: c.name.to_string(),
                 page: SHORTCUTS_PAGE.to_string(),
                 group: context_group(c.context).to_string(),
-                label: c.what.to_string(),
+                label: crate::keymap::said(c),
                 about: String::new(),
                 value: keys.iter().map(|k| k.pretty()).collect::<Vec<_>>().join(", "),
                 modified: map.is_changed(c.name),

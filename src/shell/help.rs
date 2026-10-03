@@ -53,24 +53,24 @@ impl Entry {
         Entry::Quit,
     ];
 
-    fn label(self) -> &'static str {
-        match self {
-            Entry::About => "About Terminal Velocity",
-            Entry::Options => "Settings…",
-            Entry::NewProject => "New project…",
-            Entry::Megaphone => "Message every agent…",
-            Entry::FullScreen => "Full screen",
-            Entry::Documentation => "Documentation",
-            Entry::Shortcuts => "Keyboard shortcuts",
-            Entry::Tips => "Tips…",
-            Entry::WhatsNew => "What's new",
-            Entry::Repository => "GitHub",
-            Entry::Issue => "Report an issue",
-            Entry::Aiball => "aiball",
-            Entry::Updates => "Updates…",
-            Entry::Restart => "Restart tvty",
-            Entry::Quit => "Quit tvty",
-        }
+    fn label(self) -> String {
+        crate::t!(match self {
+            Entry::About => "help-about",
+            Entry::Options => "help-options",
+            Entry::NewProject => "help-new-project",
+            Entry::Megaphone => "help-megaphone",
+            Entry::FullScreen => "help-full-screen",
+            Entry::Documentation => "help-documentation",
+            Entry::Shortcuts => "help-shortcuts",
+            Entry::Tips => "help-tips",
+            Entry::WhatsNew => "help-whats-new",
+            Entry::Repository => "help-github",
+            Entry::Issue => "help-issue",
+            Entry::Aiball => "help-aiball",
+            Entry::Updates => "help-updates",
+            Entry::Restart => "help-restart",
+            Entry::Quit => "help-quit",
+        })
     }
 
     /// What it says beside its label.
@@ -82,11 +82,11 @@ impl Entry {
             Entry::Megaphone => String::new(),
             Entry::About => version(),
             Entry::Documentation | Entry::WhatsNew | Entry::Repository | Entry::Issue => "↗".into(),
-            Entry::Aiball => "the board ↗".into(),
+            Entry::Aiball => crate::t!("help-aiball-note"),
             // A newer release, when one is known.
-            Entry::Updates => crate::updates::newer(cx).map(|v| format!("{v} is out ↑")).unwrap_or_default(),
+            Entry::Updates => crate::updates::newer(cx).map(|v| crate::t!("help-updates-note", version = v.to_string())).unwrap_or_default(),
             Entry::Shortcuts | Entry::NewProject | Entry::Tips => String::new(),
-            Entry::Restart => "sessions kept".into(),
+            Entry::Restart => crate::t!("help-restart-note"),
             Entry::Quit => String::new(),
         }
     }
@@ -137,7 +137,7 @@ impl Shell {
                             log::info!("help: opens {url}");
                             cx.open_url(&url);
                         }
-                        Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, "open aiball's board", format!("{error:#}"))),
+                        Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("help-board-failed"), format!("{error:#}"))),
                     });
                 })
                 .detach();
@@ -161,7 +161,7 @@ impl Shell {
                 if !crate::updates::open_updater() {
                     crate::activity::publish(
                         cx,
-                        crate::activity::Activity::failed(None, "open the updater", "tvty-updater is not installed: see the README's Quick start"),
+                        crate::activity::Activity::failed(None, &crate::t!("help-updater-failed"), crate::t!("help-updater-missing")),
                     );
                 }
             }

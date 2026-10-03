@@ -3637,7 +3637,7 @@ impl Shell {
         capture.pending = None;
         capture.refused = None;
         if command.context == keymap::TERMINAL && key.is_typing() {
-            capture.refused = Some(format!("{} is typing: in a terminal it stays the program's", key.pretty()));
+            capture.refused = Some(crate::t!("keys-typing-refused", key = key.pretty()));
         } else if let Some(other) = keymap::current(cx).conflict(command.name, &key) {
             capture.pending = Some((key, other));
         } else {
@@ -3685,7 +3685,7 @@ impl Shell {
         let listening = |command: &str, key: Option<&keymap::Key>| {
             self.capture.as_ref().is_some_and(|c| c.command == command && c.replacing.as_ref() == key)
         };
-        let small = |id: SharedString, label: &'static str| buttons::chip(id, label).text_xs();
+        let small = |id: SharedString, label: SharedString| buttons::chip(id, label).text_xs();
         let listening_chip = |id: SharedString| {
             div()
                 .named(id)
@@ -3695,7 +3695,7 @@ impl Shell {
                 .border_color(p().accent)
                 .text_sm()
                 .text_color(p().accent)
-                .child("Press a key… (Esc gives up)")
+                .child(crate::t!("keys-press"))
         };
         let file = keymap::path().map(|p| p.display().to_string()).unwrap_or_else(|| "keymap.toml".into());
         let changed = map.commands().iter().any(|c| map.is_changed(c.name)) || bindings.iter().any(|b| b.command.is_none());
@@ -3704,33 +3704,31 @@ impl Shell {
             .flex()
             .flex_col()
             .max_w(px(960.))
-            .child(option_note("Each shortcut is a command, bound in a context: Terminal when a terminal has the focus, Window anywhere else. The deepest binding wins; a key bound nowhere goes to the terminal's program."))
+            .child(option_note(crate::t!("keys-intro")))
             .child(
                 div()
                     .flex()
                     .items_center()
                     .gap_4()
                     .pb_2()
-                    .child(div().flex_1().min_w_0().text_sm().text_color(p().muted).child(format!(
-                        "Click a key to change it, + to add one, × to remove it. Kept in {file}, which you may edit too."
-                    )))
+                    .child(div().flex_1().min_w_0().text_sm().text_color(p().muted).child(crate::t!("keys-how", file = file)))
                     .when(changed, |d| {
-                        d.child(small("keys-reset-all".into(), "Reset all").on_click(cx.listener(|shell, _, _, cx| shell.change_keys(cx, |map| map.reset_all()))))
+                        d.child(small("keys-reset-all".into(), crate::t!("keys-reset-all").into()).on_click(cx.listener(|shell, _, _, cx| shell.change_keys(cx, |map| map.reset_all()))))
                     }),
             )
             .when_some(error, |d, error| {
-                d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(format!("Not applied: {error}")))
+                d.child(div().p_2().mb_2().rounded_md().border_1().border_color(p().danger).text_sm().text_color(p().danger).child(crate::t!("keys-not-applied", error = error.to_string())))
             });
         if only.is_none() {
             sections.push((None, header.into_any_element()));
         }
         let masked = map.masked();
         for (context, title) in [
-            (keymap::WINDOW, "Window — anywhere in tvty, full-screen pages included"),
-            (keymap::WORKSPACE, "Workspace — the terminals, the sessions list and the panel beside them"),
-            (keymap::TERMINAL, "Terminal — when a terminal has the focus"),
+            (keymap::WINDOW, "keys-context-window"),
+            (keymap::WORKSPACE, "keys-context-workspace"),
+            (keymap::TERMINAL, "keys-context-terminal"),
         ] {
-            let mut group = div().flex().flex_col().max_w(px(960.)).child(option_group(title));
+            let mut group = div().flex().flex_col().max_w(px(960.)).child(option_group(&crate::t!(title)));
             let mut rows = 0;
             for command in keymap::COMMANDS.iter().filter(|c| c.context == context && only.is_none_or(|o| o.contains(c.name))) {
                 let name = command.name;
@@ -3762,7 +3760,7 @@ impl Shell {
                                     .on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, Some(again.clone()), cx))),
                             )
                             .child(
-                                buttons::remove(SharedString::from(format!("{id}-x")), "×", "remove this key")
+                                buttons::remove(SharedString::from(format!("{id}-x")), "×", crate::t!("keys-remove"))
                                     .min_w(px(0.))
                                     .on_click(cx.listener(move |shell, _, _, cx| {
                                         shell.change_keys(cx, |map| map.unbind(context, &gone))
@@ -3773,15 +3771,16 @@ impl Shell {
                 chips = if listening(name, None) {
                     chips.child(listening_chip(format!("key-{name}-new").into()))
                 } else {
-                    chips.child(small(format!("key-{name}-add").into(), "+").on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, None, cx))))
+                    chips.child(small(format!("key-{name}-add").into(), "+".into()).on_click(cx.listener(move |shell, _, _, cx| shell.start_capture(name, None, cx))))
                 };
-                let mut what = command.what.to_string();
+                let mut what = keymap::said(command);
                 if let Some((_, by)) = masked.iter().find(|(b, _)| b.command == Some(name)) {
-                    what = format!("{what} — masked in a terminal by {}", by.command.unwrap_or("the program"));
+                    let by = by.command.map(str::to_string).unwrap_or_else(|| crate::t!("keys-the-program"));
+                    what = crate::t!("keys-masked", what = what, by = by);
                 }
                 let away = map.is_changed(name).then(|| {
                     let keys: Vec<String> = map.default_keys_of(name).iter().map(|k| k.pretty()).collect();
-                    Away::default(if keys.is_empty() { "no key".to_string() } else { keys.join(", ") })
+                    Away::default(if keys.is_empty() { crate::t!("keys-no-key") } else { keys.join(", ") })
                 });
                 let custom = away.is_some();
                 let mut row = div()
@@ -3813,9 +3812,9 @@ impl Shell {
                                 .gap_2()
                                 .pt_1()
                                 .text_sm()
-                                .child(format!("{} runs {other}: take it for {name}?", key.pretty()))
-                                .child(small("key-replace".into(), "Replace").on_click(cx.listener(move |shell, _, _, cx| shell.bind_captured(key.clone(), cx))))
-                                .child(small("key-cancel".into(), "Cancel").on_click(cx.listener(|shell, _, _, cx| shell.end_capture(cx)))),
+                                .child(crate::t!("keys-conflict", key = key.pretty(), other = other.to_string(), name = name))
+                                .child(small("key-replace".into(), crate::t!("keys-replace").into()).on_click(cx.listener(move |shell, _, _, cx| shell.bind_captured(key.clone(), cx))))
+                                .child(small("key-cancel".into(), crate::t!("keys-cancel").into()).on_click(cx.listener(|shell, _, _, cx| shell.end_capture(cx)))),
                         );
                     }
                     if let Some(refused) = capture.refused.clone() {
@@ -3828,7 +3827,7 @@ impl Shell {
             // The keys given back to what has the focus: × binds them again.
             for freed in bindings.iter().filter(|b| only.is_none() && b.context == context && b.command.is_none()) {
                 let key = freed.key.clone();
-                let to = if context == keymap::TERMINAL { "Given back to the terminal's program" } else { "Given back to what has the focus" };
+                let to = crate::t!(if context == keymap::TERMINAL { "keys-freed-terminal" } else { "keys-freed-focus" });
                 group = group.child(
                     div()
                         .flex()
@@ -3840,7 +3839,7 @@ impl Shell {
                         .child(
                             div().w(px(300.)).flex_none().child(
                                 div().flex().items_center().gap_1().child(key_chip(key.pretty())).child(
-                                    small(format!("freed-{context}-{}", key.canonical()).into(), "×").on_click(cx.listener(move |shell, _, _, cx| {
+                                    small(format!("freed-{context}-{}", key.canonical()).into(), "×".into()).on_click(cx.listener(move |shell, _, _, cx| {
                                         shell.change_keys(cx, |map| map.restore(context, &key))
                                     })),
                                 ),
@@ -3857,7 +3856,8 @@ impl Shell {
             return sections;
         }
         let mut fixed = div().flex().flex_col().max_w(px(960.)).child(option_group("Fixed keys"));
-        for (keys, what) in FIXED_KEYS {
+        for id in FIXED_KEYS {
+            let (keys, what) = (crate::t!(&format!("{id}.keys")), crate::t!(id));
             fixed = fixed.child(
                 div()
                     .flex()
@@ -3867,7 +3867,7 @@ impl Shell {
                     .border_b_1()
                     .border_color(p().border)
                     .child(div().w(px(300.)).flex_none().child(div().flex().flex_wrap().gap_1().children(keys.split(" · ").map(|k| key_chip(k.to_string())))))
-                    .child(div().flex_1().min_w_0().text_sm().child(*what)),
+                    .child(div().flex_1().min_w_0().text_sm().child(what)),
             );
         }
         sections.push((Some("Fixed keys".into()), fixed.into_any_element()));

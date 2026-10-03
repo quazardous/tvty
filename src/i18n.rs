@@ -518,6 +518,12 @@ mod tests {
             built.push(crate::options::title_id(setting.group));
         }
         built.extend(crate::options::Section::ALL.map(|s| crate::options::title_id(s.title())));
+        // Every command by its name; every fixed key, and its keys.
+        built.extend(crate::keymap::COMMANDS.iter().map(|c| format!("keys-{}", c.name.replace(['.', '_'], "-"))));
+        for id in crate::options::FIXED_KEYS {
+            built.push(id.to_string());
+            built.push(format!("{id}.keys"));
+        }
         let missing: Vec<_> = built.iter().filter(|id| !english.contains(id)).collect();
         assert!(missing.is_empty(), "built ids English has not: {missing:?}");
     }
