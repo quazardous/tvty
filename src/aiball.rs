@@ -1597,14 +1597,14 @@ impl<T> Setting<T> {
     }
 
     /// Where it comes from, said to the user.
-    pub fn said(&self) -> &str {
-        match self.from.as_str() {
-            "file" => "from .aiball.yaml",
-            "global" => "from aiball's global config",
-            "mcp" => "from .mcp.json",
-            "env" => "from aiball's environment",
-            _ => "default",
-        }
+    pub fn said(&self) -> String {
+        crate::t!(match self.from.as_str() {
+            "file" => "fields-from-file",
+            "global" => "fields-from-global",
+            "mcp" => "fields-from-mcp",
+            "env" => "fields-from-env",
+            _ => "fields-from-default",
+        })
     }
 }
 

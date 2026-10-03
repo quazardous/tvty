@@ -34,3 +34,11 @@ fields-write = Escribir
 fields-preview = Vista previa
 fields-title = Título
 fields-body = De qué se trata… (@ para mencionar, ctrl+v pega una imagen)
+
+## De dónde viene un ajuste
+
+fields-from-file = desde .aiball.yaml
+fields-from-global = desde la config global de aiball
+fields-from-mcp = desde .mcp.json
+fields-from-env = desde el entorno de aiball
+fields-from-default = por defecto

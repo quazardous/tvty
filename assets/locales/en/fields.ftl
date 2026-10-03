@@ -34,3 +34,11 @@ fields-write = Write
 fields-preview = Preview
 fields-title = Title
 fields-body = What it is about… (@ to mention, ctrl+v pastes an image)
+
+## Where a setting comes from
+
+fields-from-file = from .aiball.yaml
+fields-from-global = from aiball's global config
+fields-from-mcp = from .mcp.json
+fields-from-env = from aiball's environment
+fields-from-default = default

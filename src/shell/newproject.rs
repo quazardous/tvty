@@ -36,13 +36,13 @@ impl Step {
         Step::ALL.iter().position(|s| *s == self).unwrap_or(0)
     }
 
-    fn title(self) -> &'static str {
-        match self {
-            Step::Folder => "Folder",
-            Step::Identity => "Who works in it",
-            Step::Done => "Set up",
-            Step::Next => "What next",
-        }
+    fn title(self) -> String {
+        crate::t!(match self {
+            Step::Folder => "newproject-step-folder",
+            Step::Identity => "newproject-step-identity",
+            Step::Done => "newproject-step-done",
+            Step::Next => "newproject-step-next",
+        })
     }
 }
 
@@ -186,15 +186,10 @@ fn to_write(now: &ProjectSettings, on_host: bool, remote_control: serde_json::Va
 }
 
 /// What aiball's dry run says it did to a file, as what it will do.
-fn will(action: &str) -> &str {
+fn will(action: &str) -> String {
     match action {
-        "created" => "creates",
-        "added" => "adds its entry to",
-        "rewritten" => "rewrites its entry in",
-        "patched" => "updates",
-        "overwrote" => "overwrites",
-        "kept" => "keeps",
-        other => other,
+        "created" | "added" | "rewritten" | "patched" | "overwrote" | "kept" => crate::t!(&format!("newproject-will-{action}")),
+        other => other.to_string(),
     }
 }
 
@@ -202,9 +197,9 @@ impl Shell {
     /// Opens the wizard, at its first step.
     pub(super) fn open_new_project(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         self.help_menu = false;
-        let folder = cx.new(|cx| InputState::new(window, cx).placeholder("the project's folder, e.g. ~/dev/app"));
-        let name = cx.new(|cx| InputState::new(window, cx).placeholder("project"));
-        let agent = cx.new(|cx| InputState::new(window, cx).placeholder("agent"));
+        let folder = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("newproject-folder-placeholder")));
+        let name = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("newproject-project-placeholder")));
+        let agent = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("newproject-agent-placeholder")));
         // What the folder is, said as it is typed; the names, aiball
         // asked again what it would do with them.
         for input in [&folder, &name, &agent] {
@@ -254,7 +249,7 @@ impl Shell {
             files: false,
             directories: true,
             multiple: false,
-            prompt: Some("Choose the project's folder".into()),
+            prompt: Some(crate::t!("newproject-choose-folder").into()),
         });
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
@@ -382,7 +377,7 @@ impl Shell {
                     let mut done = aiball.project_init(&ask, false).map_err(|e| format!("{e:#}"))?;
                     // Then where its loops run and its Remote Control, in the
                     // file that now applies: only what differs from it.
-                    let unsaved = |e: anyhow::Error| format!("set up, but where its loops run and its Remote Control were not saved: {e:#}");
+                    let unsaved = |e: anyhow::Error| crate::t!("newproject-unsaved", error = format!("{e:#}"));
                     let now = aiball.project_settings(&ask.cwd).map_err(unsaved)?;
                     let (session, remote_control) = to_write(&now, on_host, remote_control);
                     if session.is_some() || remote_control.is_some() {
@@ -399,7 +394,7 @@ impl Shell {
                         set.extend(session.map(|s| format!("claude_loop.session: {s}")));
                         set.extend(remote_control.map(|rc| format!("claude.remote_control: {rc}")));
                         let file = now.file.clone().unwrap_or_default();
-                        done.steps.push(crate::aiball::InitStep { message: format!("set {} in {file}", set.join(", ")), action: "patched".into(), file });
+                        done.steps.push(crate::aiball::InitStep { message: crate::t!("newproject-set-in", what = set.join(", "), file = file.clone()), action: "patched".into(), file });
                     }
                     Ok(done)
                 })
@@ -475,7 +470,7 @@ impl Shell {
         // Its parts named new-project-…: not "new-project" alone, the list's
         // "+ project" link.
         Some(
-            crate::ui::sheet::Sheet::new("new-project", "New project")
+            crate::ui::sheet::Sheet::new("new-project", crate::t!("newproject-title"))
                 .steps(steps)
                 .body(page)
                 .answers(footer)
@@ -485,7 +480,7 @@ impl Shell {
     }
 
     /// The main button of a step: the accent when it can go.
-    fn wizard_go(id: &'static str, label: &'static str, enabled: bool) -> Button {
+    fn wizard_go(id: &'static str, label: String, enabled: bool) -> Button {
         buttons::primary(id, label).disabled(!enabled)
     }
 
@@ -498,16 +493,16 @@ impl Shell {
             _ => None,
         };
         let (said, colour) = match &folder {
-            Folder::Empty => ("The folder the agent will work in: the project's root.".to_string(), p().muted),
-            Folder::Missing => ("No such folder.".to_string(), p().danger),
-            Folder::NotADirectory => ("This is a file, not a folder.".to_string(), p().danger),
-            Folder::Checking => ("Asking aiball…".to_string(), p().muted),
+            Folder::Empty => (crate::t!("newproject-folder-empty"), p().muted),
+            Folder::Missing => (crate::t!("newproject-folder-missing"), p().danger),
+            Folder::NotADirectory => (crate::t!("newproject-folder-file"), p().danger),
+            Folder::Checking => (crate::t!("newproject-folder-checking"), p().muted),
             Folder::Configured(file) => match &project {
-                Some(name) => (format!("Already an aiball project: {name} ({file}). Next shows what it says, to set it up again."), p().warning),
-                None => (format!("Already set up for aiball ({file}). Next shows what it says, to set it up again."), p().warning),
+                Some(name) => (crate::t!("newproject-folder-project", name = name.clone(), file = file.clone()), p().warning),
+                None => (crate::t!("newproject-folder-configured", file = file.clone()), p().warning),
             },
-            Folder::Fresh { git: true } => ("A git repository: ready.".to_string(), p().success),
-            Folder::Fresh { git: false } => ("Ready (not a git repository).".to_string(), p().success),
+            Folder::Fresh { git: true } => (crate::t!("newproject-folder-git"), p().success),
+            Folder::Fresh { git: false } => (crate::t!("newproject-folder-ready"), p().success),
         };
         let ready = matches!(folder, Folder::Configured(_) | Folder::Fresh { .. });
         // Already on the board: open it rather than set it up again.
@@ -519,31 +514,31 @@ impl Shell {
             .flex()
             .flex_col()
             .gap_2()
-            .child(div().text_sm().text_color(p().muted).child("Which folder becomes the project?"))
+            .child(div().text_sm().text_color(p().muted).child(crate::t!("newproject-which-folder")))
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .child(div().flex_1().child(Input::new(&wizard.folder)))
-                    .child(buttons::chip("new-project-browse", "Browse…").px_3().on_click(cx.listener(|shell, _, window, cx| shell.browse_folder(window, cx)))),
+                    .child(buttons::chip("new-project-browse", crate::t!("newproject-browse")).px_3().on_click(cx.listener(|shell, _, window, cx| shell.browse_folder(window, cx)))),
             )
             .child(div().text_sm().text_color(colour).child(said));
         let footer = div()
             .flex()
             .gap_3()
             .children(running.map(|(session, label)| {
-                buttons::secondary("new-project-running", format!("Open {label}, running")).on_click(cx.listener(move |shell, _, window, cx| {
+                buttons::secondary("new-project-running", crate::t!("newproject-open-running", label = label.clone())).on_click(cx.listener(move |shell, _, window, cx| {
                     shell.close_new_project(window, cx);
                     shell.select(session.clone(), window, cx);
                 }))
             }))
             .children(open.map(|name| {
-                buttons::secondary("new-project-open", format!("Open {name}")).on_click(cx.listener(move |shell, _, window, cx| {
+                buttons::secondary("new-project-open", crate::t!("newproject-open", name = name.clone())).on_click(cx.listener(move |shell, _, window, cx| {
                     shell.close_new_project(window, cx);
                     shell.show_project(name.clone(), cx);
                 }))
             }))
-            .child(Self::wizard_go("new-project-next", "Next →", ready).when(ready, |d| d.on_click(cx.listener(|shell, _, window, cx| shell.to_identity(window, cx)))));
+            .child(Self::wizard_go("new-project-next", crate::t!("newproject-next"), ready).when(ready, |d| d.on_click(cx.listener(|shell, _, window, cx| shell.to_identity(window, cx)))));
         (page, footer)
     }
 
@@ -553,9 +548,9 @@ impl Shell {
         let agent = wizard.agent.read(cx).value().trim().to_string();
         // Said at once for a name, else what aiball answered to the dry run.
         let problem = if !name_ok(&name) {
-            Some("The project's name: letters, digits, -, _ and .".to_string())
+            Some(crate::t!("newproject-bad-project"))
         } else if !name_ok(&agent) {
-            Some("The agent's name: letters, digits, -, _ and .".to_string())
+            Some(crate::t!("newproject-bad-agent"))
         } else {
             match &wizard.preview {
                 Some(Err(error)) => Some(error.clone()),
@@ -569,7 +564,7 @@ impl Shell {
         let filled = Filled::of(&was, "");
         let imported = crate::theme::imported();
         let origin = |said: Option<&str>| said.map(|said| div().flex_none().text_xs().text_color(imported).child(said.to_string()));
-        let field = |label: &'static str, input: &Entity<InputState>, said: Option<&str>| {
+        let field = |label: String, input: &Entity<InputState>, said: Option<&str>| {
             div()
                 .flex()
                 .items_center()
@@ -578,7 +573,7 @@ impl Shell {
                 .child(div().flex_1().child(Input::new(input)))
                 .children(origin(said))
         };
-        let tick = |id: &'static str, on: bool, label: &'static str, about: &'static str, said: Option<&str>, flip: fn(&mut NewProject)| {
+        let tick = |id: &'static str, on: bool, label: String, about: String, said: Option<&str>, flip: fn(&mut NewProject)| {
             div()
                 .flex()
                 .flex_col()
@@ -600,11 +595,11 @@ impl Shell {
                 .child(div().pl_10().text_xs().text_color(p().muted).child(about))
         };
         let kept = |set: bool, same: bool, said: &str| (set && same).then(|| said.to_string());
-        let project_from = kept(was.consumer.project.set(), name == filled.project, was.consumer.project.said());
-        let agent_from = kept(was.consumer.agent.set(), agent == filled.agent, was.consumer.agent.said());
-        let crew_from = kept(was.consumer.role.set(), wizard.crew == filled.crew, was.consumer.role.said());
-        let host_from = kept(was.session.set(), wizard.on_host == filled.on_host, was.session.said());
-        let rc_from = kept(was.remote_control.set(), wizard.remote_control == filled.remote_control, was.remote_control.said());
+        let project_from = kept(was.consumer.project.set(), name == filled.project, &was.consumer.project.said());
+        let agent_from = kept(was.consumer.agent.set(), agent == filled.agent, &was.consumer.agent.said());
+        let crew_from = kept(was.consumer.role.set(), wizard.crew == filled.crew, &was.consumer.role.said());
+        let host_from = kept(was.session.set(), wizard.on_host == filled.on_host, &was.session.said());
+        let rc_from = kept(was.remote_control.set(), wizard.remote_control == filled.remote_control, &was.remote_control.said());
         // What will be written after: against the folder's file, or, when
         // the set up makes one of the folder's own, aiball's defaults.
         let new_file = matches!(&wizard.preview, Some(Ok(done)) if done.steps.iter().any(|s| s.action == "created" && s.file.ends_with(".aiball.yaml")));
@@ -612,7 +607,7 @@ impl Shell {
         let (session_write, rc_write) = to_write(&against, wizard.on_host, remote_control_of(&was, wizard.remote_control));
         // What aiball would do: each file, and whether the project is new.
         let plan = match &wizard.preview {
-            Some(Ok(done)) => done.steps.iter().map(|step| format!("{} {}", will(&step.action), step.file)).collect::<Vec<_>>().join(" · "),
+            Some(Ok(done)) => done.steps.iter().map(|step| crate::t!("newproject-will-file", will = will(&step.action), file = step.file.clone())).collect::<Vec<_>>().join(" · "),
             _ => "…".to_string(),
         };
         let joins = matches!(&wizard.preview, Some(Ok(done)) if done.project_exists);
@@ -623,28 +618,49 @@ impl Shell {
             .flex_col()
             .gap_3()
             // The file the choices were filled from.
-            .children(was.file.as_ref().map(|file| div().text_xs().text_color(imported).child(format!("Filled from {file}: change anything, what is here is what gets set up."))))
-            .child(field("project", &wizard.name, project_from.as_deref()))
-            .child(field("agent", &wizard.agent, agent_from.as_deref()))
-            .child(tick("new-project-crew", wizard.crew, "a crew agent", "Beside the project's lead, on the tickets it is given; off: the lead.", crew_from.as_deref(), |w| w.crew = !w.crew))
+            .children(was.file.as_ref().map(|file| div().text_xs().text_color(imported).child(crate::t!("newproject-filled-from", file = file.clone()))))
+            .child(field(crate::t!("newproject-field-project"), &wizard.name, project_from.as_deref()))
+            .child(field(crate::t!("newproject-field-agent"), &wizard.agent, agent_from.as_deref()))
+            .child(tick(
+                "new-project-crew",
+                wizard.crew,
+                crate::t!("newproject-crew"),
+                crate::t!("newproject-crew-about"),
+                crew_from.as_deref(),
+                |w| w.crew = !w.crew,
+            ))
             .child(tick(
                 "new-project-host",
                 wizard.on_host,
-                "its loops on aiball's host",
-                if cfg!(windows) { "Where the loops started in this folder run; off: in psmux." } else { "Where the loops started in this folder run; off: in tmux." },
+                crate::t!("newproject-host"),
+                crate::t!("newproject-host-about", mux = crate::mux::program()),
                 host_from.as_deref(),
                 |w| w.on_host = !w.on_host,
             ))
             .child(tick(
                 "new-project-rc",
                 wizard.remote_control,
-                "Remote Control",
-                "Its Claude can be reached from claude.ai and the Claude app.",
+                crate::t!("newproject-rc"),
+                crate::t!("newproject-rc-about"),
                 rc_from.as_deref(),
                 |w| w.remote_control = !w.remote_control,
             ))
-            .child(tick("new-project-private", wizard.private, "a private project", "aiball serves it its private kit (no public tickets, no followers).", None, |w| w.private = !w.private))
-            .child(tick("new-project-noclaim", wizard.no_claim, "no claiming", "The agent works only on the tickets assigned to it, never takes one from the pool.", None, |w| w.no_claim = !w.no_claim))
+            .child(tick(
+                "new-project-private",
+                wizard.private,
+                crate::t!("newproject-private"),
+                crate::t!("newproject-private-about"),
+                None,
+                |w| w.private = !w.private,
+            ))
+            .child(tick(
+                "new-project-noclaim",
+                wizard.no_claim,
+                crate::t!("newproject-noclaim"),
+                crate::t!("newproject-noclaim-about"),
+                None,
+                |w| w.no_claim = !w.no_claim,
+            ))
             .child(
                 div()
                     .flex()
@@ -655,14 +671,14 @@ impl Shell {
                     .bg(p().bg)
                     .text_xs()
                     .text_color(p().muted)
-                    .child(div().truncate().child(format!("In {}, aiball:", expand(typed.trim()).display())))
+                    .child(div().truncate().child(crate::t!("newproject-in", folder = expand(typed.trim()).display().to_string())))
                     // What aiball will do, or why it will not.
                     .child(match &problem {
                         Some(problem) => div().text_color(p().danger).child(problem.clone()),
                         None => div().text_color(p().text).child(plan),
                     })
                     .when(joins && problem.is_none(), |d| {
-                        d.child(div().text_color(p().info).child(format!("{name} is on the board already: this folder joins it (another folder, or a crew agent).")))
+                        d.child(div().text_color(p().info).child(crate::t!("newproject-joins", name = name.clone())))
                     })
                     // Then, where its loops run and its Remote Control, when
                     // they change what the folder had.
@@ -674,15 +690,15 @@ impl Shell {
                         if let Some(rc) = &rc_write {
                             said.push(format!("claude.remote_control: {rc}"));
                         }
-                        d.child(div().text_color(p().text).child(format!("then sets {} in .aiball.yaml", said.join(", "))))
+                        d.child(div().text_color(p().text).child(crate::t!("newproject-then-sets", what = said.join(", "))))
                     })
-                    .child(".mcp.json: aiball's MCP server for Claude Code · .aiball.yaml: project, agent, role, where its loops run."),
+                    .child(crate::t!("newproject-files")),
             );
         let footer = div()
             .flex()
             .gap_3()
-            .child(buttons::secondary("new-project-back", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Folder, cx))))
-            .child(Self::wizard_go("new-project-go", if running { "Setting it up…" } else { "Set it up" }, go).when(go, |d| d.on_click(cx.listener(|shell, _, _, cx| shell.set_it_up(cx)))));
+            .child(buttons::secondary("new-project-back", crate::t!("newproject-back")).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Folder, cx))))
+            .child(Self::wizard_go("new-project-go", crate::t!(if running { "newproject-setting-up" } else { "newproject-set-up" }), go).when(go, |d| d.on_click(cx.listener(|shell, _, _, cx| shell.set_it_up(cx)))));
         (page, footer)
     }
 
@@ -698,9 +714,9 @@ impl Shell {
             .flex_col()
             .gap_3()
             .child(div().text_color(if ok { p().success } else { p().danger }).child(if ok {
-                format!("{name} is set up. aiball said:")
+                crate::t!("newproject-done", name = name.clone())
             } else {
-                "aiball could not set it up:".to_string()
+                crate::t!("newproject-failed")
             }))
             .child(
                 div()
@@ -710,12 +726,12 @@ impl Shell {
                     .text_xs()
                     .font_family("monospace")
                     .text_color(p().muted)
-                    .child(if said.is_empty() { "(nothing said)".to_string() } else { said }),
+                    .child(if said.is_empty() { crate::t!("newproject-nothing-said") } else { said }),
             );
         let footer = if ok {
-            div().child(Self::wizard_go("new-project-whatnext", "Next →", true).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Next, cx))))
+            div().child(Self::wizard_go("new-project-whatnext", crate::t!("newproject-next"), true).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Next, cx))))
         } else {
-            div().flex().gap_3().child(buttons::secondary("new-project-retry", "← Back").on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Identity, cx))))
+            div().flex().gap_3().child(buttons::secondary("new-project-retry", crate::t!("newproject-back")).on_click(cx.listener(|shell, _, _, cx| shell.wizard_to(Step::Identity, cx))))
         };
         (page, footer)
     }
@@ -737,34 +753,38 @@ impl Shell {
             .gap_4()
             .child(item(
                 "1",
-                "Start the agent".into(),
-                format!("\"Start its first session\" starts {agent}'s Claude Code {}, in the project's folder; its terminal opens here, its tickets beside.", if wizard.on_host { "on aiball's host".into() } else { format!("in {}", crate::mux::program()) }),
+                crate::t!("newproject-next-start"),
+                if wizard.on_host {
+                    crate::t!("newproject-next-start-host", agent = agent.clone())
+                } else {
+                    crate::t!("newproject-next-start-mux", agent = agent.clone(), mux = crate::mux::program())
+                },
             ))
             .child(item(
                 "2",
-                "Accept aiball's MCP server".into(),
-                "At its first start in this folder, Claude Code asks whether to use the MCP server that .mcp.json declares (aiball): accept it. Without it the agent can neither read the board nor answer its tickets. Refused by mistake? /mcp in Claude Code turns it on.".into(),
+                crate::t!("newproject-next-mcp"),
+                crate::t!("newproject-next-mcp-about"),
             ))
             // aiball's skill (its good gestures, for Claude Code) lives outside
             // the folder: aiball says whether this machine has it.
             .when(matches!(&wizard.outcome, Some(Ok(done)) if done.skill == "missing"), |d| {
                 d.child(item(
                     "·",
-                    "Install aiball's skill".into(),
-                    "Claude Code has no aiball skill on this machine yet: `aiball init skill`, once, installs it — the agent then knows the board's good gestures.".into(),
+                    crate::t!("newproject-next-skill"),
+                    crate::t!("newproject-next-skill-about"),
                 ))
             })
             .child(item(
                 "3",
-                "Give it work".into(),
-                format!("\"+ New\" in the ticket panel files a ticket on {name}; the agent picks it up at its next wake, and its plans and questions come back as notifications."),
+                crate::t!("newproject-next-work"),
+                crate::t!("newproject-next-work-about", name = name.clone()),
             ));
         let footer = div()
             .flex()
             .items_center()
             .gap_3()
-            .child(buttons::secondary("new-project-done", "Close").on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
-            .child(Self::wizard_go("new-project-start", "Start its first session", true).on_click(cx.listener(|shell, _, window, cx| shell.start_first_session(window, cx))));
+            .child(buttons::secondary("new-project-done", crate::t!("newproject-close")).on_click(cx.listener(|shell, _, window, cx| shell.close_new_project(window, cx))))
+            .child(Self::wizard_go("new-project-start", crate::t!("newproject-start-first"), true).on_click(cx.listener(|shell, _, window, cx| shell.start_first_session(window, cx))));
         (page, footer)
     }
 }
