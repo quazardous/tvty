@@ -165,6 +165,9 @@ pub struct Tickets {
     /// In the panel, a ticket's "Where it stands" shows its text at once,
     /// rather than folded to its title.
     pub summary_open: bool,
+    /// In a new ticket, Ctrl+Enter files it and opens it; off, it files it
+    /// and goes back to where you were ("File and exit").
+    pub ctrl_enter_opens: bool,
 }
 
 /// Every preference, declared once: its key in `settings.toml`, the options
@@ -347,6 +350,14 @@ pub const SCHEMA: Schema = Schema(&[
         about: "In the ticket panel, a ticket's \"Where it stands\" shows its text at once; off, it is folded to its title, a click away. Full screen it always shows.",
         kind: Kind::Toggle { default: false, on: "open", off: "folded" },
     },
+    Setting {
+        key: "tickets.ctrl_enter_opens",
+        page: "Ticket list",
+        group: "New ticket",
+        label: "Ctrl+Enter",
+        about: "In a new ticket, Ctrl+Enter files it and goes back to where you were (\"File and exit\"), or files it and opens it (\"File the ticket\"). The buttons do each, whatever this says.",
+        kind: Kind::Toggle { default: false, on: "files and opens it", off: "files and exits" },
+    },
 ]);
 
 impl Stored for Preferences {
@@ -378,7 +389,7 @@ impl Stored for Preferences {
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
             mouse: Mouse::default(),
-            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false, summary_open: false, panel_newest_first: false },
+            tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false, summary_open: false, panel_newest_first: false, ctrl_enter_opens: false },
             sessions: Sessions::default(),
             updates: Updates::default(),
             tips: Tips::default(),

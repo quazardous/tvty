@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- In a new ticket, Ctrl+Enter files it and goes back to where you were ("File and exit"). Settings > Ticket list > New ticket > Ctrl+Enter makes it file and open the ticket instead.
+
+### Fixed
+
+- The main button of a dialog or a form ("File the ticket", "Reply"…) is lit under the pointer in every theme: Eclipse, Catppuccin Frappe and Macchiato, and Gruvbox Light gave it no hover of its own.
+
 ## [0.10.0-beta.1] - 2026-10-02
 
 ### Added

@@ -113,7 +113,7 @@ pub fn known_or_default(name: Option<&str>, cx: &App) -> SharedString {
 pub fn load(cx: &mut App) {
     let registry = ThemeRegistry::global_mut(cx);
     for (file, content) in BUNDLED {
-        if let Err(error) = registry.load_themes_from_str(content) {
+        if let Err(error) = registry.load_themes_from_str(&with_visible_hovers(content)) {
             log::warn!("theme {file}: {error}");
         }
     }
@@ -125,7 +125,7 @@ pub fn load(cx: &mut App) {
         }
         let loaded = std::fs::read_to_string(&path)
             .map_err(anyhow::Error::from)
-            .and_then(|content| registry.load_themes_from_str(&content));
+            .and_then(|content| registry.load_themes_from_str(&with_visible_hovers(&content)));
         if let Err(error) = loaded {
             log::warn!("theme {}: {error}", path.display());
         }
@@ -193,6 +193,45 @@ pub fn apply(name: &str, window: Option<&mut Window>, cx: &mut App) {
     let theme = Theme::global(cx);
     *PALETTE.write().unwrap() = palette_of(theme);
     *TERMINAL.write().unwrap() = terminal_colours(cx);
+}
+
+/// A theme set as read, its themes whose main button's hover is its own
+/// colour (some give it with a touch of transparency only, and the button
+/// then shows nothing under the pointer) given one: lighter on a dark theme,
+/// darker on a light one. The text as it was when it cannot be read.
+fn with_visible_hovers(content: &str) -> String {
+    let Ok(mut set) = serde_json::from_str::<serde_json::Value>(content) else { return content.to_string() };
+    let Some(themes) = set.get_mut("themes").and_then(serde_json::Value::as_array_mut) else { return content.to_string() };
+    for theme in themes {
+        let dark = theme.get("mode").and_then(serde_json::Value::as_str) == Some("dark");
+        let Some(colors) = theme.get_mut("colors").and_then(serde_json::Value::as_object_mut) else { continue };
+        if colors.contains_key("button.primary.hover.background") {
+            continue;
+        }
+        let colour = |key: &str| colors.get(key).and_then(serde_json::Value::as_str).and_then(parse_hex);
+        let (Some(base), Some(hover)) = (colour("primary.background"), colour("primary.hover.background")) else { continue };
+        if !same_colour(base, hover) {
+            continue;
+        }
+        let derived = Hsla { l: (base.l + if dark { 0.08 } else { -0.08 }).clamp(0., 1.), a: 1., ..base }.to_rgb();
+        let byte = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
+        let hex = format!("#{:02x}{:02x}{:02x}", byte(derived.r), byte(derived.g), byte(derived.b));
+        colors.insert("button.primary.hover.background".into(), hex.into());
+    }
+    set.to_string()
+}
+
+/// `#rrggbb` or `#rrggbbaa`, its alpha aside.
+fn parse_hex(text: &str) -> Option<Hsla> {
+    let digits = text.strip_prefix('#')?;
+    let rgb = u32::from_str_radix(digits.get(..6)?, 16).ok()?;
+    Some(Hsla::from(gpui_kit::rgb(rgb)))
+}
+
+/// Two colours a person would not tell apart (alpha aside).
+fn same_colour(a: Hsla, b: Hsla) -> bool {
+    let (a, b) = (a.to_rgb(), b.to_rgb());
+    (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs() < 0.03
 }
 
 fn user_dir() -> Option<PathBuf> {
@@ -302,4 +341,25 @@ fn blend(colour: Hsla, under: Hsla) -> Hsla {
         a: 1.,
     }
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_main_button_without_a_hover_of_its_own_gets_one() {
+        let set = r##"{"name":"t","themes":[
+            {"name":"Same","mode":"dark","colors":{"primary.background":"#1290C3","primary.hover.background":"#1290C3ee"}},
+            {"name":"Own","mode":"dark","colors":{"primary.background":"#1290C3","primary.hover.background":"#40a0d0"}},
+            {"name":"Set","mode":"light","colors":{"primary.background":"#007acc","primary.hover.background":"#007acc","button.primary.hover.background":"#005a9c"}}
+        ]}"##;
+        let fixed: serde_json::Value = serde_json::from_str(&super::with_visible_hovers(set)).unwrap();
+        let hover = |i: usize| fixed["themes"][i]["colors"].get("button.primary.hover.background").and_then(|v| v.as_str()).map(str::to_string);
+        // The same colour: a lighter one, on a dark theme.
+        let derived = hover(0).expect("a hover given");
+        let (base, given) = (super::parse_hex("#1290C3").unwrap(), super::parse_hex(&derived).unwrap());
+        assert!(given.l > base.l, "{derived}");
+        // A hover of its own, or one the theme already gives the button: kept.
+        assert_eq!(hover(1), None);
+        assert_eq!(hover(2).as_deref(), Some("#005a9c"));
+    }
 }

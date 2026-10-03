@@ -78,6 +78,12 @@ pub struct NewTicketForm {
     error: Option<String>,
 }
 
+/// What Ctrl+Enter does in a new ticket (Settings > Ticket list > New
+/// ticket): files it and opens it, or files it and exits (the default).
+fn ctrl_enter_opens(cx: &App) -> bool {
+    crate::config::get::<crate::settings::Preferences>(cx).tickets.ctrl_enter_opens
+}
+
 impl EventEmitter<CloseNewTicket> for NewTicketForm {}
 impl EventEmitter<Created> for NewTicketForm {}
 
@@ -89,7 +95,7 @@ impl NewTicketForm {
         cx.observe_in(&catalog::store(cx), window, |form: &mut Self, _, window, cx| form.take_catalog(window, cx)).detach();
         let text = cx.new(|cx| TicketText::new(aiball.clone(), "new", (10, 40), window, cx));
         cx.subscribe_in(&text, window, |form: &mut Self, _, event: &TicketTextEvent, window, cx| match event {
-            TicketTextEvent::Submit => form.submit(true, window, cx),
+            TicketTextEvent::Submit => form.submit(ctrl_enter_opens(cx), window, cx),
             TicketTextEvent::Failed(error) => {
                 form.error = Some(error.clone());
                 cx.notify();
@@ -100,7 +106,7 @@ impl NewTicketForm {
         // Ctrl+Enter files from the summary too.
         cx.subscribe_in(&summary, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
-                form.submit(true, window, cx);
+                form.submit(ctrl_enter_opens(cx), window, cx);
             }
         })
         .detach();
@@ -344,7 +350,7 @@ impl NewTicketForm {
     fn on_key(&mut self, event: &KeyDownEvent, window: &mut Window, cx: &mut Context<Self>) {
         let keystroke = &event.keystroke;
         if keystroke.modifiers.control && keystroke.key == "enter" {
-            self.submit(true, window, cx);
+            self.submit(ctrl_enter_opens(cx), window, cx);
             cx.stop_propagation();
         }
     }
@@ -467,7 +473,11 @@ impl Render for NewTicketForm {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().flex_1().text_xs().text_color(p().muted).child("ctrl+enter files it · esc keeps the draft"))
+                    .child(div().flex_1().text_xs().text_color(p().muted).child(if ctrl_enter_opens(cx) {
+                        "ctrl+enter files it and opens it · esc keeps the draft"
+                    } else {
+                        "ctrl+enter files it and exits · esc keeps the draft"
+                    }))
                     .child(crate::tips::target(
                         "new-ticket.file-exit",
                         buttons::answer("new-ticket-file-exit", "File and exit")
