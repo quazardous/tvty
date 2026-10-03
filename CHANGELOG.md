@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- In a new ticket, the button of the gesture under way shows it (a spinner), the other one greyed: Ctrl+Enter used to show "File the ticket" at work even when it filed and exited.
 - A switch's words flip it, as an HTML label does: a session's row and a group's name in the sessions' questions (start, quit, workspaces), and every switch of the new project's wizard.
 - The main button of a dialog or a form ("File the ticket", "Reply"…) is lit under the pointer in every theme: Eclipse, Catppuccin Frappe and Macchiato, and Gruvbox Light gave it no hover of its own.
 

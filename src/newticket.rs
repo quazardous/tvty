@@ -74,7 +74,9 @@ pub struct NewTicketForm {
     catalog: Catalog,
     /// Each long field's combo: a dropdown searched as it is typed.
     combos: [(Pick, Entity<ComboState>); 8],
-    busy: bool,
+    /// Being filed: then opened (`true`), or back where one was. The button
+    /// of that gesture shows it at work, whatever started it (Ctrl+Enter).
+    filing: Option<bool>,
     error: Option<String>,
 }
 
@@ -149,7 +151,7 @@ impl NewTicketForm {
             parent_input,
             catalog: Catalog::default(),
             combos,
-            busy: false,
+            filing: None,
             error: None,
         };
         form.set_project(project, window, cx);
@@ -271,7 +273,7 @@ impl NewTicketForm {
     /// Files the ticket, then what follows it; once filed it is opened
     /// (`open`), or one is back where one was.
     fn submit(&mut self, open: bool, window: &mut Window, cx: &mut Context<Self>) {
-        if self.busy || self.text.read(cx).uploading() {
+        if self.filing.is_some() || self.text.read(cx).uploading() {
             return;
         }
         let title = self.text.read(cx).title(cx).trim().to_string();
@@ -303,7 +305,7 @@ impl NewTicketForm {
         };
         let aiball = self.aiball.clone();
         let window_handle = window.window_handle();
-        self.busy = true;
+        self.filing = Some(open);
         self.error = None;
         cx.notify();
         cx.spawn(async move |this, cx| {
@@ -316,7 +318,7 @@ impl NewTicketForm {
                 .await;
             let _ = cx.update_window(window_handle, |_, window, cx| {
                 let _ = this.update(cx, |form, cx| {
-                    form.busy = false;
+                    form.filing = None;
                     match filed {
                         Ok(ticket) => {
                             form.clear(window, cx);
@@ -455,7 +457,7 @@ impl NewTicketForm {
 
 impl Render for NewTicketForm {
     fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let busy = self.busy || self.text.read(cx).uploading();
+        let busy = self.filing.is_some() || self.text.read(cx).uploading();
         let words = div()
             .flex_1()
             .min_w_0()
@@ -483,16 +485,18 @@ impl Render for NewTicketForm {
                         buttons::answer("new-ticket-file-exit", "File and exit")
                             // Filled in the warning colour, beside the accent of "File the ticket".
                             .warning()
-                            .bg(p().warning)
-                            .text_color(p().bg)
-                            .disabled(busy)
+                            // Filled, unless greyed while the other files it.
+                            .when(!(busy && self.filing != Some(false)), |b| b.bg(p().warning).text_color(p().bg))
+                            // At work: its spinner (the kit spins an icon only).
+                            .when(self.filing == Some(false), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
+                            .disabled(busy && self.filing != Some(false))
                             .tooltip("Files it without opening it: back to where you were")
                             .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
                     ))
                     .child(
                         buttons::primary("new-ticket-file", "File the ticket")
-                            .loading(busy)
-                            .disabled(busy)
+                            .when(self.filing == Some(true), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
+                            .disabled(busy && self.filing != Some(true))
                             .on_click(cx.listener(|form, _, window, cx| form.submit(true, window, cx))),
                     ),
             );
