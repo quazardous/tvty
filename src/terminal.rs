@@ -3,6 +3,8 @@
 
 use crate::ui::Named as _;
 use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 use std::sync::Arc;
 
 use alacritty_terminal::event::{Event, EventListener, Notify, OnResize, WindowSize};
@@ -133,6 +135,8 @@ pub struct TerminalView {
     /// Lines to scroll tmux's history by (up: positive), to the one thread
     /// that runs tmux for this view; started on the first notch.
     tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
+    /// Where the view stands in its history, for the scrollbar beside it.
+    scroll: TermScroll,
     /// The screen as it was when the selection began, shown in place of the
     /// live one while there is a selection: what is being selected does not
     /// move under the pointer, and what is copied is what is seen. The
@@ -342,6 +346,7 @@ impl TerminalView {
         .detach();
 
         Self {
+            scroll: TermScroll::new(term.clone()),
             term,
             backend,
             focus: cx.focus_handle(),
@@ -968,8 +973,7 @@ impl TerminalView {
             };
             self.write(one.repeat(count.unsigned_abs() as usize));
         } else if let Some(session) = self.tmux_session.clone() {
-            let queue = self.tmux_scroll.get_or_insert_with(|| tmux_scroller(session));
-            let _ = queue.send(count);
+            let _ = self.tmux_queue(&session).send(count);
         } else {
             self.term.lock().scroll_display(Scroll::Delta(count));
             cx.notify();
@@ -981,11 +985,31 @@ impl TerminalView {
 /// The thread that scrolls a tmux session's history: one tmux call at a
 /// time, in order, off the UI thread; the notches that come meanwhile add up
 /// into the next call. Ends with its view (the sender dropped).
-fn tmux_scroller(session: String) -> std::sync::mpsc::Sender<i32> {
+fn tmux_scroller(session: String, place: Arc<std::sync::Mutex<TmuxPlace>>) -> std::sync::mpsc::Sender<i32> {
     let (send, receive) = std::sync::mpsc::channel::<i32>();
     std::thread::spawn(move || {
+        // Where the pane stands in its history, as tmux says it.
+        let read = |place: &std::sync::Mutex<TmuxPlace>, target: &str| {
+            let said = crate::mux::command(&["display-message", "-p", "-t", target, "#{scroll_position} #{history_size}"])
+                .stderr(std::process::Stdio::null())
+                .output();
+            if let Ok(said) = said {
+                let text = String::from_utf8_lossy(&said.stdout);
+                let mut words = text.split_whitespace().map(|w| w.parse::<u32>().ok());
+                // Out of copy mode, no position: at the bottom.
+                let (first, second) = (words.next().flatten(), words.next().flatten());
+                let (position, history) = match second {
+                    Some(history) => (first.unwrap_or(0), history),
+                    None => (0, first.unwrap_or(0)),
+                };
+                if let Ok(mut place) = place.lock() {
+                    *place = TmuxPlace { position, history };
+                }
+            }
+        };
         // `=name:` — exactly this session, its current pane.
         let target = format!("={session}:");
+        read(&place, &target);
         let tmux = |args: &[&str]| {
             let _ = crate::mux::command(args)
                 .stderr(std::process::Stdio::null())
@@ -1001,9 +1025,140 @@ fn tmux_scroller(session: String) -> std::sync::mpsc::Sender<i32> {
             } else if lines < 0 {
                 tmux(&["send-keys", "-t", &target, "-X", "-N", &steps, "scroll-down"]);
             }
+            read(&place, &target);
         }
     });
     send
+}
+
+/// A tmux pane's place in its history: lines scrolled up, lines kept.
+#[derive(Clone, Copy, Debug, Default)]
+struct TmuxPlace {
+    position: u32,
+    history: u32,
+}
+
+/// The terminal's history as a scrollbar sees it: the view's own (its
+/// grid's scrollback), or a tmux session's (its copy mode). A line is a
+/// row of cells; the content, the history above the screen.
+#[derive(Clone)]
+struct TermScroll(Rc<TermScrollState>);
+
+struct TermScrollState {
+    term: Arc<FairMutex<Term<Listener>>>,
+    /// tmux's, for a tmux session: its place, and where to send lines.
+    tmux: RefCell<Option<(Arc<std::sync::Mutex<TmuxPlace>>, std::sync::mpsc::Sender<i32>)>>,
+    line: Cell<Pixels>,
+    viewport: Cell<Bounds<Pixels>>,
+    /// Held under a selection: the bar moves nothing.
+    held: Cell<bool>,
+}
+
+impl TermScroll {
+    fn new(term: Arc<FairMutex<Term<Listener>>>) -> Self {
+        Self(Rc::new(TermScrollState {
+            term,
+            tmux: RefCell::new(None),
+            line: Cell::new(px(16.)),
+            viewport: Cell::new(Bounds::default()),
+            held: Cell::new(false),
+        }))
+    }
+
+    /// Lines of history, and how many of them the view is scrolled up.
+    fn place(&self) -> (u32, u32) {
+        if let Some((place, _)) = self.0.tmux.borrow().as_ref() {
+            let place = place.lock().map(|p| *p).unwrap_or_default();
+            return (place.history, place.position.min(place.history));
+        }
+        let term = self.0.term.lock();
+        (term.grid().history_size() as u32, term.grid().display_offset() as u32)
+    }
+}
+
+impl gpui_kit::component::scroll::ScrollbarHandle for TermScroll {
+    fn viewport_bounds(&self) -> Bounds<Pixels> {
+        self.0.viewport.get()
+    }
+
+    /// Scrolled to the bottom: the whole history above.
+    fn offset(&self) -> Point<Pixels> {
+        let (history, up) = self.place();
+        point(px(0.), -(self.0.line.get() * (history - up) as f32))
+    }
+
+    fn set_offset(&self, offset: Point<Pixels>) {
+        if self.0.held.get() {
+            return;
+        }
+        let (history, up) = self.place();
+        let line = f32::from(self.0.line.get()).max(1.);
+        let from_top = ((-f32::from(offset.y)) / line).round().clamp(0., history as f32) as u32;
+        let wanted = history - from_top;
+        let lines = wanted as i32 - up as i32;
+        if lines == 0 {
+            return;
+        }
+        if let Some((place, queue)) = self.0.tmux.borrow().as_ref() {
+            // Seen at once; tmux says where it went once it did.
+            if let Ok(mut place) = place.lock() {
+                place.position = wanted;
+            }
+            let _ = queue.send(lines);
+        } else {
+            self.0.term.lock().scroll_display(Scroll::Delta(lines));
+        }
+    }
+
+    fn content_size(&self) -> Size<Pixels> {
+        let (history, _) = self.place();
+        let viewport = self.0.viewport.get().size;
+        size(viewport.width, viewport.height + self.0.line.get() * history as f32)
+    }
+}
+
+impl TerminalView {
+    /// The thread that scrolls this view's tmux session, started once; the
+    /// scrollbar reads where it stands.
+    fn tmux_queue(&mut self, session: &str) -> std::sync::mpsc::Sender<i32> {
+        if let Some(queue) = &self.tmux_scroll {
+            return queue.clone();
+        }
+        let place = Arc::new(std::sync::Mutex::new(TmuxPlace::default()));
+        let queue = tmux_scroller(session.to_string(), place.clone());
+        *self.scroll.0.tmux.borrow_mut() = Some((place, queue.clone()));
+        self.tmux_scroll = Some(queue.clone());
+        queue
+    }
+}
+
+/// The scrollbar's width, as the kit's are (its track and thumb).
+const SCROLLBAR_WIDTH: f32 = 16.;
+
+impl TerminalView {
+    /// The kit's scrollbar over the view's history (tmux's for a tmux
+    /// session, else its grid's).
+    fn scrollbar(&mut self) -> Stateful<Div> {
+        if let Some(session) = self.tmux_session.clone().filter(|_| !self.follows_session) {
+            self.tmux_queue(&session);
+        }
+        let (origin, cell) = self.layout;
+        self.scroll.0.line.set(cell.height);
+        self.scroll.0.viewport.set(Bounds::new(origin, size(px(SCROLLBAR_WIDTH), cell.height * self.grid_size.1 as f32)));
+        self.scroll.0.held.set(self.frozen.is_some());
+        div()
+            .named("terminal-scrollbar")
+            .relative()
+            .flex_none()
+            .w(px(SCROLLBAR_WIDTH))
+            .h_full()
+            .child(
+                div()
+                    .absolute()
+                    .inset_0()
+                    .child(gpui_kit::component::scroll::Scrollbar::vertical(&self.scroll).viewport_from_layout()),
+            )
+    }
 }
 
 impl Focusable for TerminalView {
@@ -1039,13 +1194,19 @@ impl Render for TerminalView {
             .cursor(if self.hover_link.is_some() && window.modifiers().control { CursorStyle::PointingHand } else { CursorStyle::IBeam })
             .relative()
             .size_full()
+            .flex()
             .bg(background())
-            .child(TerminalElement {
-                term: self.shown().clone(),
-                view: Some(cx.entity()),
-                viewport: None,
-                status_line: false,
-            })
+            .child(
+                div().relative().flex_1().min_w_0().h_full().child(TerminalElement {
+                    term: self.shown().clone(),
+                    view: Some(cx.entity()),
+                    viewport: None,
+                    status_line: false,
+                }),
+            )
+            // Its history's scrollbar, always there: its width is never
+            // the grid's, so nothing moves when there is something to scroll.
+            .child(self.scrollbar())
             .children(self.menu.map(|at| self.menu_view(at, cx)))
             // Held still under a selection: said in its corner, so that the
             // agent is not thought stopped; a click lets the selection go.
