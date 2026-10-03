@@ -33,7 +33,7 @@ aiball-config-tickets-steps-hot = Minutos que un paso deja su ticket arriba del 
 aiball-config-tickets-steps-max-wait = Espera más larga que puede declarar un paso
     .about = Lo máximo que un agente puede poner en resume_on.timer en un paso (then: continue). Una espera más larga se rechaza con este límite en el motivo — más allá, el trabajo ya no es un paso esperando una tarea: devuelve el ticket, o propón un plan.
 aiball-config-tickets-wait-credit-enabled = Crédito de espera
-    .about = true (default) = el resume_on.timer de un paso gasta el crédito de espera de un agente, ganado con pruebas de trabajo. false = las esperas son gratis y sin tope (como mucho tickets.step_after_max_minutes), no se gana, gasta ni devuelve nada, y las respuestas y los despertares no hablan de crédito.
+    .about = true (default) = el resume_on.timer de un paso gasta el crédito de espera de un agente, ganado con pruebas de trabajo. false = las esperas son gratis y sin tope (como mucho tickets.steps.max_wait), no se gana, gasta ni devuelve nada, y las respuestas y los despertares no hablan de crédito.
 aiball-config-tickets-wait-credit-refund = Crédito de espera: devolver una vuelta anticipada
     .about = true (default) = un agente que vuelve a hablar en un ticket antes de que acabe la espera de su paso recupera el resto de esa espera. false = una espera declarada se gasta entera.
 aiball-config-tickets-wait-credit-earn-commit-max-age = Crédito de espera: commit más antiguo que aún gana

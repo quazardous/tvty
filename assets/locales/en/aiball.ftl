@@ -32,7 +32,7 @@ aiball-config-tickets-steps-hot = Minutes a step keeps its ticket at the top of 
 aiball-config-tickets-steps-max-wait = Longest wait a step may declare
     .about = The most an agent may put in resume_on.timer on a step (then: continue). A longer wait is refused with this limit in the reason — past it the work is not one step waiting on a job any more: hand the ticket back, or propose a plan.
 aiball-config-tickets-wait-credit-enabled = Wait credit
-    .about = true (default) = a step's resume_on.timer spends an agent's wait credit, earned by proof of work. false = waits are free and uncapped (still at most tickets.step_after_max_minutes), nothing is earned, spent or refunded, and replies and wakes say nothing about credit.
+    .about = true (default) = a step's resume_on.timer spends an agent's wait credit, earned by proof of work. false = waits are free and uncapped (still at most tickets.steps.max_wait), nothing is earned, spent or refunded, and replies and wakes say nothing about credit.
 aiball-config-tickets-wait-credit-refund = Wait credit: refund an early return
     .about = true (default) = an agent speaking on a ticket again before its step's wait ends gets the rest of that wait back. false = a wait is spent in full once declared.
 aiball-config-tickets-wait-credit-earn-commit-max-age = Wait credit: oldest commit that still earns

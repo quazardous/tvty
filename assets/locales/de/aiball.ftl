@@ -33,7 +33,7 @@ aiball-config-tickets-steps-hot = Minuten, die ein Schritt sein Ticket oben im B
 aiball-config-tickets-steps-max-wait = Längste Wartezeit eines Schritts
     .about = Das Höchste, was ein Agent bei einem Schritt (then: continue) in resume_on.timer angeben darf. Eine längere Wartezeit wird mit dieser Grenze in der Begründung abgelehnt — darüber ist die Arbeit kein Schritt mehr, der auf einen Job wartet: gib das Ticket zurück oder schlag einen Plan vor.
 aiball-config-tickets-wait-credit-enabled = Wartekredit
-    .about = true (default) = das resume_on.timer eines Schritts verbraucht den Wartekredit eines Agents, verdient durch Arbeitsnachweise. false = Warten ist frei und unbegrenzt (höchstens tickets.step_after_max_minutes), nichts wird verdient, verbraucht oder erstattet, und Antworten und Wecken sagen nichts über Kredit.
+    .about = true (default) = das resume_on.timer eines Schritts verbraucht den Wartekredit eines Agents, verdient durch Arbeitsnachweise. false = Warten ist frei und unbegrenzt (höchstens tickets.steps.max_wait), nichts wird verdient, verbraucht oder erstattet, und Antworten und Wecken sagen nichts über Kredit.
 aiball-config-tickets-wait-credit-refund = Wartekredit: frühe Rückkehr erstatten
     .about = true (default) = meldet sich ein Agent auf einem Ticket, bevor die Wartezeit seines Schritts endet, bekommt er den Rest dieser Wartezeit zurück. false = eine Wartezeit wird, einmal angegeben, ganz verbraucht.
 aiball-config-tickets-wait-credit-earn-commit-max-age = Wartekredit: ältester Commit, der noch zählt

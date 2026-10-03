@@ -33,7 +33,7 @@ aiball-config-tickets-steps-hot = Minutes où une étape garde son ticket en tê
 aiball-config-tickets-steps-max-wait = Attente max d'une étape
     .about = Le plus qu'un agent peut mettre dans resume_on.timer sur une étape (then: continue). Une attente plus longue est refusée, avec cette limite dans la raison — au-delà, ce n'est plus une étape qui attend un job : rends le ticket, ou propose un plan.
 aiball-config-tickets-wait-credit-enabled = Crédit d'attente
-    .about = true (default) = le resume_on.timer d'une étape dépense le crédit d'attente d'un agent, gagné par preuve de travail. false = les attentes sont gratuites et sans plafond (toujours au plus tickets.step_after_max_minutes), rien n'est gagné, dépensé ni remboursé, et réponses et réveils ne parlent pas de crédit.
+    .about = true (default) = le resume_on.timer d'une étape dépense le crédit d'attente d'un agent, gagné par preuve de travail. false = les attentes sont gratuites et sans plafond (toujours au plus tickets.steps.max_wait), rien n'est gagné, dépensé ni remboursé, et réponses et réveils ne parlent pas de crédit.
 aiball-config-tickets-wait-credit-refund = Crédit : rembourser un retour anticipé
     .about = true (default) = un agent qui reparle sur un ticket avant la fin de l'attente de son étape récupère le reste de cette attente. false = une attente est dépensée en entier dès qu'elle est déclarée.
 aiball-config-tickets-wait-credit-earn-commit-max-age = Crédit : âge max d'un commit qui rapporte
