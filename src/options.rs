@@ -122,6 +122,22 @@ pub fn program_items(prefs: &Preferences) -> Vec<Item> {
 
 /// A dotted section as a heading: `tickets.wait_credit.earn` →
 /// `Tickets › Wait credit › Earn`.
+/// An aiball config key's word: `aiball-config-<key>`, dots and
+/// underscores as dashes.
+fn aiball_id(key: &str) -> String {
+    format!("aiball-config-{}", key.replace(['.', '_'], "-"))
+}
+
+/// An aiball config group, by its dotted path, each part in the language
+/// spoken when it has it (`aiball-group-<part>`).
+fn aiball_group(group: &str) -> String {
+    group
+        .split('.')
+        .map(|part| crate::i18n::translated(&format!("aiball-group-{}", part.replace('_', "-"))).unwrap_or_else(|| group_title(part)))
+        .collect::<Vec<_>>()
+        .join(" › ")
+}
+
 pub fn group_title(group: &str) -> String {
     group
         .split('.')
@@ -163,9 +179,9 @@ pub fn remote_items(config: &crate::aiball::ManagedConfig) -> Vec<Item> {
                 provider: Provider::Remote,
                 key: entry.key.clone(),
                 page: Section::Aiball.title().to_string(),
-                group: group_title(entry.group.as_deref().unwrap_or("")),
-                label: entry.label.clone(),
-                about: entry.description.clone(),
+                group: aiball_group(entry.group.as_deref().unwrap_or("")),
+                label: crate::i18n::translated(&aiball_id(&entry.key)).unwrap_or_else(|| entry.label.clone()),
+                about: crate::i18n::translated(&format!("{}.about", aiball_id(&entry.key))).unwrap_or_else(|| entry.description.clone()),
                 value: remote_value(entry, &entry.value),
                 modified: !own.is_null(),
                 protected: entry.protected,

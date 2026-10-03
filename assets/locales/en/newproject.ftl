@@ -82,3 +82,17 @@ newproject-next-work = Give it work
 newproject-next-work-about = "+ New" in the ticket panel files a ticket on {$name}; the agent picks it up at its next wake, and its plans and questions come back as notifications.
 newproject-close = Close
 newproject-start-first = Start its first session
+
+newproject-step-mcp-created = {$path}: created, with aiball's entry
+newproject-step-mcp-added-others = {$path}: aiball's entry added, the other servers kept
+newproject-step-mcp-added = {$path}: aiball's entry added
+newproject-step-mcp-rewritten = {$path}: aiball's entry written again in its current form
+newproject-step-mcp-kept = {$path}: aiball's entry already there, kept (force overwrites it)
+newproject-step-file-created = {$path}: created ({$set})
+newproject-step-file-overwrote = {$path}: overwritten ({$set})
+newproject-step-file-kept = {$path}: already there, kept (force overwrites it)
+newproject-step-consumer = {$path}: identity set ({$set})
+newproject-step-type-kept = {$path}: project type already {$value}
+newproject-step-type = {$path}: project type {$value}
+newproject-step-type-was = {$path}: project type {$value} (was {$previous})
+newproject-step-deny = {$path}: code tools denied ({$set})

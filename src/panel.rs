@@ -2925,6 +2925,7 @@ pub(crate) fn critical_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
     let critical = ticket.critical.as_ref()?;
     let holds = critical.holds;
     let quiet = critical.quiet();
+    let quiet = quiet.as_deref();
     Some(
         icons::pill(Icon::Critical, quiet.map_or(holds.to_string(), |q| format!("{holds} · {q}")), p().danger)
             .named("critical")

@@ -140,6 +140,14 @@ pub fn has(id: &str) -> bool {
     said(0, id, None).is_some()
 }
 
+/// The word `id` in the language spoken, when it is not English and has it:
+/// a text that comes in English from elsewhere (aiball's) is shown as it
+/// comes in English, and where a language lacks it.
+pub fn translated(id: &str) -> Option<String> {
+    let index = CURRENT.load(Ordering::Relaxed);
+    (index != 0).then(|| said(index, id, None)).flatten()
+}
+
 /// The word `id` (`message` or `message.attribute`) in the language spoken,
 /// else in English, else its id. Use `t!`.
 pub fn text(id: &str, args: Option<&FluentArgs>) -> String {

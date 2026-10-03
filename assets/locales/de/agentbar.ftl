@@ -126,3 +126,15 @@ agentbar-tier-decision = seine Entscheidung offen
 agentbar-tier-waiting = wartet auf andere
 agentbar-tier-blocked = blockiert
 agentbar-tier-other = andere
+
+agentbar-info-resuming = wird fortgesetzt
+agentbar-info-compacting = komprimiert
+agentbar-info-wait = wartet
+agentbar-info-interrupted = unterbrochen
+agentbar-info-user = ein Mensch an der Tastatur
+agentbar-info-picker-session = Sitzungsauswahl
+agentbar-info-picker-mode = Modusauswahl
+agentbar-info-error-rate-limit = Ratenlimit
+agentbar-info-error-overloaded = API überlastet
+agentbar-info-error-api = API-Fehler
+agentbar-info-retry = Versuch {$attempt}

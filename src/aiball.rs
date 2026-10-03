@@ -357,11 +357,53 @@ pub struct BarPrompt {
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
 pub struct BarMarker {
-    /// A passing word: `retry 3`, `compacting`, `resuming`…
+    /// A passing word: `retry 3`, `compacting`, `resuming`… in English.
     pub info: Option<String>,
+    /// The same word as data, said in the interface's language.
+    #[serde(default)]
+    pub info_code: Option<InfoCode>,
     pub health_prompt: bool,
     pub resume_picker: bool,
     pub resume_mode_picker: bool,
+}
+
+/// The bar's passing word as data: `code`, and what some codes carry.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct InfoCode {
+    pub code: String,
+    /// `picker`: `session` or `mode`.
+    #[serde(default)]
+    pub which: Option<String>,
+    /// `error`: `rate_limit`, `overloaded`, `api`.
+    #[serde(default)]
+    pub kind: Option<String>,
+    /// `retry`: its attempt.
+    #[serde(default)]
+    pub attempt: Option<u32>,
+}
+
+impl BarMarker {
+    /// The passing word, in the interface's language; aiball's own (in
+    /// English) for a code tvty does not know, or `other`.
+    pub fn info_said(&self) -> Option<String> {
+        let said = self.info_code.as_ref().and_then(|info| {
+            Some(match (info.code.as_str(), info.which.as_deref(), info.kind.as_deref()) {
+                ("resuming", ..) => crate::t!("agentbar-info-resuming"),
+                ("compacting", ..) => crate::t!("agentbar-info-compacting"),
+                ("wait", ..) => crate::t!("agentbar-info-wait"),
+                ("interrupted", ..) => crate::t!("agentbar-info-interrupted"),
+                ("user", ..) => crate::t!("agentbar-info-user"),
+                ("picker", Some("session"), _) => crate::t!("agentbar-info-picker-session"),
+                ("picker", Some("mode"), _) => crate::t!("agentbar-info-picker-mode"),
+                ("error", _, Some("rate_limit")) => crate::t!("agentbar-info-error-rate-limit"),
+                ("error", _, Some("overloaded")) => crate::t!("agentbar-info-error-overloaded"),
+                ("error", _, Some("api")) => crate::t!("agentbar-info-error-api"),
+                ("retry", ..) => crate::t!("agentbar-info-retry", attempt = info.attempt?),
+                _ => return None,
+            })
+        });
+        said.or_else(|| self.info.clone())
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -532,33 +574,41 @@ pub struct Milestone {
 pub struct Critical {
     #[serde(default)]
     pub holds: u32,
-    /// How long nothing moved on it ("9 d"), when it went quiet.
+    /// When it last moved (or was filed): how long it went quiet is said
+    /// from it, in the interface's language.
     #[serde(default)]
-    pub quiet: Option<String>,
+    pub quiet_since: Option<String>,
 }
 
 impl Critical {
-    /// How long it went quiet, when it did (aiball says "" when it did not).
-    pub fn quiet(&self) -> Option<&str> {
-        self.quiet.as_deref().map(str::trim).filter(|q| !q.is_empty())
+    /// How long nothing moved on it, in seconds, at `now`.
+    fn quiet_for(&self, now: u64) -> u64 {
+        self.quiet_since.as_deref().and_then(crate::status::parse_time).map_or(0, |since| now.saturating_sub(since))
     }
 
-    /// Its quiet span in minutes, to rank by ("45 m", "3 h", "9 d", "2 w").
+    /// How long it went quiet ("9 d"), once a day went by (as aiball says
+    /// it: nothing under a day).
+    pub fn quiet(&self) -> Option<String> {
+        self.quiet_at(crate::status::now())
+    }
+
+    fn quiet_at(&self, now: u64) -> Option<String> {
+        let seconds = self.quiet_for(now);
+        (seconds >= 86_400).then(|| crate::status::ago(seconds))
+    }
+
+    /// Its quiet span in minutes, to rank by.
     pub fn quiet_minutes(&self) -> u64 {
-        let Some(quiet) = self.quiet() else { return 0 };
-        let (number, unit) = quiet.split_once(' ').unwrap_or((quiet, "m"));
-        let n: u64 = number.parse().unwrap_or(0);
-        n * match unit.chars().next() {
-            Some('h') => 60,
-            Some('d') => 60 * 24,
-            Some('w') => 60 * 24 * 7,
-            _ => 1,
-        }
+        self.quiet_for(crate::status::now()) / 60
     }
 
-    /// What it holds back, and for how long: "holds 2 · quiet 9 d".
+    /// What it holds back, and for how long: "holds 2 · quiet 9d".
     pub fn said(&self) -> String {
-        match self.quiet() {
+        self.said_at(crate::status::now())
+    }
+
+    fn said_at(&self, now: u64) -> String {
+        match self.quiet_at(now) {
             Some(quiet) => crate::t!("tickets-critical-said-quiet", holds = self.holds, quiet = quiet),
             None => crate::t!("tickets-critical-said", holds = self.holds),
         }
@@ -1678,8 +1728,67 @@ pub struct InitDone {
 pub struct InitStep {
     pub file: String,
     pub action: String,
+    /// The step in English, said by tvty from `detail` instead.
     #[serde(default)]
     pub message: String,
+    #[serde(default)]
+    pub detail: Option<InitDetail>,
+}
+
+/// A step's facts: the file's `path`, `what` it is about (`mcp_entry`,
+/// `file`, `consumer`, `project_type`, `deny_tools`), the keys `set`, the
+/// value replaced, `hint: "force"` when force would overwrite what was kept.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct InitDetail {
+    pub path: String,
+    pub what: String,
+    #[serde(default)]
+    pub set: serde_json::Map<String, Value>,
+    #[serde(default)]
+    pub previous: Option<String>,
+    #[serde(default)]
+    pub hint: Option<String>,
+    #[serde(default)]
+    pub others_kept: bool,
+}
+
+impl InitStep {
+    /// The step in the interface's language; aiball's words for a step
+    /// tvty does not know.
+    pub fn said(&self) -> String {
+        let Some(detail) = &self.detail else { return self.message.clone() };
+        let path = detail.path.clone();
+        let set = detail
+            .set
+            .iter()
+            .map(|(key, value)| match value {
+                Value::String(text) => format!("{key} = {text}"),
+                Value::Array(items) => format!("{key} = {}", items.iter().map(|i| i.as_str().map_or(i.to_string(), str::to_string)).collect::<Vec<_>>().join(", ")),
+                other => format!("{key} = {other}"),
+            })
+            .collect::<Vec<_>>()
+            .join(" · ");
+        let force = detail.hint.as_deref() == Some("force");
+        let value = || detail.set.values().next().and_then(Value::as_str).unwrap_or_default().to_string();
+        match (detail.what.as_str(), self.action.as_str()) {
+            ("mcp_entry", "created") => crate::t!("newproject-step-mcp-created", path = path),
+            ("mcp_entry", "added") if detail.others_kept => crate::t!("newproject-step-mcp-added-others", path = path),
+            ("mcp_entry", "added") => crate::t!("newproject-step-mcp-added", path = path),
+            ("mcp_entry", "rewritten") => crate::t!("newproject-step-mcp-rewritten", path = path),
+            ("mcp_entry", "kept") if force => crate::t!("newproject-step-mcp-kept", path = path),
+            ("file", "created") => crate::t!("newproject-step-file-created", path = path, set = set),
+            ("file", "overwrote") => crate::t!("newproject-step-file-overwrote", path = path, set = set),
+            ("file", "kept") if force => crate::t!("newproject-step-file-kept", path = path),
+            ("consumer", "patched") => crate::t!("newproject-step-consumer", path = path, set = set),
+            ("project_type", "kept") => crate::t!("newproject-step-type-kept", path = path, value = value()),
+            ("project_type", "patched") => match &detail.previous {
+                Some(previous) => crate::t!("newproject-step-type-was", path = path, value = value(), previous = previous.clone()),
+                None => crate::t!("newproject-step-type", path = path, value = value()),
+            },
+            ("deny_tools", "patched") => crate::t!("newproject-step-deny", path = path, set = set),
+            _ => self.message.clone(),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1777,18 +1886,62 @@ mod bar_tests {
 }
 
 #[cfg(test)]
+mod said_tests {
+    use super::{BarMarker, InitStep};
+    use serde_json::json;
+
+    fn marker(value: serde_json::Value) -> BarMarker {
+        serde_json::from_value(value).unwrap()
+    }
+
+    #[test]
+    fn the_bar_word_is_said_from_its_code() {
+        let base = json!({ "health_prompt": false, "resume_picker": false, "resume_mode_picker": false });
+        let with = |info: &str, code: serde_json::Value| {
+            let mut m = base.clone();
+            m["info"] = json!(info);
+            m["info_code"] = code;
+            marker(m).info_said()
+        };
+        assert_eq!(with("retry 3", json!({ "code": "retry", "attempt": 3 })).as_deref(), Some("retry 3"));
+        assert_eq!(with("err:overloaded", json!({ "code": "error", "kind": "overloaded" })).as_deref(), Some("API overloaded"));
+        assert_eq!(with("picker:mode", json!({ "code": "picker", "which": "mode" })).as_deref(), Some("choosing a mode"));
+        // A word to show as it comes, or a code tvty does not know yet.
+        assert_eq!(with("zapping", json!({ "code": "other" })).as_deref(), Some("zapping"));
+        assert_eq!(with("zapping", json!({ "code": "zap" })).as_deref(), Some("zapping"));
+        // A loop started before aiball said it as data.
+        assert_eq!(with("compacting", serde_json::Value::Null).as_deref(), Some("compacting"));
+        assert_eq!(marker(base).info_said(), None);
+    }
+
+    #[test]
+    fn an_init_step_is_said_from_its_facts() {
+        let step = |value: serde_json::Value| serde_json::from_value::<InitStep>(value).unwrap().said();
+        assert_eq!(
+            step(json!({ "file": ".mcp.json", "action": "added", "message": "x", "detail": { "path": "/p/.mcp.json", "what": "mcp_entry", "others_kept": true } })),
+            "/p/.mcp.json: aiball's entry added, the other servers kept"
+        );
+        assert_eq!(
+            step(json!({ "file": ".aiball.yaml", "action": "patched", "message": "x", "detail": { "path": "/p/.aiball.yaml", "what": "project_type", "set": { "project_type": "code" }, "previous": "docs" } })),
+            "/p/.aiball.yaml: project type code (was docs)"
+        );
+        // A step tvty does not know: aiball's words.
+        assert_eq!(step(json!({ "file": "x", "action": "melted", "message": "x: melted", "detail": { "path": "x", "what": "file" } })), "x: melted");
+    }
+}
+
+#[cfg(test)]
 mod critical_tests {
     use super::Critical;
 
     #[test]
     fn a_critical_ticket_says_how_long_it_went_quiet() {
-        let quiet = |q: Option<&str>| Critical { holds: 2, quiet: q.map(str::to_string) };
-        assert_eq!(quiet(Some("9 d")).said(), "holds 2 · quiet 9 d");
-        assert_eq!(quiet(None).said(), "holds 2");
-        assert_eq!(quiet(Some("9 d")).quiet_minutes(), 9 * 24 * 60);
-        assert_eq!(quiet(Some("3 h")).quiet_minutes(), 180);
-        assert!(quiet(Some("2 w")).quiet_minutes() > quiet(Some("9 d")).quiet_minutes());
-        assert_eq!(quiet(None).quiet_minutes(), 0);
-        assert_eq!(quiet(Some("")).said(), "holds 2");
+        let now = crate::status::parse_time("2026-10-12T12:00:00Z").unwrap();
+        let since = |at: Option<&str>| Critical { holds: 2, quiet_since: at.map(str::to_string) };
+        assert_eq!(since(Some("2026-10-03T12:00:00Z")).said_at(now), "holds 2 · quiet 9d");
+        // Under a day: not quiet yet, as aiball says it.
+        assert_eq!(since(Some("2026-10-12T03:00:00Z")).said_at(now), "holds 2");
+        assert_eq!(since(None).said_at(now), "holds 2");
+        assert_eq!(since(Some("2026-10-12T09:00:00Z")).quiet_for(now), 3 * 3600);
     }
 }

@@ -126,3 +126,15 @@ agentbar-tier-decision = your decision pending
 agentbar-tier-waiting = waiting on them
 agentbar-tier-blocked = blocked
 agentbar-tier-other = other
+
+agentbar-info-resuming = resuming
+agentbar-info-compacting = compacting
+agentbar-info-wait = waiting
+agentbar-info-interrupted = interrupted
+agentbar-info-user = a human at the keys
+agentbar-info-picker-session = choosing a session
+agentbar-info-picker-mode = choosing a mode
+agentbar-info-error-rate-limit = rate limited
+agentbar-info-error-overloaded = API overloaded
+agentbar-info-error-api = API error
+agentbar-info-retry = retry {$attempt}

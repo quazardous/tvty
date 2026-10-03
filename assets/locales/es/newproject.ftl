@@ -82,3 +82,17 @@ newproject-next-work = Darle trabajo
 newproject-next-work-about = «+ Nuevo» en el panel de tickets crea un ticket en {$name}; el agente lo toma en su próximo despertar, y sus planes y preguntas vuelven como notificaciones.
 newproject-close = Cerrar
 newproject-start-first = Arrancar su primera sesión
+
+newproject-step-mcp-created = {$path}: creado, con la entrada de aiball
+newproject-step-mcp-added-others = {$path}: entrada de aiball añadida, los demás servidores conservados
+newproject-step-mcp-added = {$path}: entrada de aiball añadida
+newproject-step-mcp-rewritten = {$path}: entrada de aiball reescrita en su forma actual
+newproject-step-mcp-kept = {$path}: entrada de aiball ya presente, conservada (force la sobrescribe)
+newproject-step-file-created = {$path}: creado ({$set})
+newproject-step-file-overwrote = {$path}: sobrescrito ({$set})
+newproject-step-file-kept = {$path}: ya presente, conservado (force lo sobrescribe)
+newproject-step-consumer = {$path}: identidad fijada ({$set})
+newproject-step-type-kept = {$path}: tipo de proyecto ya {$value}
+newproject-step-type = {$path}: tipo de proyecto {$value}
+newproject-step-type-was = {$path}: tipo de proyecto {$value} (antes: {$previous})
+newproject-step-deny = {$path}: herramientas de código denegadas ({$set})

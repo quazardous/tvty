@@ -3262,7 +3262,7 @@ impl Shell {
             .flex()
             .items_center()
             .gap_2()
-            .child(marked(&entry.label, words))
+            .child(marked(&item.label, words))
             .when(entry.protected, |d| d.child(div().text_xs().text_color(p().muted).child(crate::t!("settings-aiball-protected"))))
             // Where it is set, when not in this layer.
             .when(!settable, |d| {
@@ -3283,7 +3283,7 @@ impl Shell {
                         })),
                 )
             });
-        let mut about = entry.description.clone();
+        let mut about = item.about.clone();
         // A project without a value of its own shows the board's — or, for
         // a key the board does not have, the default.
         if settable && item.inherited && entry.has_global() {

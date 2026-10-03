@@ -394,7 +394,7 @@ impl Shell {
                         set.extend(session.map(|s| format!("claude_loop.session: {s}")));
                         set.extend(remote_control.map(|rc| format!("claude.remote_control: {rc}")));
                         let file = now.file.clone().unwrap_or_default();
-                        done.steps.push(crate::aiball::InitStep { message: crate::t!("newproject-set-in", what = set.join(", "), file = file.clone()), action: "patched".into(), file });
+                        done.steps.push(crate::aiball::InitStep { detail: None, message: crate::t!("newproject-set-in", what = set.join(", "), file = file.clone()), action: "patched".into(), file });
                     }
                     Ok(done)
                 })
@@ -704,7 +704,7 @@ impl Shell {
 
     fn done_step(&self, wizard: &NewProject, cx: &mut Context<Self>) -> (Div, Div) {
         let (ok, said) = match &wizard.outcome {
-            Some(Ok(done)) => (true, done.steps.iter().map(|step| step.message.clone()).collect::<Vec<_>>().join("\n")),
+            Some(Ok(done)) => (true, done.steps.iter().map(|step| step.said()).collect::<Vec<_>>().join("\n")),
             Some(Err(error)) => (false, error.clone()),
             None => (false, String::new()),
         };

@@ -125,3 +125,15 @@ agentbar-tier-decision = sa décision en attente
 agentbar-tier-waiting = attend les autres
 agentbar-tier-blocked = bloqué
 agentbar-tier-other = autre
+
+agentbar-info-resuming = reprise
+agentbar-info-compacting = compactage
+agentbar-info-wait = en attente
+agentbar-info-interrupted = interrompu
+agentbar-info-user = un humain au clavier
+agentbar-info-picker-session = choix de la session
+agentbar-info-picker-mode = choix du mode
+agentbar-info-error-rate-limit = limite de débit
+agentbar-info-error-overloaded = API surchargée
+agentbar-info-error-api = erreur d'API
+agentbar-info-retry = nouvel essai {$attempt}

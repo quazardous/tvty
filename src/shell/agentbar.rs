@@ -234,7 +234,7 @@ impl Shell {
                 .map(|s| format!(" · {}", ago(now().saturating_sub(s)))),
         }
         .unwrap_or_default();
-        let info = bar.as_ref().and_then(|b| b.marker.info.clone()).map(|i| format!(" · {i}")).unwrap_or_default();
+        let info = bar.as_ref().and_then(|b| b.marker.info_said()).map(|i| format!(" · {i}")).unwrap_or_default();
         let state = item()
             .saying("agent-state", format!("{what}{since}{info}"))
             .text_color(match phase.as_deref() {

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The sessions list: drag a project by its name to put the projects in your own order (⇅ steps between recent, alphabetical and yours).
+- In French, Spanish and German too: aiball's settings, the agent bar's passing word, how long a critical ticket went quiet, and a new project's steps.
 
 ### Fixed
 
