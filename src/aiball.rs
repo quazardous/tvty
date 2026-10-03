@@ -275,7 +275,7 @@ impl ModelCost {
     /// `$15 / $75 per M tokens`.
     pub fn said(&self) -> String {
         let usd = |n: f64| if n.fract() == 0. { format!("${n:.0}") } else { format!("${n}") };
-        format!("{} / {} per M tokens", usd(self.input), usd(self.output))
+        crate::t!("misc-price", input = usd(self.input), output = usd(self.output))
     }
 }
 
@@ -295,13 +295,13 @@ impl BarModel {
             said.push_str(&format!(" · {}", cost.said()));
         }
         if let Some(newer) = &self.newer {
-            said.push_str(&format!("\n{} is out", newer.name));
+            said.push_str(&format!("\n{}", crate::t!("misc-model-out", name = newer.name.clone())));
             if let Some(cost) = &newer.cost {
                 said.push_str(&format!(" ({})", cost.said()));
             }
         }
         if let Some(catalog) = &self.catalog {
-            said.push_str(&format!("\nprices from {catalog}"));
+            said.push_str(&format!("\n{}", crate::t!("misc-prices-from", catalog = catalog.to_string())));
         }
         said
     }
@@ -328,20 +328,16 @@ impl AgentBar {
             .last_at
             .as_deref()
             .and_then(crate::status::parse_time)
-            .map(|at| format!(", the last {} ago", crate::status::ago(crate::status::now().saturating_sub(at))))
+            .map(|at| crate::t!("misc-denials-last", ago = crate::status::ago(crate::status::now().saturating_sub(at))))
             .unwrap_or_default();
         let why = d.last_reason.as_deref().filter(|r| !r.is_empty()).map(|r| format!(": {r}")).unwrap_or_default();
-        Some(format!(
-            "{} tool call{} refused by Claude Code in the last hour{ago}{why} — a refused agent stops there",
-            d.last_hour,
-            if d.last_hour == 1 { "" } else { "s" }
-        ))
+        Some(crate::t!("misc-denials", count = d.last_hour, ago = ago, why = why))
     }
 
     pub fn limit_said(&self) -> Option<String> {
         self.alerts.limit_reached.then(|| match &self.limit_resets {
-            Some(resets) if !resets.text.is_empty() => format!("usage limit reached · resets {}", resets.text),
-            _ => "usage limit reached".to_string(),
+            Some(resets) if !resets.text.is_empty() => crate::t!("misc-limit-resets", resets = resets.text.clone()),
+            _ => crate::t!("misc-limit"),
         })
     }
 }

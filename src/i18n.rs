@@ -273,13 +273,26 @@ fn literals(source: &str) -> Vec<(usize, String)> {
 /// Whether a literal reads as words for people rather than code: a space
 /// between letters, no path, no format of code. A guess, for an estimate.
 fn reads_as_words(text: &str, line: &str) -> bool {
-    let quiet = ["log::", "named(", "assert", "panic!", "expect(", "debug!", "#[", "tvty-ctl", "ctl("];
+    // Not shown as such: logs, ids, tests, internal errors (a technical
+    // context under what the user reads), fonts' names, and the English a
+    // word found by key stands in for (a setting's label and about, a
+    // command's words: see settings::label_said, keymap::said).
+    let quiet = [
+        "log::", "named(", "assert", "panic!", "expect(", "debug!", "#[", "tvty-ctl", "ctl(", ".context(", "with_context(",
+        "write!(", "writeln!(", "ensure!(", "const MONO", "FALLBACKS", "label: \"", "about: \"",
+    ];
+    let command = line.trim_start().starts_with('"') && ["WINDOW,", "WORKSPACE,", "TERMINAL,"].iter().any(|c| line.contains(c));
     text.contains(' ')
         && text.chars().filter(|c| c.is_alphabetic()).count() >= 3
         && !text.contains("::")
         && !text.starts_with('-')
         && !quiet.iter().any(|q| line.contains(q))
+        && !command
 }
+
+/// Sources that are not the interface: the bus's protocol, the debug
+/// control, the measures.
+const NOT_THE_INTERFACE: &[&str] = &["wire.rs", "control.rs", "shell/control.rs", "stats.rs", "instance.rs", "inspect.rs"];
 
 /// One source file: the words it asks for (`t!`), those still written in it,
 /// and the ids English has not.
@@ -327,8 +340,11 @@ fn sources() -> Vec<(String, String)> {
         if path.extension().is_none_or(|e| e != "rs") || path.ends_with("i18n.rs") {
             continue;
         }
+        let name = path.strip_prefix(&root).unwrap_or(&path).display().to_string();
+        if NOT_THE_INTERFACE.contains(&name.as_str()) {
+            continue;
+        }
         if let Ok(source) = std::fs::read_to_string(&path) {
-            let name = path.strip_prefix(&root).unwrap_or(&path).display().to_string();
             files.push((name, source));
         }
     }

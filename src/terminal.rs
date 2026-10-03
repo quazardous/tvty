@@ -868,7 +868,7 @@ impl TerminalView {
     /// The right click's menu: Copy (when something is selected), Paste.
     fn menu_view(&self, at: Point<Pixels>, cx: &mut Context<Self>) -> impl IntoElement {
         let selected = self.shown().lock().selection.as_ref().is_some_and(|s| !s.is_empty()) || self.selected_text.is_some();
-        let item = |id: &'static str, label: &'static str, keys: &'static str, enabled: bool| {
+        let item = |id: &'static str, label: String, keys: &'static str, enabled: bool| {
             div()
                 .named(id)
                 .flex()
@@ -903,26 +903,26 @@ impl TerminalView {
                     // On a link: open it, copy where it goes.
                     .when_some(self.menu_link.clone(), |d, link| {
                         let copied = link.uri.clone();
-                        d.child(item("terminal-menu-open-link", "Open link", "Ctrl+click", true).on_click(cx.listener(move |view, _, _, cx| {
+                        d.child(item("terminal-menu-open-link", crate::t!("misc-open-link"), "Ctrl+click", true).on_click(cx.listener(move |view, _, _, cx| {
                             view.menu = None;
                             view.open_link(&link, cx);
                             cx.notify();
                         })))
-                        .child(item("terminal-menu-copy-link", "Copy link", "", true).on_click(cx.listener(move |view, _, _, cx| {
+                        .child(item("terminal-menu-copy-link", crate::t!("misc-copy-link"), "", true).on_click(cx.listener(move |view, _, _, cx| {
                             view.menu = None;
                             cx.write_to_clipboard(ClipboardItem::new_string(copied.clone()));
                             cx.notify();
                         })))
                         .child(div().my_1().h(px(1.)).bg(crate::theme::p().border))
                     })
-                    .child(item("terminal-menu-copy", "Copy", "Ctrl+Shift+C", selected).when(selected, |d| {
+                    .child(item("terminal-menu-copy", crate::t!("misc-copy"), "Ctrl+Shift+C", selected).when(selected, |d| {
                         d.on_click(cx.listener(|view, _, window, cx| {
                             view.menu = None;
                             view.copy(&keymap::TerminalCopy, window, cx);
                             cx.notify();
                         }))
                     }))
-                    .child(item("terminal-menu-paste", "Paste", "Ctrl+Shift+V", true).on_click(cx.listener(|view, _, window, cx| {
+                    .child(item("terminal-menu-paste", crate::t!("misc-paste"), "Ctrl+Shift+V", true).on_click(cx.listener(|view, _, window, cx| {
                         view.menu = None;
                         view.paste_clipboard(&keymap::TerminalPaste, window, cx);
                         cx.notify();
@@ -1052,7 +1052,7 @@ impl Render for TerminalView {
             .children((self.frozen.is_some() && self.kept.is_some()).then(|| {
                 div().absolute().top_1().right_3().child(
                     div()
-                        .saying("terminal-frozen", "held still · selection")
+                        .saying("terminal-frozen", crate::t!("misc-frozen"))
                         .px_2()
                         .py_0p5()
                         .rounded_sm()
@@ -1060,8 +1060,8 @@ impl Render for TerminalView {
                         .text_color(crate::theme::on(crate::theme::p().warning))
                         .bg(crate::theme::p().warning)
                         .cursor_pointer()
-                        .child("held still · selection")
-                        .tip("The screen is held still while text is selected; the session goes on. A click here, Esc or a key lets it go.")
+                        .child(crate::t!("misc-frozen"))
+                        .tip(crate::t!("misc-frozen-tip"))
                         .on_mouse_down(MouseButton::Left, cx.listener(|view, _, _, cx| {
                             view.clear_selection(cx);
                             cx.stop_propagation();
@@ -1089,7 +1089,7 @@ impl Render for TerminalView {
                             .bg(crate::theme::p().surface.opacity(0.8))
                             .cursor_pointer()
                             .hover(|d| d.text_color(crate::theme::p().text))
-                            .child("size taken by another client · click to take it back"),
+                            .child(crate::t!("misc-size-taken")),
                     )
                     .on_click(cx.listener(|view, _, _, cx| {
                         view.take_size();
@@ -1127,7 +1127,7 @@ impl Render for TerminalView {
                         .p_2()
                         .bg(crate::theme::p().danger)
                         .text_color(crate::theme::on(crate::theme::p().danger))
-                        .child("The session ended."),
+                        .child(crate::t!("misc-session-ended")),
                 )
             })
     }

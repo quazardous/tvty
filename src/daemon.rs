@@ -27,17 +27,17 @@ pub fn ensure() -> Start {
         return Start::Running;
     }
     let not_there = match &at {
-        Ok(at) => format!("aiball does not answer at {}", at.endpoint),
+        Ok(at) => crate::t!("misc-aiball-silent", at = at.endpoint.to_string()),
         Err(error) => error.to_string(),
     };
     let chosen = ["AIBALL_SOCK", "AIBALL_URL"].iter().any(|v| std::env::var(v).is_ok_and(|s| !s.is_empty()));
     match decide(chosen, has_service()) {
         Some(()) => match start_service() {
             Ok(()) => Start::Started,
-            Err(error) => Start::Missing(format!("aiball's service did not start: {error}")),
+            Err(error) => Start::Missing(crate::t!("misc-service-failed", error = error.to_string())),
         },
         None if chosen => Start::Missing(not_there),
-        None => Start::Missing(format!("{not_there}; there is no aiball service to start")),
+        None => Start::Missing(crate::t!("misc-no-service", why = not_there)),
     }
 }
 

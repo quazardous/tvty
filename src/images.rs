@@ -207,7 +207,7 @@ pub enum Segment {
     /// Images alone on their line(s): drawn by tvty.
     Pictures(Vec<Picture>),
     /// What could not be shown, and why.
-    Note(&'static str),
+    Note(String),
 }
 
 /// A text cut into markdown and the images alone on their line, read from
@@ -233,8 +233,8 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
                 for (alt, reference) in images {
                     match known.get(&reference) {
                         Some(Entry::Loaded(p)) => row.push(Picture { alt, ..p.clone() }),
-                        Some(Entry::TooLarge) => out.push(Segment::Note("image too large to show here")),
-                        _ => out.push(Segment::Note("image unavailable")),
+                        Some(Entry::TooLarge) => out.push(Segment::Note(crate::t!("misc-image-too-large"))),
+                        _ => out.push(Segment::Note(crate::t!("misc-image-unavailable"))),
                     }
                 }
                 if !row.is_empty() {
@@ -356,8 +356,8 @@ fn rewrite_line(text: &str, link: &dyn Fn(&str) -> Link) -> String {
                 out.push_str(&rest[..open]);
                 match link(reference) {
                     Link::Data(url) => out.push_str(&format!("![{alt}]({url})")),
-                    Link::TooLarge => out.push_str("*(image too large to show here)*"),
-                    Link::Missing => out.push_str("*(image unavailable)*"),
+                    Link::TooLarge => out.push_str(&format!("*({})*", crate::t!("misc-image-too-large"))),
+                    Link::Missing => out.push_str(&format!("*({})*", crate::t!("misc-image-unavailable"))),
                 }
             }
             None => out.push_str(&rest[..=close]),

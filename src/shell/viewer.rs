@@ -123,10 +123,10 @@ impl Shell {
             .text_color(p().muted)
             .child(div().text_color(p().text).truncate().child(name))
             .child(format!("{} × {}", picture.width, picture.height))
-            .child(format!("{:.0} %{}", scale * 100., if viewer.zoom.is_none() { " (fitted)" } else { "" }))
+            .child(format!("{:.0} %{}", scale * 100., if viewer.zoom.is_none() { crate::t!("misc-fitted") } else { String::new() }))
             .when(count > 1, |d| d.child(format!("{} / {count} · ← →", viewer.index + 1)))
             .child(div().flex_1())
-            .child("wheel or + − zoom · 1 real size · 0 fit · drag to move · Esc")
+            .child(crate::t!("misc-viewer-hint"))
             .when_some(path, |d, path| {
                 d.child(
                     buttons::link("viewer-open", "open")
@@ -197,7 +197,7 @@ impl Shell {
                 )
                 .child(bar)
                 .child(
-                    buttons::link("viewer-close", "✕  Esc")
+                    buttons::link("viewer-close", crate::t!("tickets-close-full"))
                         .absolute()
                         .top_2()
                         .right_3()

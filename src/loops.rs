@@ -127,7 +127,7 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
         return restart(aiball, name);
     }
     if !std::path::Path::new(&start.cwd).is_dir() {
-        bail!("{} is not a directory", start.cwd);
+        bail!(crate::t!("misc-not-a-directory", folder = start.cwd.clone()));
     }
     let mut params = json!({ "cwd": start.cwd });
     if let Some(mode) = start.mode {
@@ -193,7 +193,7 @@ pub fn stop_agent(aiball: &Aiball, agent: &str) -> anyhow::Result<()> {
 /// says so (`delivered: false`) — not stopped, then.
 fn stopped(agent: &str, answer: &Value) -> anyhow::Result<()> {
     match answer.get("delivered").and_then(Value::as_bool) {
-        Some(false) => anyhow::bail!("{agent}: no loop of it received the stop (it does not run, or not where aiball can reach it)"),
+        Some(false) => anyhow::bail!(crate::t!("misc-stop-not-received", agent = agent)),
         _ => Ok(()),
     }
 }
@@ -215,7 +215,7 @@ pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
 /// aiball's refusal said for the user: a Claude at work is not moved.
 fn said(error: anyhow::Error) -> anyhow::Error {
     if format!("{error:#}").contains("NOT_IDLE") {
-        anyhow::anyhow!("its Claude is working: once it is idle")
+        anyhow::anyhow!(crate::t!("misc-not-idle"))
     } else {
         error
     }

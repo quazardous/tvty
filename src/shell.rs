@@ -864,7 +864,7 @@ impl Shell {
             let found = cx.background_executor().spawn(async { crate::daemon::ensure() }).await;
             let said = match found {
                 crate::daemon::Start::Running => return,
-                crate::daemon::Start::Started => Activity::news("tvty", Kind::Info, None, "aiball was not running: started it"),
+                crate::daemon::Start::Started => Activity::news("tvty", Kind::Info, None, crate::t!("misc-aiball-started")),
                 crate::daemon::Start::Missing(why) => Activity::news("tvty", Kind::Error, None, why),
             };
             let _ = cx.update(|cx| activity::publish(cx, said));
@@ -959,11 +959,11 @@ impl Shell {
         }
         let about = Some((filed.project.clone(), filed.ticket));
         let activity = if filed.by == self.aiball.user {
-            Activity::done(about, format!("filed — {}", filed.title))
+            Activity::done(about, crate::t!("misc-filed", title = filed.title.clone()))
         } else if filed.pending {
-            Activity::news(filed.by, Kind::Decision, about, format!("{} — a new ticket to moderate", filed.title))
+            Activity::news(filed.by, Kind::Decision, about, crate::t!("misc-filed-moderate", title = filed.title.clone()))
         } else {
-            Activity::news(filed.by, Kind::News, about, format!("{} — a new ticket", filed.title))
+            Activity::news(filed.by, Kind::News, about, crate::t!("misc-filed-other", title = filed.title.clone()))
         };
         if activity.own {
             return activity::publish(cx, activity);
@@ -1076,7 +1076,7 @@ impl Shell {
                         .map(|t| t.session.clone());
                     activity::publish(
                         cx,
-                        Activity::news(agent.clone(), Kind::Error, None, format!("{said}: its loop is held until you let it go")).on(session),
+                        Activity::news(agent.clone(), Kind::Error, None, crate::t!("misc-held", said = said.clone())).on(session),
                     );
                 }
             }
@@ -1585,7 +1585,7 @@ impl Shell {
                 let key = (need.ticket, need.wait);
                 let shown = self.selected.as_deref() == Some(need.session.as_str());
                 if !before.contains(&key) && !shown && need.wait == Wait::Unread {
-                    let (kind, what) = (Kind::News, "something new");
+                    let (kind, what) = (Kind::News, crate::t!("misc-something-new"));
                     activity::publish(
                         cx,
                         Activity::news(need.agent.clone(), kind, Some((need.project.clone(), need.ticket)), format!("{} — {what}", need.title))
@@ -1754,7 +1754,7 @@ impl Shell {
         let typed = self.goto.read(cx).value().to_string();
         let Some(reference) = ticket_reference(&typed) else {
             if !typed.trim().is_empty() {
-                crate::activity::publish(cx, crate::activity::Activity::failed(None, "go to", format!("{:?} is not a ticket: a number, or a comment's #C. link", typed.trim())));
+                crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("misc-go-to"), crate::t!("misc-not-a-ticket", typed = format!("{:?}", typed.trim()))));
             }
             return;
         };
@@ -1780,7 +1780,7 @@ impl Shell {
                         shell.focus_terminal(window, cx);
                         cx.notify();
                     }
-                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("go to {}", typed.trim()), format!("{error:#}"))),
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("misc-go-to-what", what = typed.trim().to_string()), format!("{error:#}"))),
                 });
             });
         })
@@ -1802,7 +1802,7 @@ impl Shell {
             let _ = cx.update_window(window_handle, |_, window, cx| {
                 let _ = this.update(cx, |shell, cx| match found {
                     Ok((ticket, found)) => shell.show_ticket(project.unwrap_or(found), ticket, window, cx),
-                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &format!("go to #{reference}"), format!("{error:#}"))),
+                    Err(error) => crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("misc-go-to-what", what = format!("#{reference}")), format!("{error:#}"))),
                 });
             });
         })
@@ -1874,7 +1874,7 @@ impl Shell {
                         .border_color(p().border)
                         .text_sm()
                         .text_color(p().text)
-                        .child("Copied to clipboard"),
+                        .child(crate::t!("misc-copied")),
                 )
                 .into_any_element(),
         )
@@ -1968,7 +1968,7 @@ impl Shell {
                     .max_w(px(420.))
                     .text_sm()
                     .text_color(p().muted)
-                    .child("This session runs on aiball's hub, another machine: it cannot be opened from this one. Its tickets are in the panel."),
+                    .child(crate::t!("misc-hub-session")),
             )
             .into_any_element()
     }
@@ -4296,7 +4296,7 @@ impl Shell {
     /// its agents.
     fn new_project_terminal(&mut self, project: &str, cx: &mut Context<Self>) {
         let Some(folder) = self.project_folder(project) else {
-            activity::publish(cx, Activity::failed(None, "new terminal", format!("no folder known for {project}")));
+            activity::publish(cx, Activity::failed(None, &crate::t!("misc-new-terminal"), crate::t!("misc-no-folder", project = project)));
             return;
         };
         // A session's name takes letters, digits, `.`, `_` and `-`.
@@ -4331,7 +4331,7 @@ impl Shell {
                 shell.shells_asked.remove(&name);
                 match started {
                     Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
-                    Err(error) => activity::publish(cx, Activity::failed(None, "new terminal", format!("{error:#}"))),
+                    Err(error) => activity::publish(cx, Activity::failed(None, &crate::t!("misc-new-terminal"), format!("{error:#}"))),
                 }
             });
         })
@@ -4849,13 +4849,13 @@ impl Shell {
                     .py_3()
                     .border_b_1()
                     .border_color(p().border)
-                    .child(div().font_weight(FontWeight::BOLD).child("All terminals"))
+                    .child(div().font_weight(FontWeight::BOLD).child(crate::t!("misc-all-terminals")))
                     .child(
                         div()
                             .flex_1()
                             .text_color(if gallery.filter.is_empty() { p().muted } else { p().text })
                             .child(if gallery.filter.is_empty() {
-                                "type to filter · arrows move · enter opens · esc closes".to_string()
+                                crate::t!("misc-gallery-hint")
                             } else {
                                 format!("{}▏", gallery.filter)
                             }),
