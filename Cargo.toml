@@ -1,6 +1,6 @@
 [package]
 name = "tvty"
-version = "0.12.0-beta.1"
+version = "0.13.0-beta.1"
 edition = "2024"
 description = "A native terminal for working with many AI agents, their tickets beside"
 license = "MIT"
