@@ -1,7 +1,8 @@
-//! A first start in a folder where Claude Code already has conversations
-//! that no loop follows (someone worked there by hand): which one its
-//! Claude takes up — the last one, or a new one. Asked once, on a sheet; a
-//! folder with none, or one a loop already follows, starts without a word.
+//! A start in a folder where Claude Code has conversations that no loop
+//! follows — someone worked there by hand, or the loop's recorded one is
+//! gone (a loop started again): which one its Claude takes up — the last
+//! one, or a new one. Asked once, on a sheet; a folder with none, or whose
+//! recorded one is there, starts without a word.
 
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;

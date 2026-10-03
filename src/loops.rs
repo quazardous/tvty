@@ -120,6 +120,10 @@ pub fn stranger<'a>(cwd: &str, agent: Option<&str>, project: Option<&str>, homes
 /// open.
 pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if let Some(name) = &start.again {
+        // Its recorded conversation gone, the one chosen instead.
+        if let Resume::Conversation(id) = &start.resume {
+            return restart_on(aiball, name, id);
+        }
         return restart(aiball, name);
     }
     if !std::path::Path::new(&start.cwd).is_dir() {
@@ -180,6 +184,13 @@ pub fn stop(aiball: &Aiball, known: &KnownLoop) -> anyhow::Result<()> {
 
 /// Starts a stopped loop again where it ran, its conversation resumed.
 /// Answers the session to open.
+/// Starts a stopped loop again on a conversation of its folder (`latest` or
+/// an id), not the one it recorded (gone).
+pub fn restart_on(aiball: &Aiball, name: &str, conversation: &str) -> anyhow::Result<String> {
+    let view: KnownLoop = aiball.call_starting("loop.restart", json!({ "name": name, "resume": conversation })).map_err(said)?;
+    Ok(view.session())
+}
+
 pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
     let view: KnownLoop = aiball.call_starting("loop.restart", json!({ "name": name })).map_err(said)?;
     Ok(view.session())

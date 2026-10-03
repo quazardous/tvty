@@ -607,9 +607,9 @@ impl Shell {
         if self.astray_start(&start, cx) {
             return;
         }
-        // A first start (not a loop started again): which conversation, when
-        // the folder has some no loop follows.
-        if start.again.is_none() && start.resume == crate::loops::Resume::Ask {
+        // Which conversation, when the folder has some and none is followed:
+        // a first start, or a loop started again whose recorded one is gone.
+        if start.resume == crate::loops::Resume::Ask {
             self.ask_resume(start, cx);
             return;
         }
