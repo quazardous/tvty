@@ -45,10 +45,10 @@ impl EventEmitter<TicketTextEvent> for TicketText {}
 impl TicketText {
     /// `lines`: the body's height, least and most, as it grows.
     pub fn new(aiball: Aiball, id: &'static str, lines: (usize, usize), window: &mut Window, cx: &mut Context<Self>) -> Self {
-        let title = cx.new(|cx| InputState::new(window, cx).placeholder("Title"));
+        let title = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("fields-title")));
         let body = cx.new(|cx| {
             TextareaState::new(window, cx)
-                .placeholder("What it is about… (@ to mention, ctrl+v pastes an image)")
+                .placeholder(crate::t!("fields-body"))
                 .auto_grow(lines.0, lines.1)
         });
         // @-mentions are offered as the body is typed; Ctrl+Enter submits.
@@ -231,7 +231,7 @@ impl Render for TicketText {
                     .border_1()
                     .border_color(p().border)
                     .child(if text.trim().is_empty() {
-                        div().text_color(p().muted).child("Nothing to preview yet.").into_any_element()
+                        div().text_color(p().muted).child(crate::t!("tickets-nothing-to-preview")).into_any_element()
                     } else {
                         self.preview_view(&text).into_any_element()
                     })

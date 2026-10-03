@@ -13,7 +13,7 @@ use crate::ui::buttons;
 /// preview on or off.
 pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set: fn(&mut V, bool, &mut Context<V>)) -> Div {
     let mut tabs = div().flex().gap_1().border_b_1().border_color(p().border);
-    for (key, label, to) in [("write", "Write", false), ("preview", "Preview", true)] {
+    for (key, label, to) in [("write", "fields-write", false), ("preview", "fields-preview", true)] {
         let on = preview == to;
         tabs = tabs.child(
             div()
@@ -26,7 +26,7 @@ pub fn write_tabs<V: 'static>(id: &str, preview: bool, cx: &mut Context<V>, set:
                 .border_color(if on { p().accent } else { transparent_black() })
                 .text_color(if on { p().text } else { p().muted })
                 .hover(|d| d.text_color(p().text))
-                .child(label)
+                .child(crate::t!(label))
                 .on_click(cx.listener(move |view, _, _, cx| set(view, to, cx))),
         );
     }

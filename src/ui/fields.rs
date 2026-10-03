@@ -15,8 +15,8 @@ use crate::ui::combo::{self, ComboState};
 pub const LABEL_WIDTH: f32 = 80.;
 
 /// A group's title: WHERE, FIELDS, PEOPLE…
-pub fn group(title: &'static str) -> Div {
-    div().pt_3().pb_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(title.to_uppercase())
+pub fn group(title: impl Into<SharedString>) -> Div {
+    div().pt_3().pb_1().text_xs().font_weight(FontWeight::BOLD).text_color(p().muted).child(title.into().to_uppercase())
 }
 
 /// A field: its name, and its widget beside it, wrapping.
@@ -76,7 +76,7 @@ pub fn tag(id: impl Into<SharedString>, name: &str, drop: Stateful<Div>) -> Stat
 
 /// The ✕ of a [`tag`].
 pub fn tag_drop(id: impl Into<SharedString>) -> Stateful<Div> {
-    buttons::remove(id.into(), "✕", "take it out")
+    buttons::remove(id.into(), "✕", crate::t!("fields-take-out"))
 }
 
 /// The tags and the dropdown that adds one, wrapping together.
@@ -87,11 +87,11 @@ pub fn tags(chips: Vec<Stateful<Div>>, picker: Div) -> Div {
 /// What a scope means, under its field: two lines kept whatever it says, so
 /// the fields below do not move as it changes.
 pub fn scope_note(scope: &str) -> Div {
-    div().pl(px(LABEL_WIDTH + 8.)).pb_1().min_h(px(36.)).text_xs().text_color(p().muted).child(match scope {
-        "internal" => "notifies nobody but who is mentioned",
-        "broadcast" => "notifies the project's followers too",
-        _ => "notifies the ticket's subscribers and the project's owners",
-    })
+    div().pl(px(LABEL_WIDTH + 8.)).pb_1().min_h(px(36.)).text_xs().text_color(p().muted).child(crate::t!(match scope {
+        "internal" => "fields-scope-note-internal",
+        "broadcast" => "fields-scope-note-broadcast",
+        _ => "fields-scope-note-default",
+    }))
 }
 
 /// The values of the short fields, as aiball takes them.
@@ -99,3 +99,25 @@ pub const INTENTS: &[&str] = &["request", "question", "fyi", "feature", "panic"]
 pub const PRIORITIES: &[&str] = &["urgent", "high", "normal", "low"];
 pub const LEVELS: &[&str] = &["task", "milestone", "roadmap"];
 pub const SCOPES: &[&str] = &["internal", "default", "broadcast"];
+
+/// A short field's values (`intent`, `priority`, `level`, `scope`).
+pub fn values(field: &str) -> &'static [&'static str] {
+    match field {
+        "intent" => INTENTS,
+        "priority" => PRIORITIES,
+        "level" => LEVELS,
+        "scope" => SCOPES,
+        _ => &[],
+    }
+}
+
+/// A short field's value, said in the interface's language; one aiball
+/// adds later shows as it comes.
+pub fn value_said(field: &str, value: &str) -> String {
+    if values(field).contains(&value) { crate::t!(&format!("fields-{field}-{value}")) } else { value.to_string() }
+}
+
+/// A short field's choices: aiball's values, said.
+pub fn value_choices(field: &str) -> Vec<combo::Choice> {
+    values(field).iter().map(|v| combo::Choice::new(*v, value_said(field, v))).collect()
+}

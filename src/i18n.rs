@@ -488,8 +488,8 @@ mod tests {
         for stage in ["rejected", "closed-resolved", "closed", "resolved", "blocked", "snoozed", "pending", "open"] {
             built.push(format!("tickets-stage-{stage}"));
         }
-        for priority in ["urgent", "high", "normal", "low"] {
-            built.push(format!("tickets-priority-{priority}"));
+        for field in ["intent", "priority", "level", "scope"] {
+            built.extend(crate::ui::fields::values(field).iter().map(|value| format!("fields-{field}-{value}")));
         }
         let missing: Vec<_> = built.iter().filter(|id| !english.contains(id)).collect();
         assert!(missing.is_empty(), "built ids English has not: {missing:?}");

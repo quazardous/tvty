@@ -18,7 +18,7 @@ use crate::kernel::catalog::{self as catalogs, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
-use crate::ui::fields::{self, INTENTS, LEVELS, PRIORITIES, SCOPES};
+use crate::ui::fields;
 use crate::ui::ticketref;
 use crate::ui::ticket_text::{TicketText, TicketTextEvent};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
@@ -467,10 +467,10 @@ impl TicketPanel {
                 first.push(self.aiball.user.clone());
                 (agents(&first).into_iter().filter(|c| !on.contains(&c.value)).collect(), None)
             }
-            Editing::Intent => (INTENTS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.intent)),
-            Editing::Priority => (PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.priority)),
-            Editing::Level => (LEVELS.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.level)),
-            Editing::Scope => (SCOPES.iter().map(|v| Choice::plain(*v)).collect(), ticket.and_then(|t| t.scope)),
+            Editing::Intent => (fields::value_choices("intent"), ticket.and_then(|t| t.intent)),
+            Editing::Priority => (fields::value_choices("priority"), ticket.and_then(|t| t.priority)),
+            Editing::Level => (fields::value_choices("level"), ticket.and_then(|t| t.level)),
+            Editing::Scope => (fields::value_choices("scope"), ticket.and_then(|t| t.scope)),
             Editing::Relation => (Vec::new(), None),
         }
     }
@@ -496,10 +496,10 @@ impl TicketPanel {
             (Editing::Subscribers, Some(name)) => {
                 self.change(crate::t!("tickets-did-follows", name = name.clone()), move |aiball, ticket| aiball.subscribe(ticket, &name), window, cx)
             }
-            (Editing::Intent, Some(v)) => self.change(crate::t!("tickets-did-intent", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
-            (Editing::Priority, Some(v)) => self.change(crate::t!("tickets-did-priority", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
-            (Editing::Level, Some(v)) => self.change(crate::t!("tickets-did-level", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "level": v })), window, cx),
-            (Editing::Scope, Some(v)) => self.change(crate::t!("tickets-did-scope", value = v.clone()), move |aiball, ticket| aiball.edit(ticket, json!({ "scope": v })), window, cx),
+            (Editing::Intent, Some(v)) => self.change(crate::t!("tickets-did-intent", value = fields::value_said("intent", &v)), move |aiball, ticket| aiball.edit(ticket, json!({ "intent": v })), window, cx),
+            (Editing::Priority, Some(v)) => self.change(crate::t!("tickets-did-priority", value = fields::value_said("priority", &v)), move |aiball, ticket| aiball.edit(ticket, json!({ "priority": v })), window, cx),
+            (Editing::Level, Some(v)) => self.change(crate::t!("tickets-did-level", value = fields::value_said("level", &v)), move |aiball, ticket| aiball.edit(ticket, json!({ "level": v })), window, cx),
+            (Editing::Scope, Some(v)) => self.change(crate::t!("tickets-did-scope", value = fields::value_said("scope", &v)), move |aiball, ticket| aiball.edit(ticket, json!({ "scope": v })), window, cx),
             _ => {}
         }
     }
@@ -989,7 +989,7 @@ impl TicketPanel {
     }
 
     fn set_priority(&mut self, priority: &'static str, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(&crate::t!("tickets-did-priority", value = crate::t!(&format!("tickets-priority-{priority}"))), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
+        self.act(&crate::t!("tickets-did-priority", value = fields::value_said("priority", priority)), move |aiball, _, ticket| aiball.set_priority(ticket, priority), window, cx);
     }
 
     /// Assigns the open ticket to `who`, or releases it; the menu closes.
@@ -1366,7 +1366,7 @@ impl TicketPanel {
         {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
-            let said = format!("{} ▾", crate::t!(&format!("tickets-priority-{priority}")));
+            let said = format!("{} ▾", fields::value_said("priority", &priority));
             let label = match icons::priority(&priority) {
                 Some(icon) => icons::labelled(icon, icons::priority_colour(&priority), 14., said),
                 None => div().child(said),
@@ -1464,7 +1464,7 @@ impl TicketPanel {
             for (id, priority) in [("prio-urgent", "urgent"), ("prio-high", "high"), ("prio-normal", "normal"), ("prio-low", "low")] {
                 let on = current == priority;
                 row = row.child(
-                    buttons::chip(id, crate::t!(&format!("tickets-priority-{priority}")))
+                    buttons::chip(id, fields::value_said("priority", priority))
                         .py_0p5()
                         .text_xs()
                         .chosen(on)

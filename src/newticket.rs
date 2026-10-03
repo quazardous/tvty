@@ -104,7 +104,7 @@ impl NewTicketForm {
             }
         })
         .detach();
-        let summary = cx.new(|cx| InputState::new(window, cx).placeholder("Summary, one line (optional)"));
+        let summary = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("newticket-summary")));
         // Ctrl+Enter files from the summary too.
         cx.subscribe_in(&summary, window, |form: &mut Self, _, event: &InputEvent, window, cx| {
             if matches!(event, InputEvent::PressEnter { secondary: true, .. }) {
@@ -209,10 +209,10 @@ impl NewTicketForm {
         let catalog = &self.catalog;
         match pick {
             Pick::Project => catalog.projects.iter().map(Choice::plain).collect(),
-            Pick::Intent => INTENTS.iter().map(|v| Choice::plain(*v)).collect(),
-            Pick::Priority => PRIORITIES.iter().map(|v| Choice::plain(*v)).collect(),
-            Pick::Level => LEVELS.iter().map(|v| Choice::plain(*v)).collect(),
-            Pick::Scope => SCOPES.iter().map(|v| Choice::plain(*v)).collect(),
+            Pick::Intent => fields::value_choices("intent"),
+            Pick::Priority => fields::value_choices("priority"),
+            Pick::Level => fields::value_choices("level"),
+            Pick::Scope => fields::value_choices("scope"),
             Pick::Tag => catalog.tags.iter().filter(|t| !self.tags.contains(t)).map(Choice::plain).collect(),
             Pick::Milestone => catalog.milestones.iter().map(|(id, title)| Choice::new(id.to_string(), title.clone())).collect(),
             Pick::Assignee => catalog
@@ -278,13 +278,13 @@ impl NewTicketForm {
         }
         let title = self.text.read(cx).title(cx).trim().to_string();
         if title.is_empty() {
-            self.error = Some("A title first.".into());
+            self.error = Some(crate::t!("tickets-title-first"));
             self.text.update(cx, |text, cx| text.focus_title(window, cx));
             cx.notify();
             return;
         }
         if self.project.is_empty() {
-            self.error = Some("Which project?".into());
+            self.error = Some(crate::t!("newticket-which-project"));
             self.combo(Pick::Project).clone().update(cx, |state, cx| state.focus(window, cx));
             cx.notify();
             return;
@@ -374,17 +374,18 @@ impl NewTicketForm {
     fn picker_field(&self, pick: Pick, cx: &mut Context<Self>) -> Div {
         let id = format!("{pick:?}").to_lowercase();
         let (placeholder, search) = match pick {
-            Pick::Project => ("a project", "a project…"),
-            Pick::Intent => ("intent", "an intent…"),
-            Pick::Priority => ("priority", "a priority…"),
-            Pick::Level => ("level", "a level…"),
-            Pick::Scope => ("scope", "a scope…"),
-            Pick::Tag => ("add a tag", "a tag…"),
-            Pick::Milestone => ("none", "a milestone…"),
-            Pick::Assignee => ("nobody", "an agent…"),
+            Pick::Project => ("tickets-pick-project", "tickets-pick-project-search"),
+            Pick::Intent => ("tickets-field-intent", "tickets-pick-intent-search"),
+            Pick::Priority => ("tickets-field-priority", "tickets-pick-priority-search"),
+            Pick::Level => ("tickets-field-level", "tickets-pick-level-search"),
+            Pick::Scope => ("tickets-field-scope", "tickets-pick-scope-search"),
+            Pick::Tag => ("tickets-pick-tag", "tickets-pick-tag-search"),
+            Pick::Milestone => ("tickets-pick-milestone", "tickets-pick-milestone-search"),
+            Pick::Assignee => ("tickets-pick-nobody", "tickets-pick-agent-search"),
         };
+        let (placeholder, search) = (crate::t!(placeholder), crate::t!(search));
         let clearable = matches!(pick, Pick::Milestone | Pick::Assignee);
-        let picker = fields::picker(self.combo(pick), format!("new-{id}"), placeholder, search, clearable);
+        let picker = fields::picker(self.combo(pick), format!("new-{id}"), &placeholder, &search, clearable);
         if pick != Pick::Tag {
             return picker;
         }
@@ -412,21 +413,21 @@ impl NewTicketForm {
         let mut col = div().named("new-ticket-fields").flex().flex_col().pr_3().text_sm();
 
         // ── Where ──
-        col = col.child(group("Where")).child(field("project", self.picker_field(Pick::Project, cx)));
+        col = col.child(group(crate::t!("newticket-where"))).child(field(crate::t!("tickets-field-project"), self.picker_field(Pick::Project, cx)));
 
         // ── Fields ──
         col = col
-            .child(group("Fields"))
-            .child(field("intent", self.picker_field(Pick::Intent, cx)))
-            .child(field("priority", self.picker_field(Pick::Priority, cx)))
-            .child(field("level", self.picker_field(Pick::Level, cx)))
-            .child(field("scope", self.picker_field(Pick::Scope, cx)))
+            .child(group(crate::t!("tickets-group-fields")))
+            .child(field(crate::t!("tickets-field-intent"), self.picker_field(Pick::Intent, cx)))
+            .child(field(crate::t!("tickets-field-priority"), self.picker_field(Pick::Priority, cx)))
+            .child(field(crate::t!("tickets-field-level"), self.picker_field(Pick::Level, cx)))
+            .child(field(crate::t!("tickets-field-scope"), self.picker_field(Pick::Scope, cx)))
             .child(fields::scope_note(self.scope))
-            .child(field("tags", self.picker_field(Pick::Tag, cx)))
-            .child(field("milestone", self.picker_field(Pick::Milestone, cx)));
+            .child(field(crate::t!("tickets-field-tags"), self.picker_field(Pick::Tag, cx)))
+            .child(field(crate::t!("tickets-field-milestone"), self.picker_field(Pick::Milestone, cx)));
 
         // ── People: the project's agents first ──
-        col = col.child(group("People")).child(field("assign to", self.picker_field(Pick::Assignee, cx)));
+        col = col.child(group(crate::t!("tickets-group-people"))).child(field(crate::t!("newticket-assign-to"), self.picker_field(Pick::Assignee, cx)));
 
         // ── Links ──
         let parent = match self.parent {
@@ -436,7 +437,7 @@ impl NewTicketForm {
                 .gap_2()
                 .child(crate::ui::ticketref::link("new-parent", parent, None))
                 .child(
-                    buttons::remove("new-parent-drop", "✕", "no parent")
+                    buttons::remove("new-parent-drop", "✕", crate::t!("newticket-no-parent"))
                         .text_xs()
                         .on_click(cx.listener(|form, _, _, cx| {
                             form.parent = None;
@@ -445,7 +446,7 @@ impl NewTicketForm {
                 ),
             None => crate::focusmode::on_hover(div().w(px(120.)).child(Input::new(&self.parent_input)), self.parent_input.read(cx).focus_handle(cx)),
         };
-        col = col.child(group("Links")).child(field("sub-ticket of", parent));
+        col = col.child(group(crate::t!("tickets-group-links"))).child(field(crate::t!("tickets-sub-ticket-of"), parent));
 
         crate::sidecol::column(cx)
             .px_4()
@@ -475,14 +476,14 @@ impl Render for NewTicketForm {
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(div().flex_1().text_xs().text_color(p().muted).child(if ctrl_enter_opens(cx) {
-                        "ctrl+enter files it and opens it · esc keeps the draft"
+                    .child(div().flex_1().text_xs().text_color(p().muted).child(crate::t!(if ctrl_enter_opens(cx) {
+                        "newticket-keys-open"
                     } else {
-                        "ctrl+enter files it and exits · esc keeps the draft"
-                    }))
+                        "newticket-keys-exit"
+                    })))
                     .child(crate::tips::target(
                         "new-ticket.file-exit",
-                        buttons::answer("new-ticket-file-exit", "File and exit")
+                        buttons::answer("new-ticket-file-exit", crate::t!("newticket-file-exit"))
                             // Filled in the warning colour, beside the accent of "File the ticket".
                             .warning()
                             // Filled, unless greyed while the other files it.
@@ -490,19 +491,19 @@ impl Render for NewTicketForm {
                             // At work: its spinner (the kit spins an icon only).
                             .when(self.filing == Some(false), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
                             .disabled(busy && self.filing != Some(false))
-                            .tooltip("Files it without opening it: back to where you were")
+                            .tooltip(crate::t!("newticket-file-exit-tip"))
                             .on_click(cx.listener(|form, _, window, cx| form.submit(false, window, cx))),
                     ))
                     .child(
-                        buttons::primary("new-ticket-file", "File the ticket")
+                        buttons::primary("new-ticket-file", crate::t!("newticket-file"))
                             .when(self.filing == Some(true), |b| b.icon(gpui_kit::component::IconName::LoaderCircle).loading(true))
                             .disabled(busy && self.filing != Some(true))
                             .on_click(cx.listener(|form, _, window, cx| form.submit(true, window, cx))),
                     ),
             );
         let title = match self.parent {
-            Some(parent) => format!("New sub-ticket of #{parent}"),
-            None => "New ticket".into(),
+            Some(parent) => crate::t!("newticket-title-sub", parent = parent),
+            None => crate::t!("newticket-title"),
         };
         div()
             .named("new-ticket")
@@ -524,7 +525,7 @@ impl Render for NewTicketForm {
                     .border_color(p().border)
                     .child(div().flex_1().text_lg().font_weight(FontWeight::BOLD).child(title))
                     .child(
-                        buttons::link("new-ticket-close", "✕  Esc")
+                        buttons::link("new-ticket-close", crate::t!("tickets-close-full"))
                             .text_sm()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseNewTicket))),
                     ),
