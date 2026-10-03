@@ -34,50 +34,33 @@ impl Action {
         Action::Link,
     ];
 
-    pub fn label(self) -> &'static str {
+    /// Its key: its element's id and its words' (`bulk-<key>`).
+    pub fn key(self) -> &'static str {
         match self {
-            Action::Approve => "Approve",
-            Action::Reject => "Reject",
-            Action::Close => "Close",
-            Action::Reopen => "Reopen",
-            Action::MarkRead => "Mark read",
-            Action::MarkUnread => "Mark unread",
-            Action::Snooze => "Snooze 3 days",
-            Action::Unsnooze => "Unsnooze",
-            Action::Step => "Mark as step",
-            Action::Link => "Link",
+            Action::Approve => "approve",
+            Action::Reject => "reject",
+            Action::Close => "close",
+            Action::Reopen => "reopen",
+            Action::MarkRead => "mark-read",
+            Action::MarkUnread => "mark-unread",
+            Action::Snooze => "snooze",
+            Action::Unsnooze => "unsnooze",
+            Action::Step => "step",
+            Action::Link => "link",
         }
+    }
+
+    pub fn label(self) -> String {
+        crate::t!(&format!("bulk-{}", self.key()))
     }
 
     /// What it says it did, in the summary.
-    fn done(self) -> &'static str {
-        match self {
-            Action::Approve => "approved",
-            Action::Reject => "rejected",
-            Action::Close => "closed",
-            Action::Reopen => "reopened",
-            Action::MarkRead => "marked read",
-            Action::MarkUnread => "marked unread",
-            Action::Snooze => "snoozed",
-            Action::Unsnooze => "unsnoozed",
-            Action::Step => "marked as step",
-            Action::Link => "linked",
-        }
+    fn done(self, count: usize) -> String {
+        crate::t!(&format!("bulk-{}.done", self.key()), count = count)
     }
 
-    pub fn about(self) -> &'static str {
-        match self {
-            Action::Approve => "Lets through the chosen tickets that wait for moderation",
-            Action::Reject => "Turns down the chosen tickets that wait for moderation",
-            Action::Close => "Closes the chosen tickets that are open (asks first)",
-            Action::Reopen => "Opens again the chosen tickets that are closed",
-            Action::MarkRead => "Marks read the chosen tickets that have something new",
-            Action::MarkUnread => "Marks unread the chosen tickets already read",
-            Action::Snooze => "Puts the chosen open tickets away for 3 days: they come back then",
-            Action::Unsnooze => "Brings back now the chosen tickets that are snoozed",
-            Action::Step => "Marks the last word of the chosen open tickets as a step: the agent carries on, nothing to decide",
-            Action::Link => "Links the chosen tickets: the newest relates to each of the others",
-        }
+    pub fn about(self) -> String {
+        crate::t!(&format!("bulk-{}.about", self.key()))
     }
 
     /// Asked before it goes.
@@ -157,9 +140,9 @@ pub fn run(aiball: &Aiball, action: Action, rows: &[TicketRow]) -> (String, bool
             }
         }
     }
-    let mut line = format!("{done} {}", action.done());
+    let mut line = action.done(done);
     if let Some(first) = failures.first() {
-        line.push_str(&format!(", {} refused ({first}{})", failures.len(), if failures.len() > 1 { "…" } else { "" }));
+        line.push_str(&crate::t!("bulk-refused", count = failures.len(), first = format!("{first}{}", if failures.len() > 1 { "…" } else { "" })));
     }
     (line, !failures.is_empty())
 }

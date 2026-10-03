@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Settings > Appearance > Language: the interface in English, French or Spanish (by default, the system's). Its words are being moved over surface by surface, the sessions' list, the agent's bar, the ticket panel, the new ticket, the settings, the keyboard shortcuts, the menu, the notifications, the small dialogs, the new project's wizard and the workspaces so far; one not yet translated shows in English. `tvty i18n` says how far each language goes.
+- Settings > Appearance > Language: the interface in English, French or Spanish (by default, the system's). Its words are being moved over surface by surface, the sessions' list, the agent's bar, the ticket panel, the new ticket, the settings, the keyboard shortcuts, the menu, the notifications, the small dialogs, the new project's wizard, the workspaces and the full ticket list so far; one not yet translated shows in English. `tvty i18n` says how far each language goes.
 - The agent's bar shows, greyed beside who drives the loop (bottom left), the key that cycles it: F9, or the one set in the keyboard shortcuts.
 - A running session can be stopped from its row in the sessions' list: a red stop under the pointer, a second click to confirm. aiball stops its loop, which stays restartable (it moves to IDLE); a stop no loop received is said, not taken for done.
 - An agent whose tool calls Claude Code refused in the last hour (auto mode's classifier, a deny rule) shows a warning and their count on its row in the sessions' list, the reason under the pointer; folded, its mark turns to the warning colour. A refused agent stops there. Needs aiball 0.55.

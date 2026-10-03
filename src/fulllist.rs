@@ -39,14 +39,14 @@ enum Sort {
 impl Sort {
     const ALL: [Sort; 5] = [Sort::Activity, Sort::Turn, Sort::Priority, Sort::Created, Sort::Number];
 
-    fn title(self) -> &'static str {
-        match self {
-            Sort::Activity => "Last activity",
-            Sort::Turn => "Whose turn (bands)",
-            Sort::Priority => "Priority",
-            Sort::Created => "Created",
-            Sort::Number => "Number",
-        }
+    fn title(self) -> String {
+        crate::t!(match self {
+            Sort::Activity => "fulllist-sort-activity",
+            Sort::Turn => "fulllist-sort-turn",
+            Sort::Priority => "fulllist-sort-priority",
+            Sort::Created => "fulllist-sort-created",
+            Sort::Number => "fulllist-sort-number",
+        })
     }
 }
 
@@ -105,7 +105,7 @@ impl FullList {
     pub fn new(aiball: Aiball, scope: Option<String>, window: &mut Window, cx: &mut Context<Self>) -> Self {
         // The side column's width, dragged here or on another full page.
         cx.observe_global::<crate::sidecol::SideWidth>(|_, cx| cx.notify()).detach();
-        let search = cx.new(|cx| InputState::new(window, cx).placeholder("Search titles…"));
+        let search = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("fulllist-search")));
         // The rows a notification is about shine while it is up.
         cx.subscribe(&crate::bus::bus(cx), |_, _, signal: &crate::bus::Signal, cx| {
             if matches!(signal, crate::bus::Signal::Notices) {
@@ -246,7 +246,7 @@ impl FullList {
                 list.selected.clear();
                 list.anchor = None;
                 let activity = if failed {
-                    crate::activity::Activity::failed(None, action.label(), line)
+                    crate::activity::Activity::failed(None, &action.label(), line)
                 } else {
                     crate::activity::Activity::done(None, line)
                 };
@@ -262,38 +262,38 @@ impl FullList {
         use crate::bulk::Action;
         let rows = self.selected_rows();
         let refs: Vec<&TicketRow> = rows.iter().collect();
-        let link = |id: &'static str, label: &'static str| buttons::link(id, label).text_xs();
+        let link = |id: &'static str, label: String| buttons::link(id, label).text_xs();
         let mut side = div()
             .named("bulk-side")
             .flex()
             .flex_col()
             .gap_1()
             .p_4()
-            .child(div().text_lg().font_weight(FontWeight::BOLD).child(format!("{} selected", self.selected.len())))
+            .child(div().text_lg().font_weight(FontWeight::BOLD).child(crate::t!("fulllist-selected", count = self.selected.len())))
             .child(
                 div()
                     .flex()
                     .gap_2()
                     .pb_2()
-                    .child(link("bulk-all", "Select all shown").on_click(cx.listener(|list, _, _, cx| list.select_all(cx))))
-                    .child(link("bulk-clear", "Clear · Esc").on_click(cx.listener(|list, _, _, cx| list.clear_selection(cx)))),
+                    .child(link("bulk-all", crate::t!("fulllist-select-all")).on_click(cx.listener(|list, _, _, cx| list.select_all(cx))))
+                    .child(link("bulk-clear", crate::t!("fulllist-clear")).on_click(cx.listener(|list, _, _, cx| list.clear_selection(cx)))),
             )
-            .child(group("Actions"))
+            .child(group(crate::t!("fulllist-actions")))
             .child(
                 div()
                     .pb_1()
                     .text_xs()
                     .text_color(p().muted)
-                    .child("Each acts on the chosen tickets it fits: how many, on the right."),
+                    .child(crate::t!("fulllist-actions-about")),
             );
         if self.working {
-            return side.child(div().text_color(p().muted).child("Working…"));
+            return side.child(div().text_color(p().muted).child(crate::t!("fulllist-working")));
         }
         for action in Action::ALL {
             let count = action.count(&refs);
             let asked = self.confirm == Some(action);
             let row = div()
-                .named(SharedString::from(format!("bulk-{}", action.label())))
+                .named(SharedString::from(format!("bulk-{}", action.key())))
                 .flex()
                 .items_center()
                 .gap_2()
@@ -302,7 +302,7 @@ impl FullList {
                 .rounded_md()
                 .tip(action.about())
                 .child(div().flex_1().child(action.label()))
-                .child(div().text_xs().text_color(p().muted).child(format!("{count} of {}", refs.len())));
+                .child(div().text_xs().text_color(p().muted).child(crate::t!("fulllist-count-of", count = count, of = refs.len())));
             let row = if count == 0 {
                 row.text_color(p().muted.opacity(0.6))
             } else {
@@ -325,13 +325,13 @@ impl FullList {
                         .px_2()
                         .pb_2()
                         .text_sm()
-                        .child(format!("{} {count} ticket{}?", action.label(), if count == 1 { "" } else { "s" }))
+                        .child(crate::t!("fulllist-confirm", action = action.label(), count = count))
                         .child(
                             buttons::answer("bulk-confirm", action.label())
                                 .warning()
                                 .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, cx))),
                         )
-                        .child(buttons::secondary("bulk-cancel", "Cancel").on_click(cx.listener(|list, _, _, cx| {
+                        .child(buttons::secondary("bulk-cancel", crate::t!("fulllist-cancel")).on_click(cx.listener(|list, _, _, cx| {
                             list.confirm = None;
                             cx.notify();
                         }))),
@@ -453,7 +453,7 @@ impl FullList {
             .gap_0p5()
             .p_3()
             .text_sm()
-            .child(group("Projects"));
+            .child(group(crate::t!("fulllist-projects")));
         let mut all_alerts = Alerts::of(
             self.projects.iter().filter_map(|p| self.open.get(p)).flatten(),
             None,
@@ -461,7 +461,7 @@ impl FullList {
         all_alerts.critical = self.criticals(&self.projects).first().map(|t| t.id);
         side = side.child(self.choice(
             "scope-all",
-            "All projects".into(),
+            crate::t!("fulllist-all-projects").into(),
             self.scope.is_none(),
             Some(all_alerts.badges("full-all").into_any_element()),
             cx.listener(|list, _, _, cx| list.set_scope(None, cx)),
@@ -481,7 +481,7 @@ impl FullList {
             ));
         }
 
-        side = side.child(group("Bands"));
+        side = side.child(group(crate::t!("fulllist-bands")));
         for band in BANDS {
             if band == Band::Closed && !self.with_closed {
                 continue;
@@ -499,7 +499,7 @@ impl FullList {
             ));
         }
 
-        side = side.child(group("Sort"));
+        side = side.child(group(crate::t!("fulllist-sort")));
         for sort in Sort::ALL {
             let chosen = self.sort == sort;
             let arrow = if !chosen { "" } else if self.reversed { "↑" } else { "↓" };
@@ -521,21 +521,21 @@ impl FullList {
         }
 
         side = side
-            .child(group("Filters"))
+            .child(group(crate::t!("fulllist-filters")))
             .child(
                 div()
                     .flex()
                     .gap_1()
-                    .child(self.toggle("open-only", "Open", !self.with_closed, cx.listener(|list, _, _, cx| {
+                    .child(self.toggle("open-only", crate::t!("fulllist-open"), !self.with_closed, cx.listener(|list, _, _, cx| {
                         list.set_with_closed(false, cx)
                     })))
-                    .child(self.toggle("with-closed", "All", self.with_closed, cx.listener(|list, _, _, cx| {
+                    .child(self.toggle("with-closed", crate::t!("fulllist-all"), self.with_closed, cx.listener(|list, _, _, cx| {
                         list.set_with_closed(true, cx)
                     })))
-                    .child(self.toggle("unread-only", "Unread", self.unread_only, cx.listener(|list, _, _, cx| {
+                    .child(self.toggle("unread-only", crate::t!("fulllist-unread"), self.unread_only, cx.listener(|list, _, _, cx| {
                         list.set_unread_only(!list.unread_only, cx)
                     })))
-                    .when(self.loading, |d| d.child(div().text_xs().text_color(p().muted).child("reading…"))),
+                    .when(self.loading, |d| d.child(div().text_xs().text_color(p().muted).child(crate::t!("fulllist-reading-small")))),
             )
             .child(div().pt_1().child(Input::new(&self.search)));
 
@@ -591,7 +591,7 @@ impl FullList {
     fn toggle(
         &self,
         id: &'static str,
-        label: &'static str,
+        label: String,
         on: bool,
         on_click: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static,
     ) -> Stateful<Div> {
@@ -608,7 +608,7 @@ impl FullList {
     fn row(&self, ticket: &TicketRow, state: RowState, cx: &mut Context<Self>) -> impl IntoElement + use<> {
         let yours = state.turn == Turn::You;
         let user = &self.aiball.user;
-        let who = |name: &str| if name == user { "you".to_string() } else { name.to_string() };
+        let who = |name: &str| if name == user { crate::t!("tickets-you") } else { name.to_string() };
 
         let title = div()
             .flex()
@@ -636,11 +636,11 @@ impl FullList {
             .when_some(ticket.priority.as_deref().and_then(icons::priority), |d, icon| {
                 let priority = ticket.priority.clone().unwrap_or_default();
                 d.child(
-                    icons::labelled(icon, icons::priority_colour(&priority), 14., priority.clone())
+                    icons::labelled(icon, icons::priority_colour(&priority), 14., crate::ui::fields::value_said("priority", &priority))
                         .text_xs()
                         .text_color(p().muted)
                         .named("priority")
-                        .tip(format!("priority: {priority}")),
+                        .tip(crate::t!("fulllist-priority", priority = crate::ui::fields::value_said("priority", &priority))),
                 )
             })
             .children(crate::panel::comment_count(ticket, &self.aiball.user).map(|c| c.flex_none().text_xs()))
@@ -650,43 +650,42 @@ impl FullList {
 
         let mut facts: Vec<String> = Vec::new();
         if state.glyph == Some(crate::rowstate::Glyph::Rejected) {
-            facts.push("rejected".into());
+            facts.push(crate::t!("fulllist-rejected"));
         }
         if let Some(intent) = &ticket.intent {
-            facts.push(intent.clone());
+            facts.push(crate::ui::fields::value_said("intent", intent));
         }
         if let Some(level) = ticket.level.as_deref().filter(|l| *l != "task") {
-            facts.push(level.to_string());
+            facts.push(crate::ui::fields::value_said("level", level));
         }
         if let Some(title) = ticket.milestone.as_ref().and_then(|m| m.title.clone()) {
-            facts.push(format!("milestone {title}"));
+            facts.push(crate::t!("fulllist-milestone", title = title));
         }
         if let Some(holder) = ticket.holder() {
-            let held = if ticket.held.assigned() { "assigned to" } else { "claimed by" };
-            facts.push(format!("{held} {}", who(holder)));
+            facts.push(crate::t!(if ticket.held.assigned() { "fulllist-assigned-to" } else { "fulllist-claimed-by" }, who = who(holder)));
         }
         if let Some(speaker) = &ticket.last_speaker {
-            facts.push(format!("{} spoke last", who(speaker)));
+            facts.push(if speaker == user { crate::t!("fulllist-you-spoke-last") } else { crate::t!("fulllist-spoke-last", who = speaker.clone()) });
         }
         if let Some(usage) = &ticket.token_usage {
             let total = usage.tokens_in + usage.tokens_out + usage.cache_w;
             if total > 0 {
-                facts.push(format!("{} tok", count(total)));
+                facts.push(crate::t!("tickets-tokens", count = count(total)));
             }
         }
         if ticket.blocked {
-            facts.push("blocked".into());
+            facts.push(crate::t!("fulllist-blocked"));
         }
         if let Some(until) = ticket.postponed_until.as_deref() {
-            facts.push(format!("snoozed until {}", until.get(..10).unwrap_or(until)));
+            facts.push(crate::t!("tickets-snoozed-until", until = until.get(..10).unwrap_or(until)));
         }
         if ticket.has_payload {
-            facts.push("payload".into());
+            facts.push(crate::t!("fulllist-payload"));
         }
         if ticket.scope.as_deref().is_some_and(|s| s != "default") {
-            facts.push(ticket.scope.clone().unwrap_or_default());
+            facts.push(crate::ui::fields::value_said("scope", ticket.scope.as_deref().unwrap_or_default()));
         }
-        facts.push(format!("by {} · {}", who(&ticket.by_agent), ticket.created_at.get(..10).unwrap_or("")));
+        facts.push(crate::t!("fulllist-by", who = who(&ticket.by_agent), date = ticket.created_at.get(..10).unwrap_or("")));
 
         let meta = div()
             .flex()
@@ -697,7 +696,7 @@ impl FullList {
             .text_color(p().muted)
             .children(crate::panel::critical_chip(ticket))
             .when(ticket.hot, |d| {
-                d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).named("hot").tip("an agent was active on it lately"))
+                d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).named("hot").tip(crate::t!("fulllist-hot")))
             })
             .children(ticket.tags.iter().map(|tag| {
                 div().px_1().rounded_sm().border_1().border_color(p().border).child(tag.name.clone())
@@ -777,26 +776,22 @@ impl Render for FullList {
         let criticals = self.criticals(&self.scoped());
         if self.band.is_none() && !self.unread_only && query.is_empty() && !criticals.is_empty() {
             let user = self.aiball.user.clone();
-            list = list.child(div().px_4().child(group("Critical — what holds the most back")));
+            list = list.child(div().px_4().child(group(crate::t!("fulllist-critical"))));
             for ticket in criticals {
                 list = list.child(self.row(ticket, rowstate::of(ticket, &user), cx));
             }
-            list = list.child(div().px_4().child(group("All")));
+            list = list.child(div().px_4().child(group(crate::t!("fulllist-all-group"))));
         }
         for (state, ticket) in &shown {
             list = list.child(self.row(ticket, *state, cx));
         }
         if shown.is_empty() {
-            list = list.child(div().p_4().text_color(p().muted).child(if self.loading {
-                "Reading…"
-            } else {
-                "No ticket here."
-            }));
+            list = list.child(div().p_4().text_color(p().muted).child(crate::t!(if self.loading { "fulllist-reading" } else { "fulllist-none" })));
         }
 
         let title = match &self.scope {
-            Some(project) => format!("Tickets — {project}"),
-            None => "Tickets — all projects".to_string(),
+            Some(project) => crate::t!("fulllist-title", project = project.clone()),
+            None => crate::t!("fulllist-title-all"),
         };
         // What the scope's tickets ask of you, as the side lists it.
         let alerts = match &self.scope {
@@ -827,11 +822,11 @@ impl Render for FullList {
                     .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
                     .child(div().pl_3().child(alerts.badges("full-title")))
                     .child(div().flex_1())
-                    .child(div().pr_4().text_xs().text_color(p().muted).child(format!("{} shown", shown.len())))
+                    .child(div().pr_4().text_xs().text_color(p().muted).child(crate::t!("fulllist-shown", count = shown.len())))
                     .child(
-                        buttons::link("full-list-new", "+ New ticket")
+                        buttons::link("full-list-new", crate::t!("fulllist-new"))
                             .text_sm()
-                            .tip(buttons::hint(cx, "A new ticket", "ticket.new"))
+                            .tip(buttons::hint(cx, &crate::t!("tickets-new-tip"), "ticket.new"))
                             .on_click(cx.listener(|list, _, _, cx| {
                                 let project = list.scope.clone();
                                 crate::bus::emit(cx, crate::bus::Signal::AskNewTicket { project, parent: None })
@@ -839,7 +834,7 @@ impl Render for FullList {
                     )
                     .child(buttons::separator())
                     .child(
-                        buttons::link("full-list-close", "✕  Esc")
+                        buttons::link("full-list-close", crate::t!("tickets-close-full"))
                             .text_sm()
                             .on_click(cx.listener(|_, _, _, cx| cx.emit(CloseFullList))),
                     ),
@@ -855,7 +850,7 @@ impl Render for FullList {
     }
 }
 
-fn group(title: &'static str) -> Div {
+fn group(title: String) -> Div {
     div()
         .pt_3()
         .pb_1()

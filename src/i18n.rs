@@ -521,6 +521,11 @@ mod tests {
         for action in ["created", "added", "rewritten", "patched", "overwrote", "kept"] {
             built.push(format!("newproject-will-{action}"));
         }
+        for action in crate::bulk::Action::ALL {
+            let id = format!("bulk-{}", action.key());
+            built.extend([format!("{id}.about"), format!("{id}.done")]);
+            built.push(id);
+        }
         // Every command by its name; every fixed key, and its keys.
         built.extend(crate::keymap::COMMANDS.iter().map(|c| format!("keys-{}", c.name.replace(['.', '_'], "-"))));
         for id in crate::options::FIXED_KEYS {
