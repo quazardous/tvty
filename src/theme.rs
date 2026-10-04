@@ -317,7 +317,7 @@ pub fn drop_target() -> Hsla {
 /// that it reads as the update's yellow, one step further.
 pub fn pending() -> Hsla {
     let warning = p().warning;
-    hsla(warning.h * 0.6, warning.s.max(0.7), warning.l, warning.a)
+    hsla(warning.h * 0.3, warning.s.max(0.75), warning.l, warning.a)
 }
 
 /// What was imported, not typed: a choice filled from a folder's
