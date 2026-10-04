@@ -204,6 +204,11 @@ pub struct Shell {
     /// ends and comes back (the loop starts again), and is opened again
     /// rather than left on its end screen.
     pub(super) restarts_asked: HashMap<String, std::time::Instant>,
+    /// The agent of each session expecting a restart: its end is the
+    /// restart even when the board no longer ties the two by then.
+    pub(super) restart_sessions: HashMap<String, String>,
+    /// The agents whose bar says a restart is pending, as last seen.
+    pub(super) restarts_pending: HashSet<String>,
     /// A project shown in the panel from the projects' list, with none of
     /// its sessions open; until a terminal is chosen.
     pub(super) project_shown: Option<String>,
@@ -832,6 +837,8 @@ impl Shell {
             starting: None,
             open_when_running: None,
             restarts_asked: HashMap::new(),
+            restart_sessions: HashMap::new(),
+            restarts_pending: HashSet::new(),
             copies: HashSet::new(),
             controls_taken: HashSet::new(),
             retry_generation: 0,
@@ -1068,6 +1075,25 @@ impl Shell {
         self.stack_terminals(&mut board, cx);
         self.order_groups(&mut board);
         self.keep_sidebar_order(&board);
+        // A restart held until Claude is idle (its bar says it pending,
+        // however long): its session ending is the restart, not an end.
+        // The minute after starts when the bar stops saying it.
+        let pending: HashSet<String> =
+            board.bars.iter().filter(|(_, read)| !read.stale && read.bar.alerts.restart_pending).map(|(agent, _)| agent.clone()).collect();
+        for agent in pending.union(&self.restarts_pending) {
+            self.restarts_asked.insert(agent.clone(), std::time::Instant::now());
+        }
+        if pending != self.restarts_pending {
+            log::info!("restarts pending: {pending:?}, sessions expecting one: {:?}", self.restart_sessions);
+        }
+        self.restarts_pending = pending;
+        for project in &board.projects {
+            for terminal in &project.terminals {
+                if let Some(agent) = terminal.agent.as_ref().filter(|a| self.restarts_asked.contains_key(*a)) {
+                    self.restart_sessions.insert(terminal.session.clone(), agent.clone());
+                }
+            }
+        }
         if self.board != board {
             self.board = board;
             // The board's tickets title their references at once.

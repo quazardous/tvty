@@ -90,8 +90,12 @@ impl Shell {
             cx.notify();
             return;
         }
+        // Kept while the bar says the restart is pending, a minute after.
         self.restarts_asked.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
-        if agent.is_some_and(|a| self.restarts_asked.contains_key(&a)) {
+        let asked = |a: &String| self.restarts_pending.contains(a) || self.restarts_asked.contains_key(a);
+        let expected = agent.as_ref().is_some_and(asked) || self.restart_sessions.remove(session).is_some_and(|a| asked(&a));
+        log::info!("session {session} ended (agent {agent:?}): {}", if expected { "a restart asked, opened again once back" } else { "its end shown" });
+        if expected {
             self.open_when_running = Some(session.to_string());
             cx.notify();
             return;

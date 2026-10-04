@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- After Claude Code's update, the restart asked from the agent bar opens its terminal again, even when it waited minutes for Claude to be idle, instead of saying the session ended.
+
 ## [0.13.0-beta.1] - 2026-10-03
 
 ### Added
