@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The agent bar: a click on "restart pending" offers to take the restart back.
 - Settings > Layout: how many lines of history each terminal keeps (5000 by default, 10000 before), applied to the open terminals at once; fewer lines, less memory.
 
 ### Fixed

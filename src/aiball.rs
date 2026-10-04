@@ -1249,6 +1249,14 @@ impl Aiball {
         self.rpc_do("consumer.restart_claude", json!({ "name": agent, "when_idle": true }))
     }
 
+    /// Takes back a restart of an agent's Claude held until it is idle:
+    /// whether one was pending (false: nothing done, no error); none when
+    /// its loop is too old to say (nothing sent to it).
+    pub fn cancel_restart_claude(&self, agent: &str) -> anyhow::Result<Option<bool>> {
+        let answer: Value = self.call("consumer.restart_claude", json!({ "name": agent, "cancel": true }))?;
+        Ok(answer.get("cancelled").and_then(Value::as_bool))
+    }
+
     /// Marks a question (`- [ ]` in a comment) answered by a comment.
     pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
         self.rpc_do("message.answer_question", json!({ "id": message, "qid": question, "answered_in": answered_in }))

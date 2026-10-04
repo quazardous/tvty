@@ -259,12 +259,13 @@ impl Shell {
                 _ => ("agentbar-update", "agentbar-update-tip"),
             };
             let (word, tip) = (crate::t!(word), crate::t!(tip));
-            let chip = buttons::chip_if("agent-restart", "⟳", !restarting && !armed)
+            // Pending, a click offers to take it back.
+            let chip = buttons::chip_if("agent-restart", "⟳", !restarting)
                 .child(word)
                 .border_color(p().warning)
                 .text_color(p().warning)
                 .when(armed || asked, |d| d.bg(p().active))
-                .when(!restarting && !armed, |d| {
+                .when(!restarting, |d| {
                     d.on_click(cx.listener({
                         let target = target.clone();
                         move |shell, _, _, cx| {
@@ -276,7 +277,24 @@ impl Shell {
                 .tip(tip);
             let busy = b.phase != "idle";
             // Said before done: a restart interrupts nothing, it waits.
+            let cancel = target.clone();
             let line = asked.then(|| {
+                if armed {
+                    return chipbar::line("agent-restart-bar", p().warning)
+                        .child(item().child(crate::t!("agentbar-restart-cancel-ask")))
+                        .child(
+                            buttons::answer("agent-restart-takeback", crate::t!("agentbar-restart-cancel"))
+                                .warning()
+                                .on_click(cx.listener(move |shell, _, _, cx| {
+                                    shell.restart_asked = None;
+                                    shell.cancel_restart_claude(cancel.clone(), cx)
+                                })),
+                        )
+                        .child(buttons::secondary("agent-restart-keep", crate::t!("agentbar-restart-keep")).on_click(cx.listener(|shell, _, _, cx| {
+                            shell.restart_asked = None;
+                            cx.notify();
+                        })));
+                }
                 chipbar::line("agent-restart-bar", p().warning)
                     .child(item().child(crate::t!(if busy { "agentbar-restart-ask-busy" } else { "agentbar-restart-ask" })))
                     .child(
@@ -735,6 +753,33 @@ impl Shell {
                         crate::activity::Activity::done(None, crate::t!("agentbar-restart-done", agent = agent.clone()))
                     }
                     Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-restart-failed", agent = agent.clone()), short_error(&format!("{error:#}"))),
+                };
+                crate::activity::publish(cx, activity);
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    /// Takes back the restart of `agent`'s Claude held until it is idle,
+    /// off the UI thread: its bar no longer says it pending; the update
+    /// stays offered.
+    fn cancel_restart_claude(&mut self, agent: String, cx: &mut Context<Self>) {
+        // No longer expected: its session ending now would be an end.
+        self.restarts_asked.remove(&agent);
+        self.restarts_pending.remove(&agent);
+        cx.notify();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let name = agent.clone();
+            let done = cx.background_executor().spawn(async move { aiball.cancel_restart_claude(&name) }).await;
+            let _ = this.update(cx, |_, cx| {
+                let activity = match done {
+                    Ok(Some(true)) => crate::activity::Activity::done(None, crate::t!("agentbar-restart-cancelled", agent = agent.clone())),
+                    Ok(Some(false)) => crate::activity::Activity::done(None, crate::t!("agentbar-restart-none", agent = agent.clone())),
+                    // A loop older than the cancel: told nothing, it restarts.
+                    Ok(None) => crate::activity::Activity::failed(None, &crate::t!("agentbar-restart-cancel-failed", agent = agent.clone()), crate::t!("agentbar-restart-too-old")),
+                    Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-restart-cancel-failed", agent = agent.clone()), short_error(&format!("{error:#}"))),
                 };
                 crate::activity::publish(cx, activity);
                 cx.notify();
