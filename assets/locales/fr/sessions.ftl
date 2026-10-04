@@ -51,6 +51,7 @@ sessions-attached = { $others ->
 sessions-attached-copy = {" "}: ouverte ici en copie
 sessions-host-shell = un terminal sur l'hôte d'aiball, sans Claude
 sessions-update = son Claude Code a installé une mise à jour : redémarre-le depuis sa barre
+sessions-update-pending = son redémarrage est demandé : son Claude redémarre dès qu'il est inactif (le badge est sur sa barre)
 sessions-starting = démarrage…
 sessions-start = ▶ démarrer
 sessions-astray = ⚠ dossier de {$other}

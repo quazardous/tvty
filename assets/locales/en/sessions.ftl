@@ -51,6 +51,7 @@ sessions-attached = { $others ->
 sessions-attached-copy = : opened here as a copy
 sessions-host-shell = a terminal on aiball's host, without Claude
 sessions-update = its Claude Code installed an update: restart it from its bar
+sessions-update-pending = its restart is asked: its Claude restarts as soon as it is idle (the badge is on its bar)
 sessions-starting = starting…
 sessions-start = ▶ start
 sessions-astray = ⚠ {$other}'s folder

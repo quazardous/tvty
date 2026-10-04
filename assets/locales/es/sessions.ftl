@@ -51,6 +51,7 @@ sessions-attached = { $others ->
 sessions-attached-copy = : abierta aquí como copia
 sessions-host-shell = un terminal en el host de aiball, sin Claude
 sessions-update = su Claude Code instaló una actualización: reinícialo desde su barra
+sessions-update-pending = su reinicio está pedido: su Claude se reinicia en cuanto está inactivo (la insignia está en su barra)
 sessions-starting = arrancando…
 sessions-start = ▶ arrancar
 sessions-astray = ⚠ carpeta de {$other}

@@ -4734,11 +4734,14 @@ impl Shell {
             let attached = self.attached(&session).filter(|a| a.others > 0);
             let counts = self.counts_of(&project.name, terminal);
             let state = terminal.status.as_ref().and_then(|s| s.colour());
+            // Claude Code updated: offered (yellow), or its restart asked
+            // and pending until Claude is idle (blue).
             let restart = terminal
                 .agent
                 .as_ref()
                 .and_then(|a| self.board.bars.get(a))
-                .is_some_and(|b| !b.stale && b.bar.alerts.restart_needed);
+                .filter(|b| !b.stale && (b.bar.alerts.restart_needed || b.bar.alerts.restart_pending))
+                .map(|b| b.bar.alerts.restart_pending);
             // Its tool calls refused lately: a flag on its row.
             let denied = terminal
                 .agent
@@ -4869,13 +4872,13 @@ impl Shell {
                                         )
                                     })
                                     // Its Claude Code waits for a restart (the button is on its bar).
-                                    .when(restart, |d| {
+                                    .when_some(restart, |d, pending| {
                                         d.child(
                                             div()
                                                 .named("restart")
-                                                .text_color(p().warning)
+                                                .text_color(if pending { p().accent } else { p().warning })
                                                 .child("⟳")
-                                                .tip(crate::t!("sessions-update")),
+                                                .tip(crate::t!(if pending { "sessions-update-pending" } else { "sessions-update" })),
                                         )
                                     })
                                     .children(counts.map(|c| c.badges(format!("row-{}", terminal.session)))),

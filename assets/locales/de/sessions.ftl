@@ -51,6 +51,7 @@ sessions-attached = { $others ->
 sessions-attached-copy = : hier als Kopie geöffnet
 sessions-host-shell = ein Terminal auf aiballs Host, ohne Claude
 sessions-update = sein Claude Code hat ein Update installiert: starte es über seine Leiste neu
+sessions-update-pending = sein Neustart ist angefordert: sein Claude startet neu, sobald er untätig ist (das Abzeichen ist auf seiner Leiste)
 sessions-starting = startet…
 sessions-start = ▶ starten
 sessions-astray = ⚠ Ordner von {$other}
