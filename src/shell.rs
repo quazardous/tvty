@@ -4079,6 +4079,14 @@ impl Shell {
         );
         crate::activity::set_own(cx, notifications.own);
         crate::wheel::set_speed(new.scroll.speed);
+        // The history kept, in the terminals open now too: fewer lines let
+        // the oldest go at once.
+        if old.terminal != new.terminal {
+            crate::terminal::set_scrollback(new.terminal.scrollback());
+            for terminal in self.terminals.values() {
+                terminal.read(cx).take_scrollback();
+            }
+        }
         let (newest_first, panel_newest_first) = (new.tickets.newest_first, new.tickets.panel_newest_first);
         self.panel.update(cx, |panel, cx| panel.set_newest_first(newest_first, panel_newest_first, cx));
         if old.tickets.summary_open != new.tickets.summary_open {

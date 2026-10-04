@@ -41,6 +41,20 @@ pub const FONT_SIZE_MAX: f32 = 32.;
 /// The size chosen, as `f32` bits: one for every terminal.
 static FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x4160_0000);
 
+/// The lines of history a terminal keeps (`terminal.scrollback`).
+static SCROLLBACK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(crate::settings::SCROLLBACK);
+
+/// Sets the lines of history the terminals keep; each open one takes it
+/// when told (`TerminalView::take_scrollback`), a new one at once.
+pub fn set_scrollback(lines: usize) {
+    SCROLLBACK.store(lines, std::sync::atomic::Ordering::Relaxed);
+}
+
+/// A terminal's emulator settings: alacritty's, its history as set.
+fn config() -> Config {
+    Config { scrolling_history: SCROLLBACK.load(std::sync::atomic::Ordering::Relaxed), ..Config::default() }
+}
+
 /// Sets the terminals' font size, within its bounds; answers the size kept.
 /// Each terminal takes it at its next frame (its grid, then its PTY, resize).
 pub fn set_font_size(size: f32) -> f32 {
@@ -261,7 +275,7 @@ impl TerminalView {
         let (tx, rx) = unbounded();
         let listener = Listener(tx);
         let (columns, lines) = (80u16, 24u16);
-        let term = Term::new(Config::default(), &TermSize::new(columns as usize, lines as usize), listener.clone());
+        let term = Term::new(config(), &TermSize::new(columns as usize, lines as usize), listener.clone());
         let term = Arc::new(FairMutex::new(term));
         let backend = match crate::attach::Attach::connect(socket, (columns, lines), interactive, term.clone(), listener.clone()) {
             Ok(attach) => Backend::Attach(attach),
@@ -285,7 +299,7 @@ impl TerminalView {
         let listener = Listener(tx);
         let (columns, lines) = (80u16, 24u16);
         let term = Term::new(
-            Config::default(),
+            config(),
             &TermSize::new(columns as usize, lines as usize),
             listener.clone(),
         );
@@ -370,6 +384,11 @@ impl TerminalView {
             hover_link: None,
             menu_link: None,
         }
+    }
+
+    /// Takes the lines of history set now: fewer let the oldest go.
+    pub fn take_scrollback(&self) {
+        self.term.lock().set_options(config());
     }
 
     /// Its connection to a session aiball's host holds, if it is one.
@@ -1942,7 +1961,8 @@ fn screen_copy(term: &Term<Listener>) -> Term<Listener> {
     let (columns, lines) = (term.columns(), term.screen_lines());
     // Its events go nowhere.
     let (sender, _) = unbounded();
-    let mut copy = Term::new(Config::default(), &TermSize::new(columns, lines), Listener(sender));
+    // The screen only: no history to keep for it.
+    let mut copy = Term::new(Config { scrolling_history: 0, ..Config::default() }, &TermSize::new(columns, lines), Listener(sender));
     let offset = term.grid().display_offset() as i32;
     for line in 0..lines as i32 {
         for column in 0..columns {

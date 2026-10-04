@@ -25,11 +25,30 @@ pub struct Preferences {
     pub appearance: Appearance,
     pub notifications: Notifications,
     pub scroll: Scroll,
+    pub terminal: Terminal,
     pub mouse: Mouse,
     pub tickets: Tickets,
     pub sessions: Sessions,
     pub updates: Updates,
     pub tips: Tips,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Terminal {
+    /// The lines of history each terminal keeps; none: `SCROLLBACK`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scrollback: Option<usize>,
+}
+
+/// The lines of history a terminal keeps by default: about 19 MB at most
+/// for a terminal 160 columns wide (a cell is 24 bytes).
+pub const SCROLLBACK: usize = 5000;
+
+impl Terminal {
+    pub fn scrollback(&self) -> usize {
+        self.scrollback.unwrap_or(SCROLLBACK)
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -309,6 +328,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: true, on: "shown", off: "hidden" },
     },
     Setting {
+        key: "terminal.scrollback",
+        page: "Layout",
+        group: "Terminal",
+        label: "Lines of history",
+        about: "What each terminal keeps to scroll back through. More costs memory: about 4 KB a line at 160 columns, so 5000 lines is about 19 MB a terminal at most. A tmux session's history is tmux's own (its history-limit).",
+        kind: Kind::Number { min: 0., max: 100000., step: 1000., default: 5000., unit: "", integer: true, slider: false },
+    },
+    Setting {
         key: "scroll.speed",
         page: "Appearance",
         group: "Mouse",
@@ -475,6 +502,7 @@ impl Stored for Preferences {
                 copied: true,
             },
             scroll: Scroll { speed: f32_of("scroll_speed").unwrap_or(1.) },
+            terminal: Terminal::default(),
             mouse: Mouse::default(),
             tickets: Tickets { newest_first: old.get("thread_newest_first").and_then(Value::as_bool).unwrap_or(false), panel_overlay: false, summary_open: false, panel_newest_first: false, ctrl_enter_opens: false },
             sessions: Sessions::default(),

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Settings > Layout: how many lines of history each terminal keeps (5000 by default, 10000 before), applied to the open terminals at once; fewer lines, less memory.
+
 ### Fixed
 
 - After Claude Code's update, the restart asked from the agent bar opens its terminal again, even when it waited minutes for Claude to be idle, instead of saying the session ended.
