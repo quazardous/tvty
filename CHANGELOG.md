@@ -24,28 +24,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- The agent bar: a click on "restart pending" offers to take the restart back; the sessions list shows a pending restart too (its ⟳ in red-orange).
-- Settings > Layout: how many lines of history each terminal keeps (5000 by default, 10000 before), applied to the open terminals at once; fewer lines, less memory.
-
-### Fixed
-
-- After Claude Code's update, the restart asked from the agent bar opens its terminal again, even when it waited minutes for Claude to be idle, instead of saying the session ended.
-
-## [0.13.0-beta.1] - 2026-10-03
+## [0.13.0-beta.1] - 2026-10-04
 
 ### Added
 
 - The sessions list: drag a project, anywhere on it, to put the projects in your own order (⇅ steps between recent, alphabetical and yours).
 - In French, Spanish and German too: aiball's settings, the agent bar's passing word, how long a critical ticket went quiet, and a new project's steps.
 - The terminal has a scrollbar, like the rest of tvty: it says where you are in the history (tmux's too), and a drag or a click scrolls it. Its place is always kept, so nothing shifts when it fills.
+- Settings > Layout: how many lines of history each terminal keeps (5000 by default, 10000 before), applied to the open terminals at once; fewer lines, less memory.
+- The agent bar: a click on "restart pending" offers to take the restart back; the sessions list shows a pending restart too (its ⟳ in red-orange).
 - New tips: your own order of projects, the title bar's language, and stopping an agent from the list.
 
 ### Fixed
 
-- The agent bar: the AFK countdown sits on the same line as F9.
+- After Claude Code's update, the restart asked from the agent bar opens its terminal again, even when it waited minutes for Claude to be idle, instead of saying the session ended.
 - Typing in a new ticket, the ticket list or the settings no longer lags while agents write behind them.
+- The agent bar: the AFK countdown sits on the same line as F9.
 - A new ticket: Ctrl+Enter no longer flashes the button it does not press.
 
 ## [0.12.0-beta.1] - 2026-10-03
