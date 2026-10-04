@@ -262,8 +262,9 @@ impl Shell {
             // Pending, a click offers to take it back.
             let chip = buttons::chip_if("agent-restart", "⟳", !restarting)
                 .child(word)
-                .border_color(p().warning)
-                .text_color(p().warning)
+                // Pending, orange, as the list says it.
+                .border_color(if armed { crate::theme::pending() } else { p().warning })
+                .text_color(if armed { crate::theme::pending() } else { p().warning })
                 .when(armed || asked, |d| d.bg(p().active))
                 .when(!restarting, |d| {
                     d.on_click(cx.listener({

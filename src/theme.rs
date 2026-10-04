@@ -313,6 +313,13 @@ pub fn drop_target() -> Hsla {
     if p().bg.l < 0.5 { hsla(28. / 360., 0.9, 0.6, 1.) } else { hsla(28. / 360., 0.85, 0.45, 1.) }
 }
 
+/// A restart asked and waiting: the theme's warning turned to orange, so
+/// that it reads as the update's yellow, one step further.
+pub fn pending() -> Hsla {
+    let warning = p().warning;
+    hsla(warning.h * 0.6, warning.s.max(0.7), warning.l, warning.a)
+}
+
 /// What was imported, not typed: a choice filled from a folder's
 /// configuration. A teal, apart from the accent, the states and the tips.
 pub fn imported() -> Hsla {

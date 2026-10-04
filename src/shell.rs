@@ -4876,7 +4876,7 @@ impl Shell {
                                         d.child(
                                             div()
                                                 .named("restart")
-                                                .text_color(if pending { p().accent } else { p().warning })
+                                                .text_color(if pending { crate::theme::pending() } else { p().warning })
                                                 .child("⟳")
                                                 .tip(crate::t!(if pending { "sessions-update-pending" } else { "sessions-update" })),
                                         )
