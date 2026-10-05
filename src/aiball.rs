@@ -1178,14 +1178,14 @@ impl Aiball {
         if let Some(agent) = agent {
             params[if crew { "crew" } else { "agent" }] = json!(agent);
         }
-        let answer: Value = self.call_starting("session.start", params)?;
+        let answer: Value = self.call_starting("session.start", crate::loops::sized(params))?;
         answer.get("agent").and_then(Value::as_str).map(str::to_string).context("session.start: no agent in the answer")
     }
 
     /// Starts a terminal the daemon's host holds: `argv` in `cwd`, under
     /// `name`. It lives on without tvty.
     pub fn start_terminal(&self, name: &str, argv: &[String], cwd: &str) -> anyhow::Result<()> {
-        self.call_starting::<Value>("session.start", json!({ "name": name, "argv": argv, "cwd": cwd })).map(drop)
+        self.call_starting::<Value>("session.start", crate::loops::sized(json!({ "name": name, "argv": argv, "cwd": cwd }))).map(drop)
     }
 
     /// Claude Code's conversations in `cwd`, newest first, and the one a

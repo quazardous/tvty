@@ -142,7 +142,7 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
     if let Resume::Conversation(id) = &start.resume {
         params["resume"] = json!(id);
     }
-    let view: Value = aiball.call_starting("session.start", params)?;
+    let view: Value = aiball.call_starting("session.start", sized(params))?;
     session_of(&view).context("session.start: no session in the answer")
 }
 
@@ -160,7 +160,7 @@ fn session_of(view: &Value) -> Option<String> {
 /// is interrupted: forced, as aiball otherwise waits for it to be idle.
 pub fn move_to(aiball: &Aiball, name: &str, to_host: bool) -> anyhow::Result<()> {
     let mode = if to_host { "host" } else { "tmux" };
-    aiball.call_starting::<Value>("loop.restart", json!({ "name": name, "mode": mode, "force": true })).map(drop).map_err(said)
+    aiball.call_starting::<Value>("loop.restart", sized(json!({ "name": name, "mode": mode, "force": true }))).map(drop).map_err(said)
 }
 
 /// The loop's other tmux clients (claude-loop's terminal) made read-only
@@ -203,7 +203,7 @@ fn stopped(agent: &str, answer: &Value) -> anyhow::Result<()> {
 /// Starts a stopped loop again on a conversation of its folder (`latest` or
 /// an id), not the one it recorded (gone).
 pub fn restart_on(aiball: &Aiball, name: &str, conversation: &str) -> anyhow::Result<String> {
-    let view: KnownLoop = aiball.call_starting("loop.restart", json!({ "name": name, "resume": conversation })).map_err(said)?;
+    let view: KnownLoop = aiball.call_starting("loop.restart", sized(json!({ "name": name, "resume": conversation }))).map_err(said)?;
     Ok(view.session())
 }
 
@@ -214,8 +214,18 @@ pub fn restart(aiball: &Aiball, name: &str, afk: Option<&str>) -> anyhow::Result
     if let Some(afk) = afk {
         params["afk"] = json!(afk);
     }
-    let view: KnownLoop = aiball.call_starting("loop.restart", params).map_err(said)?;
+    let view: KnownLoop = aiball.call_starting("loop.restart", sized(params)).map_err(said)?;
     Ok(view.session())
+}
+
+/// A start's parameters with the size of tvty's terminals: the session is
+/// born at it, its program writing at the width it is read at (a loop
+/// started with no client is otherwise born 80×24 on aiball's host).
+pub(crate) fn sized(mut params: Value) -> Value {
+    if let Some((cols, rows)) = crate::terminal::view_size() {
+        params["size"] = json!({ "cols": cols, "rows": rows });
+    }
+    params
 }
 
 /// aiball's refusal said for the user: a Claude at work is not moved.

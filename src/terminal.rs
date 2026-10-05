@@ -44,6 +44,17 @@ static FONT_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::n
 /// The lines of history a terminal keeps (`terminal.scrollback`).
 static SCROLLBACK: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(crate::settings::SCROLLBACK);
 
+/// The size of the terminal views, as last laid out (columns, lines): the
+/// size a session started now is born at, so that its program writes at
+/// the width it will be read at. 0: none laid out yet.
+static VIEW_SIZE: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// A terminal view's size, once one was laid out.
+pub fn view_size() -> Option<(u16, u16)> {
+    let packed = VIEW_SIZE.load(std::sync::atomic::Ordering::Relaxed);
+    (packed != 0).then(|| ((packed >> 16) as u16, packed as u16))
+}
+
 /// Sets the lines of history the terminals keep; each open one takes it
 /// when told (`TerminalView::take_scrollback`), a new one at once.
 pub fn set_scrollback(lines: usize) {
@@ -591,6 +602,7 @@ impl TerminalView {
         if columns == 0 || lines == 0 || self.follows_session {
             return;
         }
+        VIEW_SIZE.store(((columns as u32) << 16) | lines as u32, std::sync::atomic::Ordering::Relaxed);
         if (columns, lines) == self.grid_size {
             self.pending_size = None;
             return;

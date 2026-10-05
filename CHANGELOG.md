@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A loop started or restarted from tvty (at start, from a workspace, from the list) opens at the width of tvty's terminals: its conversation no longer comes back squeezed into half the view.
+
 ## [0.14.0-beta.1] - 2026-10-05
 
 ### Added
