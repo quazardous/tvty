@@ -7,7 +7,6 @@
 //! own) — asked or not.
 
 use crate::ui::Named as _;
-use std::collections::HashMap;
 use std::time::Duration;
 
 use gpui_kit::*;
@@ -17,16 +16,6 @@ use crate::theme::p;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
 const STOP_WAIT: Duration = Duration::from_secs(15);
-
-/// The AFK action that puts a loop back as it was: held until let go,
-/// held again ten minutes, or on its own.
-fn afk_action(mode: Option<&str>) -> &'static str {
-    match mode {
-        Some("wait_inf") => "arm_inf",
-        Some("wait_10m") => "arm_10m",
-        _ => "off",
-    }
-}
 
 impl Shell {
     /// This machine's loops that run now: known here, their session live.
@@ -127,15 +116,8 @@ impl Shell {
         cx.notify();
         let aiball = self.aiball.clone();
         let known: Vec<crate::loops::KnownLoop> = self.board.known.iter().filter(|l| loops.contains(&l.name)).cloned().collect();
-        // Their hold as it is: put back when they restart as they were.
-        let holds: HashMap<String, String> = known
-            .iter()
-            .filter_map(|l| {
-                let bar = self.board.bars.get(l.agent()?).filter(|b| !b.stale)?;
-                let mode = bar.bar.afk.mode.clone();
-                (!mode.is_empty()).then(|| (l.name.clone(), mode))
-            })
-            .collect();
+        // Their hold is aiball's to keep, from their bars: a restart as
+        // they were starts each in it.
         cx.spawn(async move |this, cx| {
             let (done, wait) = futures::channel::oneshot::channel();
             std::thread::spawn(move || {
@@ -182,7 +164,6 @@ impl Shell {
                 }
             };
             let _ = this.update(cx, |shell, cx| {
-                shell.settings.workspace.holds_on_quit = holds.into_iter().filter(|(name, _)| stopped.contains(name) || still.contains(name)).collect();
                 shell.settings.workspace.stopped_on_quit = stopped;
                 shell.settings.workspace.still_on_quit = still;
                 shell.quit_now(cx);
@@ -210,7 +191,6 @@ impl Shell {
             .filter(|n| known(n) && !running.contains(n))
             .collect();
         names.extend(still_stopped);
-        let holds = std::mem::take(&mut self.settings.workspace.holds_on_quit);
         self.settings.save(cx);
         if !still_running.is_empty() {
             let agents: Vec<String> = still_running
@@ -227,57 +207,26 @@ impl Shell {
             return;
         }
         match self.applied.sessions.on_start.as_deref() {
-            Some("restart") => self.restart_loops(names, holds, true, cx),
-            Some("fresh") => self.restart_loops(names, holds, false, cx),
+            Some("restart") => self.restart_loops(names, true, cx),
+            Some("fresh") => self.restart_loops(names, false, cx),
             Some("leave") => {}
-            _ => self.pick_restart(names, still_running, holds, cx),
+            _ => self.pick_restart(names, still_running, cx),
         }
     }
 
-    /// Restarts `names`, resuming their conversation; then puts each back
-    /// on hold as it was (`as_they_were`), or frees them all.
-    pub(super) fn restart_loops(&mut self, names: Vec<String>, holds: HashMap<String, String>, as_they_were: bool, cx: &mut Context<Self>) {
+    /// Restarts `names`, resuming their conversation: each in its hold as
+    /// aiball keeps it (`as_they_were`: held ones held from their first
+    /// breath, no order sent after), or all on their own.
+    pub(super) fn restart_loops(&mut self, names: Vec<String>, as_they_were: bool, cx: &mut Context<Self>) {
         cx.notify();
         let aiball = self.aiball.clone();
-        let agents: HashMap<String, String> =
-            self.board.known.iter().filter_map(|l| Some((l.name.clone(), l.agent()?.to_string()))).collect();
         cx.spawn(async move |this, cx| {
             let count = names.len();
-            let executor = cx.background_executor().clone();
             let failed = cx
                 .background_executor()
                 .spawn(async move {
-                    let mut failed = Vec::new();
-                    let mut started = Vec::new();
-                    for name in names {
-                        match crate::loops::restart(&aiball, &name) {
-                            Ok(_) => started.push(name),
-                            Err(error) => failed.push(format!("{error:#}")),
-                        }
-                    }
-                    // Its hold, once the loop answers (it boots first).
-                    for name in started {
-                        let Some(agent) = agents.get(&name) else { continue };
-                        let action = if as_they_were { afk_action(holds.get(&name).map(String::as_str)) } else { "off" };
-                        let mut tries = 0;
-                        loop {
-                            match aiball.afk(agent, action) {
-                                Ok(()) => {
-                                    log::info!("restart: {name} put back {action}");
-                                    break;
-                                }
-                                Err(error) if tries >= 15 => {
-                                    failed.push(format!("{name}: its hold ({action}): {error:#}"));
-                                    break;
-                                }
-                                Err(_) => {
-                                    tries += 1;
-                                    executor.timer(Duration::from_secs(2)).await;
-                                }
-                            }
-                        }
-                    }
-                    failed
+                    let afk = (!as_they_were).then_some("off");
+                    names.iter().filter_map(|name| crate::loops::restart(&aiball, name, afk).err().map(|error| format!("{error:#}"))).collect::<Vec<_>>()
                 })
                 .await;
             let _ = this.update(cx, |shell, cx| {

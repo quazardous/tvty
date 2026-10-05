@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The sessions list: a stopped agent shows its hold, greyed (▶ on its own, ■ held), and a click turns it for its next start; the restart sheet at start turns it too. aiball keeps it, so it holds wherever the loop starts.
+
+### Fixed
+
+- A held loop restarted when tvty starts (or with a workspace) is held from its first moment, instead of running free while it boots.
+
 ## [0.13.0-beta.1] - 2026-10-04
 
 ### Added

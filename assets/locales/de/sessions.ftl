@@ -157,3 +157,6 @@ sessions-themes = Die Farbthemen — das nächste
 sessions-message-all = Eine Nachricht an jeden laufenden Agenten: senden, senden & halten, Halten aufheben
 sessions-settings = Einstellungen
 sessions-user = als wer tvty auf aiballs Board handelt
+sessions-hold-held = gehalten: sein nächster Start bleibt gehalten, bis du ihn loslässt; ein Klick lässt ihn allein laufen
+sessions-hold-free = allein: sein nächster Start läuft allein; ein Klick hält ihn, bis du ihn loslässt
+sessions-hold-failed = {$agent} halten oder loslassen

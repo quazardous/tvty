@@ -67,6 +67,9 @@ pub struct Board {
     pub known: Vec<crate::loops::KnownLoop>,
     /// The agents aiball knows, with where they work: (agent, project, cwd).
     pub homes: Vec<(String, Option<String>, String)>,
+    /// The agents aiball keeps held (`wait_inf`): a loop of theirs starts
+    /// held; the others start on their own.
+    pub held: std::collections::HashSet<String>,
     /// Behind a proxy node: the agents whose loop runs on aiball's hub.
     /// Read from here, never opened.
     pub hub: Vec<HubAgent>,
@@ -232,7 +235,8 @@ pub fn build(live: &crate::live::Live, sessions: Vec<(String, String)>, known: V
     // Whom each loop's tmux session runs for, as aiball lists its loops.
     let owners: HashMap<String, String> = known.iter().filter(|l| !l.on_host()).filter_map(|l| Some((l.session(), l.agent.clone()?))).collect();
     let projects = group(sessions, &consumers, &owners);
-    let mut board = Board { known, homes: homes(&consumers), hub, ..Default::default() };
+    let held = consumers.iter().filter(|c| c.afk_hold.as_deref() == Some("wait_inf")).map(|c| c.consumer_id.clone()).collect();
+    let mut board = Board { known, homes: homes(&consumers), held, hub, ..Default::default() };
     for project in projects.iter().filter(|p| p.on_board) {
         let tickets = live.tickets().get(&project.name).cloned().unwrap_or_default();
         if let Some(critical) = tickets.iter().find(|t| t.critical.is_some()) {

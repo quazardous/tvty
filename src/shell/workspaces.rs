@@ -6,7 +6,6 @@
 
 use crate::ui::Named as _;
 use std::collections::HashMap;
-use std::time::Duration;
 
 use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::scroll::ScrollableElement as _;
@@ -36,7 +35,7 @@ pub(super) enum PickFor {
     Open(String),
     /// At start, the sessions stopped when tvty quit: which to restart,
     /// with the AFK mode each had then (by loop).
-    Restart(HashMap<String, String>),
+    Restart,
 }
 
 /// A session in the picker.
@@ -69,7 +68,7 @@ pub(super) struct Picker {
 impl Picker {
     /// The sessions stopped at quit, offered at start.
     pub(super) fn restarting(&self) -> bool {
-        matches!(self.what, PickFor::Restart(_))
+        matches!(self.what, PickFor::Restart)
     }
 
     /// What it asks and of how many sessions, for the debug control.
@@ -85,7 +84,7 @@ impl Picker {
 
 /// The sessions stopped at quit, as the restart sheet lists them: by
 /// project, each ticked, its mark as it was (▶ on its own, ■ held).
-fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, String>, known: &[crate::loops::KnownLoop]) -> Vec<PickRow> {
+fn restart_rows(loops: &[String], still: &[String], held: &std::collections::HashSet<String>, known: &[crate::loops::KnownLoop]) -> Vec<PickRow> {
     let mut rows: Vec<PickRow> = loops
         .iter()
         .chain(still)
@@ -94,11 +93,8 @@ fn restart_rows(loops: &[String], still: &[String], holds: &HashMap<String, Stri
             let project = known.and_then(|l| l.project.clone()).unwrap_or_default();
             let agent = known.and_then(|l| l.agent().map(str::to_string)).unwrap_or_else(|| name.clone());
             let place = if known.is_some_and(|l| l.on_host()) { crate::t!("workspaces-host") } else { crate::mux::program().to_string() };
-            let (now, held) = match holds.get(name).map(String::as_str) {
-                Some("wait_inf") => (Mode::Stop, crate::t!("workspaces-held-for-good")),
-                Some("wait_10m") => (Mode::Stop, crate::t!("workspaces-held-while")),
-                _ => (Mode::Auto, String::new()),
-            };
+            // Its hold, as aiball keeps it: the one it restarts in.
+            let (now, held) = if held.contains(&agent) { (Mode::Stop, crate::t!("workspaces-held-for-good")) } else { (Mode::Auto, String::new()) };
             // Asked to stop when tvty quit, it ran on: listed, not to choose.
             let ran_on = still.contains(name);
             PickRow {
@@ -327,13 +323,13 @@ impl Shell {
             PickFor::Shut(name) => self.stop_sessions(&name, chosen, cx),
             PickFor::Open(name) => self.open_sessions(&name, chosen, cx),
             // "Not now": none restarted (remembered: never asked again).
-            PickFor::Restart(holds) => {
+            PickFor::Restart => {
                 if self.remember && !checked {
                     self.set_pref("sessions.on_start", tvty_config::Value::Choice(Some("leave".into())), cx);
                 }
                 if checked {
                     let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
-                    self.restart_loops(loops, holds, true, cx);
+                    self.restart_loops(loops, true, cx);
                 }
             }
         }
@@ -345,7 +341,7 @@ impl Shell {
     /// time.
     pub(super) fn picker_restart(&mut self, as_they_were: bool, cx: &mut Context<Self>) {
         let Some(picker) = self.picker.take() else { return };
-        let PickFor::Restart(holds) = picker.what else {
+        let PickFor::Restart = picker.what else {
             self.picker = Some(picker);
             return;
         };
@@ -355,16 +351,16 @@ impl Shell {
         }
         let loops: Vec<String> = picker.rows.iter().filter(|r| r.checked && !r.fixed).filter_map(|r| r.loop_name.clone()).collect();
         if !loops.is_empty() {
-            self.restart_loops(loops, holds, as_they_were, cx);
+            self.restart_loops(loops, as_they_were, cx);
         }
         cx.notify();
     }
 
     /// At start: the sessions stopped when tvty quit, offered to restart —
     /// each ticked, its mark as it was (▶ on its own, ■ held).
-    pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, holds: HashMap<String, String>, cx: &mut Context<Self>) {
-        let rows = restart_rows(&loops, &still, &holds, &self.board.known);
-        self.open_picker(PickFor::Restart(holds), rows, cx);
+    pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, cx: &mut Context<Self>) {
+        let rows = restart_rows(&loops, &still, &self.board.held, &self.board.known);
+        self.open_picker(PickFor::Restart, rows, cx);
     }
 
     /// Stops the loops of `rows` (a workspace shut), off the UI thread.
@@ -431,7 +427,6 @@ impl Shell {
             .collect();
         let (aiball, workspace) = (self.aiball.clone(), workspace.to_string());
         cx.spawn(async move |this, cx| {
-            let executor = cx.background_executor().clone();
             let (done, failed) = cx
                 .background_executor()
                 .spawn(async move {
@@ -443,36 +438,21 @@ impl Shell {
                             Some(Opening::Hold) => Mode::Stop,
                             _ => continue,
                         };
+                        // Its hold first: a loop started now starts in it,
+                        // one running takes it at once.
+                        if let Err(error) = aiball.set_afk_hold(&row.agent, mode.hold()) {
+                            failed.push(crate::t!("workspaces-mode-failed", agent = row.agent.clone(), error = format!("{error:#}")));
+                            continue;
+                        }
                         let started = match how {
-                            None => Ok(false),
-                            Some(How::Restart(name)) => crate::loops::restart(&aiball, &name).map(|_| true),
-                            Some(How::Start { cwd, project }) => aiball.start_agent(&cwd, project.as_deref(), Some(&row.agent), false).map(|_| true),
+                            None => Ok(()),
+                            Some(How::Restart(name)) => crate::loops::restart(&aiball, &name, None).map(drop),
+                            Some(How::Start { cwd, project }) => aiball.start_agent(&cwd, project.as_deref(), Some(&row.agent), false, None).map(drop),
                             Some(How::Nothing(why)) => Err(anyhow::anyhow!(why)),
                         };
-                        let booting = match started {
-                            Ok(booting) => booting,
-                            Err(error) => {
-                                failed.push(format!("{error:#}"));
-                                continue;
-                            }
-                        };
-                        // Its mode, once its loop answers (one just started boots first).
-                        let mut tries = 0;
-                        loop {
-                            match aiball.afk(&row.agent, mode.afk_action()) {
-                                Ok(()) => {
-                                    done += 1;
-                                    break;
-                                }
-                                Err(error) if !booting || tries >= 15 => {
-                                    failed.push(crate::t!("workspaces-mode-failed", agent = row.agent.clone(), error = format!("{error:#}")));
-                                    break;
-                                }
-                                Err(_) => {
-                                    tries += 1;
-                                    executor.timer(Duration::from_secs(2)).await;
-                                }
-                            }
+                        match started {
+                            Ok(()) => done += 1,
+                            Err(error) => failed.push(format!("{error:#}")),
                         }
                     }
                     (done, failed)
@@ -501,7 +481,7 @@ impl Shell {
             PickFor::Save(name) => (crate::t!("workspaces-save-title", name = name.clone()), crate::t!("workspaces-save-summary")),
             PickFor::Shut(name) => (crate::t!("workspaces-shut-title", name = name.clone()), crate::t!("workspaces-shut-summary")),
             PickFor::Open(name) => (crate::t!("workspaces-open-title", name = name.clone()), crate::t!("workspaces-open-summary")),
-            PickFor::Restart(_) => (crate::t!("workspaces-restart-title"), crate::t!("workspaces-restart-summary")),
+            PickFor::Restart => (crate::t!("workspaces-restart-title"), crate::t!("workspaces-restart-summary")),
         };
         // By group, in the order they came.
         let mut groups: Vec<(String, Vec<usize>)> = Vec::new();
@@ -553,12 +533,37 @@ impl Shell {
                     Some(Mode::Stop) => ("■", p().danger),
                     None => ("·", p().muted),
                 };
+                // Restarting: its mark turns its hold (kept by aiball), the
+                // one it restarts in.
+                let restart_hold = (matches!(picker.what, PickFor::Restart) && !row.fixed).then(|| (row.agent.clone(), row.now == Some(Mode::Stop)));
+                let mark = div()
+                    .named(SharedString::from(format!("pick-hold-{}", row.agent)))
+                    .flex_none()
+                    .px_0p5()
+                    .rounded_sm()
+                    .child(crate::icons::loop_glyph(glyph, colour, 9.))
+                    .when_some(restart_hold, |d, (agent, held)| {
+                        d.cursor_pointer()
+                            .hover(|d| d.bg(p().active))
+                            .tip(crate::t!(if held { "sessions-hold-held" } else { "sessions-hold-free" }))
+                            .on_click(cx.listener(move |shell, _, _, cx| {
+                                cx.stop_propagation();
+                                if let Some(row) = shell.picker.as_mut().and_then(|p| p.rows.get_mut(i)) {
+                                    row.now = Some(Mode::from_held(!held));
+                                    row.note = row.note.replace(&crate::t!("workspaces-held-for-good"), "");
+                                    if !held {
+                                        row.note.push_str(&crate::t!("workspaces-held-for-good"));
+                                    }
+                                }
+                                shell.set_hold(agent.clone(), !held, cx);
+                            }))
+                    });
                 // What the row says: the loop's glyph, its agent, a note.
                 let said = div()
                     .flex()
                     .items_center()
                     .gap_2()
-                    .child(crate::icons::loop_glyph(glyph, colour, 9.))
+                    .child(mark)
                     .child(div().text_color(if row.fixed { p().muted } else { p().text }).child(row.agent.clone()))
                     .child(div().text_xs().text_color(p().muted).child(row.note.clone()));
                 let line = if row.fixed {
@@ -606,7 +611,7 @@ impl Shell {
                 .child(none("picker-none", crate::t!("workspaces-shut-keep"), cx))
                 .child(go(crate::t!("workspaces-shut-stop", count = ticked), cx)),
             PickFor::Open(_) => div().flex().gap_2().child(cancel).child(go(crate::t!("workspaces-open-do", count = ticked), cx)),
-            PickFor::Restart(_) => div()
+            PickFor::Restart => div()
                 .flex()
                 .gap_2()
                 .child(none("picker-none", crate::t!("workspaces-not-now"), cx))
@@ -616,7 +621,7 @@ impl Shell {
         let remember = self.remember;
         let remembered = match &picker.what {
             PickFor::Quit => Some(crate::t!("workspaces-remember-quit")),
-            PickFor::Restart(_) => Some(crate::t!("workspaces-remember-restart")),
+            PickFor::Restart => Some(crate::t!("workspaces-remember-restart")),
             _ => None,
         };
         let body = div()
@@ -883,7 +888,8 @@ impl Shell {
 #[cfg(test)]
 mod tests {
     // Not `super::*`: the kit's own `test` attribute would come with it.
-    use super::{HashMap, Mode, restart_rows};
+    use super::{Mode, restart_rows};
+    use std::collections::HashSet;
     use crate::loops::KnownLoop;
 
     #[test]
@@ -892,8 +898,9 @@ mod tests {
             KnownLoop { name: "cl-z-1".into(), agent: Some("z-claude".into()), project: Some("zeta".into()), mode: "host".into(), ..Default::default() },
             KnownLoop { name: "cl-a-1".into(), agent: Some("a-claude".into()), project: Some("alpha".into()), mode: "tmux".into(), ..Default::default() },
         ];
-        let holds = HashMap::from([("cl-z-1".to_string(), "wait_inf".to_string()), ("cl-a-1".to_string(), "off".to_string())]);
-        let rows = restart_rows(&["cl-z-1".into(), "cl-a-1".into()], &[], &holds, &known);
+        // aiball keeps z-claude held: it restarts held.
+        let held = HashSet::from(["z-claude".to_string()]);
+        let rows = restart_rows(&["cl-z-1".into(), "cl-a-1".into()], &[], &held, &known);
         let said: Vec<(&str, &str, Option<Mode>, &str, bool)> =
             rows.iter().map(|r| (r.project.as_str(), r.agent.as_str(), r.now, r.note.as_str(), r.checked)).collect();
         assert_eq!(
@@ -906,7 +913,7 @@ mod tests {
     #[test]
     fn a_session_whose_stop_did_not_take_is_listed_not_to_choose() {
         let known = vec![KnownLoop { name: "cl-b-1".into(), agent: Some("b-claude".into()), project: Some("beta".into()), mode: "host".into(), ..Default::default() }];
-        let rows = restart_rows(&[], &["cl-b-1".into()], &HashMap::new(), &known);
+        let rows = restart_rows(&[], &["cl-b-1".into()], &HashSet::new(), &known);
         assert_eq!(rows.len(), 1);
         assert!(rows[0].fixed && !rows[0].checked);
         assert_eq!(rows[0].note, "host · ran on: its stop did not take");

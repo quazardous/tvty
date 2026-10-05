@@ -33,10 +33,15 @@ impl Mode {
     }
 
     /// The AFK action that sets it.
-    pub fn afk_action(self) -> &'static str {
+    pub fn from_held(held: bool) -> Self {
+        if held { Self::Stop } else { Self::Auto }
+    }
+
+    /// As aiball keeps an agent's hold.
+    pub fn hold(self) -> &'static str {
         match self {
             Self::Auto => "off",
-            Self::Stop => "arm_inf",
+            Self::Stop => "wait_inf",
         }
     }
 
@@ -215,6 +220,6 @@ mod tests {
         assert_eq!(Mode::of_afk(None), Mode::Auto);
         assert_eq!(Mode::of_afk(Some("wait_10m")), Mode::Stop);
         assert_eq!(Mode::of_afk(Some("wait_inf")), Mode::Stop);
-        assert_eq!(Mode::Stop.afk_action(), "arm_inf");
+        assert_eq!(Mode::Stop.hold(), "wait_inf");
     }
 }

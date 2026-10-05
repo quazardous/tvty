@@ -157,3 +157,6 @@ sessions-themes = The colour themes — the next one
 sessions-message-all = A message to every running agent: send, send & hold, release holds
 sessions-settings = Settings
 sessions-user = who tvty acts as on aiball's board
+sessions-hold-held = held: its next start is held until you let it go; a click lets it run on its own
+sessions-hold-free = on its own: its next start runs on its own; a click holds it until you let it go
+sessions-hold-failed = holding or letting go {$agent}

@@ -607,10 +607,6 @@ pub struct Workspace {
     /// The loops tvty stopped when it quit: offered to restart at start.
     #[serde(default)]
     pub stopped_on_quit: Vec<String>,
-    /// Their AFK mode then (`off`, `wait_10m`, `wait_inf`), by loop: put
-    /// back when they restart as they were.
-    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
-    pub holds_on_quit: HashMap<String, String>,
     /// The loops asked to stop when tvty quit that still ran when it did:
     /// at start, said as such, or offered with the others if they stopped
     /// since.
@@ -641,7 +637,6 @@ impl Stored for Workspace {
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
             pings_seen: None,
             stopped_on_quit: Vec::new(),
-            holds_on_quit: HashMap::new(),
             still_on_quit: Vec::new(),
             terminal_order: HashMap::new(),
             project_order: Vec::new(),

@@ -115,6 +115,34 @@ impl Shell {
         project.and_then(|name| self.settings.workspace.project_order.iter().position(|n| n == name)).unwrap_or(usize::MAX)
     }
 
+    /// Holds `agent` (■, until let go) or lets it run on its own (▶), as
+    /// aiball keeps it: a loop of it started next starts so, one running
+    /// takes it at once. Shown at once; said only when it fails.
+    pub(super) fn set_hold(&mut self, agent: String, held: bool, cx: &mut Context<Self>) {
+        if held {
+            self.board.held.insert(agent.clone());
+        } else {
+            self.board.held.remove(&agent);
+        }
+        cx.notify();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let name = agent.clone();
+            let done = cx
+                .background_executor()
+                .spawn(async move { aiball.set_afk_hold(&name, crate::workspaces::Mode::from_held(held).hold()) })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                if let Err(error) = done {
+                    crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("sessions-hold-failed", agent = agent.clone()), format!("{error:#}")));
+                    let _ = shell.refresh_now.unbounded_send(());
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// The agent of another project whose folder `l` works in, if it does.
     fn astray(&self, l: &KnownLoop) -> Option<&str> {
         crate::loops::stranger(&l.cwd, l.agent(), self.loop_project(l).as_deref(), &self.board.homes)
@@ -251,6 +279,25 @@ impl Shell {
         let words = self.filter_words(cx);
         let heading = |text: String, cx: &mut Context<Self>| div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx));
         let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start, forget: Forget| {
+            // Its hold, kept by aiball while it does not run: greyed, a
+            // click turns it for its next start.
+            let hold = start.agent.clone().map(|agent| {
+                let held = self.board.held.contains(&agent);
+                let mode = crate::workspaces::Mode::from_held(held);
+                div()
+                    .named(SharedString::from(format!("{id}-hold")))
+                    .flex_none()
+                    .px_0p5()
+                    .rounded_sm()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().active))
+                    .child(crate::icons::loop_glyph(mode.glyph(), p().muted, 9.))
+                    .tip(crate::t!(if held { "sessions-hold-held" } else { "sessions-hold-free" }))
+                    .on_click(cx.listener(move |shell, _, _, cx| {
+                        cx.stop_propagation();
+                        shell.set_hold(agent.clone(), !held, cx);
+                    }))
+            });
             let busy = self.starting.as_deref() == Some(start.cwd.as_str());
             let action = match (busy, astray) {
                 (true, _) => div()
@@ -319,6 +366,7 @@ impl Shell {
                         .flex()
                         .items_center()
                         .gap_2()
+                        .children(hold)
                         .child(div().flex_1().min_w_0().truncate().child(super::marked(&name, &words)))
                         .child(trash)
                         .child(action),
@@ -608,7 +656,7 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let done = cx.background_executor().spawn({
                 let start = start.clone();
-                async move { aiball.start_agent(&start.cwd, start.project.as_deref(), start.agent.as_deref(), start.crew) }
+                async move { aiball.start_agent(&start.cwd, start.project.as_deref(), start.agent.as_deref(), start.crew, None) }
             });
             let done = done.await;
             let _ = this.update(cx, |shell, cx| {

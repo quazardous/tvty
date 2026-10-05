@@ -124,7 +124,7 @@ pub fn start(aiball: &Aiball, start: &Start) -> anyhow::Result<String> {
         if let Resume::Conversation(id) = &start.resume {
             return restart_on(aiball, name, id);
         }
-        return restart(aiball, name);
+        return restart(aiball, name, None);
     }
     if !std::path::Path::new(&start.cwd).is_dir() {
         bail!(crate::t!("misc-not-a-directory", folder = start.cwd.clone()));
@@ -207,8 +207,14 @@ pub fn restart_on(aiball: &Aiball, name: &str, conversation: &str) -> anyhow::Re
     Ok(view.session())
 }
 
-pub fn restart(aiball: &Aiball, name: &str) -> anyhow::Result<String> {
-    let view: KnownLoop = aiball.call_starting("loop.restart", json!({ "name": name })).map_err(said)?;
+/// `afk`: the hold it starts in (`off`, `wait_inf`); none: its agent's,
+/// as aiball keeps it.
+pub fn restart(aiball: &Aiball, name: &str, afk: Option<&str>) -> anyhow::Result<String> {
+    let mut params = json!({ "name": name });
+    if let Some(afk) = afk {
+        params["afk"] = json!(afk);
+    }
+    let view: KnownLoop = aiball.call_starting("loop.restart", params).map_err(said)?;
     Ok(view.session())
 }
 

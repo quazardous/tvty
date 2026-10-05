@@ -40,6 +40,10 @@ pub struct Consumer {
     /// `node:<label>`; none without a loop connected.
     #[serde(default)]
     pub machine: Option<String>,
+    /// Its hold, kept by aiball while no loop of it runs (`off`,
+    /// `wait_inf`): the one its loop starts in.
+    #[serde(default)]
+    pub afk_hold: Option<String>,
     /// Its events not seen yet.
     #[serde(default)]
     pub ping_unseen: Option<u32>,
@@ -1147,6 +1151,12 @@ impl Aiball {
 
     /// Holds or frees an agent's loop (claude-loop's AFK): `toggle`, `off`
     /// (autonomous), `arm_10m` (held ten minutes), `arm_inf` (held).
+    /// An agent's hold (`off`, `wait_inf`), kept by aiball: the one its
+    /// loop starts in; a loop of it running here takes it at once.
+    pub fn set_afk_hold(&self, agent: &str, hold: &str) -> anyhow::Result<()> {
+        self.rpc_do("consumer.set_afk_hold", json!({ "name": agent, "afk": hold }))
+    }
+
     pub fn afk(&self, agent: &str, action: &str) -> anyhow::Result<()> {
         self.rpc_do("consumer.afk", json!({ "name": agent, "action": action }))
     }
@@ -1154,9 +1164,14 @@ impl Aiball {
     /// Starts an agent's loop on the daemon's host, in `cwd`: for `agent` (or
     /// the folder's own), as a crew agent of that name when `crew`. Answers
     /// the agent.
-    pub fn start_agent(&self, cwd: &str, project: Option<&str>, agent: Option<&str>, crew: bool) -> anyhow::Result<String> {
+    pub fn start_agent(&self, cwd: &str, project: Option<&str>, agent: Option<&str>, crew: bool, afk: Option<&str>) -> anyhow::Result<String> {
         // On the host, asked: whatever the folder says.
         let mut params = json!({ "cwd": cwd, "mode": "host" });
+        // Started held or free, from its first breath; none: as the agent's
+        // hold says.
+        if let Some(afk) = afk {
+            params["afk"] = json!(afk);
+        }
         if let Some(project) = project {
             params["project"] = json!(project);
         }
