@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.14.0-beta.1] - 2026-10-05
+
 ### Added
 
 - The terminal's cursor blinks when it has the keys, and stays lit while you type or text comes; Settings > Layout > Terminal > Cursor: blinking, steady, or as the program asks.
