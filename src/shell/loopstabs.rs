@@ -287,7 +287,11 @@ impl Shell {
                 div()
                     .named(SharedString::from(format!("{id}-hold")))
                     .flex_none()
-                    .px_0p5()
+                    // Square, the glyph in its middle.
+                    .size(px(super::workspaces::HOLD_MARK))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .rounded_sm()
                     .border_1()
                     .border_color(gpui::transparent_black())

@@ -20,6 +20,10 @@ use crate::tip::Tip as _;
 use crate::ui::buttons;
 use crate::workspaces::{Group, Mode, Opening, Session, Workspace, opening};
 
+/// A hold mark's side (▶/■ that turns an agent's hold): a square, so that
+/// its border under the pointer is one.
+pub(super) const HOLD_MARK: f32 = 15.;
+
 /// What the picker chooses for.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum PickFor {
@@ -539,7 +543,11 @@ impl Shell {
                 let mark = div()
                     .named(SharedString::from(format!("pick-hold-{}", row.agent)))
                     .flex_none()
-                    .px_0p5()
+                    // Square, the glyph in its middle.
+                    .size(px(HOLD_MARK))
+                    .flex()
+                    .items_center()
+                    .justify_center()
                     .rounded_sm()
                     // A border kept clear: under the pointer it turns yellow,
                     // the mark a button, with nothing moving.
