@@ -89,6 +89,10 @@ tvty() {
     export TVTY_DEBUG_CONTROL=1
     # The README is in English, whatever this machine speaks.
     export TVTY_LANG=en
+    # A steady cursor: a picture never catches it in its dark half.
+    local settings="$XDG_CONFIG_HOME/tvty/settings.toml"
+    mkdir -p "$(dirname "$settings")"
+    grep -q '^cursor *=' "$settings" 2>/dev/null || printf '\n[terminal]\ncursor = "steady"\n' >>"$settings"
     exec "$ROOT/target/debug/tvty" "$@"
 }
 

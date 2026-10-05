@@ -3508,6 +3508,7 @@ impl Shell {
             "sessions.on_start" => Some(&[("restart", "settings-start-restart"), ("fresh", "settings-start-fresh"), ("leave", "settings-start-leave")]),
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
+            "terminal.cursor" => Some(&[("steady", "settings-cursor-steady"), ("program", "settings-cursor-program")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
@@ -3516,6 +3517,7 @@ impl Shell {
             "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.order" => (self.applied.sessions.order.clone().map(SharedString::from), Some(crate::t!("settings-order-recent").into())),
+            "terminal.cursor" => (self.applied.terminal.cursor.clone().map(SharedString::from), Some(crate::t!("settings-cursor-blink").into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.
@@ -4081,7 +4083,8 @@ impl Shell {
         crate::wheel::set_speed(new.scroll.speed);
         // The history kept, in the terminals open now too: fewer lines let
         // the oldest go at once.
-        if old.terminal != new.terminal {
+        crate::terminal::set_cursor(new.terminal.cursor.as_deref());
+        if old.terminal.scrollback != new.terminal.scrollback {
             crate::terminal::set_scrollback(new.terminal.scrollback());
             for terminal in self.terminals.values() {
                 terminal.read(cx).take_scrollback();

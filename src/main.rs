@@ -135,6 +135,7 @@ fn main() {
         updates::init(|cx| config::get::<settings::Preferences>(cx).updates.check, cx);
         wheel::set_speed(prefs.scroll.speed);
         terminal::set_scrollback(prefs.terminal.scrollback());
+        terminal::set_cursor(prefs.terminal.cursor.as_deref());
         theme::init(prefs.appearance.theme.as_deref(), prefs.appearance.terminal_theme.as_deref(), cx);
         theme::set_window_font(prefs.appearance.window_font_size, cx);
         keymap::init(cx);

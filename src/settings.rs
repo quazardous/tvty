@@ -39,6 +39,10 @@ pub struct Terminal {
     /// The lines of history each terminal keeps; none: `SCROLLBACK`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scrollback: Option<usize>,
+    /// The cursor: `steady`, or `program` (as the program asks); none: it
+    /// blinks.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cursor: Option<String>,
 }
 
 /// The lines of history a terminal keeps by default: about 19 MB at most
@@ -326,6 +330,14 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Copied",
         about: "A brief \"Copied to clipboard\" at the bottom when text goes to the clipboard (not for a mere selection).",
         kind: Kind::Toggle { default: true, on: "shown", off: "hidden" },
+    },
+    Setting {
+        key: "terminal.cursor",
+        page: "Layout",
+        group: "Terminal",
+        label: "Cursor",
+        about: "In the terminal that has the keys: blinking, steady, or as the program asks. It stays lit while you type and while text comes.",
+        kind: Kind::Choice,
     },
     Setting {
         key: "terminal.scrollback",

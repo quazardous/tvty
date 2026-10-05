@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The terminal's cursor blinks when it has the keys, and stays lit while you type or text comes; Settings > Layout > Terminal > Cursor: blinking, steady, or as the program asks.
 - The sessions list: a stopped agent shows its hold, greyed (▶ on its own, ■ held), and a click turns it for its next start; the restart sheet at start turns it too. aiball keeps it, so it holds wherever the loop starts.
 
 ### Fixed

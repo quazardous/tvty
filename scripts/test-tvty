@@ -15,6 +15,16 @@ elif [[ -z ${TVTY_NO_AIBALL:-} ]]; then
     "$TVTY_ROOT/scripts/fake-aiball" up >/dev/null
 fi
 export TVTY_STATS="${TVTY_STATS-$TVTY_ROOT/dev/tvty-wbox/log/tvty-stats.log}"
+# A steady cursor, unless the test settings say otherwise: a blinking one
+# makes two shots of the same screen differ (and reads as a flicker).
+SETTINGS="$XDG_CONFIG_HOME/tvty/settings.toml"
+if ! grep -q '^cursor *=' "$SETTINGS" 2>/dev/null; then
+    if grep -q '^\[terminal\]' "$SETTINGS" 2>/dev/null; then
+        sed -i 's/^\[terminal\]$/[terminal]\ncursor = "steady"/' "$SETTINGS"
+    else
+        printf '\n[terminal]\ncursor = "steady"\n' >>"$SETTINGS"
+    fi
+fi
 # Its errors (a panic, with its backtrace) and how it ended, kept: a
 # window gone without a word says why here (scripts/desktop-check prints it).
 STDERR_LOG="$TVTY_ROOT/dev/tvty-wbox/log/tvty-stderr.log"

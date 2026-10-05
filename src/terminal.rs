@@ -50,6 +50,22 @@ pub fn set_scrollback(lines: usize) {
     SCROLLBACK.store(lines, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// How the cursor blinks (`terminal.cursor`): 0 always, 1 never, 2 as the
+/// program asks.
+static CURSOR_BLINK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+/// Half a blink: lit, then dark, as long.
+const BLINK_HALF: std::time::Duration = std::time::Duration::from_millis(530);
+
+/// Sets how the cursor blinks: `steady`, `program`, else it blinks.
+pub fn set_cursor(choice: Option<&str>) {
+    let mode = match choice {
+        Some("steady") => 1,
+        Some("program") => 2,
+        _ => 0,
+    };
+    CURSOR_BLINK.store(mode, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A terminal's emulator settings: alacritty's, its history as set.
 fn config() -> Config {
     Config { scrolling_history: SCROLLBACK.load(std::sync::atomic::Ordering::Relaxed), ..Config::default() }
@@ -151,6 +167,11 @@ pub struct TerminalView {
     tmux_scroll: Option<std::sync::mpsc::Sender<i32>>,
     /// Where the view stands in its history, for the scrollbar beside it.
     scroll: TermScroll,
+    /// Since when the cursor blinks: its last keystroke or output, which
+    /// light it again and start the blink over.
+    blink_since: std::time::Instant,
+    /// It had the keys at its last frame: only then does its cursor blink.
+    had_focus: bool,
     /// The screen as it was when the selection began, shown in place of the
     /// live one while there is a selection: what is being selected does not
     /// move under the pointer, and what is copied is what is seen. The
@@ -347,6 +368,24 @@ impl TerminalView {
             let term = term.lock();
             (term.columns() as u16, term.screen_lines() as u16)
         };
+        // The cursor's blink: a frame each half, for the view that has the
+        // keys only (a view out of sight draws nothing).
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(BLINK_HALF).await;
+                let alive = this
+                    .update(cx, |view, cx| {
+                        if view.had_focus && view.cursor_blinks() {
+                            cx.notify();
+                        }
+                    })
+                    .is_ok();
+                if !alive {
+                    break;
+                }
+            }
+        })
+        .detach();
         // Drain the emulator's events on the UI thread. A burst of output sends
         // many Wakeups; they collapse into one repaint per frame.
         cx.spawn(async move |this, cx| {
@@ -383,7 +422,31 @@ impl TerminalView {
             selected_text: None,
             hover_link: None,
             menu_link: None,
+            blink_since: std::time::Instant::now(),
+            had_focus: false,
         }
+    }
+
+    /// Whether the cursor is lit now: always, unless it blinks (as set, or
+    /// as the program asks) and is in its dark half.
+    fn cursor_lit(&self) -> bool {
+        if !self.cursor_blinks() {
+            return true;
+        }
+        (self.blink_since.elapsed().as_millis() / BLINK_HALF.as_millis()) % 2 == 0
+    }
+
+    fn cursor_blinks(&self) -> bool {
+        match CURSOR_BLINK.load(std::sync::atomic::Ordering::Relaxed) {
+            0 => true,
+            1 => false,
+            _ => self.term.lock().cursor_style().blinking,
+        }
+    }
+
+    /// Lights the cursor again and starts its blink over.
+    fn relight(&mut self) {
+        self.blink_since = std::time::Instant::now();
     }
 
     /// Takes the lines of history set now: fewer let the oldest go.
@@ -460,6 +523,7 @@ impl TerminalView {
         match event {
             Event::Wakeup => {
                 stats::output();
+                self.relight();
                 // Held still under a selection: the output waits in the live
                 // terminal, nothing is drawn again.
                 if self.frozen.is_some() {
@@ -623,6 +687,7 @@ impl TerminalView {
     }
 
     fn on_key_down(&mut self, event: &KeyDownEvent, _: &mut Window, cx: &mut Context<Self>) {
+        self.relight();
         let keystroke = &event.keystroke;
         // The menu open, Esc closes it — and is not sent to the program.
         if self.menu.is_some() && keystroke.key == "escape" {
@@ -1447,11 +1512,16 @@ impl Element for TerminalElement {
             Some(view) => view.update(cx, |view, cx| {
                 view.resize(columns, lines, cell, cx);
                 view.layout = (bounds.origin, cell);
-                (view.focus.is_focused(window), view.hover_link.as_ref().map(|l| l.cells.clone()))
+                let focused = view.focus.is_focused(window);
+                if focused && !view.had_focus {
+                    view.relight();
+                }
+                view.had_focus = focused;
+                (focused, view.hover_link.as_ref().map(|l| l.cells.clone()), view.cursor_lit())
             }),
-            None => (false, None),
+            None => (false, None, true),
         };
-        let (focused, hover_cells) = focused;
+        let (focused, hover_cells, lit) = focused;
 
         let term = term.lock();
         let content = term.renderable_content();
@@ -1625,7 +1695,9 @@ impl Element for TerminalElement {
         let live = self.view.is_some();
         let cursor = (live
             && content.mode.contains(TermMode::SHOW_CURSOR)
-            && content.cursor.shape != CursorShape::Hidden)
+            && content.cursor.shape != CursorShape::Hidden
+            // Blinking, its dark half (unfocused, its outline stays).
+            && (lit || !focused))
             .then(|| {
                 let cursor = content.cursor.point;
                 let line = (cursor.line.0 + offset) as usize;
