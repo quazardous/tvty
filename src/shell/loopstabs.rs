@@ -289,8 +289,10 @@ impl Shell {
                     .flex_none()
                     .px_0p5()
                     .rounded_sm()
+                    .border_1()
+                    .border_color(gpui::transparent_black())
                     .cursor_pointer()
-                    .hover(|d| d.bg(p().active))
+                    .hover(|d| d.bg(p().active).border_color(p().warning))
                     .child(crate::icons::loop_glyph(mode.glyph(), p().muted, 9.))
                     .tip(crate::t!(if held { "sessions-hold-held" } else { "sessions-hold-free" }))
                     .on_click(cx.listener(move |shell, _, _, cx| {

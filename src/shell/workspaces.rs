@@ -541,10 +541,14 @@ impl Shell {
                     .flex_none()
                     .px_0p5()
                     .rounded_sm()
+                    // A border kept clear: under the pointer it turns yellow,
+                    // the mark a button, with nothing moving.
+                    .border_1()
+                    .border_color(gpui::transparent_black())
                     .child(crate::icons::loop_glyph(glyph, colour, 9.))
                     .when_some(restart_hold, |d, (agent, held)| {
                         d.cursor_pointer()
-                            .hover(|d| d.bg(p().active))
+                            .hover(|d| d.bg(p().active).border_color(p().warning))
                             .tip(crate::t!(if held { "sessions-hold-held" } else { "sessions-hold-free" }))
                             .on_click(cx.listener(move |shell, _, _, cx| {
                                 cx.stop_propagation();
