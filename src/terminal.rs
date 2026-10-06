@@ -85,6 +85,14 @@ pub fn set_paste_unfreezes(on: bool) {
     PASTE_UNFREEZES.store(on, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Whether a paste brings a terminal scrolled back to its bottom
+/// (`terminal.paste_scrolls_down`).
+static PASTE_SCROLLS_DOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_paste_scrolls_down(on: bool) {
+    PASTE_SCROLLS_DOWN.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A terminal's emulator settings: alacritty's, its history as set.
 fn config() -> Config {
     Config { scrolling_history: SCROLLBACK.load(std::sync::atomic::Ordering::Relaxed), ..Config::default() }
@@ -776,6 +784,33 @@ impl TerminalView {
     fn pasted(&mut self, cx: &mut Context<Self>) {
         if PASTE_UNFREEZES.load(std::sync::atomic::Ordering::Relaxed) {
             self.clear_selection(cx);
+        }
+        if PASTE_SCROLLS_DOWN.load(std::sync::atomic::Ordering::Relaxed) {
+            self.scroll_to_bottom(cx);
+        }
+    }
+
+    /// Back to the bottom of the history: the view's own, or a tmux
+    /// session's, whose copy mode is left before the text reaches it (it
+    /// would read it as its own keys).
+    fn scroll_to_bottom(&mut self, cx: &mut Context<Self>) {
+        if let Some(session) = self.tmux_session.clone() {
+            let Some((place, _)) = self.scroll.0.tmux.borrow().clone() else { return };
+            let Ok(mut place) = place.lock() else { return };
+            if place.position > 0 {
+                let target = format!("={session}:");
+                let _ = crate::mux::command(&["send-keys", "-t", &target, "-X", "cancel"])
+                    .stderr(std::process::Stdio::null())
+                    .status();
+                place.position = 0;
+                cx.notify();
+            }
+        } else {
+            let mut term = self.term.lock();
+            if term.grid().display_offset() != 0 {
+                term.scroll_display(Scroll::Bottom);
+                cx.notify();
+            }
         }
     }
 

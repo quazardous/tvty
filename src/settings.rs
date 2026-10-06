@@ -45,11 +45,13 @@ pub struct Terminal {
     pub cursor: Option<String>,
     /// A paste lets go of the screen held still under a selection.
     pub paste_unfreezes: bool,
+    /// A paste brings the terminal scrolled back to its bottom.
+    pub paste_scrolls_down: bool,
 }
 
 impl Default for Terminal {
     fn default() -> Self {
-        Self { scrollback: None, cursor: None, paste_unfreezes: true }
+        Self { scrollback: None, cursor: None, paste_unfreezes: true, paste_scrolls_down: true }
     }
 }
 
@@ -362,6 +364,14 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Paste",
         about: "A selection holds the terminal's screen still; a paste (Ctrl+V, Ctrl+Shift+V, the middle click) lets it go and shows the live screen again. Off, the screen stays held until Esc or a key typed.",
         kind: Kind::Toggle { default: true, on: "lets the screen go", off: "keeps it held" },
+    },
+    Setting {
+        key: "terminal.paste_scrolls_down",
+        page: "Layout",
+        group: "Terminal",
+        label: "Paste, scrolled back",
+        about: "A paste in a terminal scrolled back through its history brings it down to the bottom, where the text goes. Off, the view stays where it is.",
+        kind: Kind::Toggle { default: true, on: "back to the bottom", off: "stays put" },
     },
     Setting {
         key: "scroll.speed",

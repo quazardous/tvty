@@ -4096,6 +4096,7 @@ impl Shell {
         // the oldest go at once.
         crate::terminal::set_cursor(new.terminal.cursor.as_deref());
         crate::terminal::set_paste_unfreezes(new.terminal.paste_unfreezes);
+        crate::terminal::set_paste_scrolls_down(new.terminal.paste_scrolls_down);
         if old.terminal.scrollback != new.terminal.scrollback {
             crate::terminal::set_scrollback(new.terminal.scrollback());
             for terminal in self.terminals.values() {
