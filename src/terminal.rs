@@ -1957,7 +1957,11 @@ fn keystroke_bytes(keystroke: &Keystroke, app_cursor: bool) -> Option<Vec<u8>> {
     let text = match (&keystroke.key_char, keystroke.key.as_str()) {
         (Some(text), _) => text.clone(),
         (None, "space") => " ".into(),
-        (None, key) if key.chars().count() == 1 => key.into(),
+        // Alt+key: the key itself, after Esc. Without Alt, a key with no
+        // character is a dead key (^ on a French keyboard) whose name is the
+        // US key at its place: nothing is sent, the composed letter comes
+        // with the next key.
+        (None, key) if m.alt && key.chars().count() == 1 => key.into(),
         _ => return None,
     };
     let mut bytes = text.into_bytes();
@@ -2156,5 +2160,28 @@ impl Snapshot {
             viewport: Some((lines, columns)),
             status_line: self.status_line,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::keystroke_bytes;
+    use gpui_kit::{Keystroke, Modifiers};
+
+    fn key(key: &str, key_char: Option<&str>, modifiers: Modifiers) -> Keystroke {
+        Keystroke { modifiers, key: key.into(), key_char: key_char.map(Into::into) }
+    }
+
+    #[test]
+    fn a_dead_key_sends_nothing_and_its_letter_comes_composed() {
+        // ^ on a French keyboard: named after the US key at its place.
+        assert_eq!(keystroke_bytes(&key("[", None, Modifiers::default()), false), None);
+        assert_eq!(keystroke_bytes(&key("ecircumflex", Some("ê"), Modifiers::default()), false), Some("ê".as_bytes().to_vec()));
+    }
+
+    #[test]
+    fn alt_and_a_key_without_character_still_sends_it() {
+        let alt = Modifiers { alt: true, ..Default::default() };
+        assert_eq!(keystroke_bytes(&key("x", None, alt), false), Some(b"\x1bx".to_vec()));
     }
 }

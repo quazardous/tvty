@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Accented letters typed with a dead key (^ then e on a French keyboard) reach the terminal as ê, no longer as "[ê".
+
 ## [0.15.0-beta.1] - 2026-10-06
 
 ### Added
