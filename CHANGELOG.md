@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Pasting in a terminal (Ctrl+V, Ctrl+Shift+V, the middle click) lets go of the screen a selection holds still; a switch in Settings › Layout › Terminal keeps it held instead.
+
 ### Fixed
 
 - Quitting tvty keeps the terminal shown and the tabs open, even as it stops the loops; at the next start it shows that terminal again once its loop is back, and the restart sheet lets you pick another (a radio on each session's left).

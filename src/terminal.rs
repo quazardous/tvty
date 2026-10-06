@@ -77,6 +77,14 @@ pub fn set_cursor(choice: Option<&str>) {
     CURSOR_BLINK.store(mode, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Whether a paste lets go of the screen held under a selection
+/// (`terminal.paste_unfreezes`).
+static PASTE_UNFREEZES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_paste_unfreezes(on: bool) {
+    PASTE_UNFREEZES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// A terminal's emulator settings: alacritty's, its history as set.
 fn config() -> Config {
     Config { scrolling_history: SCROLLBACK.load(std::sync::atomic::Ordering::Relaxed), ..Config::default() }
@@ -690,6 +698,7 @@ impl TerminalView {
     /// handed Ctrl+V, the key on which it reads an image itself (Claude
     /// Code does) — a terminal only ever pastes text.
     fn paste_clipboard(&mut self, _: &keymap::TerminalPaste, _: &mut Window, cx: &mut Context<Self>) {
+        self.pasted(cx);
         let Some(item) = cx.read_from_clipboard() else { return };
         if let Some(text) = item.text() {
             self.paste(&text);
@@ -717,7 +726,14 @@ impl TerminalView {
         }
         let app_cursor = self.term.lock().mode().contains(TermMode::APP_CURSOR);
         if let Some(bytes) = keystroke_bytes(keystroke, app_cursor) {
-            self.clear_selection(cx);
+            // Ctrl+V is the program's paste (Claude Code reads the clipboard
+            // on it): it lets the screen go as a paste does.
+            let m = &keystroke.modifiers;
+            if keystroke.key == "v" && m.control && !m.shift && !m.alt {
+                self.pasted(cx);
+            } else {
+                self.clear_selection(cx);
+            }
             self.write(bytes);
             stats::key_sent();
             cx.stop_propagation();
@@ -752,6 +768,14 @@ impl TerminalView {
         if !same {
             term.selection = None;
             self.kept = None;
+        }
+    }
+
+    /// A paste: the screen held under a selection is let go, unless
+    /// `terminal.paste_unfreezes` is off.
+    fn pasted(&mut self, cx: &mut Context<Self>) {
+        if PASTE_UNFREEZES.load(std::sync::atomic::Ordering::Relaxed) {
+            self.clear_selection(cx);
         }
     }
 
@@ -952,6 +976,7 @@ impl TerminalView {
         #[cfg(not(any(target_os = "linux", target_os = "freebsd")))]
         let item = cx.read_from_clipboard();
         if let Some(text) = item.and_then(|item| item.text()) {
+            self.pasted(cx);
             self.paste(&text);
         }
         cx.stop_propagation();

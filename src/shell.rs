@@ -4095,6 +4095,7 @@ impl Shell {
         // The history kept, in the terminals open now too: fewer lines let
         // the oldest go at once.
         crate::terminal::set_cursor(new.terminal.cursor.as_deref());
+        crate::terminal::set_paste_unfreezes(new.terminal.paste_unfreezes);
         if old.terminal.scrollback != new.terminal.scrollback {
             crate::terminal::set_scrollback(new.terminal.scrollback());
             for terminal in self.terminals.values() {
