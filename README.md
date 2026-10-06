@@ -4,6 +4,12 @@
 
 *Twenty agents in loops, one window, no tab hunting. Beta · Linux; Windows in progress; macOS: [help wanted](docs/MACOS.md).*
 
+Vibe coding, done well, is Agile with AI: ideas go to a backlog instead of
+getting lost, each ticket comes back as a small result you can check, you
+are the product owner who says go, and the agents are the team that moves.
+Terminal Velocity, on top of the [aiball](https://github.com/quazardous/aiball)
+ticket board, is the cockpit for exactly that.
+
 ![Terminal Velocity at work: an agent answers live beside its ticket; the slider, the gallery, a notification, a ticket full screen](docs/images/tvty.gif)
 
 **Watch the demo (3 min):** three Claude Code agents build the Darkball —
@@ -11,21 +17,24 @@ one asks another through a ticket, the human only approves and says yes.
 
 [![Terminal Velocity demo on YouTube: 3 AI agents, 1 window](https://img.youtube.com/vi/5TGDf7crzXI/maxresdefault.jpg)](https://www.youtube.com/watch?v=5TGDf7crzXI)
 
-Run many Claude Code agents at full speed without losing track of them.
-Each project's agents and its tickets live side by side: the agent asks,
-you decide, it carries on.
+It started as a dozen Claude Code terminals, each agent keeping a part of
+the software, and a human copy-pasting between them while half the ideas
+of the day slipped away. aiball gave the agents a board to talk through
+and the human the gate; Terminal Velocity puts that board, the agents and
+their terminals in one window, built for focus.
 
 ## Tickets, loops, focus
 
-- **Tickets.** Each project's board sits beside its agents: plans waiting
-  for your go, escalations, answers, with their pictures. Accept, reject
-  or reply without leaving the keyboard. The ticket that holds the others
-  back is flagged.
-- **Loops.** Every agent runs in its own loop and picks up its work on its
-  own. You see who is working, who waits for you, and since when. Hold a
-  loop or let it go with one key (F9). Quitting and restarting keep each
-  loop as it was.
-- **Focus.** One window instead of twenty tabs. The agent that needs you
+- **Tickets: the backlog, and results you can check.** Every idea becomes a
+  ticket instead of getting lost, and each one comes back as something to
+  check: a plan waiting for your go, a fix to try, a question, with its
+  pictures. Accept, reject or reply without leaving the keyboard. The
+  ticket that holds the others back is flagged.
+- **Loops: the team moves, you gate.** Every agent runs in its own loop and
+  picks up its tickets on its own. You see who is working, who waits for
+  your go, and since when. Hold a loop or let it go with one key (F9).
+  Quitting and restarting keep each loop as it was.
+- **Focus: one window for the whole team.** One window instead of twenty tabs. The agent that needs you
   comes to you: a notification, Ctrl+Enter, and you are in its terminal,
   its ticket beside it. Ctrl+Tab and the live gallery switch in one
   keystroke.
