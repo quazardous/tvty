@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.15.0-beta.1] - 2026-10-06
+
 ### Added
 
 - Pasting in a terminal (Ctrl+V, Ctrl+Shift+V, the middle click) lets go of the screen a selection holds still and brings a terminal scrolled back down to its bottom; two switches in Settings › Layout › Terminal turn either off.
