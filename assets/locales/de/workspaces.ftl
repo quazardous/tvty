@@ -105,3 +105,4 @@ workspaces-opened = { $count ->
 }
 workspaces-opening = {$name} wird geöffnet
 workspaces-added = {$project} ist in {$name}
+workspaces-shown-tip = das Terminal, das gezeigt wird, sobald die Sitzungen zurück sind

@@ -107,3 +107,4 @@ workspaces-opened = { $count ->
 }
 workspaces-opening = opening {$name}
 workspaces-added = {$project} is in {$name}
+workspaces-shown-tip = the terminal shown once the sessions are back

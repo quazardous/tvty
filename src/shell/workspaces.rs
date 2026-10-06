@@ -67,6 +67,8 @@ pub(super) struct PickRow {
 pub(super) struct Picker {
     what: PickFor,
     rows: Vec<PickRow>,
+    /// Restarting: the loop whose terminal is shown once back (its radio).
+    shown: Option<String>,
 }
 
 impl Picker {
@@ -275,7 +277,7 @@ impl Shell {
     }
 
     fn open_picker(&mut self, what: PickFor, rows: Vec<PickRow>, cx: &mut Context<Self>) {
-        self.picker = Some(Picker { what, rows });
+        self.picker = Some(Picker { what, rows, shown: None });
         self.remember = false;
         cx.notify();
     }
@@ -295,6 +297,7 @@ impl Shell {
     pub(super) fn picker_answer(&mut self, checked: bool, cx: &mut Context<Self>) {
         let Some(picker) = self.picker.take() else { return };
         let chosen: Vec<PickRow> = picker.rows.iter().filter(|r| checked && r.checked && !r.fixed).cloned().collect();
+        let picker_shown = picker.shown.clone();
         match picker.what {
             PickFor::Quit => {
                 if self.remember {
@@ -333,11 +336,23 @@ impl Shell {
                 }
                 if checked {
                     let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
-                    self.restart_loops(loops, true, cx);
+                    let shown = self.shown_after(&picker_shown, &loops);
+                    self.restart_loops(loops, true, shown, cx);
                 }
             }
         }
         cx.notify();
+    }
+
+    /// The terminal to show once the restart is done: the radio's loop if it
+    /// restarts, else the one shown when tvty was left.
+    fn shown_after(&self, chosen: &Option<String>, restarting: &[String]) -> Option<String> {
+        chosen
+            .as_ref()
+            .filter(|name| restarting.contains(name))
+            .and_then(|name| self.board.known.iter().find(|l| l.name == *name))
+            .map(|l| l.session())
+            .or_else(|| self.shown_at_start.clone())
     }
 
     /// The restart sheet's answer: the ticked sessions restarted, as they
@@ -355,7 +370,8 @@ impl Shell {
         }
         let loops: Vec<String> = picker.rows.iter().filter(|r| r.checked && !r.fixed).filter_map(|r| r.loop_name.clone()).collect();
         if !loops.is_empty() {
-            self.restart_loops(loops, as_they_were, cx);
+            let shown = self.shown_after(&picker.shown, &loops);
+            self.restart_loops(loops, as_they_were, shown, cx);
         }
         cx.notify();
     }
@@ -364,7 +380,16 @@ impl Shell {
     /// each ticked, its mark as it was (▶ on its own, ■ held).
     pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, cx: &mut Context<Self>) {
         let rows = restart_rows(&loops, &still, &self.board.held, &self.board.known);
+        // The one shown when tvty was left, chosen again.
+        let shown = self.shown_at_start.clone();
+        let chosen = rows
+            .iter()
+            .filter_map(|r| r.loop_name.clone())
+            .find(|name| self.board.known.iter().any(|l| l.name == *name && Some(l.session()) == shown));
         self.open_picker(PickFor::Restart, rows, cx);
+        if let Some(picker) = self.picker.as_mut() {
+            picker.shown = chosen;
+        }
     }
 
     /// Stops the loops of `rows` (a workspace shut), off the UI thread.
@@ -578,6 +603,36 @@ impl Shell {
                     .child(mark)
                     .child(div().text_color(if row.fixed { p().muted } else { p().text }).child(row.agent.clone()))
                     .child(div().text_xs().text_color(p().muted).child(row.note.clone()));
+                // Restarting: a radio on its left, the terminal shown once back.
+                let radio = (matches!(picker.what, PickFor::Restart) && !row.fixed).then(|| {
+                    let name = row.loop_name.clone();
+                    let on = name.is_some() && picker.shown == name;
+                    let can = row.checked;
+                    div()
+                        .named(SharedString::from(format!("pick-shown-{}", row.agent)))
+                        .flex_none()
+                        .size(px(14.))
+                        .rounded_full()
+                        .border_1()
+                        .border_color(if on { p().accent } else { p().border })
+                        .when(!can, |d| d.opacity(0.4))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .when(on, |d| d.child(div().size(px(6.)).rounded_full().bg(p().accent)))
+                        .when(can, |d| {
+                            d.cursor_pointer()
+                                .hover(|d| d.border_color(p().warning))
+                                .on_click(cx.listener(move |shell, _, _, cx| {
+                                    cx.stop_propagation();
+                                    if let Some(picker) = shell.picker.as_mut() {
+                                        picker.shown = name.clone();
+                                    }
+                                    cx.notify();
+                                }))
+                        })
+                        .tip(crate::t!("workspaces-shown-tip"))
+                });
                 let line = if row.fixed {
                     // A switch's width: the names stay in one column.
                     div().flex().items_center().gap_2().child(div().w(px(28.)).flex_none()).child(said).into_any_element()
@@ -596,7 +651,7 @@ impl Shell {
                     )
                     .into_any_element()
                 };
-                group = group.child(div().pl_2().child(line));
+                group = group.child(div().pl_2().flex().items_center().gap_2().children(radio).child(line));
             }
             list = list.child(group);
         }

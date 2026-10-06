@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Quitting tvty keeps the terminal shown and the tabs open, even as it stops the loops; at the next start it shows that terminal again once its loop is back, and the restart sheet lets you pick another (a radio on each session's left).
 - A loop started or restarted from tvty (at start, from a workspace, from the list) opens at the width of tvty's terminals: its conversation no longer comes back squeezed into half the view.
 
 ## [0.14.0-beta.1] - 2026-10-05

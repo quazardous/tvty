@@ -238,6 +238,9 @@ pub struct Shell {
     quitting: bool,
     /// The loops stopped at the last quit were offered (once, at start).
     restart_offered: bool,
+    /// The terminal shown when tvty was left: shown again once its session
+    /// is back, however long its loop takes to restart.
+    pub(super) shown_at_start: Option<String>,
     /// "Copied to clipboard" is up; counts the copies, so that only the
     /// latest one's timer takes it down.
     copied: Option<usize>,
@@ -857,6 +860,7 @@ impl Shell {
             stopping_all: false,
             quitting: false,
             restart_offered: false,
+            shown_at_start: None,
             copied: None,
             copies_made: 0,
             ended: None,
@@ -949,6 +953,7 @@ impl Shell {
             None => {
                 // The workspace as it was left, once the board is known.
                 let open = shell.settings.workspace.open_terminals.clone();
+                shell.shown_at_start = shell.settings.workspace.shown_terminal.clone();
                 if !open.is_empty() {
                     shell.restoring = Some(tabs::Restoring::new(open, shell.settings.workspace.shown_terminal.clone()));
                 }
@@ -2126,6 +2131,12 @@ impl Shell {
     }
 
     fn select(&mut self, session: String, window: &mut Window, cx: &mut Context<Self>) {
+        // Another chosen meanwhile: the one left shown is not brought back.
+        if let Some(restoring) = self.restoring.as_mut() {
+            if restoring.shown.as_deref() != Some(session.as_str()) {
+                restoring.shown = None;
+            }
+        }
         // Shown again (or started again under its name): attach afresh; a
         // session still gone ends at once and brings the end screen back.
         self.ended = None;

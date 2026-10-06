@@ -111,6 +111,9 @@ impl Shell {
     /// Stops `loops` (at most [`STOP_WAIT`]), keeps them to offer at the next
     /// start, then quits.
     pub(super) fn stop_and_quit(&mut self, loops: Vec<String>, cx: &mut Context<Self>) {
+        // The terminals open and the one shown, as they are now: their
+        // sessions ending while the loops stop do not change them.
+        self.save_workspace(cx);
         self.stopping_all = true;
         self.picker = None;
         cx.notify();
@@ -207,8 +210,8 @@ impl Shell {
             return;
         }
         match self.applied.sessions.on_start.as_deref() {
-            Some("restart") => self.restart_loops(names, true, cx),
-            Some("fresh") => self.restart_loops(names, false, cx),
+            Some("restart") => self.restart_loops(names, true, self.shown_at_start.clone(), cx),
+            Some("fresh") => self.restart_loops(names, false, self.shown_at_start.clone(), cx),
             Some("leave") => {}
             _ => self.pick_restart(names, still_running, cx),
         }
@@ -217,7 +220,11 @@ impl Shell {
     /// Restarts `names`, resuming their conversation: each in its hold as
     /// aiball keeps it (`as_they_were`: held ones held from their first
     /// breath, no order sent after), or all on their own.
-    pub(super) fn restart_loops(&mut self, names: Vec<String>, as_they_were: bool, cx: &mut Context<Self>) {
+    /// `shown`: the terminal to show once its session is back.
+    pub(super) fn restart_loops(&mut self, names: Vec<String>, as_they_were: bool, shown: Option<String>, cx: &mut Context<Self>) {
+        let open = self.settings.workspace.open_terminals.clone();
+        let restoring = self.restoring.take().unwrap_or_else(|| super::tabs::Restoring::new(open, None));
+        self.restoring = Some(restoring.restarting(shown));
         cx.notify();
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {

@@ -45,19 +45,33 @@ impl Render for TabDrag {
     }
 }
 
+/// How long a restart at start waits for its sessions to be back: a loop's
+/// boot, resuming a long conversation, with room to spare.
+const RESTART_WAIT: std::time::Duration = std::time::Duration::from_secs(180);
+
 /// How long a start waits for the terminals it opens again to be listed.
 const RESTORE_FOR: std::time::Duration = std::time::Duration::from_secs(15);
 
 /// The workspace being opened again at start: what is still to open.
 pub(super) struct Restoring {
     open: Vec<String>,
-    shown: Option<String>,
+    pub(super) shown: Option<String>,
     until: std::time::Instant,
 }
 
 impl Restoring {
     pub(super) fn new(open: Vec<String>, shown: Option<String>) -> Self {
         Self { open, shown, until: std::time::Instant::now() + RESTORE_FOR }
+    }
+
+    /// Loops restarted at start: what they show is waited for as long as a
+    /// loop takes to come back, `shown` the one to show then.
+    pub(super) fn restarting(mut self, shown: Option<String>) -> Self {
+        self.until = std::time::Instant::now() + RESTART_WAIT;
+        if shown.is_some() {
+            self.shown = shown;
+        }
+        self
     }
 
     /// Something to open is listed now (`listed`), or it is time to give up.
@@ -226,7 +240,9 @@ impl Shell {
     /// The workspace, kept for the next start: the terminals open, the one
     /// used last first, and the one shown.
     pub(super) fn save_workspace(&mut self, cx: &mut App) {
-        if self.restoring.is_some() {
+        // Restoring, or quitting (its loops stopping end their sessions):
+        // the workspace kept is not overwritten meanwhile.
+        if self.restoring.is_some() || self.stopping_all {
             return;
         }
         let mut open: Vec<String> = self.recent.iter().filter(|s| self.terminals.contains_key(*s)).cloned().collect();
