@@ -17,6 +17,7 @@ keys-afk-cycle = El modo AFK del agente mostrado: auto → retener 10 min → re
 keys-sessions-filter = Filtrar las sesiones: escribir, Enter abre, las flechas mueven, Esc borra
 keys-ticket-goto = Ir a un ticket: su número o el enlace #C. de un comentario, Enter lo abre (el #… de la barra de título)
 keys-options-toggle = Ajustes
+keys-app-quit = Salir de tvty, como al cerrar su ventana (los loops en marcha: detenidos o conservados, según lo elegido)
 keys-help-menu = Ayuda: acerca de tvty, su documentación, las novedades, un reinicio
 keys-window-fullscreen = La ventana a pantalla completa, o volver
 keys-font-bigger = Fuente de los terminales más grande

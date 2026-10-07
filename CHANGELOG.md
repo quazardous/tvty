@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Ctrl+Q quits tvty, as closing its window does; another key, or none, in `keymap.toml`.
+
 ### Fixed
 
 - Accented letters typed with a dead key (^ then e on a French keyboard) reach the terminal as ê, no longer as "[ê".

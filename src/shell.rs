@@ -5512,6 +5512,9 @@ impl Render for Shell {
             .on_action(cx.listener(|_, _: &keymap::ToggleInspector, window, cx| control::toggle_inspector_here(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::Megaphone, window, cx| shell.open_megaphone(window, cx)))
             .on_action(cx.listener(|shell, _: &keymap::HelpMenu, _, cx| shell.toggle_help_menu(cx)))
+            .on_action(cx.listener(|shell, _: &keymap::Quit, window, cx| {
+                shell.close_asked(window, cx);
+            }))
             .on_action(cx.listener(|_, _: &keymap::FullScreen, window, _| window.toggle_fullscreen()))
             .on_action(cx.listener(|shell, _: &keymap::FontBigger, _, cx| shell.step_pref(TERMINAL_FONT, 1, cx)))
             .on_action(cx.listener(|shell, _: &keymap::FontSmaller, _, cx| shell.step_pref(TERMINAL_FONT, -1, cx)))
