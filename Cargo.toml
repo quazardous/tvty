@@ -92,3 +92,6 @@ lto = "thin"
 # Remove once fixed upstream: https://github.com/zed-industries/zed/issues/64660
 [patch.crates-io]
 gpui_ce_linux = { path = "vendor/gpui_ce_linux" }
+# GPUI CE with its colour blend as Zed's: over an opaque colour, the one laid
+# on top keeps its own alpha (the themes' derived colours were see-through).
+gpui-ce = { path = "vendor/gpui-ce" }
