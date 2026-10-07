@@ -366,7 +366,7 @@ mod tests {
         // The same colour: a lighter one, on a dark theme.
         let derived = hover(0).expect("a hover given");
         let (base, given) = (super::parse_hex("#1290C3").unwrap(), super::parse_hex(&derived).unwrap());
-        assert!(given.l > base.l, "{derived}");
+        assert!(given.lightness > base.lightness, "{derived}");
         // A hover of its own, or one the theme already gives the button: kept.
         assert_eq!(hover(1), None);
         assert_eq!(hover(2).as_deref(), Some("#005a9c"));
