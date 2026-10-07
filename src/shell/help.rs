@@ -87,7 +87,7 @@ impl Entry {
             Entry::Updates => crate::updates::newer(cx).map(|v| crate::t!("help-updates-note", version = v.to_string())).unwrap_or_default(),
             Entry::Shortcuts | Entry::NewProject | Entry::Tips => String::new(),
             Entry::Restart => crate::t!("help-restart-note"),
-            Entry::Quit => String::new(),
+            Entry::Quit => crate::keymap::current(cx).keys_of("app.quit").first().map(|k| k.pretty()).unwrap_or_default(),
         }
     }
 
