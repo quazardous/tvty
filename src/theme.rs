@@ -213,9 +213,12 @@ fn with_visible_hovers(content: &str) -> String {
         if !same_colour(base, hover) {
             continue;
         }
-        let derived = Hsla { l: (base.l + if dark { 0.08 } else { -0.08 }).clamp(0., 1.), a: 1., ..base }.to_rgb();
+        let mut derived = base;
+        derived.lightness = (base.lightness + if dark { 0.08 } else { -0.08 }).clamp(0., 1.);
+        derived.alpha = 1.;
+        let derived = hsla_to_rgba(derived);
         let byte = |v: f32| (v.clamp(0., 1.) * 255.).round() as u8;
-        let hex = format!("#{:02x}{:02x}{:02x}", byte(derived.r), byte(derived.g), byte(derived.b));
+        let hex = format!("#{:02x}{:02x}{:02x}", byte(derived.red), byte(derived.green), byte(derived.blue));
         colors.insert("button.primary.hover.background".into(), hex.into());
     }
     set.to_string()
@@ -225,13 +228,13 @@ fn with_visible_hovers(content: &str) -> String {
 fn parse_hex(text: &str) -> Option<Hsla> {
     let digits = text.strip_prefix('#')?;
     let rgb = u32::from_str_radix(digits.get(..6)?, 16).ok()?;
-    Some(Hsla::from(gpui_kit::rgb(rgb)))
+    Some(rgb_to_hsla(gpui_kit::rgb(rgb)))
 }
 
 /// Two colours a person would not tell apart (alpha aside).
 fn same_colour(a: Hsla, b: Hsla) -> bool {
-    let (a, b) = (a.to_rgb(), b.to_rgb());
-    (a.r - b.r).abs() + (a.g - b.g).abs() + (a.b - b.b).abs() < 0.03
+    let (a, b) = (hsla_to_rgba(a), hsla_to_rgba(b));
+    (a.red - b.red).abs() + (a.green - b.green).abs() + (a.blue - b.blue).abs() < 0.03
 }
 
 fn user_dir() -> Option<PathBuf> {
@@ -259,9 +262,9 @@ fn palette_of(theme: &Theme) -> Palette {
 
 fn terminal_of(theme: &Theme) -> TerminalColours {
     let hex = |c: Hsla| {
-        let c = c.to_rgb();
+        let c = hsla_to_rgba(c);
         let byte = |v: f32| (v.clamp(0., 1.) * 255.).round() as u32;
-        byte(c.r) << 16 | byte(c.g) << 8 | byte(c.b)
+        byte(c.red) << 16 | byte(c.green) << 8 | byte(c.blue)
     };
     let dark = theme.mode.is_dark();
     // Black and white follow the theme's light: on a light theme, "black"
@@ -304,34 +307,34 @@ fn terminal_of(theme: &Theme) -> TerminalColours {
 /// some terminal themes wash out to a grey; lighter on a dark window,
 /// darker on a light one.
 pub fn tip() -> Hsla {
-    if p().bg.l < 0.5 { hsla(270. / 360., 0.75, 0.74, 1.) } else { hsla(270. / 360., 0.6, 0.45, 1.) }
+    if p().bg.lightness < 0.5 { hsla(270. / 360., 0.75, 0.74, 1.) } else { hsla(270. / 360., 0.6, 0.45, 1.) }
 }
 
 /// Where a dragged tab would go: an orange, apart from the accent's blue
 /// that the tab being moved keeps.
 pub fn drop_target() -> Hsla {
-    if p().bg.l < 0.5 { hsla(28. / 360., 0.9, 0.6, 1.) } else { hsla(28. / 360., 0.85, 0.45, 1.) }
+    if p().bg.lightness < 0.5 { hsla(28. / 360., 0.9, 0.6, 1.) } else { hsla(28. / 360., 0.85, 0.45, 1.) }
 }
 
 /// A restart asked and waiting: the theme's warning turned to orange, so
 /// that it reads as the update's yellow, one step further.
 pub fn pending() -> Hsla {
     let warning = p().warning;
-    hsla(warning.h * 0.3, warning.s.max(0.75), warning.l, warning.a)
+    hsla(warning.hue.into_positive_degrees() / 360. * 0.3, warning.saturation.max(0.75), warning.lightness, warning.alpha)
 }
 
 /// What was imported, not typed: a choice filled from a folder's
 /// configuration. A teal, apart from the accent, the states and the tips.
 pub fn imported() -> Hsla {
-    if p().bg.l < 0.5 { hsla(172. / 360., 0.6, 0.55, 1.) } else { hsla(172. / 360., 0.75, 0.3, 1.) }
+    if p().bg.lightness < 0.5 { hsla(172. / 360., 0.6, 0.55, 1.) } else { hsla(172. / 360., 0.75, 0.3, 1.) }
 }
 
 /// Readable text on a `background`: dark on light colours, light on dark.
 pub fn on(background: Hsla) -> Hsla {
-    let c = background.to_rgb();
-    let luminance = 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    let c = hsla_to_rgba(background);
+    let luminance = 0.2126 * c.red + 0.7152 * c.green + 0.0722 * c.blue;
     if luminance > 0.55 {
-        Hsla::from(Rgba { r: 0.08, g: 0.08, b: 0.08, a: 1. })
+        rgb_to_hsla(Rgba::new(0.08, 0.08, 0.08, 1.))
     } else {
         gpui_kit::white()
     }
@@ -339,15 +342,14 @@ pub fn on(background: Hsla) -> Hsla {
 
 /// A colour with its transparency folded onto `under`.
 fn blend(colour: Hsla, under: Hsla) -> Hsla {
-    let (c, u) = (colour.to_rgb(), under.to_rgb());
-    let a = c.a;
-    Rgba {
-        r: c.r * a + u.r * (1. - a),
-        g: c.g * a + u.g * (1. - a),
-        b: c.b * a + u.b * (1. - a),
-        a: 1.,
-    }
-    .into()
+    let (c, u) = (hsla_to_rgba(colour), hsla_to_rgba(under));
+    let a = c.alpha;
+    rgb_to_hsla(Rgba::new(
+        c.red * a + u.red * (1. - a),
+        c.green * a + u.green * (1. - a),
+        c.blue * a + u.blue * (1. - a),
+        1.,
+    ))
 }
 
 #[cfg(test)]

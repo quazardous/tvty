@@ -13,17 +13,7 @@ use std::{
     time::Duration,
 };
 
-#[cfg(any(feature = "wayland", feature = "x11"))]
-use anyhow::ensure;
 use anyhow::{Context as _, anyhow};
-#[cfg(any(feature = "wayland", feature = "x11"))]
-use ashpd::{
-    desktop::{
-        Request,
-        inhibit::{InhibitFlags, InhibitOptions, InhibitProxy},
-    },
-    enumflags2::BitFlags,
-};
 use calloop::{LoopSignal, channel::Sender};
 use futures::channel::oneshot;
 use gpui_util::{ResultExt as _, new_std_command};
@@ -32,10 +22,10 @@ use xkbcommon::xkb::{self, Keycode, Keysym, State};
 
 use crate::linux::{LinuxDispatcher, PriorityQueueCalloopReceiver};
 use gpui::{
-    Action, ActivityGuard, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle,
-    DisplayId, ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
+    Action, AnyWindowHandle, BackgroundExecutor, ClipboardItem, CursorStyle, DisplayId,
+    ForegroundExecutor, Keymap, Menu, MenuItem, OwnedMenu, PathPromptOptions, Platform,
     PlatformDisplay, PlatformKeyboardLayout, PlatformKeyboardMapper, PlatformTextSystem,
-    PlatformWindow, Result, RunnableVariant, Task, ThermalState, WindowAppearance,
+    PlatformWindow, Result, RunnableVariant, SharedString, Task, ThermalState, WindowAppearance,
     WindowButtonLayout, WindowParams,
 };
 #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -50,7 +40,7 @@ pub(crate) const SCROLL_LINES: f32 = 3.0;
 pub(crate) const DOUBLE_CLICK_INTERVAL: Duration = Duration::from_millis(400);
 #[cfg(any(feature = "wayland", feature = "x11"))]
 pub(crate) const DOUBLE_CLICK_DISTANCE: Pixels = px(5.0);
-pub(crate) const KEYRING_LABEL: &str = "zed-github-account";
+pub(crate) const KEYRING_LABEL: &str = "gpui-ce";
 
 #[cfg(any(feature = "wayland", feature = "x11"))]
 const FILE_PICKER_PORTAL_MISSING: &str =
@@ -101,6 +91,7 @@ pub(crate) trait LinuxClient {
     fn read_from_clipboard(&self) -> Option<ClipboardItem>;
     fn active_window(&self) -> Option<AnyWindowHandle>;
     fn window_stack(&self) -> Option<Vec<AnyWindowHandle>>;
+    fn set_gpu_requirements(&self, _requirements: Box<dyn std::any::Any>) {}
     fn run(&self);
 
     #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -114,26 +105,13 @@ pub(crate) trait LinuxClient {
 #[derive(Default)]
 pub(crate) struct PlatformHandlers {
     pub(crate) open_urls: Option<Box<dyn FnMut(Vec<String>)>>,
-    pub(crate) quit: Option<Box<dyn FnMut() -> bool>>,
+    pub(crate) quit: Option<Box<dyn FnMut()>>,
     pub(crate) reopen: Option<Box<dyn FnMut()>>,
     pub(crate) app_menu_action: Option<Box<dyn FnMut(&dyn Action)>>,
     pub(crate) will_open_app_menu: Option<Box<dyn FnMut()>>,
     pub(crate) validate_app_menu_command: Option<Box<dyn FnMut(&dyn Action) -> bool>>,
     pub(crate) keyboard_layout_change: Option<Box<dyn FnMut()>>,
-    pub(crate) system_sleep: Option<Box<dyn FnMut()>>,
     pub(crate) system_wake: Option<Box<dyn FnMut()>>,
-}
-
-/// A logind `PrepareForSleep` signal, forwarded from the D-Bus listener to
-/// the client's event loop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(
-    not(all(target_os = "linux", any(feature = "wayland", feature = "x11"))),
-    allow(dead_code)
-)]
-pub(crate) enum SystemPowerEvent {
-    Sleep,
-    Wake,
 }
 
 pub(crate) struct LinuxCommon {
@@ -146,14 +124,15 @@ pub(crate) struct LinuxCommon {
     pub(crate) callbacks: PlatformHandlers,
     pub(crate) signal: LoopSignal,
     pub(crate) menus: Vec<OwnedMenu>,
+    pub(crate) keyring_label: SharedString,
     app_name: Option<String>,
     system_notifications: crate::linux::system_notifications::SystemNotificationState,
     #[cfg_attr(
         not(all(target_os = "linux", any(feature = "wayland", feature = "x11"))),
         allow(dead_code)
     )]
-    power_sender: Sender<SystemPowerEvent>,
-    power_listener_started: bool,
+    wake_sender: Sender<()>,
+    wake_listener_started: bool,
 }
 
 impl LinuxCommon {
@@ -162,10 +141,10 @@ impl LinuxCommon {
     ) -> (
         Self,
         PriorityQueueCalloopReceiver<RunnableVariant>,
-        calloop::channel::Channel<SystemPowerEvent>,
+        calloop::channel::Channel<()>,
     ) {
         let (main_sender, main_receiver) = PriorityQueueCalloopReceiver::new();
-        let (power_sender, power_receiver) = calloop::channel::channel();
+        let (wake_sender, wake_receiver) = calloop::channel::channel();
 
         #[cfg(any(feature = "wayland", feature = "x11"))]
         let text_system = Arc::new(crate::linux::CosmicTextSystem::new("IBM Plex Sans"));
@@ -188,48 +167,44 @@ impl LinuxCommon {
             callbacks,
             signal,
             menus: Vec::new(),
+            keyring_label: KEYRING_LABEL.into(),
             app_name: None,
             system_notifications: crate::linux::system_notifications::SystemNotificationState::new(
             ),
-            power_sender,
-            power_listener_started: false,
+            wake_sender,
+            wake_listener_started: false,
         };
 
-        (common, main_receiver, power_receiver)
+        (common, main_receiver, wake_receiver)
     }
 
-    pub(crate) fn start_power_listener(&mut self) {
-        if !self.power_listener_started {
+    pub(crate) fn start_wake_listener(&mut self) {
+        if !self.wake_listener_started {
             #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
             smol::spawn({
-                let power_sender = self.power_sender.clone();
+                let wake_sender = self.wake_sender.clone();
                 async move {
-                    if let Err(error) = listen_for_system_power_events(power_sender).await {
-                        log::debug!("failed to listen for system sleep/wake events: {error:?}");
+                    if let Err(error) = listen_for_system_wake(wake_sender).await {
+                        log::debug!("failed to listen for system wake events: {error:?}");
                     }
                 }
             })
             .detach();
 
-            self.power_listener_started = true;
+            self.wake_listener_started = true;
         }
     }
 
-    pub(crate) fn handle_system_power_event(&mut self, event: SystemPowerEvent) {
-        let callback = match event {
-            SystemPowerEvent::Sleep => &mut self.callbacks.system_sleep,
-            SystemPowerEvent::Wake => &mut self.callbacks.system_wake,
-        };
-        if let Some(callback) = callback.as_mut() {
+    pub(crate) fn handle_system_wake(&mut self) {
+        if let Some(mut callback) = self.callbacks.system_wake.take() {
             callback();
+            self.callbacks.system_wake = Some(callback);
         }
     }
 }
 
 #[cfg(all(target_os = "linux", any(feature = "wayland", feature = "x11")))]
-async fn listen_for_system_power_events(
-    power_sender: Sender<SystemPowerEvent>,
-) -> anyhow::Result<()> {
+async fn listen_for_system_wake(wake_sender: Sender<()>) -> anyhow::Result<()> {
     use futures::StreamExt as _;
 
     let connection = ashpd::zbus::Connection::system().await?;
@@ -243,12 +218,10 @@ async fn listen_for_system_power_events(
     let mut sleep_events = proxy.receive_signal("PrepareForSleep").await?;
 
     while let Some(message) = sleep_events.next().await {
-        let event = if message.body().deserialize::<bool>()? {
-            SystemPowerEvent::Sleep
-        } else {
-            SystemPowerEvent::Wake
-        };
-        power_sender.send(event).ok();
+        let sleeping = message.body().deserialize::<bool>()?;
+        if !sleeping {
+            wake_sender.send(()).ok();
+        }
     }
 
     Ok(())
@@ -292,33 +265,6 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         ThermalState::Nominal
     }
 
-    #[cfg(not(any(feature = "wayland", feature = "x11")))]
-    fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>> {
-        Task::ready(Err(anyhow!(
-            "Idle sleep prevention for {reason:?} requires a Linux windowing backend"
-        )))
-    }
-
-    #[cfg(any(feature = "wayland", feature = "x11"))]
-    fn prevent_idle_sleep(&self, reason: &str) -> Task<Result<ActivityGuard>> {
-        let executor = self.background_executor();
-        let (guard_tx, guard_rx) = oneshot::channel();
-        executor
-            .spawn({
-                let executor = executor.clone();
-                let reason = reason.to_owned();
-                async move {
-                    guard_tx
-                        .send(inhibit_idle_sleep(reason, executor).await)
-                        .ok();
-                }
-            })
-            .detach();
-        executor
-            .clone()
-            .spawn(async move { await_idle_sleep_prevention(guard_rx, &executor).await })
-    }
-
     fn run(&self, on_finish_launching: Box<dyn FnOnce()>) {
         on_finish_launching();
 
@@ -340,7 +286,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         self.inner.compositor_name()
     }
 
-    fn restart(&self, binary_path: Option<PathBuf>, arguments: Vec<std::ffi::OsString>) {
+    fn restart(&self, binary_path: Option<PathBuf>) {
         use std::os::unix::process::CommandExt as _;
 
         // get the process id of the current process
@@ -367,9 +313,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
                 sleep 0.1
             done
 
-            app_path="$1"
-            shift
-            "$app_path" "$@"
+            "$1"
             "#;
 
         #[allow(
@@ -382,7 +326,6 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             .arg(script)
             .arg(&app_pid)
             .arg(&app_path)
-            .args(arguments)
             .process_group(0)
             .spawn();
 
@@ -442,6 +385,15 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         options: WindowParams,
     ) -> anyhow::Result<Box<dyn PlatformWindow>> {
         self.inner.open_window(handle, options)
+    }
+
+    fn set_gpu_requirements(&self, requirements: Box<dyn std::any::Any>) {
+        self.inner.set_gpu_requirements(requirements);
+    }
+
+    fn set_keyring_label(&self, label: SharedString) {
+        self.inner
+            .with_common(|common| common.keyring_label = label);
     }
 
     fn open_url(&self, url: &str) {
@@ -602,7 +554,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             .detach();
     }
 
-    fn on_quit(&self, callback: Box<dyn FnMut() -> bool>) {
+    fn on_quit(&self, callback: Box<dyn FnMut()>) {
         self.inner.with_common(|common| {
             common.callbacks.quit = Some(callback);
         });
@@ -614,17 +566,10 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         });
     }
 
-    fn on_system_sleep(&self, callback: Box<dyn FnMut()>) {
-        self.inner.with_common(|common| {
-            common.callbacks.system_sleep = Some(callback);
-            common.start_power_listener();
-        });
-    }
-
     fn on_system_wake(&self, callback: Box<dyn FnMut()>) {
         self.inner.with_common(|common| {
             common.callbacks.system_wake = Some(callback);
-            common.start_power_listener();
+            common.start_wake_listener();
         });
     }
 
@@ -720,12 +665,15 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
         let url = url.to_string();
         let username = username.to_string();
         let password = password.to_vec();
+        let label = self
+            .inner
+            .with_common(|common| common.keyring_label.clone());
         self.background_executor().spawn(async move {
             let keyring = oo7::Keyring::new().await?;
             keyring.unlock().await?;
             keyring
                 .create_item(
-                    KEYRING_LABEL,
+                    &label,
                     &vec![("url", &url), ("username", &username)],
                     password,
                     true,
@@ -737,6 +685,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn read_credentials(&self, url: &str) -> Task<Result<Option<(String, Vec<u8>)>>> {
         let url = url.to_string();
+        let label = self
+            .inner
+            .with_common(|common| common.keyring_label.clone());
         self.background_executor().spawn(async move {
             let keyring = oo7::Keyring::new().await?;
             keyring.unlock().await?;
@@ -744,7 +695,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             let items = keyring.search_items(&vec![("url", &url)]).await?;
 
             for item in items.into_iter() {
-                if item.label().await.is_ok_and(|label| label == KEYRING_LABEL) {
+                if item.label().await.is_ok_and(|l| l == label.as_ref()) {
                     let attributes = item.attributes().await?;
                     let username = attributes
                         .get("username")
@@ -765,6 +716,9 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
 
     fn delete_credentials(&self, url: &str) -> Task<Result<()>> {
         let url = url.to_string();
+        let label = self
+            .inner
+            .with_common(|common| common.keyring_label.clone());
         self.background_executor().spawn(async move {
             let keyring = oo7::Keyring::new().await?;
             keyring.unlock().await?;
@@ -772,7 +726,7 @@ impl<P: LinuxClient + 'static> Platform for LinuxPlatform<P> {
             let items = keyring.search_items(&vec![("url", &url)]).await?;
 
             for item in items.into_iter() {
-                if item.label().await.is_ok_and(|label| label == KEYRING_LABEL) {
+                if item.label().await.is_ok_and(|l| l == label.as_ref()) {
                     item.delete().await?;
                     return Ok(());
                 }
@@ -897,24 +851,6 @@ pub(super) fn reveal_path_internal(
 pub(super) fn is_within_click_distance(a: Point<Pixels>, b: Point<Pixels>) -> bool {
     let diff = a - b;
     diff.x.abs() <= DOUBLE_CLICK_DISTANCE && diff.y.abs() <= DOUBLE_CLICK_DISTANCE
-}
-
-/// Creates an XKB context for keymaps supplied by Wayland or X11.
-///
-/// Server keymaps are already resolved and need no local keyboard definitions.
-/// Loading default include paths can fail on systems without those files.
-#[cfg(any(feature = "wayland", feature = "x11"))]
-pub(super) fn new_xkb_context() -> anyhow::Result<xkb::Context> {
-    validate_xkb_context(xkb::Context::new(xkb::CONTEXT_NO_DEFAULT_INCLUDES))
-}
-
-#[cfg(any(feature = "wayland", feature = "x11"))]
-fn validate_xkb_context(context: xkb::Context) -> anyhow::Result<xkb::Context> {
-    ensure!(
-        !context.get_raw_ptr().is_null(),
-        "libxkbcommon failed to create an XKB context"
-    );
-    Ok(context)
 }
 
 #[cfg(any(feature = "wayland", feature = "x11"))]
@@ -1324,77 +1260,10 @@ pub(super) fn compositor_gpu_hint_from_dev_t(dev: u64) -> Option<gpui_wgpu::Comp
     })
 }
 
-#[cfg(any(feature = "wayland", feature = "x11"))]
-async fn inhibit_idle_sleep(reason: String, executor: BackgroundExecutor) -> Result<ActivityGuard> {
-    let proxy = InhibitProxy::new()
-        .await
-        .context("Idle sleep prevention portal is unavailable")?;
-    let request = proxy
-        .inhibit(
-            None,
-            BitFlags::from(InhibitFlags::Suspend),
-            InhibitOptions::default().set_reason(reason.as_str()),
-        )
-        .await
-        .context("Failed to request idle sleep prevention")?;
-    request
-        .response()
-        .context("Idle sleep prevention request was rejected")?;
-    Ok(release_on_drop(request, executor))
-}
-
-#[cfg(any(feature = "wayland", feature = "x11"))]
-fn release_on_drop(request: Request<()>, executor: BackgroundExecutor) -> ActivityGuard {
-    ActivityGuard::new(move || {
-        executor
-            .spawn(async move {
-                request
-                    .close()
-                    .await
-                    .context("Failed to release idle sleep prevention")
-                    .log_err();
-            })
-            .detach();
-    })
-}
-
-#[cfg(any(feature = "wayland", feature = "x11"))]
-async fn await_idle_sleep_prevention(
-    guard_rx: oneshot::Receiver<Result<ActivityGuard>>,
-    executor: &BackgroundExecutor,
-) -> Result<ActivityGuard> {
-    match futures::future::select(guard_rx, executor.timer(Duration::from_secs(10))).await {
-        futures::future::Either::Left((Ok(result), _)) => result,
-        futures::future::Either::Left((Err(_), _)) => {
-            Err(anyhow!("Idle sleep prevention request was abandoned"))
-        }
-        futures::future::Either::Right(_) => Err(anyhow!(
-            "Idle sleep prevention acquisition timed out after 10 seconds"
-        )),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use gpui::{Point, px};
-
-    #[cfg(any(feature = "wayland", feature = "x11"))]
-    #[test]
-    fn rejects_null_xkb_context() {
-        let context = unsafe {
-            // libxkbcommon permits unref on null, matching the value returned by Context::new on failure.
-            xkb::Context::from_raw_ptr(std::ptr::null_mut())
-        };
-        let error = validate_xkb_context(context)
-            .err()
-            .expect("null XKB context should be rejected");
-
-        assert_eq!(
-            error.to_string(),
-            "libxkbcommon failed to create an XKB context"
-        );
-    }
 
     #[test]
     fn test_is_within_click_distance() {
@@ -1412,98 +1281,6 @@ mod tests {
             zero,
             Point::new(px(5.0), px(5.1))
         ),);
-    }
-
-    #[cfg(any(feature = "wayland", feature = "x11"))]
-    mod idle_sleep_prevention {
-        use super::super::await_idle_sleep_prevention;
-        use anyhow::{Result, anyhow};
-        use futures::channel::oneshot;
-        use gpui::{ActivityGuard, TestAppContext};
-        use std::{
-            sync::{
-                Arc,
-                atomic::{AtomicUsize, Ordering::SeqCst},
-            },
-            time::Duration,
-        };
-
-        #[gpui::test]
-        async fn guard_passes_through_and_releases_on_drop(cx: &mut TestAppContext) {
-            let released = Arc::new(AtomicUsize::new(0));
-            let (guard_tx, guard_rx) = oneshot::channel();
-            assert!(guard_tx.send(Ok(release_guard(released.clone()))).is_ok());
-            let guard = await_idle_sleep_prevention(guard_rx, &cx.background_executor)
-                .await
-                .expect("acquisition should succeed");
-
-            assert_eq!(released.load(SeqCst), 0);
-            drop(guard);
-            assert_eq!(released.load(SeqCst), 1);
-        }
-
-        #[gpui::test]
-        async fn acquisition_error_passes_through(cx: &mut TestAppContext) {
-            let (guard_tx, guard_rx) = oneshot::channel::<Result<ActivityGuard>>();
-            assert!(guard_tx.send(Err(anyhow!("inhibition rejected"))).is_ok());
-            assert_eq!(
-                await_idle_sleep_prevention(guard_rx, &cx.background_executor)
-                    .await
-                    .err()
-                    .expect("acquisition should fail")
-                    .to_string(),
-                "inhibition rejected"
-            );
-        }
-
-        #[gpui::test]
-        async fn abandoned_acquisition_is_an_error(cx: &mut TestAppContext) {
-            let (guard_tx, guard_rx) = oneshot::channel::<Result<ActivityGuard>>();
-            drop(guard_tx);
-            assert_eq!(
-                await_idle_sleep_prevention(guard_rx, &cx.background_executor)
-                    .await
-                    .err()
-                    .expect("acquisition should fail")
-                    .to_string(),
-                "Idle sleep prevention request was abandoned"
-            );
-        }
-
-        #[gpui::test]
-        async fn late_guard_after_timeout_is_released(cx: &mut TestAppContext) {
-            let released = Arc::new(AtomicUsize::new(0));
-            let (guard_tx, guard_rx) = oneshot::channel();
-            let task = cx.background_executor.spawn({
-                let executor = cx.background_executor.clone();
-                async move { await_idle_sleep_prevention(guard_rx, &executor).await }
-            });
-            cx.run_until_parked();
-            cx.executor().advance_clock(Duration::from_secs(9));
-            cx.run_until_parked();
-            assert!(!guard_tx.is_canceled());
-            cx.executor().advance_clock(Duration::from_secs(1));
-            assert_eq!(
-                task.await
-                    .err()
-                    .expect("acquisition should time out")
-                    .to_string(),
-                "Idle sleep prevention acquisition timed out after 10 seconds"
-            );
-
-            assert!(guard_tx.is_canceled());
-            if let Err(Ok(guard)) = guard_tx.send(Ok(release_guard(released.clone()))) {
-                assert_eq!(released.load(SeqCst), 0);
-                drop(guard);
-            }
-            assert_eq!(released.load(SeqCst), 1);
-        }
-
-        fn release_guard(released: Arc<AtomicUsize>) -> ActivityGuard {
-            ActivityGuard::new(move || {
-                released.fetch_add(1, SeqCst);
-            })
-        }
     }
 
     #[cfg(any(feature = "wayland", feature = "x11"))]
