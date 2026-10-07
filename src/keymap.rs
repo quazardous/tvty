@@ -65,6 +65,7 @@ actions!(
         SendTab,
         SendBackTab,
         ComposerSend,
+        Quit,
     ]
 );
 
@@ -114,6 +115,7 @@ commands! {
     "ticket.goto", WINDOW, ["ctrl-shift-g"], "Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)", GotoTicket;
     "options.toggle", WINDOW, ["ctrl-,"], "Settings", ToggleOptions;
     "help.menu", WINDOW, ["f1"], "Help: about tvty, its documentation, what's new, a restart", HelpMenu;
+    "app.quit", WINDOW, ["ctrl-q"], "Quit tvty, as closing its window does (running loops: stopped or kept, as chosen)", Quit;
     "window.fullscreen", WINDOW, ["f11"], "The window full screen, or back", FullScreen;
     "font.bigger", WORKSPACE, ["ctrl-+", "ctrl-shift-="], "Terminal font bigger", FontBigger;
     "font.smaller", WORKSPACE, ["ctrl-_", "ctrl-shift--"], "Terminal font smaller", FontSmaller;

@@ -17,6 +17,7 @@ keys-afk-cycle = The shown agent's AFK mode: auto → hold 10 min → hold, in f
 keys-sessions-filter = Filter the sessions: type, Enter opens, arrows move, Esc clears
 keys-ticket-goto = Go to a ticket: its number or a comment's #C. link, Enter opens it (the title bar's #…)
 keys-options-toggle = Settings
+keys-app-quit = Quit tvty, as closing its window does (running loops: stopped or kept, as chosen)
 keys-help-menu = Help: about tvty, its documentation, what's new, a restart
 keys-window-fullscreen = The window full screen, or back
 keys-font-bigger = Terminal font bigger
