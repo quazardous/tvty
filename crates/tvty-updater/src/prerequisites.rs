@@ -309,6 +309,61 @@ pub fn report(say: &mut dyn FnMut(String)) -> Vec<&'static str> {
     missing.iter().map(|p| p.command).collect()
 }
 
+// ── Suggested ────────────────────────────────────────────────────────────
+
+/// Not needed, but worth having beside Terminal Velocity: said while it is
+/// missing, installed only when asked (its **Install** button).
+#[derive(Debug, PartialEq)]
+pub struct Suggestion {
+    /// The command looked for on the `PATH`.
+    pub command: &'static str,
+    /// What it gives, said to the user.
+    pub purpose: &'static str,
+    /// Its npm package: installed for the user alone, no password asked.
+    package: &'static str,
+}
+
+/// The list, in the order they are said.
+pub const SUGGESTED: &[Suggestion] = &[Suggestion {
+    command: "ccusage",
+    purpose: "Claude Code's tokens and cost by day, by project and by session",
+    package: "ccusage",
+}];
+
+/// What is suggested and not on the machine.
+pub fn suggested() -> Vec<&'static Suggestion> {
+    let dirs = search_dirs();
+    SUGGESTED.iter().filter(|s| !found_in(s.command, &dirs, cfg!(windows))).collect()
+}
+
+impl Suggestion {
+    /// The command that installs it. On Unix into `~/.local` (its program in
+    /// `~/.local/bin`), which needs no `sudo` whoever installed Node.js; on
+    /// Windows npm's global folder is the user's already.
+    pub fn how(&self, windows: bool) -> String {
+        if windows { format!("npm install --global {}", self.package) } else { format!("npm install --global --prefix ~/.local {}", self.package) }
+    }
+
+    pub fn install(&self, say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
+        say(format!("installing {}, for {}…", self.command, self.purpose));
+        let mut npm = crate::tool("npm");
+        npm.args(["install", "--global"]);
+        if !cfg!(windows) {
+            npm.arg("--prefix").arg(crate::bin_dir().parent().expect("~/.local"));
+        }
+        crate::run(npm.arg(self.package), say)?;
+        anyhow::ensure!(found_in(self.command, &search_dirs(), cfg!(windows)), "{} is still not found once installed", self.command);
+        Ok(())
+    }
+}
+
+/// Says each suggestion missing, what it gives and how to install it.
+pub fn suggest(say: &mut dyn FnMut(String)) {
+    for s in suggested() {
+        say(format!("· suggested, not installed: {}, for {}: {}", s.command, s.purpose, s.how(cfg!(windows))));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,6 +404,13 @@ mod tests {
         assert_eq!(named("claude").how(false, Some(Manager::Zypper)), "curl -fsSL https://claude.ai/install.sh | bash");
         // On Windows, winget.
         assert_eq!(named("claude").how(true, None), "winget install --id Anthropic.ClaudeCode --exact --source winget");
+    }
+
+    #[test]
+    fn a_suggestion_installs_for_the_user_alone() {
+        let ccusage = &SUGGESTED[0];
+        assert_eq!(ccusage.how(false), "npm install --global --prefix ~/.local ccusage");
+        assert_eq!(ccusage.how(true), "npm install --global ccusage");
     }
 
     #[test]

@@ -57,6 +57,8 @@ enum Gesture {
     All,
     /// What is missing and installs by itself (Claude Code).
     Prerequisites,
+    /// A suggestion, by its command.
+    Suggested(&'static str),
 }
 
 struct Updater {
@@ -65,6 +67,8 @@ struct Updater {
     aiball: Option<Status>,
     /// What the machine needs and does not have (Claude Code, tmux…).
     missing: Vec<&'static tvty_updater::prerequisites::Prerequisite>,
+    /// What is worth having and is not there (ccusage).
+    suggested: Vec<&'static tvty_updater::prerequisites::Suggestion>,
     /// What is being done, and what was said.
     busy: Option<&'static str>,
     log: Arc<Mutex<Vec<String>>>,
@@ -81,7 +85,7 @@ impl Updater {
         let dev = std::env::var_os(tvty_updater::DEV_EXE_VAR)
             .and_then(|exe| tvty_updater::DevBuild::of(std::path::Path::new(&exe)))
             .map(|dev| (dev, std::env::var(tvty_updater::DEV_VERSION_VAR).ok()));
-        let mut this = Self { icon, tvty: None, aiball: None, missing: Vec::new(), busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new(), dev };
+        let mut this = Self { icon, tvty: None, aiball: None, missing: Vec::new(), suggested: Vec::new(), busy: None, log: Arc::default(), failed: false, scroll: ScrollHandle::new(), dev };
         this.check(cx);
         this
     }
@@ -91,6 +95,7 @@ impl Updater {
         self.tvty = None;
         self.aiball = None;
         self.missing = tvty_updater::prerequisites::missing();
+        self.suggested = tvty_updater::prerequisites::suggested();
         cx.spawn(async move |this, cx| {
             let (tvty, aiball) = cx.background_executor().spawn(async { (tvty_updater::tvty_status(), tvty_updater::aiball_status()) }).await;
             let _ = this.update(cx, |updater, cx| {
@@ -117,7 +122,7 @@ impl Updater {
             return;
         }
         self.busy = Some(match gesture {
-            Gesture::Install(_) | Gesture::Prerequisites => "Installing…",
+            Gesture::Install(_) | Gesture::Prerequisites | Gesture::Suggested(_) => "Installing…",
             Gesture::Update(_) | Gesture::All => "Updating…",
             Gesture::Rollback => "Going back…",
         });
@@ -148,6 +153,10 @@ impl Updater {
                     let still = tvty_updater::prerequisites::ensure(&mut say);
                     if still.is_empty() { Ok(()) } else { Err(anyhow::anyhow!("still missing: {}", still.join(", "))) }
                 }
+                Gesture::Suggested(command) => match tvty_updater::prerequisites::SUGGESTED.iter().find(|s| s.command == command) {
+                    Some(suggestion) => suggestion.install(&mut say),
+                    None => Ok(()),
+                },
                 Gesture::All => {
                     let first = if matches!(aiball_state, Some(State::UpToDate)) { Ok(()) } else { aiball(&mut say) };
                     first.and_then(|()| {
@@ -248,6 +257,63 @@ impl Updater {
                                         .on_click(cx.listener(|updater, _, _, cx| updater.run(Gesture::Prerequisites, cx))),
                                 )
                             }),
+                    ),
+            );
+        }
+        Some(list)
+    }
+
+    /// What is worth having beside Terminal Velocity and is not there, each
+    /// with what it gives, its command to copy, and its Install; all there:
+    /// nothing shown.
+    fn suggested_view(&self, cx: &mut Context<Self>) -> Option<impl IntoElement + use<>> {
+        if self.suggested.is_empty() {
+            return None;
+        }
+        let theme = cx.theme().clone();
+        let mut list = div()
+            .id("suggested")
+            .flex()
+            .flex_col()
+            .gap_2()
+            .p_4()
+            .rounded_md()
+            .border_1()
+            .border_color(theme.border)
+            .child(div().font_weight(FontWeight::BOLD).child("Suggested"));
+        for s in &self.suggested {
+            let how = s.how(cfg!(windows));
+            let command = s.command;
+            list = list.child(
+                div()
+                    .flex()
+                    .flex_col()
+                    .gap_0p5()
+                    .child(
+                        div()
+                            .flex()
+                            .items_baseline()
+                            .gap_2()
+                            .child(div().font_weight(FontWeight::BOLD).child(command))
+                            .child(div().text_sm().text_color(theme.muted_foreground).child(format!("for {}", s.purpose))),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap_2()
+                            .child(div().flex_1().min_w_0().px_2().py_1().rounded_sm().bg(theme.muted).text_sm().font_family("monospace").child(how.clone()))
+                            .child(Button::new(SharedString::from(format!("suggested-copy-{command}"))).label("Copy").small().on_click(move |_, _, cx| {
+                                cx.write_to_clipboard(ClipboardItem::new_string(how.clone()));
+                            }))
+                            .child(
+                                Button::new(SharedString::from(format!("suggested-install-{command}")))
+                                    .label("Install")
+                                    .small()
+                                    // npm comes with Node.js: without it, nothing to install by.
+                                    .disabled(self.busy.is_some() || self.missing.iter().any(|p| p.command == "node"))
+                                    .on_click(cx.listener(move |updater, _, _, cx| updater.run(Gesture::Suggested(command), cx))),
+                            ),
                     ),
             );
         }
@@ -449,6 +515,7 @@ impl Render for Updater {
                     .child(self.row(Program::Aiball, cx))
                     .child(self.row(Program::Tvty, cx))
                     .children(self.dev_row(cx))
+                    .children(self.suggested_view(cx))
                     .child(
                         div()
                             .flex()

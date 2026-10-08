@@ -38,6 +38,15 @@ does only that). The three others are your package manager's, and need
 your password: the updater names them and `--install` fails while one is
 missing. `tvty-updater --check` only says what is missing.
 
+**Suggested, not needed:** [ccusage](https://github.com/ryoppippi/ccusage),
+Claude Code's tokens and cost by day, by project and by session. While it
+is missing the updater's window says so, with the command to copy
+(`npm install --global --prefix ~/.local ccusage`, no `sudo`; on Windows
+`npm install --global ccusage`) and an **Install** button that runs it;
+`tvty-updater --install` only names it. Terminal Velocity does not need it:
+the usage arrow in its top bar reads Claude Code's own figures, through
+aiball.
+
 **Terminal Velocity alone**, without the updater, from the same release:
 
 ```bash

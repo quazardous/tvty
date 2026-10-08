@@ -318,7 +318,7 @@ fn file_url(folder: &str) -> String {
 /// Everything, without a window (`tvty-updater --install`, what the Windows
 /// setup script runs): aiball installed when missing and updated when older
 /// than Terminal Velocity needs, then Terminal Velocity installed or updated,
-/// its launchers in place either way.
+/// its launchers in place either way; what is suggested said last.
 pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
     // Each part tried whatever the others did: what failed is said, and
     // the rest is in place.
@@ -368,6 +368,8 @@ pub fn install_all(say: &mut dyn FnMut(String)) -> anyhow::Result<()> {
         say(format!("✗ Terminal Velocity: {error:#}"));
         failed.push("Terminal Velocity");
     }
+    // Worth having, never installed unasked: said, with how.
+    prerequisites::suggest(say);
     anyhow::ensure!(failed.is_empty(), "not in place: {}", failed.join(", "));
     Ok(())
 }
