@@ -78,7 +78,7 @@ pub struct Mouse {
 #[serde(default)]
 pub struct Usage {
     /// How the top bar's usage arrow says the gap to the pace: `points`,
-    /// `wall`; none: the ratio. A click on it goes to the next until tvty
+    /// `wall`, `trend`; none: the ratio. A click on it goes to the next until tvty
     /// restarts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<String>,
@@ -443,7 +443,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Appearance",
         group: "Usage",
         label: "Usage arrow",
-        about: "In the top bar, the subscription against the pace that would use it up right at the window's end: a red arrow up above it, a green one down below, deeper as the gap grows. Its figure: used against expected (×1.3), the gap in points of the quota (+12 pts), or when the quota runs out at this pace. A click on the arrow goes to the next until tvty restarts. Shown once a loop reads the usage from Claude Code (Pro and Max plans).",
+        about: "In the top bar, the subscription against the pace that would use it up right at the window's end: an arrow, red and up above the pace, green and down below, its figure, then a small drawing of it: used against expected (×1.3, a bar and the pace's tick), the gap in points of the quota (+12 pts, the gap since the window's start), when the quota runs out at the last hour's speed (wall 1h40, the quota left going down to the wall), or the last 15 minutes' speed against the pace (speed ×1.8, its trace). A click on it goes to the next until tvty restarts; its tip draws the three that run in time, one above the other. Shown once a loop reads the usage from Claude Code (Pro and Max plans).",
         kind: Kind::Choice,
     },
     Setting {

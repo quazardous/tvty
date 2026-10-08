@@ -119,6 +119,7 @@ fn main() {
         // The sets of settings (settings.toml, the layout, the workspace).
         settings::init(cx);
         tips::init(cx);
+        usage::init(cx);
         // Whether the pointer gives the keyboard, as the window manager does.
         focusmode::start(cx);
         // The full pages' side column, as last dragged.

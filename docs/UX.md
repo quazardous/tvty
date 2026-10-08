@@ -685,19 +685,35 @@ button in the title bar (by ⚙), or the menu's "Message every agent…" —
 send, send & hold (not AFK ∞, until released), release holds; what
 became of each loop is said.
 
-**The usage arrow**, in the title bar after the user's name:
+**The usage arrow**, in the title bar before the box to go to a ticket:
 the subscription against the steady pace, the one that would use it up
 right at its window's end (at a fifth of the five hours, a fifth of the
 quota). Above it a red ↑, below it a green ↓, faint near the pace and
-full from 20 points away. Its figure says the gap: used against expected
-(×1.3), in points of the quota (+12 pts), or when the quota runs out at
-this pace (wall 1h40; "no wall" below the pace). A click goes to the next,
-until tvty restarts; the settings (Appearance › Usage) choose the first.
-The five-hour window, else the week; its tip gives both, with their reset.
-The usage is Claude Code's own (its status line's `rate_limits`, Pro and
-Max plans), relayed by each loop in its bar: the freshest reading of any
-loop counts, the quota being the account's. No reading, no arrow. Redrawn
-each minute, the pace moving with the clock.
+full from 20 points away. Its figure says the gap, and a small drawing
+on black beside it shows the same:
+
+- used against expected (×1.3): a bar of what is used, a tick where the
+  pace is now;
+- the gap in points of the quota (+12 pts): the gap since the window's
+  start, around 0;
+- when the quota runs out at the last hour's speed (wall 1h40; "no wall"
+  when the window resets first): the quota left going down against the
+  pace's diagonal, dashed on to the wall, a thick red line;
+- the last 15 minutes' speed against the pace (speed ×1.8): its trace,
+  the older the fainter, the line at 1 being the pace.
+
+A click goes to the next, figure and drawing, until tvty restarts; the
+settings (Appearance › Usage) choose the first. The tip draws the three
+that run in time one above the other, on the window's clock, and gives
+both windows with their reset, the recent speed and the reading's age.
+The five-hour window, else the week. The usage is Claude Code's own (its
+status line's `rate_limits`, Pro and Max plans), relayed by each loop in
+its bar: the freshest reading of any loop counts, the quota being the
+account's; tvty keeps the readings of the running windows (`usage.json`)
+for the drawings. The speeds are averages that forget at an exponential
+rate (15 minutes, an hour), as a load average, readings coming whenever a
+loop answers, in whole percents. No reading, no arrow. Redrawn each
+minute, the pace moving with the clock.
 
 **The link to aiball** shows in the title bar only when it is not right, a
 dot before the user's name: red while aiball's bus is down (tvty connects

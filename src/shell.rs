@@ -3526,7 +3526,7 @@ impl Shell {
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
             "terminal.cursor" => Some(&[("steady", "settings-cursor-steady"), ("program", "settings-cursor-program")]),
-            "usage.display" => Some(&[("points", "settings-usage-points"), ("wall", "settings-usage-wall")]),
+            "usage.display" => Some(&[("points", "settings-usage-points"), ("wall", "settings-usage-wall"), ("trend", "settings-usage-trend")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
@@ -5618,6 +5618,8 @@ impl Render for Shell {
                             .truncate()
                             .child(title),
                     )
+                    // The subscription against its steady pace, once a loop read it.
+                    .children(self.usage_arrow(cx))
                     // A ticket to go to, discreet: no button, Enter goes.
                     .child(
                         press_kept(div().named("goto"))
@@ -5702,9 +5704,7 @@ impl Render for Shell {
                             .text_color(p().muted)
                             .child(self.aiball.user.clone())
                             .tip(crate::t!("sessions-user")),
-                    )
-                    // The subscription against its steady pace, once a loop read it.
-                    .children(self.usage_arrow(cx)),
+                    ),
             )
             .child(body)
             .children(menu)

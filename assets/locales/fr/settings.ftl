@@ -147,6 +147,7 @@ settings-cursor-program = Comme le programme le demande
 settings-usage-ratio = Usage face à l'attendu (×1,3)
 settings-usage-points = Écart en points (+12 pts)
 settings-usage-wall = Temps avant le mur (mur 1h40)
+settings-usage-trend = Vitesse récente (vitesse ×1,8)
 settings-order-alpha = Alphabétique
 settings-order-yours = Le tien (glissé dans la liste)
 settings-quit-stop = Les arrêter

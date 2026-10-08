@@ -27,7 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Ctrl+Q quits tvty, as closing its window does; another key, or none, in `keymap.toml`.
-- An arrow in the top bar says whether the subscription goes faster than the pace that would use it up at the window's end (red, up) or slower (green, down), deeper as the gap grows; a click says the gap another way (×1.3, +12 pts, time to the wall), the settings choose the default. It shows once aiball relays the usage Claude Code reads (Pro and Max plans).
+- An arrow in the top bar says whether the subscription goes faster than the pace that would use it up at the window's end (red, up) or slower (green, down), deeper as the gap grows; a click says the gap another way (×1.3, +12 pts, time to the wall, recent speed), each with a small drawing beside it, and its tip draws the window's quota left, gap and speed on one clock; the settings choose the default. It shows once aiball relays the usage Claude Code reads (Pro and Max plans).
 - Terminal Velocity Updater suggests ccusage (Claude Code's tokens and cost by day, by project, by session) while it is missing, with the command to copy and an Install button; it installs nothing unasked.
 
 ### Fixed

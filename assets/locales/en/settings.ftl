@@ -149,6 +149,7 @@ settings-cursor-program = As the program asks
 settings-usage-ratio = Used against expected (×1.3)
 settings-usage-points = Gap in points (+12 pts)
 settings-usage-wall = Time to the wall (wall 1h40)
+settings-usage-trend = Recent speed (speed ×1.8)
 settings-order-alpha = Alphabetical
 settings-order-yours = Yours (dragged in the list)
 settings-quit-stop = Stop them

@@ -149,6 +149,7 @@ settings-cursor-program = Wie das Programm es verlangt
 settings-usage-ratio = Verbrauch gegenüber Erwartung (×1,3)
 settings-usage-points = Abstand in Punkten (+12 Pkt.)
 settings-usage-wall = Zeit bis zur Grenze (Grenze 1h40)
+settings-usage-trend = Jüngstes Tempo (Tempo ×1,8)
 settings-order-alpha = Alphabetisch
 settings-order-yours = Deine (in der Liste gezogen)
 settings-quit-stop = Stoppen

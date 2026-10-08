@@ -1,11 +1,14 @@
 //! How fast the subscription goes, against the pace that would use it up
 //! right at its window's end: what the arrow in the top bar says. The usage
 //! is Claude Code's own (its status line's `rate_limits`), which a loop
-//! pushes to aiball in its bar; the pace is worked out here.
+//! pushes to aiball in its bar; the pace is worked out here. The readings
+//! are kept ([`History`]): the curve in the top bar and the recent speed
+//! (the trend, the wall) are drawn from them.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::aiball::BarRead;
+use crate::config::{self, Place, Stored};
 use crate::status::parse_time;
 
 /// The subscription's usage as a loop read it from its Claude.
@@ -25,14 +28,15 @@ pub struct UsageWindow {
     pub resets_at: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum Window {
     FiveHour,
     SevenDay,
 }
 
 impl Window {
-    fn length(self) -> u64 {
+    pub fn length(self) -> u64 {
         match self {
             Window::FiveHour => 5 * 3600,
             Window::SevenDay => 7 * 86400,
@@ -150,12 +154,15 @@ pub enum Display {
     Ratio,
     /// `+12 pts`.
     Points,
-    /// `wall 1h40`: when the quota runs out at this pace.
+    /// `wall 1h40`: when the quota runs out at the recent speed.
     Wall,
+    /// `speed ×1.8`: the last 15 minutes' speed, in multiples of the
+    /// steady pace.
+    Trend,
 }
 
 impl Display {
-    pub const ALL: [Display; 3] = [Display::Ratio, Display::Points, Display::Wall];
+    pub const ALL: [Display; 4] = [Display::Ratio, Display::Points, Display::Wall, Display::Trend];
 
     /// Its word in `settings.toml`.
     pub fn key(self) -> &'static str {
@@ -163,6 +170,7 @@ impl Display {
             Display::Ratio => "ratio",
             Display::Points => "points",
             Display::Wall => "wall",
+            Display::Trend => "trend",
         }
     }
 
@@ -176,8 +184,9 @@ impl Display {
     }
 }
 
-/// The figure beside the arrow.
-pub fn said(pace: &Pace, display: Display, now: u64) -> String {
+/// The figure beside the arrow; `chart` gives the recent speed, else the
+/// wall is the average pace's.
+pub fn said(pace: &Pace, chart: Option<&Chart>, display: Display, now: u64) -> String {
     match display {
         Display::Ratio => match pace.ratio() {
             Some(ratio) if ratio < 10. => crate::t!("usage-ratio", ratio = format!("{ratio:.1}")),
@@ -189,11 +198,25 @@ pub fn said(pace: &Pace, display: Display, now: u64) -> String {
             let sign = if points > 0. { "+" } else if points < 0. { "−" } else { "" };
             crate::t!("usage-points", points = format!("{sign}{}", points.abs()))
         }
-        Display::Wall => match pace.wall(now) {
+        Display::Wall => match wall_in(pace, chart, now) {
             Some(left) => crate::t!("usage-wall", left = span(left)),
             None => crate::t!("usage-no-wall"),
         },
+        Display::Trend => crate::t!("usage-trend", speed = chart.and_then(|c| c.trend).map_or("—".into(), |s| times(s.recent))),
     }
+}
+
+/// Seconds until the wall: at the recent speed when it is known.
+fn wall_in(pace: &Pace, chart: Option<&Chart>, now: u64) -> Option<u64> {
+    match chart.filter(|c| c.trend.is_some()) {
+        Some(chart) => chart.wall.map(|at| at.saturating_sub(now)),
+        None => pace.wall(now),
+    }
+}
+
+/// `1.8`, `>9.9`.
+fn times(speed: f64) -> String {
+    if speed < 10. { format!("{speed:.1}") } else { ">9.9".into() }
 }
 
 /// `45m`, `1h40`, `2d 4h`.
@@ -208,14 +231,15 @@ pub fn span(seconds: u64) -> String {
 
 /// What the arrow's tip says: each window's usage and pace, and where it
 /// goes at this pace.
-pub fn tip(usage: &BarUsage, now: u64) -> String {
+pub fn tip(usage: &BarUsage, chart: Option<&Chart>, now: u64) -> String {
     let mut lines: Vec<String> = paces(usage, now)
         .iter()
         .map(|pace| {
             let resets = chrono::DateTime::from_timestamp(pace.resets_at as i64, 0)
                 .map(|at| crate::status::resume_short(&at.to_rfc3339()).unwrap_or_default())
                 .unwrap_or_default();
-            let end = match pace.wall(now) {
+            let shown = chart.filter(|c| c.window == pace.window);
+            let end = match wall_in(pace, shown, now) {
                 Some(left) => crate::t!("usage-tip-wall", left = span(left)),
                 None => crate::t!("usage-tip-lasts"),
             };
@@ -229,8 +253,157 @@ pub fn tip(usage: &BarUsage, now: u64) -> String {
             )
         })
         .collect();
+    if let Some(speeds) = chart.and_then(|c| c.trend) {
+        lines.push(crate::t!("usage-tip-trend", recent = times(speeds.recent), hour = times(speeds.hour)));
+    }
+    if let Some(at) = parse_time(&usage.read_at) {
+        lines.push(crate::t!("usage-tip-read", ago = span(now.saturating_sub(at))));
+    }
     lines.push(crate::t!("usage-tip-click"));
     lines.join("\n")
+}
+
+// ── The readings kept: the curve, the recent speed ───────────────────────
+
+/// A window's reading, kept.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Sample {
+    pub window: Window,
+    /// Seconds since the epoch; tells the window apart from the next one.
+    pub resets_at: u64,
+    /// When it was read.
+    pub at: u64,
+    pub used: f64,
+}
+
+/// `usage.json`: the readings of the windows still running, kept by tvty
+/// on its own, so that a restart keeps the curve.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct History {
+    pub samples: Vec<Sample>,
+}
+
+impl Stored for History {
+    const PLACE: Place = Place::State;
+    const FILE: &'static str = "usage.json";
+}
+
+pub fn init(cx: &mut gpui_kit::App) {
+    config::register::<History>(cx);
+}
+
+/// A reading saying the same as the last one is kept only this long after
+/// it: the curve needs a point now and then, not one a minute.
+const KEEP_SAME: u64 = 10 * 60;
+
+/// Two readings of one window: its end may be said a little apart.
+fn same_window(a: u64, b: u64) -> bool {
+    a.abs_diff(b) < 10 * 60
+}
+
+impl History {
+    /// Takes `usage` in, when it says something new; forgets the windows
+    /// gone by.
+    pub fn take(&mut self, usage: &BarUsage, now: u64) {
+        if let Some(at) = parse_time(&usage.read_at) {
+            for (window, reading) in [(Window::FiveHour, &usage.five_hour), (Window::SevenDay, &usage.seven_day)] {
+                let Some(reading) = reading else { continue };
+                let Some(resets_at) = parse_time(&reading.resets_at) else { continue };
+                let last = self.samples.iter().rev().find(|s| s.window == window && same_window(s.resets_at, resets_at));
+                if last.is_some_and(|l| at <= l.at || (l.used == reading.used_percentage && at - l.at < KEEP_SAME)) {
+                    continue;
+                }
+                self.samples.push(Sample { window, resets_at, at, used: reading.used_percentage.clamp(0., 100.) });
+            }
+        }
+        self.samples.retain(|s| s.resets_at > now);
+    }
+
+    /// The window's curve: from its start, where nothing is used, through
+    /// each reading, in time.
+    pub fn points(&self, window: Window, resets_at: u64) -> Vec<(u64, f64)> {
+        let start = resets_at.saturating_sub(window.length());
+        let mut points: Vec<(u64, f64)> =
+            self.samples.iter().filter(|s| s.window == window && same_window(s.resets_at, resets_at) && s.at >= start).map(|s| (s.at, s.used)).collect();
+        points.sort_by_key(|(at, _)| *at);
+        points.insert(0, (start, 0.));
+        points
+    }
+}
+
+/// The recent speed, in multiples of the steady pace (1: on it): averages
+/// that forget at an exponential rate, as a load average does, which takes
+/// readings at any interval.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Speeds {
+    /// Over about 15 minutes: what the trace and the figure say.
+    pub recent: f64,
+    /// Over about an hour: what places the wall, a short burst aside.
+    pub hour: f64,
+}
+
+const RECENT: f64 = 15. * 60.;
+const HOUR: f64 = 3600.;
+
+/// The speeds after the last reading; none without two points.
+pub fn trend(points: &[(u64, f64)], window: Window) -> Option<Speeds> {
+    trend_along(points, window).last().map(|(_, speeds)| *speeds)
+}
+
+/// [`trend`] after each reading: the speed's trace, in time.
+pub fn trend_along(points: &[(u64, f64)], window: Window) -> Vec<(u64, Speeds)> {
+    let pace = 100. / window.length() as f64;
+    let mut along = Vec::new();
+    let mut speeds: Option<Speeds> = None;
+    for pair in points.windows(2) {
+        let ((t0, u0), (t1, u1)) = (pair[0], pair[1]);
+        let dt = t1.saturating_sub(t0);
+        if dt == 0 {
+            continue;
+        }
+        let speed = (u1 - u0).max(0.) / dt as f64 / pace;
+        let forget = |period: f64| 1. - (-(dt as f64) / period).exp();
+        speeds = Some(match speeds {
+            None => Speeds { recent: speed, hour: speed },
+            Some(kept) => Speeds { recent: kept.recent + forget(RECENT) * (speed - kept.recent), hour: kept.hour + forget(HOUR) * (speed - kept.hour) },
+        });
+        along.extend(speeds.map(|speeds| (t1, speeds)));
+    }
+    along
+}
+
+/// What the curve in the top bar draws: one window, from its start to its
+/// reset.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Chart {
+    pub window: Window,
+    pub start: u64,
+    pub resets_at: u64,
+    /// (when, percent used), from the start.
+    pub points: Vec<(u64, f64)>,
+    pub trend: Option<Speeds>,
+    /// When the quota runs out at the last hour's speed; none when the
+    /// window resets first.
+    pub wall: Option<u64>,
+}
+
+/// The chart of the window [`pace`] says, from what is kept and the
+/// reading in hand (it may not be kept yet).
+pub fn chart(history: &History, usage: &BarUsage, now: u64) -> Option<Chart> {
+    let pace = pace(usage, now)?;
+    let (window, resets_at) = (pace.window, pace.resets_at);
+    let mut points = history.points(window, resets_at);
+    if let Some(at) = parse_time(&usage.read_at).filter(|at| points.last().is_some_and(|(last, _)| at > last)) {
+        points.push((at, pace.used));
+    }
+    let trend = trend(&points, window);
+    let wall = trend.and_then(|speeds| {
+        let (at, used) = *points.last()?;
+        let per_second = speeds.hour * 100. / window.length() as f64;
+        (per_second > 0.).then(|| at + ((100. - used) / per_second) as u64).filter(|wall| *wall < resets_at)
+    });
+    Some(Chart { window, start: resets_at.saturating_sub(window.length()), resets_at, points, trend, wall })
 }
 
 #[cfg(test)]
@@ -276,21 +449,76 @@ mod tests {
     #[test]
     fn the_figure_follows_the_display() {
         let pace = Pace::of(Window::FiveHour, &window(50., 3 * 3600), NOW).unwrap();
-        assert_eq!(said(&pace, Display::Ratio, NOW), "×1.2");
-        assert_eq!(said(&pace, Display::Points, NOW), "+10 pts");
-        assert_eq!(said(&pace, Display::Wall, NOW), "wall 2h00");
+        assert_eq!(said(&pace, None, Display::Ratio, NOW), "×1.2");
+        assert_eq!(said(&pace, None, Display::Points, NOW), "+10 pts");
+        assert_eq!(said(&pace, None, Display::Wall, NOW), "wall 2h00");
         let calm = Pace::of(Window::FiveHour, &window(20., 3 * 3600), NOW).unwrap();
-        assert_eq!(said(&calm, Display::Points, NOW), "−20 pts");
-        assert_eq!(said(&calm, Display::Wall, NOW), "no wall");
+        assert_eq!(said(&calm, None, Display::Points, NOW), "−20 pts");
+        assert_eq!(said(&calm, None, Display::Wall, NOW), "no wall");
     }
 
     #[test]
     fn a_click_goes_round_the_displays() {
         assert_eq!(Display::Ratio.next(), Display::Points);
         assert_eq!(Display::Points.next(), Display::Wall);
-        assert_eq!(Display::Wall.next(), Display::Ratio);
+        assert_eq!(Display::Wall.next(), Display::Trend);
+        assert_eq!(Display::Trend.next(), Display::Ratio);
         assert_eq!(Display::from_key("wall"), Some(Display::Wall));
         assert_eq!(Display::from_key("nope"), None);
+    }
+
+    fn reading(five_hour: Option<UsageWindow>, at: u64) -> BarUsage {
+        BarUsage { five_hour, seven_day: None, read_at: iso(at) }
+    }
+
+    #[test]
+    fn readings_are_kept_while_their_window_runs() {
+        let mut history = History::default();
+        let resets = NOW + 3 * 3600;
+        history.take(&reading(Some(UsageWindow { used_percentage: 30., resets_at: iso(resets) }), NOW), NOW);
+        // The same reading again, or the same figure soon after: nothing new.
+        history.take(&reading(Some(UsageWindow { used_percentage: 30., resets_at: iso(resets) }), NOW), NOW);
+        history.take(&reading(Some(UsageWindow { used_percentage: 30., resets_at: iso(resets) }), NOW + 60), NOW + 60);
+        assert_eq!(history.samples.len(), 1);
+        history.take(&reading(Some(UsageWindow { used_percentage: 34., resets_at: iso(resets) }), NOW + 600), NOW + 600);
+        // From the window's start, where nothing was used.
+        assert_eq!(history.points(Window::FiveHour, resets), vec![(resets - 5 * 3600, 0.), (NOW, 30.), (NOW + 600, 34.)]);
+        // Once it reset, forgotten.
+        history.take(&reading(None, resets + 1), resets + 1);
+        assert!(history.samples.is_empty());
+    }
+
+    #[test]
+    fn the_trend_follows_the_recent_speed() {
+        // Two hours at the pace (40 %), then twice as fast for an hour.
+        let start = NOW;
+        let mut points = vec![(start, 0.)];
+        for minute in (10..=120).step_by(10) {
+            points.push((start + minute * 60, minute as f64 / 3.));
+        }
+        for minute in (130..=180).step_by(10) {
+            points.push((start + minute * 60, 40. + (minute - 120) as f64 * 2. / 3.));
+        }
+        let Speeds { recent, hour } = trend(&points, Window::FiveHour).unwrap();
+        assert!(recent > 1.9 && recent <= 2., "{recent}");
+        assert!(hour > 1.5 && hour < recent, "{hour}");
+        // Nothing but the start: no trend.
+        assert_eq!(trend(&points[..1], Window::FiveHour), None);
+    }
+
+    #[test]
+    fn the_wall_comes_at_the_last_hours_speed() {
+        // Two hours in, 40 % used: on the pace, then 40 points in the last
+        // hour, twice the pace: 20 % left, gone well before the reset.
+        let resets = NOW + 2 * 3600;
+        let mut history = History::default();
+        for (minutes_ago, used) in [(60, 40.), (30, 60.)] {
+            history.take(&reading(Some(UsageWindow { used_percentage: used, resets_at: iso(resets) }), NOW - minutes_ago * 60), NOW);
+        }
+        let chart = chart(&history, &reading(Some(UsageWindow { used_percentage: 80., resets_at: iso(resets) }), NOW), NOW).unwrap();
+        assert_eq!(chart.points.len(), 4);
+        let wall = chart.wall.expect("a wall before the reset");
+        assert!(wall > NOW && wall < resets, "{}", wall as i64 - NOW as i64);
     }
 
     #[test]
