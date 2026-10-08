@@ -58,7 +58,7 @@ impl Shell {
             press_kept(buttons::bare("usage-arrow", Some(label.clone())))
                 .gap_1()
                 .child(label)
-                .children(chart.map(|chart| drawn(chart, Drawing::of(display), now, false).w(px(64.)).h(px(28.))))
+                .children(chart.map(|chart| drawn(chart, Drawing::of(display), now).w(px(64.)).h(px(28.))))
                 .tooltip(move |window, cx| {
                     let (large, tip) = (large.clone(), tip.clone());
                     Tooltip::element(move |_, _| {
@@ -123,7 +123,7 @@ fn drawings(chart: Chart, now: u64) -> Div {
             .items_center()
             .gap_2()
             .child(div().w(px(44.)).flex_none().text_xs().text_color(p().muted).child(name))
-            .child(drawn(chart.clone(), drawing, now, true).w(px(320.)).h(px(64.)))
+            .child(drawn(chart.clone(), drawing, now).w(px(320.)).h(px(64.)))
     };
     div()
         .flex()
@@ -136,13 +136,13 @@ fn drawings(chart: Chart, now: u64) -> Div {
 }
 
 /// A drawing on black, as a scope's screen: it reads alike in every theme.
-fn drawn(chart: Chart, drawing: Drawing, now: u64, large: bool) -> Div {
+fn drawn(chart: Chart, drawing: Drawing, now: u64) -> Div {
     div().flex_none().rounded_sm().border_1().border_color(p().border).bg(gpui_kit::rgb(0x000000)).child(
         canvas(
             |_, _, _| {},
             move |bounds, _, window, _| {
                 window.with_content_mask(Some(ContentMask { bounds }), |window| {
-                    let mut pen = Pen { chart: &chart, bounds, now, width: if large { px(2.) } else { px(1.) }, window };
+                    let mut pen = Pen { chart: &chart, bounds, now, width: px(2.), window };
                     match drawing {
                         Drawing::Ratio => pen.ratio(),
                         Drawing::Points => pen.points(),
@@ -283,7 +283,7 @@ impl Pen<'_, '_> {
         if let Some(wall) = self.chart.wall {
             let x = self.x(wall);
             let (top, bottom) = (self.bounds.top(), self.bounds.bottom());
-            self.line(&[point(x, top), point(x, bottom)], p().danger, false, self.width * 3.);
+            self.line(&[point(x, top), point(x, bottom)], p().danger, false, self.width * 2.);
         }
         self.now_line();
     }
