@@ -685,6 +685,20 @@ button in the title bar (by ⚙), or the menu's "Message every agent…" —
 send, send & hold (not AFK ∞, until released), release holds; what
 became of each loop is said.
 
+**The usage arrow**, in the title bar after the user's name:
+the subscription against the steady pace, the one that would use it up
+right at its window's end (at a fifth of the five hours, a fifth of the
+quota). Above it a red ↑, below it a green ↓, faint near the pace and
+full from 20 points away. Its figure says the gap: used against expected
+(×1.3), in points of the quota (+12 pts), or when the quota runs out at
+this pace (wall 1h40; "no wall" below the pace). A click goes to the next,
+until tvty restarts; the settings (Appearance › Usage) choose the first.
+The five-hour window, else the week; its tip gives both, with their reset.
+The usage is Claude Code's own (its status line's `rate_limits`, Pro and
+Max plans), relayed by each loop in its bar: the freshest reading of any
+loop counts, the quota being the account's. No reading, no arrow. Redrawn
+each minute, the pace moving with the clock.
+
 **The link to aiball** shows in the title bar only when it is not right, a
 dot before the user's name: red while aiball's bus is down (tvty connects
 again), yellow while a subscription fails (tried again, then read whole);

@@ -44,6 +44,7 @@ mod workspaces;
 mod stacks;
 mod tabs;
 mod tips;
+mod usage;
 use tabs::Restoring;
 mod viewer;
 use crate::panel::{CollapsePanel, FullChanged, OpenFullList, OrderChanged, PinChanged, Scope, TicketPanel, dot, pill};
@@ -321,6 +322,9 @@ pub struct Shell {
     theme_menu: bool,
     /// The title bar's language list, open.
     language_menu: bool,
+    /// How the usage arrow says its gap, clicked to another than the
+    /// settings' until tvty restarts.
+    usage_display: Option<crate::usage::Display>,
     /// The title bar's ? menu is open.
     help_menu: bool,
     /// The window's button pressed, full screen on Windows (see `window_button_at`).
@@ -890,6 +894,7 @@ impl Shell {
             switches: 0,
             theme_menu: false,
             language_menu: false,
+            usage_display: None,
             help_menu: false,
             window_button_pressed: None,
             new_project: None,
@@ -909,6 +914,7 @@ impl Shell {
         };
         shell.wire = Some(wire);
         shell.start_tips(cx);
+        shell.follow_usage_pace(cx);
         // Once the work is back, the list's order settles (see stack_terminals).
         cx.spawn(async move |this, cx| {
             cx.background_executor().timer(Duration::from_millis(3500)).await;
@@ -3520,6 +3526,7 @@ impl Shell {
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
             "terminal.cursor" => Some(&[("steady", "settings-cursor-steady"), ("program", "settings-cursor-program")]),
+            "usage.display" => Some(&[("points", "settings-usage-points"), ("wall", "settings-usage-wall")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
@@ -3529,6 +3536,7 @@ impl Shell {
             "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.order" => (self.applied.sessions.order.clone().map(SharedString::from), Some(crate::t!("settings-order-recent").into())),
             "terminal.cursor" => (self.applied.terminal.cursor.clone().map(SharedString::from), Some(crate::t!("settings-cursor-blink").into())),
+            "usage.display" => (self.applied.usage.display.clone().map(SharedString::from), Some(crate::t!("settings-usage-ratio").into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.
@@ -4095,6 +4103,10 @@ impl Shell {
         // The history kept, in the terminals open now too: fewer lines let
         // the oldest go at once.
         crate::terminal::set_cursor(new.terminal.cursor.as_deref());
+        // A display chosen in the settings beats the one clicked to.
+        if old.usage.display != new.usage.display {
+            self.usage_display = None;
+        }
         crate::terminal::set_paste_unfreezes(new.terminal.paste_unfreezes);
         crate::terminal::set_paste_scrolls_down(new.terminal.paste_scrolls_down);
         if old.terminal.scrollback != new.terminal.scrollback {
@@ -5690,7 +5702,9 @@ impl Render for Shell {
                             .text_color(p().muted)
                             .child(self.aiball.user.clone())
                             .tip(crate::t!("sessions-user")),
-                    ),
+                    )
+                    // The subscription against its steady pace, once a loop read it.
+                    .children(self.usage_arrow(cx)),
             )
             .child(body)
             .children(menu)

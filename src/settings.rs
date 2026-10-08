@@ -31,6 +31,7 @@ pub struct Preferences {
     pub sessions: Sessions,
     pub updates: Updates,
     pub tips: Tips,
+    pub usage: Usage,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -71,6 +72,22 @@ pub struct Mouse {
     /// Whether the pointer gives the keyboard: `click`, `hover`; none: as
     /// the window manager does.
     pub focus: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Usage {
+    /// How the top bar's usage arrow says the gap to the pace: `points`,
+    /// `wall`; none: the ratio. A click on it goes to the next until tvty
+    /// restarts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+}
+
+impl Usage {
+    pub fn display(&self) -> crate::usage::Display {
+        self.display.as_deref().and_then(crate::usage::Display::from_key).unwrap_or_default()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -422,6 +439,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Toggle { default: false, on: "blurred", off: "sharp" },
     },
     Setting {
+        key: "usage.display",
+        page: "Appearance",
+        group: "Usage",
+        label: "Usage arrow",
+        about: "In the top bar, the subscription against the pace that would use it up right at the window's end: a red arrow up above it, a green one down below, deeper as the gap grows. Its figure: used against expected (×1.3), the gap in points of the quota (+12 pts), or when the quota runs out at this pace. A click on the arrow goes to the next until tvty restarts. Shown once a loop reads the usage from Claude Code (Pro and Max plans).",
+        kind: Kind::Choice,
+    },
+    Setting {
         key: "updates.check",
         page: "Layout",
         group: "Updates",
@@ -546,6 +571,7 @@ impl Stored for Preferences {
             sessions: Sessions::default(),
             updates: Updates::default(),
             tips: Tips::default(),
+            usage: Usage::default(),
         })
     }
 }

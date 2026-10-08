@@ -116,6 +116,12 @@ pub fn icon(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedStr
     glyph_button(id, glyph, tip, Hover::Brighter)
 }
 
+/// A glyph in a colour of its own (a state said by it), kept under the
+/// pointer: only a background comes.
+pub fn coloured(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedString>) -> Stateful<Div> {
+    glyph_button(id, glyph, tip, Hover::Plain)
+}
+
 /// An icon that takes something away (✕, ×): the danger colour under the
 /// pointer.
 pub fn remove(id: impl Into<ElementId>, glyph: impl Said, tip: impl Into<SharedString>) -> Stateful<Div> {

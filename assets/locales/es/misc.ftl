@@ -57,3 +57,16 @@ misc-image-too-large = imagen demasiado grande para mostrarla aquí
 misc-image-unavailable = imagen no disponible
 misc-fitted = {" "}(ajustada)
 misc-viewer-hint = rueda o + − zoom · 1 tamaño real · 0 ajustar · arrastrar para mover · Esc
+
+## The usage arrow in the top bar
+
+usage-ratio = ×{$ratio}
+usage-points = {$points} pts
+usage-wall = límite {$left}
+usage-no-wall = sin límite
+usage-window-five_hour = Ventana de 5 h
+usage-window-seven_day = Semana
+usage-tip-window = {$window}: {$used} % usado, {$expected} % a ritmo constante · se reinicia {$resets} · {$end}
+usage-tip-wall = a este ritmo, la cuota se agota en {$left}
+usage-tip-lasts = a este ritmo, dura hasta el reinicio
+usage-tip-click = Un clic: la diferencia dicha de otra forma.

@@ -59,3 +59,16 @@ misc-image-too-large = image too large to show here
 misc-image-unavailable = image unavailable
 misc-fitted = {" "}(fitted)
 misc-viewer-hint = wheel or + − zoom · 1 real size · 0 fit · drag to move · Esc
+
+## The usage arrow in the top bar
+
+usage-ratio = ×{$ratio}
+usage-points = {$points} pts
+usage-wall = wall {$left}
+usage-no-wall = no wall
+usage-window-five_hour = 5-hour window
+usage-window-seven_day = Week
+usage-tip-window = {$window}: {$used} % used, {$expected} % at a steady pace · resets {$resets} · {$end}
+usage-tip-wall = at this pace, the quota runs out in {$left}
+usage-tip-lasts = at this pace, it lasts until the reset
+usage-tip-click = A click: the gap said another way.

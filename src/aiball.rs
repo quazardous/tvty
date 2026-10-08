@@ -238,6 +238,10 @@ pub struct AgentBar {
     /// one, or from a loop older than aiball 0.55.
     #[serde(default)]
     pub denials: Option<BarDenials>,
+    /// The subscription's usage, as its Claude last read it: none on an
+    /// API key, before the first answer, or from an older loop.
+    #[serde(default)]
+    pub usage: Option<crate::usage::BarUsage>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]

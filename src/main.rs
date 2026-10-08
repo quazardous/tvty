@@ -50,6 +50,7 @@ mod tip;
 mod tips;
 mod ui;
 mod updates;
+mod usage;
 mod wheel;
 mod wire;
 mod workspaces;
