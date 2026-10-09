@@ -1675,10 +1675,10 @@ impl Element for TerminalElement {
             }
             let mut fg = to_hsla(fg);
             if flags.contains(Flags::DIM) {
-                fg.a *= 0.66;
+                fg.alpha *= 0.66;
             }
             if flags.contains(Flags::HIDDEN) {
-                fg.a = 0.;
+                fg.alpha = 0.;
             }
             let width = if flags.contains(Flags::WIDE_CHAR) { 2 } else { 1 };
             if let Some(arms) = box_arms(cell_data.c) {
@@ -1727,6 +1727,7 @@ impl Element for TerminalElement {
                 font,
                 color: fg,
                 background_color: None,
+                letter_spacing: None,
                 underline: flags.intersects(Flags::ALL_UNDERLINES).then(|| UnderlineStyle {
                     color: Some(fg),
                     thickness: px(1.),
@@ -1972,13 +1973,7 @@ fn keystroke_bytes(keystroke: &Keystroke, app_cursor: bool) -> Option<Vec<u8>> {
 }
 
 fn to_hsla(rgb: Rgb) -> Hsla {
-    Rgba {
-        r: rgb.r as f32 / 255.,
-        g: rgb.g as f32 / 255.,
-        b: rgb.b as f32 / 255.,
-        a: 1.,
-    }
-    .into()
+    rgb_to_hsla(Rgba::new(rgb.r as f32 / 255., rgb.g as f32 / 255., rgb.b as f32 / 255., 1.))
 }
 
 /// The palette when the program did not set a colour: the theme's 16 ANSI

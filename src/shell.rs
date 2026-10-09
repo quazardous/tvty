@@ -4397,8 +4397,8 @@ impl Shell {
             .cursor(CursorStyle::ResizeColumn)
             // Lit the theme's way, but opaque: the theme's colour may be
             // see-through, and see-through terminals leave nothing under.
-            .when(resizing, |d| d.bg(p().bg.blend(p().active)))
-            .hover(|d| d.bg(p().bg.blend(p().active)))
+            .when(resizing, |d| d.bg(p().bg.blend(&p().active)))
+            .hover(|d| d.bg(p().bg.blend(&p().active)))
             .on_mouse_down(
                 MouseButton::Left,
                 cx.listener(move |shell, _, _, cx| {
@@ -4487,7 +4487,7 @@ impl Shell {
             })
             .border_color(p().border)
             .cursor_pointer()
-            .hover(|d| d.bg(p().surface.blend(p().active)))
+            .hover(|d| d.bg(p().surface.blend(&p().active)))
             .children(marks.into_iter().enumerate().map(|(i, mark)| {
                 let shape = match mark.glyph {
                     Some(glyph) => crate::icons::loop_glyph(glyph, mark.colour, 7.),

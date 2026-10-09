@@ -182,7 +182,7 @@ fn main() {
                     // Its background is the shell's to paint: see-through
                     // where the terminals are, when asked.
                     cx.new(|cx| {
-                        gpui_kit::component::Root::new(view, window, cx).window_shadow_size(px(0.)).bg(transparent_black())
+                        gpui_kit::component::Root::new(view, window, cx).bg(transparent_black())
                     })
                 },
             )
