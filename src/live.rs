@@ -351,12 +351,23 @@ impl Live {
                                 return Vec::new();
                             }
                         };
+                        // Moved to another project (a move, a project renamed):
+                        // out of the one it was in.
+                        let mut moved = false;
+                        for (other, rows) in self.tickets.iter_mut().filter(|(other, _)| **other != project) {
+                            if rows.iter().any(|t| t.id == row.id) {
+                                log::debug!("ticket {} moved from {other} to {project}", row.id);
+                                rows.retain(|t| t.id != row.id);
+                                moved = true;
+                            }
+                        }
+                        self.tickets.retain(|_, rows| !rows.is_empty());
                         let rows = self.tickets.entry(project).or_default();
                         let mut updates = vec![Update::Board];
                         match rows.iter_mut().find(|t| t.id == row.id) {
                             Some(existing) => *existing = row,
                             None => {
-                                if is_new(&row) {
+                                if !moved && is_new(&row) {
                                     updates.push(Update::Filed(filed_of(&row)));
                                 }
                                 rows.push(row);
@@ -764,17 +775,25 @@ mod tests {
                             "data": { "op": "remove", "id": 1, "project": "demo" } }));
         assert_eq!(live.tickets()["demo"].iter().map(|t| t.id).collect::<Vec<_>>(), vec![2]);
 
+        // Moved to another project: in that one only, not filed again.
+        let mut moved = row(2, "pending");
+        moved["project"] = json!("demo2");
+        let filed = live.event(&json!({ "subscription": "t", "subject": "project.demo2.tickets", "seq": 13,
+                                        "data": { "op": "upsert", "row": moved } }));
+        assert!(!filed.iter().any(|u| matches!(u, Update::Filed(_))));
+        assert_eq!(live.tickets().keys().collect::<Vec<_>>(), vec!["demo2"]);
+
         // An agent's entry, whole, then gone.
-        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 13,
+        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 14,
                             "data": { "consumer_id": "demo-crew", "kind": "agent", "present": true, "state": "busy",
                                       "state_since": "2026-09-26T14:00:00Z" } }));
         let crew = &live.consumers()[0];
         assert_eq!((crew.present, crew.state.as_deref()), (Some(true), Some("busy")));
-        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 14, "data": null }));
+        live.event(&json!({ "subscription": "s", "subject": "agent.demo-crew.state", "seq": 15, "data": null }));
         assert!(live.consumers().is_empty());
 
         // A ping says who and what, without reading the message.
-        let ping = live.event(&json!({ "subscription": "p", "subject": "user.david.pings", "seq": 15,
+        let ping = live.event(&json!({ "subscription": "p", "subject": "user.david.pings", "seq": 16,
             "data": { "ticket_id": 2, "message": { "id": 7, "kind": "comment_added", "status": "approved",
                 "by_agent": "demo-crew", "project": "demo", "ticket_id": 2, "title": null, "decision": "plan" } } }));
         match &ping[..] {
@@ -783,12 +802,12 @@ mod tests {
         }
 
         // A change of aiball's config says so, whatever it is.
-        let changed = live.event(&json!({ "subscription": "c", "subject": "config.changed", "seq": 16,
+        let changed = live.event(&json!({ "subscription": "c", "subject": "config.changed", "seq": 17,
             "data": { "op": "set", "key": "tickets.stale_after", "project": null, "value": 3600, "by": "david" } }));
         assert!(matches!(&changed[..], [Update::Config]));
 
         // A usage limit reached is said once, with when it resets.
-        let bar = |limit: bool| json!({ "subscription": "b", "subject": "agent.demo-crew.bar", "seq": 17, "data": { "stale": false,
+        let bar = |limit: bool| json!({ "subscription": "b", "subject": "agent.demo-crew.bar", "seq": 18, "data": { "stale": false,
             "bar": { "phase": "idle", "presence": "wait", "afk": { "mode": "wait_inf", "expires_at": null },
                      "prompt": { "visible": true, "has_input": false }, "human_typing": false,
                      "marker": { "info": null, "health_prompt": false, "resume_picker": false, "resume_mode_picker": false },
@@ -809,7 +828,7 @@ mod tests {
         // Resuming names the epoch and the tickets' own last seq, not the
         // agents' later ones: each subscription resumes from its own.
         let plan = live.plan("david");
-        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 12 }));
+        assert_eq!(plan.calls[0].1["since"], json!({ "epoch": "e1", "seq": 13 }));
     }
 
     #[test]
