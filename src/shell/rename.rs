@@ -42,7 +42,13 @@ struct Asked {
 enum Busy {
     Checking,
     Renaming,
+    /// Renamed: the board is waited for, to show the project by its new name.
+    Following,
 }
+
+/// How long the options wait for the board to say the new name.
+const FOLLOW_EVERY: std::time::Duration = std::time::Duration::from_millis(250);
+const FOLLOW_TRIES: usize = 40;
 
 /// A name aiball takes: not empty, no white space, another than the one it has.
 fn fits(new_name: &str, project: &str) -> bool {
@@ -120,14 +126,15 @@ impl Shell {
                     .spawn(async move { aiball.rename_project(&project, &asked.new_name, asked.folder.as_deref(), asked.keep_folder, true) })
                     .await
             };
-            let _ = this.update_in(cx, |shell, window, cx| {
+            let renamed = matches!(&done, Ok(answer) if answer.applied);
+            let new_name = asked.new_name.clone();
+            let _ = this.update_in(cx, |shell, _, cx| {
                 match done {
                     Ok(answer) if answer.applied => {
                         activity::publish(cx, Activity::done(None, crate::t!("rename-done", old = project.clone(), new = asked.new_name.clone())));
-                        // The options follow the project under its new name.
-                        shell.rename = None;
-                        shell.project_opts = None;
-                        shell.scope_options(Some(asked.new_name.clone()), window, cx);
+                        if let Some(r) = shell.rename.as_mut() {
+                            r.busy = Some(Busy::Following);
+                        }
                     }
                     // Something came in the way meanwhile: said, as a dry run says it.
                     Ok(answer) => {
@@ -145,6 +152,35 @@ impl Shell {
                     }
                 }
                 cx.notify();
+            });
+            if !renamed {
+                return;
+            }
+            // The options follow the project under its new name, once the
+            // board has it (aiball says it a moment after answering): the
+            // scope's list and the project's folders come from the board.
+            for _ in 0..FOLLOW_TRIES {
+                cx.background_executor().timer(FOLLOW_EVERY).await;
+                let followed = this.update_in(cx, |shell, window, cx| {
+                    if !shell.board.projects.iter().any(|p| p.on_board && p.name == new_name) {
+                        return false;
+                    }
+                    shell.rename = None;
+                    shell.project_opts = None;
+                    shell.new_scope_select(window, cx);
+                    shell.scope_options(Some(new_name.clone()), window, cx);
+                    true
+                });
+                if followed.unwrap_or(true) {
+                    return;
+                }
+            }
+            // Not on the board yet: back to Global, rather than a page of a
+            // name it does not know.
+            let _ = this.update_in(cx, |shell, window, cx| {
+                shell.rename = None;
+                shell.new_scope_select(window, cx);
+                shell.scope_options(None, window, cx);
             });
         })
         .detach();
@@ -222,7 +258,7 @@ impl Shell {
         }
         match r.busy {
             Some(Busy::Checking) => return out.child(div().text_sm().text_color(p().muted).child(crate::t!("rename-checking"))),
-            Some(Busy::Renaming) => return out.child(div().text_sm().text_color(p().muted).child(crate::t!("rename-renaming"))),
+            Some(Busy::Renaming | Busy::Following) => return out.child(div().text_sm().text_color(p().muted).child(crate::t!("rename-renaming"))),
             None => {}
         }
         // An answer holds for what it was asked: typed again, asked again.
