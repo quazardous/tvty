@@ -98,11 +98,14 @@ case "${1:-}" in
         # What a daemon that fell left behind.
         clean
         rm -rf "$HOME_DIR"
-        mkdir -p "$HOME_DIR" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
+        mkdir -p "$HOME_DIR/user" "$DIR/config" "$DEMO/lead" "$DEMO/crew"
         ln -sfn "$HOME_DIR" "$SHORT_HOME"
         # The test loops' state (scripts/test-env): the daemon relays loop
         # controls (hold, tmux line) to the loops it finds there.
-        AIBALL_HOME="$SHORT_HOME" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
+        # A home of its own: what it reads or rewrites there (Claude's
+        # history, ~/.claude.json, when a project is renamed) is never the
+        # user's.
+        HOME="$HOME_DIR/user" AIBALL_HOME="$SHORT_HOME" XDG_CONFIG_HOME="$DIR/config" AIBALL_PORT=7797 \
             AIBALL_HOST=127.0.0.1 AIBALL_SOCK="$SOCK" \
             CLAUDE_LOOP_STATE_ROOT="$ROOT/dev/claude-loop" \
             CL_CLAUDE_CMD="$AIBALL/bin/fake-claude" \

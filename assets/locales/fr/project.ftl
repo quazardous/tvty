@@ -52,3 +52,22 @@ projectopts-also-serves = Il sert aussi {$others} : un changement ici vaut pour 
 projectopts-on-named = activé : {$name}
 projectopts-none-set = {$project} ne règle rien de la config du board : il a les valeurs du board.
 projectopts-all-keys = Toutes ses clés
+
+# The project renamed (its options' Name)
+rename-placeholder = nouveau nom
+rename-about = Renomme {$project} partout à la fois : son nom dans aiball (ses tickets suivent), son .aiball.yaml, et son dossier s'il ne reste pas en place. Son agent garde son nom. tvty demande d'abord à aiball ce qu'il ferait.
+rename-move-folder = Déplacer aussi le dossier
+rename-check = Vérifier
+rename-checking = aiball répond…
+rename-renaming = Renommage…
+rename-folder-moves = Le dossier est déplacé : {$from} → {$to}
+rename-folder-stays = Le dossier reste où il est.
+rename-stop = L'arrêter
+rename-apply = Renommer en {$new}
+rename-done = Projet {$old} renommé {$new}
+rename-failed = Renommage de {$project}
+rename-stop-failed = Arrêt de {$name}
+rename-loop-unknown = tvty ne connaît pas cette boucle
+rename-no-root = aiball ne connaît aucun dossier pour ce projet sur cette machine.
+rename-which-root = aiball connaît ce projet dans plusieurs dossiers : lequel ?
+rename-choose-root = Le dossier à renommer :

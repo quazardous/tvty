@@ -117,6 +117,7 @@ settings-title-window = Ventana
 settings-title-workspace = Espacio de trabajo
 settings-title-terminal = Terminal
 settings-title-fixed-keys = Teclas fijas
+settings-title-name = Nombre
 settings-title-folder = Carpeta
 settings-title-board = Tablero
 settings-title-board-wide-only = Solo para todo el tablero

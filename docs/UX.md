@@ -620,7 +620,16 @@ themes live).
 to be found. Global: the
 pages above. A project (or its ⚙ in the sessions list): a **Project** page
 comes first, and the aiball page shows that project's layer. The Project
-page has two groups. *Folder*: what the folder's `.aiball.yaml` sets, as
+page has three groups. *Name*: the project renamed everywhere at once, as
+`aiball project rename-all` does — its name in aiball (its tickets follow
+it, in every tvty), its `.aiball.yaml`, and its folder unless "Move the
+folder too" is off; its agent keeps its name. **Check** (or Enter) asks
+aiball what it would do and what stands in the way, each said in aiball's
+words: a loop running there has **Stop it** beside it, and when aiball
+knows the project in several folders, or none, they are offered to choose
+from. **Rename to …** comes once nothing stands in the way; the options
+follow the project under its new name. The remote repository is left as
+it is. *Folder*: what the folder's `.aiball.yaml` sets, as
 aiball resolves and writes it (tvty never opens that file) — where the
 loops started there run (session host or tmux) and its Claude's Remote
 Control, each saying where its value comes from (the file, the machine's

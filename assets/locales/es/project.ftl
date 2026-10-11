@@ -52,3 +52,22 @@ projectopts-also-serves = También sirve a {$others}: un cambio aquí vale para 
 projectopts-on-named = activado: {$name}
 projectopts-none-set = {$project} no fija nada de la config del tablero: tiene los valores del tablero.
 projectopts-all-keys = Todas sus claves
+
+# The project renamed (its options' Name)
+rename-placeholder = nuevo nombre
+rename-about = Renombra {$project} en todas partes a la vez: su nombre en aiball (sus tickets lo siguen), su .aiball.yaml y su carpeta si no se queda. Su agente conserva su nombre. tvty pregunta antes a aiball qué haría.
+rename-move-folder = Mover también la carpeta
+rename-check = Comprobar
+rename-checking = aiball responde…
+rename-renaming = Renombrando…
+rename-folder-moves = La carpeta se mueve: {$from} → {$to}
+rename-folder-stays = La carpeta se queda donde está.
+rename-stop = Detenerlo
+rename-apply = Renombrar a {$new}
+rename-done = Proyecto {$old} renombrado {$new}
+rename-failed = Renombrar {$project}
+rename-stop-failed = Detener {$name}
+rename-loop-unknown = tvty no conoce este bucle
+rename-no-root = aiball no conoce ninguna carpeta para este proyecto en esta máquina.
+rename-which-root = aiball conoce este proyecto en varias carpetas: ¿cuál?
+rename-choose-root = La carpeta a renombrar:

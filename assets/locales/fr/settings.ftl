@@ -117,6 +117,7 @@ settings-title-window = Fenêtre
 settings-title-workspace = Espace de travail
 settings-title-terminal = Terminal
 settings-title-fixed-keys = Touches fixes
+settings-title-name = Nom
 settings-title-folder = Dossier
 settings-title-board = Board
 settings-title-board-wide-only = Pour tout le board seulement

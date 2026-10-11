@@ -38,6 +38,7 @@ mod megaphone;
 pub use crate::kernel::standing::Steered;
 mod newproject;
 mod projectopts;
+mod rename;
 mod loopstabs;
 mod quit;
 mod workspaces;
@@ -333,6 +334,8 @@ pub struct Shell {
     new_project: Option<newproject::NewProject>,
     /// The project the options are scoped to, its folders' settings.
     project_opts: Option<projectopts::ProjectOpts>,
+    /// The rename of the project its options are scoped to.
+    rename: Option<rename::Rename>,
     /// The options' scope list, while they are open.
     scope_select: Option<Entity<projectopts::ScopeSelect>>,
     /// Settings > Appearance > Language's dropdown, while the options are open.
@@ -899,6 +902,7 @@ impl Shell {
             window_button_pressed: None,
             new_project: None,
             project_opts: None,
+            rename: None,
             scope_select: None,
             language_select: None,
             megaphone: None,

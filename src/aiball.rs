@@ -479,6 +479,52 @@ pub struct BacklogRow {
     pub backlog_cooled_until: Option<String>,
 }
 
+/// How long a rename may take: a folder moved, Claude's history
+/// rewritten for its new path.
+const RENAME_WAIT: std::time::Duration = std::time::Duration::from_secs(180);
+
+/// `project.rename_all`'s answer: what is done (or would be), and what
+/// stands in the way.
+#[derive(Clone, Debug, Deserialize)]
+pub struct RenameAll {
+    pub applied: bool,
+    pub plan: RenamePlan,
+    #[serde(default)]
+    pub blockers: Vec<RenameBlocker>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct RenamePlan {
+    /// The folder moved, none when it stays.
+    #[serde(default)]
+    pub folder: Option<RenameFolder>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+pub struct RenameFolder {
+    pub from: String,
+    pub to: String,
+}
+
+/// What stands in the way of a rename (a loop running there, a process in
+/// the folder, the name taken…), as aiball says it to a human.
+#[derive(Clone, Debug, Deserialize)]
+pub struct RenameBlocker {
+    pub text: String,
+    /// A running loop's name (`kind` `loop`): it can be stopped.
+    #[serde(default, rename = "loop")]
+    pub running: Option<String>,
+}
+
+/// The folders aiball knows for a project, when a rename was refused for
+/// not knowing which to take (`AMBIGUOUS_ROOT`, `NO_ROOT`).
+pub fn roots_refused(error: &anyhow::Error) -> Option<Vec<String>> {
+    let refused = error.downcast_ref::<crate::wire::Refused>()?;
+    matches!(refused.code.as_str(), "AMBIGUOUS_ROOT" | "NO_ROOT").then(|| {
+        refused.details.get("roots").and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect()
+    })
+}
+
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
 /// — the same row aiball's web UI shows.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -1217,6 +1263,22 @@ impl Aiball {
     /// its key stays. Every client hears the new name.
     pub fn label_terminal(&self, name: &str, label: Option<&str>) -> anyhow::Result<()> {
         self.rpc_do("session.label", json!({ "name": name, "label": label }))
+    }
+
+    /// Renames `project` everywhere at once (`project.rename_all`): its name
+    /// in aiball, its `.aiball.yaml` and, unless `keep_folder`, its folder
+    /// with the state keyed by its path. Without `apply`, what would be
+    /// done and what stands in the way. `folder`: the one to rename, when
+    /// aiball knows several or none ([`roots_refused`]). On a connection of
+    /// its own: moving a folder takes its time. Blocking: off the UI thread.
+    pub fn rename_project(&self, project: &str, new_name: &str, folder: Option<&str>, keep_folder: bool, apply: bool) -> anyhow::Result<RenameAll> {
+        let wire = WIRE.get().context("aiball's bus is not open")?;
+        let mut params = json!({ "name": project, "new_name": new_name, "no_move": keep_folder, "apply": apply });
+        if let Some(folder) = folder {
+            params["cwd"] = json!(folder);
+        }
+        let answer = wire.call_alone("project.rename_all", params, RENAME_WAIT)?;
+        serde_json::from_value(answer).context("project.rename_all: an answer tvty does not read")
     }
 
     /// Removes a terminal the daemon's host holds (its program ended, or not).

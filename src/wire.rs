@@ -121,7 +121,7 @@ impl Wire {
                     for message in messages(&text) {
                         if let Incoming::Answer { id: 1, result } = message {
                             let _ = socket.close(None);
-                            return result.map_err(|e| anyhow!("{method}: {e:#}"));
+                            return result.map_err(|e| e.context(method.to_string()));
                         }
                     }
                 }
@@ -299,6 +299,24 @@ enum Incoming {
     Notification(Notification),
 }
 
+/// A call aiball refused: its code (`NOT_FOUND`, `AMBIGUOUS_ROOT`…) and the
+/// details some refusals carry, for whoever answers it with a gesture
+/// (`anyhow::Error::downcast_ref`).
+#[derive(Debug)]
+pub struct Refused {
+    pub message: String,
+    pub code: String,
+    pub details: Value,
+}
+
+impl std::fmt::Display for Refused {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.message, self.code)
+    }
+}
+
+impl std::error::Error for Refused {}
+
 /// The messages of one frame: one, or a batch's.
 fn messages(text: &str) -> Vec<Incoming> {
     let Ok(value) = serde_json::from_str::<Value>(text) else {
@@ -308,11 +326,11 @@ fn messages(text: &str) -> Vec<Incoming> {
     let each = |v: &Value| -> Option<Incoming> {
         if let Some(id) = v.get("id").and_then(Value::as_u64) {
             let result = match v.get("error") {
-                Some(error) => {
-                    let message = error.get("message").and_then(Value::as_str).unwrap_or("refused");
-                    let code = error.pointer("/data/code").and_then(Value::as_str).unwrap_or("");
-                    Err(anyhow!("{message} ({code})"))
-                }
+                Some(error) => Err(anyhow::Error::new(Refused {
+                    message: error.get("message").and_then(Value::as_str).unwrap_or("refused").to_string(),
+                    code: error.pointer("/data/code").and_then(Value::as_str).unwrap_or("").to_string(),
+                    details: error.pointer("/data/details").cloned().unwrap_or(Value::Null),
+                })),
                 None => Ok(v.get("result").cloned().unwrap_or(Value::Null)),
             };
             return Some(Incoming::Answer { id, result });

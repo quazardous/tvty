@@ -117,13 +117,17 @@ impl Shell {
         self.show_layer(project.clone(), cx);
         match project {
             Some(project) => {
+                self.rename_for(&project, window, cx);
                 if self.project_opts.as_ref().is_none_or(|o| o.project != project) {
                     let folders = folders_of(&project, &self.board.homes, &self.board.known);
                     self.project_opts = Some(ProjectOpts { project, folders: folders.into_iter().map(|f| (f, None)).collect(), chosen: 0 });
                 }
                 self.load_project_settings(cx);
             }
-            None => self.project_opts = None,
+            None => {
+                self.project_opts = None;
+                self.rename = None;
+            }
         }
         // Scoped to a project: its page first; back to Global, off it.
         match (to_project, self.options) {
@@ -189,16 +193,20 @@ impl Shell {
 
     /// The Project page's groups, for the tree.
     pub(super) fn project_groups(&self) -> Vec<SharedString> {
-        vec!["Folder".into(), "Board".into()]
+        vec!["Name".into(), "Folder".into(), "Board".into()]
     }
 
-    /// The Project page: the folder's settings, then the board's keys the
-    /// project overrides.
+    /// The Project page: its name, the folder's settings, then the board's
+    /// keys the project overrides.
     pub(super) fn project_sections(&self, cx: &mut Context<Self>) -> Vec<(Option<SharedString>, AnyElement)> {
         let Some(opts) = self.project_opts.as_ref() else {
             return vec![(None, option_note(crate::t!("projectopts-choose")).into_any_element())];
         };
-        vec![(Some("Folder".into()), self.folder_section(opts, cx).into_any_element()), (Some("Board".into()), self.board_section(opts, cx).into_any_element())]
+        vec![
+            (Some("Name".into()), self.rename_section(cx).into_any_element()),
+            (Some("Folder".into()), self.folder_section(opts, cx).into_any_element()),
+            (Some("Board".into()), self.board_section(opts, cx).into_any_element()),
+        ]
     }
 
     fn folder_section(&self, opts: &ProjectOpts, cx: &mut Context<Self>) -> Div {
