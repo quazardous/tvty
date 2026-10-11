@@ -41,6 +41,11 @@ pub struct KnownLoop {
     /// Stopped, and its agent has a loop that runs, or a later one.
     #[serde(default)]
     pub superseded: bool,
+    /// Its kernel (its wakes, bar and presence) is alive. `false` while
+    /// `running`: its Claude runs with nothing driving it ([`reload`]).
+    /// Absent from an older aiball: taken as alive.
+    #[serde(default = "alive")]
+    pub kernel: bool,
     /// On the host, where a client attaches to it.
     #[serde(default)]
     pub attach: Option<crate::aiball::AttachPoint>,
@@ -79,9 +84,19 @@ pub enum Resume {
     Fresh,
 }
 
+fn alive() -> bool {
+    true
+}
+
 impl KnownLoop {
     pub fn agent(&self) -> Option<&str> {
         self.agent.as_deref()
+    }
+
+    /// Its Claude runs, its kernel died (a daemon that fell): it shows
+    /// offline, and [`reload`] brings it back without touching Claude.
+    pub fn adrift(&self) -> bool {
+        self.running && !self.kernel
     }
 
     /// It runs (or ran) on aiball's session host, not in tmux.
@@ -205,6 +220,12 @@ fn stopped(agent: &str, answer: &Value) -> anyhow::Result<()> {
 pub fn restart_on(aiball: &Aiball, name: &str, conversation: &str) -> anyhow::Result<String> {
     let view: KnownLoop = aiball.call_starting("loop.restart", sized(json!({ "name": name, "resume": conversation }))).map_err(said)?;
     Ok(view.session())
+}
+
+/// A loop whose kernel died, its kernel respawned (`loop.reload`): its
+/// Claude goes on as it was.
+pub fn reload(aiball: &Aiball, name: &str) -> anyhow::Result<()> {
+    aiball.call_starting::<Value>("loop.reload", json!({ "name": name })).map(drop).map_err(said)
 }
 
 /// `afk`: the hold it starts in (`off`, `wait_inf`); none: its agent's,

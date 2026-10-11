@@ -446,7 +446,11 @@ of a ten-minute hold, `웃∞` held. **F9**, anywhere in the window, moves it
 one step (auto → 10 min → ∞ → auto); the mode takes effect 3 s after the
 last press, and until then the little man is dotted, with "…". A click
 offers auto, hold 10 min, hold. Then its Claude's
-phase, for how long, and the passing word (`retry 2`, `compacting`); when
+phase — or "offline" when its loop is not connected to aiball; when aiball
+says its Claude runs but nothing drives it (its kernel died with a daemon
+that fell), **relaunch the loop** beside it respawns the kernel
+(`loop.reload`): wakes, bar and presence come back, Claude is not touched —,
+for how long, and the passing word (`retry 2`, `compacting`); when
 its Claude Code installed an update, **⟳ update** — a click asks first
 ("Restart its Claude now?", or once it is idle), then its loop restarts it
 as soon as it is idle ("⟳ restart pending" meanwhile, an

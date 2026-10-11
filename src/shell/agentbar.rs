@@ -126,6 +126,9 @@ impl Shell {
             .get(project)
             .map_or(0, |rows| rows.iter().filter(|r| r.holder() == Some(agent.as_str())).count());
         let online = bar.is_some() || status.as_ref().is_some_and(|s| s.online);
+        let adrift = (!online)
+            .then(|| self.board.known.iter().find(|l| l.agent() == Some(agent.as_str()) && l.adrift()).map(|l| l.name.clone()))
+            .flatten();
         let item = || div().flex().items_center().gap_1().flex_none();
         let sep = || div().text_color(p().border).child("│");
         let loud = |text: SharedString| {
@@ -501,6 +504,19 @@ impl Shell {
                 } else {
                     item().text_color(ink(p().danger)).child(crate::t!("agentbar-offline")).into_any_element()
                 })
+                // Its Claude runs, nothing drives it: its kernel back, Claude untouched.
+                .children(adrift.map(|name| {
+                    if self.reloading.as_deref() == Some(name.as_str()) {
+                        item().child(crate::t!("agentbar-reloading")).into_any_element()
+                    } else {
+                        buttons::chip("agentbar-reload", crate::t!("agentbar-reload"))
+                            .py_0()
+                            .text_color(ink(p().accent))
+                            .tip(crate::t!("agentbar-reload-tip"))
+                            .on_click(cx.listener(move |shell, _, _, cx| shell.reload_loop(name.clone(), cx)))
+                            .into_any_element()
+                    }
+                }))
                 .children(dialog.map(|_| item().text_color(ink(p().warning)).child(crate::t!("agentbar-dialog"))))
                 .when_some(bar.as_ref(), |d, b| {
                     let a = &b.alerts;
@@ -731,6 +747,32 @@ impl Shell {
                     break;
                 }
             }
+        })
+        .detach();
+    }
+
+    /// Respawns the kernel of a loop whose Claude runs undriven (a daemon
+    /// that fell took it along): wakes, bar and presence come back, Claude
+    /// is left as it was.
+    fn reload_loop(&mut self, name: String, cx: &mut Context<Self>) {
+        self.reloading = Some(name.clone());
+        cx.notify();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let done = {
+                let name = name.clone();
+                cx.background_executor().spawn(async move { crate::loops::reload(&aiball, &name) }).await
+            };
+            let _ = this.update(cx, |shell, cx| {
+                shell.reloading = None;
+                let activity = match done {
+                    Ok(()) => crate::activity::Activity::done(None, crate::t!("agentbar-reload-done", name = name.clone())),
+                    Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-reload-failed", name = name.clone()), short_error(&format!("{error:#}"))),
+                };
+                crate::activity::publish(cx, activity);
+                let _ = shell.refresh_now.unbounded_send(());
+                cx.notify();
+            });
         })
         .detach();
     }

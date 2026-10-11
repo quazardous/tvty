@@ -17,6 +17,11 @@ agentbar-working = working
 agentbar-starting = starting
 agentbar-idle = idle
 agentbar-offline = offline
+agentbar-reload = relaunch the loop
+agentbar-reload-tip = its Claude runs, but nothing drives it (its kernel died with aiball): relaunched, its wakes, bar and presence come back; Claude is not touched
+agentbar-reloading = relaunching…
+agentbar-reload-done = the loop {$name} drives its Claude again
+agentbar-reload-failed = relaunching the loop {$name}
 # After the time since the boot began: " · 12s left".
 agentbar-boot-left = {" · "}{$seconds}s left
 agentbar-boot-tip = its loop is starting: Claude loads, may resume its conversation or compact; the loop wakes it once the boot ends (30 s at least, longer while a resume or a compaction shows)

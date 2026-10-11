@@ -194,6 +194,8 @@ pub struct Shell {
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
+    /// The loop whose kernel is being respawned.
+    reloading: Option<String>,
     backlog_view: Option<agentbar::BacklogView>,
     /// The projects' list's tab, the "+ session" form open, the directory
     /// a loop is starting in, and the loop to open once it runs.
@@ -841,6 +843,7 @@ impl Shell {
             restart_asked: None,
             moves: HashMap::new(),
             restarting: None,
+            reloading: None,
             backlog_view: None,
             session_scrolls: Default::default(),
             new_session: None,

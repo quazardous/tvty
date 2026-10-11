@@ -17,6 +17,11 @@ agentbar-working = arbeitet
 agentbar-starting = startet
 agentbar-idle = Leerlauf
 agentbar-offline = offline
+agentbar-reload = Schleife neu starten
+agentbar-reload-tip = sein Claude läuft, aber nichts steuert ihn (sein Kernel fiel mit aiball): neu gestartet kehren seine Weckrufe, seine Leiste und seine Präsenz zurück; Claude bleibt unberührt
+agentbar-reloading = startet neu…
+agentbar-reload-done = die Schleife {$name} steuert ihren Claude wieder
+agentbar-reload-failed = Neustart der Schleife {$name}
 # Nach der Zeit seit Beginn des Boots: " · noch 12 s".
 agentbar-boot-left = {" · "}noch {$seconds} s
 agentbar-boot-tip = sein Loop startet: Claude lädt, setzt vielleicht seine Unterhaltung fort oder kompaktiert; der Loop weckt ihn, sobald der Boot endet (mindestens 30 s, länger solange ein Fortsetzen oder Kompaktieren angezeigt wird)
