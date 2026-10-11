@@ -148,7 +148,8 @@ impl Shell {
         }
     }
 
-    /// Esc on the end screen: back to the terminal used before, if any.
+    /// Esc on the end screen: back to another terminal of its group, else
+    /// the one used before, if any.
     pub(super) fn close_ended(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(ended) = self.ended.take() else { return };
         // A terminal of the daemon's whose program ended: closing it removes
@@ -167,8 +168,9 @@ impl Shell {
                     .detach();
             }
         }
+        let group = self.terminal_of(&ended.session).map(|(group, _)| group.to_string());
         self.recent.retain(|s| *s != ended.session);
-        let previous = self.recent.iter().find(|s| self.terminal_of(s).is_some()).cloned();
+        let previous = self.shown_next(group.as_deref(), |s| s != ended.session && self.terminal_of(s).is_some());
         match previous {
             Some(session) => self.select(session, window, cx),
             None => {

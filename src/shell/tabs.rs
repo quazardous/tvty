@@ -192,11 +192,12 @@ impl Shell {
         let shell = self
             .terminal_of(&session)
             .is_some_and(|(_, t)| t.agent.is_none() && t.attach.is_some());
+        let group = self.terminal_of(&session).map(|(group, _)| group.to_string());
         self.terminals.remove(&session);
-        // Back to the terminal used before it, still open in tvty — of this
-        // group or another, as the end screen's Close does.
+        // Another tab of its group, else the terminal used before it, still
+        // open in tvty — as the end screen's Close does.
         self.recent.retain(|s| *s != session);
-        let next = self.recent.iter().find(|s| self.terminals.contains_key(*s)).cloned();
+        let next = self.shown_next(group.as_deref(), |s| self.terminals.contains_key(s));
         if shell {
             // Gone from the list now, not once the host has stopped it.
             self.stopping.insert(session.clone());
@@ -235,6 +236,22 @@ impl Shell {
         }
         self.save_workspace(cx);
         cx.notify();
+    }
+
+    /// The terminal to show once one closes (its group `group`), among
+    /// those that `fits`: one of its group, the one used last first, then
+    /// its tabs in their order; else the one used last, of any group.
+    pub(super) fn shown_next(&self, group: Option<&str>, fits: impl Fn(&str) -> bool) -> Option<String> {
+        let of_group = |s: &str| group.is_some_and(|g| self.terminal_of(s).is_some_and(|(of, _)| of == g));
+        self.recent
+            .iter()
+            .find(|s| fits(s) && of_group(s))
+            .or_else(|| {
+                let group = self.board.projects.iter().find(|p| Some(p.name.as_str()) == group)?;
+                group.terminals.iter().map(|t| &t.session).find(|s| fits(s) && self.terminals.contains_key(*s))
+            })
+            .or_else(|| self.recent.iter().find(|s| fits(s)))
+            .cloned()
     }
 
     /// The workspace, kept for the next start: the terminals open, the one

@@ -192,7 +192,7 @@ they stopped, 15 s at most. Loops of another machine are never touched.
 When the session shown ends (Claude quit, the loop stopped), its terminal
 gives way to an end screen: the agent, its project and directory, and
 **Restart** (Enter: its loop starts again there, and opens once it runs)
-or **Close** (Esc: back to the terminal used before). The panel keeps the
+or **Close** (Esc: back to another tab of its project, else the terminal used before). The panel keeps the
 project's tickets meanwhile; the loop shows under idle.
 
 
@@ -207,7 +207,8 @@ project's tickets meanwhile; the loop shows under idle.
   tab shown and the one under the pointer, or a middle click) closes a tab:
   for an agent or a tmux session, only tvty's view goes — Claude runs on;
   a shell of aiball's host stops, as a terminal's tab does. Closing the
-  tab shown goes back to the terminal used before it, of any group.
+  tab shown shows another tab of its group (the one used last first),
+  else the terminal used before it, of any group.
 - **The workspace is kept**: closed and started again, tvty opens the
   terminals that were open (those still there), the tab shown last on top. The list on the
   left keeps every terminal, with its state; a click there opens a tab again.

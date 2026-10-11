@@ -32,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Closing a tab (or an ended terminal) shows another tab of the same project when there is one, no longer the last terminal used in another project.
 - Accented letters typed with a dead key (^ then e on a French keyboard) reach the terminal as ê, no longer as "[ê".
 
 ## [0.15.0-beta.1] - 2026-10-06
