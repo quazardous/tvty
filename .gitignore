@@ -28,6 +28,7 @@ __pycache__/
 /.aiball-session_id
 /.mcp.json
 /.claude/
+/.secrets/
 
 # ── Editors and systems ──────────────────────────────────────────────
 .idea/
