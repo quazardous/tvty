@@ -14,6 +14,7 @@ use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 
 use crate::bus::{self, Signal};
+use crate::rowstate::Glyph;
 use crate::theme::p;
 
 pub const MAX_DEFAULT: usize = 5;
@@ -25,6 +26,8 @@ const NOTICE_WIDTH: f32 = 520.;
 pub enum Kind {
     /// A decision waits on the user.
     Decision,
+    /// An agent proposes this decision: said in its colour in the lists.
+    Proposal(Glyph),
     /// Something new on a ticket.
     News,
     /// tvty says something.
@@ -235,6 +238,7 @@ fn tick(cx: &mut App) {
 fn colour(kind: Kind) -> Hsla {
     match kind {
         Kind::Decision => p().warning,
+        Kind::Proposal(glyph) => crate::panel::glyph_colour(glyph, true),
         Kind::News => p().accent,
         Kind::Info => p().info,
         Kind::Done => p().success,

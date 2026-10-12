@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 
 use crate::aiball::{BarRead, Consumer, TicketRow};
 use crate::pings::PingInfo;
+use crate::rowstate::Glyph;
 
 /// What a subscription is to.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -489,7 +490,7 @@ impl Live {
         let meta: Value = serde_json::from_str(text("meta")).ok()?;
         let decision = meta.get("decision")?;
         let waits = decision.get("status").and_then(Value::as_str) == Some("pending");
-        let proposal = matches!(decision.get("kind").and_then(Value::as_str), Some("plan" | "resolution" | "wontfix" | "escalation"));
+        let proposal = decision.get("kind").and_then(Value::as_str).and_then(Glyph::of_decision).is_some();
         if !waits || !proposal {
             return None;
         }
@@ -544,7 +545,7 @@ impl Live {
             what: if pending { crate::t!("messages-new-ticket-moderate") } else { crate::pings::what_it_is(&kind, decision.clone()) },
             urgent: message.get("intent").and_then(Value::as_str) == Some("panic"),
             pending,
-            proposal: matches!(decision.as_deref(), Some("plan" | "resolution" | "wontfix" | "escalation")),
+            proposal: decision.as_deref().and_then(Glyph::of_decision),
             at: text("created_at"),
         })
     }

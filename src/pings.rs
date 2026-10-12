@@ -4,6 +4,8 @@
 //! opening its ticket marks it read in aiball, so aiball's web UI and tvty
 //! agree.
 
+use crate::rowstate::Glyph;
+
 #[derive(Debug, PartialEq)]
 pub struct PingInfo {
     pub ticket: u64,
@@ -21,8 +23,9 @@ pub struct PingInfo {
     pub urgent: bool,
     /// The ticket waits for moderation.
     pub pending: bool,
-    /// It proposes a decision (a plan, a resolution…): the user's to take.
-    pub proposal: bool,
+    /// The decision it proposes (a plan, a resolution…), the user's to take:
+    /// its glyph, whose colour it is said in.
+    pub proposal: Option<Glyph>,
     /// When it came, as aiball writes times (ISO 8601, UTC): they compare
     /// as text.
     pub at: String,
@@ -60,7 +63,7 @@ pub fn what_it_is(kind: &str, decision: Option<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{PingInfo, missed, missed_text, what_it_is};
+    use super::{Glyph, PingInfo, missed, missed_text, what_it_is};
 
     fn ping(ticket: u64, at: &str) -> PingInfo {
         PingInfo {
@@ -73,7 +76,7 @@ mod tests {
             excerpt: String::new(),
             urgent: false,
             pending: false,
-            proposal: true,
+            proposal: Some(Glyph::Resolution),
             at: at.into(),
         }
     }

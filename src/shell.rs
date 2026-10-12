@@ -1409,7 +1409,9 @@ impl Shell {
         self.ping_seen(&ping.at.clone(), cx);
         let kind = if ping.urgent {
             Kind::Error
-        } else if ping.pending || ping.proposal {
+        } else if let Some(glyph) = ping.proposal {
+            Kind::Proposal(glyph)
+        } else if ping.pending {
             Kind::Decision
         } else {
             Kind::News

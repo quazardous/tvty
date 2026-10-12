@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A ticket moved to another project leaves the old project's list, no longer shown in both.
+- A proposal's notification, and its banner and chip in the ticket's thread, take the list's colour for its kind (a resolution green, an escalation red, a wontfix grey), no longer all yellow.
 - Closing a tab (or an ended terminal) shows another tab of the same project when there is one, no longer the last terminal used in another project.
 - Accented letters typed with a dead key (^ then e on a French keyboard) reach the terminal as ê, no longer as "[ê".
 

@@ -98,6 +98,18 @@ impl Glyph {
         })
     }
 
+    /// The glyph of a decision's kind, as aiball names it: what a proposal
+    /// shows wherever it is said.
+    pub fn of_decision(kind: &str) -> Option<Glyph> {
+        Some(match kind {
+            "plan" => Glyph::Plan,
+            "resolution" => Glyph::Resolution,
+            "wontfix" => Glyph::Wontfix,
+            "escalation" => Glyph::Escalation,
+            _ => return None,
+        })
+    }
+
     pub fn meaning(self) -> String {
         crate::t!(match self {
             Glyph::Escalation => "tickets-glyph-escalation",

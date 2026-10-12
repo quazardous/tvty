@@ -296,12 +296,7 @@ pub fn glyph(thread: &Thread, reading: &Reading) -> Option<Glyph> {
         return Some(if thread.ticket.resolved { Glyph::ClosedResolved } else { Glyph::Closed });
     }
     if let Some(active) = &reading.active {
-        return Some(match active.kind.as_str() {
-            "resolution" => Glyph::Resolution,
-            "wontfix" => Glyph::Wontfix,
-            "escalation" => Glyph::Escalation,
-            _ => Glyph::Plan,
-        });
+        return Some(Glyph::of_decision(&active.kind).unwrap_or(Glyph::Plan));
     }
     thread.ticket.step.as_ref().map(|_| Glyph::Step)
 }

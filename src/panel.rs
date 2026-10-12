@@ -1589,7 +1589,7 @@ impl TicketPanel {
                                 .min_w_0()
                                 .child(icons::labelled(
                                     icons::of_kind(&active.kind),
-                                    p().warning,
+                                    decision_colour(&active.kind),
                                     16.,
                                     crate::t!(&format!("tickets-proposes-{}", reading::kind_key(&active.kind)), who = active.by.clone()),
                                 )),
@@ -2702,6 +2702,11 @@ pub(crate) fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
     }
 }
 
+/// A proposed decision's colour, as the list's glyph of its kind.
+fn decision_colour(kind: &str) -> Hsla {
+    glyph_colour(Glyph::of_decision(kind).unwrap_or(Glyph::Plan), true)
+}
+
 pub(crate) fn stripe_colour(state: &RowState) -> Hsla {
     state
         .glyph
@@ -2963,7 +2968,7 @@ pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketR
 fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
     let noun = reading::kind_noun(kind);
     match state {
-        DecisionState::Pending => icons::pill(icons::of_kind(kind), crate::t!("tickets-decision-pending", noun = noun.clone(), kind = reading::kind_key(kind)), p().warning).into_any_element(),
+        DecisionState::Pending => icons::pill(icons::of_kind(kind), crate::t!("tickets-decision-pending", noun = noun.clone(), kind = reading::kind_key(kind)), decision_colour(kind)).into_any_element(),
         DecisionState::Accepted => icons::pill(Icon::Resolution, crate::t!("tickets-decision-accepted", noun = noun.clone(), kind = reading::kind_key(kind)), p().success).into_any_element(),
         DecisionState::Rejected => icons::pill(Icon::Rejected, crate::t!("tickets-decision-rejected", noun = noun.clone(), kind = reading::kind_key(kind)), p().danger).into_any_element(),
         DecisionState::Superseded => div()
