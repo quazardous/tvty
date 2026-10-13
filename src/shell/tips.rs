@@ -221,7 +221,7 @@ impl Shell {
                         .bg(violet)
                         .text_color(crate::theme::on(violet))
                         .font_weight(FontWeight::MEDIUM)
-                        .hover(move |d| d.bg(violet.blend(gpui_kit::white().opacity(0.15))))
+                        .hover(move |d| d.bg(violet.blend(&gpui_kit::white().opacity(0.15))))
                         .active(move |d| d.bg(violet.opacity(0.8)))
                         .child(crate::t!("messages-got-it"))
                         .on_click(cx.listener(|shell, _, _, cx| shell.tip_got(cx))),

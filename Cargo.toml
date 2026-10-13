@@ -25,7 +25,8 @@ anyhow = "1.0.104"
 base64 = "0.22"
 env_logger = "0.11.11"
 futures = "0.3"
-gpui-kit = "0.6"
+# GPUI Community Edition, through its fork of gpui-kit.
+gpui-kit = { package = "gpui_ce_kit", git = "https://github.com/gpui-ce/gpui-component", rev = "c082069" }
 # Already built for GPUI: only to read an image's size.
 image = { version = "0.25", default-features = false }
 log = "0.4.34"
@@ -77,7 +78,7 @@ opt-level = 3
 # sources on the machine that built it: that tvty runs nowhere else (not in
 # Windows Sandbox, where the Windows tests run). Without debug assertions
 # they are compiled at build time and embedded (fxc.exe, the Windows SDK).
-[profile.dev.package.gpui-pre-windows]
+[profile.dev.package.gpui_ce_windows]
 debug-assertions = false
 
 # The profile that 'dist' will build with
@@ -85,8 +86,12 @@ debug-assertions = false
 inherits = "release"
 lto = "thin"
 
+
 # GPUI's Wayland client, with one fix: a keyboard event before any keymap is
 # ignored instead of a panic (tvty crashed under a headless compositor).
 # Remove once fixed upstream: https://github.com/zed-industries/zed/issues/64660
 [patch.crates-io]
-gpui-pre-linux = { path = "vendor/gpui-pre-linux" }
+gpui_ce_linux = { path = "vendor/gpui_ce_linux" }
+# GPUI CE with its colour blend as Zed's: over an opaque colour, the one laid
+# on top keeps its own alpha (the themes' derived colours were see-through).
+gpui-ce = { path = "vendor/gpui-ce" }

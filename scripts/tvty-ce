@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# tvty-ce — the gpui-ce trial build, run beside the usual tvty: settings and
+# state of its own (copied from the user's on first run), so neither
+# overwrites the other's; same aiball, same tmux sessions.
+# Install: scripts/tvty-ce install (copies the built binary, links the script).
+set -euo pipefail
+HOME_CE="${XDG_DATA_HOME:-$HOME/.local/share}/tvty-ce"
+if [[ ${1:-} == install ]]; then
+    root="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+    mkdir -p "$HOME_CE" "$HOME/.local/bin"
+    install -m 755 "$root/target/debug/tvty" "$HOME_CE/tvty"
+    ln -sf "$root/scripts/tvty-ce" "$HOME/.local/bin/tvty-ce"
+    echo "tvty-ce: $HOME_CE/tvty ($(git -C "$root" rev-parse --short HEAD))"
+    exit 0
+fi
+config="$HOME_CE/config" state="$HOME_CE/state"
+if [[ ! -d $config/tvty ]]; then
+    mkdir -p "$config/tvty" "$state/tvty"
+    cp "${XDG_CONFIG_HOME:-$HOME/.config}/tvty/"*.toml "$config/tvty/" 2>/dev/null || true
+    cp "${XDG_STATE_HOME:-$HOME/.local/state}/tvty/"{layout,tips}.json "$state/tvty/" 2>/dev/null || true
+fi
+XDG_CONFIG_HOME="$config" XDG_STATE_HOME="$state" exec "$HOME_CE/tvty" "$@"
