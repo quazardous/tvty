@@ -981,10 +981,7 @@ impl TicketPanel {
 
     /// Snoozes the ticket for `hours` (or wakes it: `None`).
     fn snooze(&mut self, hours: Option<u64>, window: &mut Window, cx: &mut Context<Self>) {
-        let until = hours.map(|h| {
-            let at = std::time::SystemTime::now() + std::time::Duration::from_secs(h * 3600);
-            crate::status::format_time(at)
-        });
+        let until = hours.map(crate::status::snoozed_until);
         self.act(&crate::t!(if until.is_some() { "tickets-did-snoozed" } else { "tickets-did-woken" }), move |aiball, _, ticket| aiball.snooze(ticket, until.as_deref()), window, cx);
     }
 
@@ -1642,17 +1639,19 @@ impl TicketPanel {
                 panel.complete_mention(name, window, cx)
             })
         });
-        let chip = |id: &'static str, label: String| buttons::chip(id, label).py_0p5().text_xs();
         // The priority's choices open under its chip, in the head.
         let menu = detail.menu.filter(|menu| *menu != Menu::Priority).map(|menu| {
             let row = div().flex().flex_wrap().items_center().gap_1();
             match menu {
                 Menu::Priority => row,
-                Menu::Snooze => row
-                    .child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-snooze-for")))
-                    .child(chip("snooze-1h", crate::t!("tickets-snooze-hour")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(1), window, cx))))
-                    .child(chip("snooze-1d", crate::t!("tickets-snooze-day")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24), window, cx))))
-                    .child(chip("snooze-1w", crate::t!("tickets-snooze-week")).on_click(cx.listener(|panel, _, window, cx| panel.snooze(Some(24 * 7), window, cx)))),
+                Menu::Snooze => row.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-snooze-for"))).children(
+                    crate::status::SNOOZES.map(|(id, words, hours)| {
+                        buttons::chip(SharedString::from(format!("snooze-{id}")), crate::t!(words))
+                            .py_0p5()
+                            .text_xs()
+                            .on_click(cx.listener(move |panel, _, window, cx| panel.snooze(Some(hours), window, cx)))
+                    }),
+                ),
                 Menu::Assignee => {
                     let mut row = row.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-assign-to")));
                     let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());

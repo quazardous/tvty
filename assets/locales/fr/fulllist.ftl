@@ -97,8 +97,8 @@ bulk-mark-unread = Marquer non lu
         [one] {$count} marqué non lu
        *[other] {$count} marqués non lus
     }
-bulk-snooze = En sommeil 3 jours
-    .about = Met de côté les tickets ouverts choisis pour 3 jours : ils reviennent alors
+bulk-snooze = En sommeil…
+    .about = Met de côté les tickets ouverts choisis pour la durée choisie : ils reviennent alors
     .done = { $count ->
         [one] {$count} mis en sommeil
        *[other] {$count} mis en sommeil

@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An agent whose Claude runs with nothing driving it (its loop's kernel gone with a daemon that fell) shows "relaunch the loop" beside "offline" in its bar: the loop comes back, its Claude untouched.
 - A project is renamed from its options page (Name): its name in aiball, its `.aiball.yaml` and its folder at once, after aiball says what it would do and what stands in the way (a loop running there can be stopped from there).
 - Terminal Velocity Updater suggests ccusage (Claude Code's tokens and cost by day, by project, by session) while it is missing, with the command to copy and an Install button; it installs nothing unasked.
+- Snoozing tickets from the full list asks for how long (an hour, a day, 3 days, a week, a month), no longer always 3 days; a ticket's own snooze gains 3 days and a month.
 
 ### Fixed
 

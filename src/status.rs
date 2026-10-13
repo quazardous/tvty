@@ -152,6 +152,21 @@ pub fn parse_time(text: &str) -> Option<u64> {
 }
 
 /// An ISO-8601 UTC time, as aiball reads it.
+/// How long a ticket can be snoozed, wherever it is: the element id's end,
+/// the words' key, the hours.
+pub const SNOOZES: [(&str, &str, u64); 5] = [
+    ("1h", "tickets-snooze-hour", 1),
+    ("1d", "tickets-snooze-day", 24),
+    ("3d", "tickets-snooze-3days", 72),
+    ("1w", "tickets-snooze-week", 24 * 7),
+    ("1m", "tickets-snooze-month", 24 * 30),
+];
+
+/// When a snooze of `hours` from now ends, as aiball reads times.
+pub fn snoozed_until(hours: u64) -> String {
+    format_time(std::time::SystemTime::now() + std::time::Duration::from_secs(hours * 3600))
+}
+
 pub fn format_time(at: std::time::SystemTime) -> String {
     let secs = at.duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs()) as i64;
     let (days, rest) = (secs.div_euclid(86400), secs.rem_euclid(86400));

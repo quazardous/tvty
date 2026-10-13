@@ -328,8 +328,8 @@ over the window, is to look over the board (`src/fulllist.rs`):
   one, ctrl+a every row shown (outside the search box). With rows chosen,
   the left third becomes their actions, each with the number of chosen
   tickets it applies to (greyed at none): approve, reject, close, reopen,
-  mark read or unread, snooze three days, unsnooze, mark as step, link
-  (the newest relates to the others). Close and reject ask first. Esc
+  mark read or unread, snooze (for the time chosen), unsnooze, mark as step, link
+  (the newest relates to the others). Close and reject ask first; snooze asks for how long. Esc
   clears the selection, then closes the list (`src/bulk.rs`).
 - Opening a ticket shows it in the panel; the list, hidden, keeps its scope
   and filters for the next time. Esc closes it.
@@ -388,7 +388,7 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   view it is in (Settings > Ticket list > Thread has both).
 - **The frequent gestures stay at hand** in the panel — a dev's round is
   read, decide or answer, next: a click on the priority chip changes it;
-  Snooze gives an hour, a day or a week (Wake when snoozed); "without
+  Snooze gives an hour, a day, three days, a week or a month (Wake when snoozed); "without
   notifying" sends the next reply to nobody; `@` at the end of the reply
   offers who to mention; an image pasted (Ctrl+V) goes to aiball's uploads
   and its link into the reply; an open question (`- [ ]`) of a comment has

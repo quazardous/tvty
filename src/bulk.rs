@@ -104,9 +104,10 @@ pub fn link_star(rows: &[&TicketRow]) -> Option<(u64, Vec<u64>)> {
     Some((newest, eligible[1..].iter().map(|r| r.id).collect()))
 }
 
-/// Does `action` on the rows it applies to; blocking. Answers one line
-/// for a notification, and whether anything failed.
-pub fn run(aiball: &Aiball, action: Action, rows: &[TicketRow]) -> (String, bool) {
+/// Does `action` on the rows it applies to (a snooze for `snooze_hours`);
+/// blocking. Answers one line for a notification, and whether anything
+/// failed.
+pub fn run(aiball: &Aiball, action: Action, rows: &[TicketRow], snooze_hours: u64) -> (String, bool) {
     let refs: Vec<&TicketRow> = rows.iter().collect();
     let mut failures: Vec<String> = Vec::new();
     let mut done = 0usize;
@@ -120,7 +121,7 @@ pub fn run(aiball: &Aiball, action: Action, rows: &[TicketRow]) -> (String, bool
             }
         }
     } else {
-        let until = (chrono::Utc::now() + chrono::Duration::days(3)).to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let until = crate::status::snoozed_until(snooze_hours);
         for row in refs.iter().filter(|r| action.applies(r)) {
             let result = match action {
                 Action::Approve => aiball.moderate(row.id, true),

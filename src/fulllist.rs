@@ -92,7 +92,8 @@ pub struct FullList {
     /// The rows shown, in order, as last drawn: what shift+click and
     /// ctrl+a range over.
     shown: Vec<(String, u64)>,
-    /// A bulk action asked, waiting for its confirmation.
+    /// A bulk action asked, waiting for its confirmation (a snooze, for its
+    /// length).
     confirm: Option<crate::bulk::Action>,
     /// A bulk action on its way.
     working: bool,
@@ -233,14 +234,14 @@ impl FullList {
 
     /// Does `action` on the selection, off the UI thread; one notification
     /// says how it went.
-    fn run_bulk(&mut self, action: crate::bulk::Action, cx: &mut Context<Self>) {
+    fn run_bulk(&mut self, action: crate::bulk::Action, snooze_hours: u64, cx: &mut Context<Self>) {
         let rows = self.selected_rows();
         let aiball = self.aiball.clone();
         self.confirm = None;
         self.working = true;
         cx.notify();
         cx.spawn(async move |this, cx| {
-            let (line, failed) = cx.background_executor().spawn(async move { crate::bulk::run(&aiball, action, &rows) }).await;
+            let (line, failed) = cx.background_executor().spawn(async move { crate::bulk::run(&aiball, action, &rows, snooze_hours) }).await;
             let _ = this.update(cx, |list, cx| {
                 list.working = false;
                 list.selected.clear();
@@ -307,16 +308,37 @@ impl FullList {
                 row.text_color(p().muted.opacity(0.6))
             } else {
                 row.text_color(p().text).cursor_pointer().hover(|d| d.bg(p().hover)).on_click(cx.listener(move |list, _, _, cx| {
-                    if action.confirmed() {
+                    if action.confirmed() || action == Action::Snooze {
                         list.confirm = Some(action);
                         cx.notify();
                     } else {
-                        list.run_bulk(action, cx);
+                        list.run_bulk(action, 0, cx);
                     }
                 }))
             };
             side = side.child(row);
-            if asked {
+            if asked && action == Action::Snooze {
+                side = side.child(
+                    div()
+                        .flex()
+                        .flex_wrap()
+                        .items_center()
+                        .gap_1()
+                        .px_2()
+                        .pb_2()
+                        .child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-snooze-for")))
+                        .children(crate::status::SNOOZES.map(|(id, words, hours)| {
+                            buttons::chip(SharedString::from(format!("bulk-snooze-{id}")), crate::t!(words))
+                                .py_0p5()
+                                .text_xs()
+                                .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, hours, cx)))
+                        }))
+                        .child(buttons::link("bulk-cancel", crate::t!("fulllist-cancel")).text_xs().on_click(cx.listener(|list, _, _, cx| {
+                            list.confirm = None;
+                            cx.notify();
+                        }))),
+                );
+            } else if asked {
                 side = side.child(
                     div()
                         .flex()
@@ -329,7 +351,7 @@ impl FullList {
                         .child(
                             buttons::answer("bulk-confirm", action.label())
                                 .warning()
-                                .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, cx))),
+                                .on_click(cx.listener(move |list, _, _, cx| list.run_bulk(action, 0, cx))),
                         )
                         .child(buttons::secondary("bulk-cancel", crate::t!("fulllist-cancel")).on_click(cx.listener(|list, _, _, cx| {
                             list.confirm = None;
