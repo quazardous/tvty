@@ -1,0 +1,59 @@
+# tvty on a bench box (a shared machine that runs jobs in containers, see
+# the box's own USING.md): builds and tests away from the development
+# machine.
+#
+#   run test                       main, as pushed to GitHub
+#   run test branch=<branch>       a branch pushed to GitHub
+#   run test src=tvty-local        code sent with `push tvty-local`
+#                                  (scripts/bench sends the working tree)
+#
+# Jobs: `test` (the workspace's tests), `check` (clippy, warnings fail).
+# A pushed tree and a branch build in the same place (/tmp/w/tvty), so
+# they share one target directory and cargo does not rebuild everything.
+
+[project]
+disk = "20g"
+
+[image]
+from = "registry.fedoraproject.org/fedora:44"
+run = [
+  """dnf -y install --setopt=install_weak_deps=False git-core gcc pkgconf-pkg-config \
+      rust cargo clippy sccache tmux findutils tar \
+      libxkbcommon-devel libxkbcommon-x11-devel libxcb-devel wayland-devel \
+      vulkan-loader-devel fontconfig-devel freetype-devel alsa-lib-devel \
+ && dnf clean all""",
+]
+env = { CARGO_HOME = "/cargo", CARGO_TARGET_DIR = "/target", CARGO_INCREMENTAL = "0", RUSTC_WRAPPER = "sccache", SCCACHE_DIR = "/sccache", SCCACHE_CACHE_SIZE = "6G", CARGO_PROFILE_DEV_DEBUG = "line-tables-only", CARGO_PROFILE_TEST_DEBUG = "line-tables-only", RUST_BACKTRACE = "1", HOME = "/tmp/home" }
+
+[checkout.tvty]
+repo = "https://github.com/quazardous/tvty.git"
+ref = "${branch:-main}"
+
+[fetch]
+run = ["cd /work/${src:-tvty} && CARGO_NET_OFFLINE=false cargo fetch --locked"]
+
+[storage]
+target = { about = "tvty's cargo target directories, one per branch, a new one starting from main's", lock = true, seed = "main" }
+registry = "the cargo registry, shared by every job"
+cargo-git = "the cargo git dependencies, shared by every job"
+sccache = "sccache's compile cache, shared by every job and branch"
+
+[jobs.test]
+cores = 5
+memory = "6g"
+cwd = "/work/${src:-tvty}"
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+ && cargo test --workspace --locked --offline 2>&1 | tee /out/test.log; exit ${PIPESTATUS[0]}"""
+mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
+outputs = { log = { path = "test.log", kind = "log" } }
+timeout = "1h"
+
+[jobs.check]
+cores = 5
+memory = "6g"
+cwd = "/work/${src:-tvty}"
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+ && cargo clippy --workspace --all-targets --locked --offline -- -D warnings 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
+mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
+outputs = { log = { path = "check.log", kind = "log" } }
+timeout = "1h"

@@ -79,6 +79,24 @@ prints the steps as they come and leaves in
 desktop** — a window's screenshot does not show an error dialog another
 program raised; this one does. About ten minutes.
 
+## On a bench box
+
+The unit tests and clippy can run on a bench box: a shared machine that
+runs each project's jobs in containers, so the build load stays off the
+development machine. `tools/bench/Benchfile` declares the image (Fedora,
+Rust, GPUI's system libraries) and two jobs, `test` and `check`;
+`scripts/bench` sends the working tree, committed or not, and runs one:
+
+```sh
+scripts/bench up && scripts/bench test   # else: cargo test, here
+scripts/bench check branch=my-branch     # a branch pushed to GitHub
+```
+
+The box's address and key are this machine's own, in `.secrets/`
+(git-ignored): `BENCH_HOST` in `.secrets/bench.env`, the key in
+`.secrets/bench.key`. What wbox needs, the binary it runs, is still built
+here.
+
 ## Something to attach to
 
 `scripts/fake-loop` starts plain tmux sessions, no tokens spent:

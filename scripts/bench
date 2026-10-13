@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Runs tvty's jobs on a bench box (tools/bench/Benchfile), away from this
+# machine: builds and tests there, the answer here.
+#
+#   scripts/bench test                 the working tree as it is, committed
+#                                      or not (sent first), then its tests
+#   scripts/bench check branch=<b>     a branch pushed to GitHub, unsent
+#   scripts/bench up                   whether the box answers (exit 0)
+#   scripts/bench -- <command...>      any box command: box, list,
+#                                      status <id>, fetch <id>, health
+#
+# Its settings, this machine's own, in .secrets/bench.env (git-ignored):
+#   BENCH_HOST=bench-tvty@<box>   BENCH_KEY=<key> (.secrets/bench.key)
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[ -f .secrets/bench.env ] && . .secrets/bench.env
+: "${BENCH_HOST:?BENCH_HOST unset: put it in .secrets/bench.env}"
+: "${BENCH_KEY:=.secrets/bench.key}"
+box() {
+    ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 -i "$BENCH_KEY" "$BENCH_HOST" "$@"
+}
+case "${1:-}" in
+    "" | -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    up) box box > /dev/null 2>&1 < /dev/null; exit ;;
+    --) shift; box "$@"; exit ;;
+esac
+job=$1; shift
+# A branch named: GitHub's. Otherwise this tree, files deleted left out.
+if printf '%s\n' "$@" | grep -q '^branch='; then
+    box run "$job" "$@" < /dev/null
+else
+    git ls-files -z --cached --others --exclude-standard \
+        | while IFS= read -r -d '' f; do [ -e "$f" ] && printf '%s\0' "$f"; done \
+        | tar --null -T - -cf - | box push tvty-local
+    box run "$job" src=tvty-local "$@" < /dev/null
+fi
