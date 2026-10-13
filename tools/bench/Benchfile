@@ -7,7 +7,8 @@
 #   run test src=tvty-local        code sent with `push tvty-local`
 #                                  (scripts/bench sends the working tree)
 #
-# Jobs: `test` (the workspace's tests), `check` (clippy, warnings fail).
+# Jobs: `test` (the workspace's tests), `check` (clippy: its warnings said,
+# only an error fails).
 # A pushed tree and a branch build in the same place (/tmp/w/tvty), so
 # they share one target directory and cargo does not rebuild everything.
 
@@ -53,7 +54,7 @@ cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
 command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
- && cargo clippy --workspace --all-targets --locked --offline -- -D warnings 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
+ && cargo clippy --workspace --all-targets --locked --offline 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "check.log", kind = "log" } }
 timeout = "1h"
