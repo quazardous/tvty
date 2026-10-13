@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.16.0-beta.1] - 2026-10-13
+
 ### Added
 
 - Ctrl+Q quits tvty, as closing its window does; another key, or none, in `keymap.toml`.
