@@ -1,0 +1,54 @@
+{
+  "$description": "tvty's window in the kit's Default Dark: the colours gpui-component gives tvty, measured on its screenshots",
+  "$extends": "pop-dark",
+  "surface": {
+    "$type": "color",
+    "canvas": { "$value": "#0a0a0a", "$description": "The window, the panels, the sidebar." },
+    "panel": { "$value": "#0a0a0a" },
+    "sunken": { "$value": "#0a0a0a" },
+    "raised": { "$value": "#151515", "$description": "A field at rest." },
+    "overlay": { "$value": "#0a0a0a" }
+  },
+  "text": {
+    "$type": "color",
+    "default": { "$value": "#fafafa" },
+    "strong": { "$value": "#fafafa" },
+    "muted": { "$value": "#a3a3a3" }
+  },
+  "border": {
+    "$type": "color",
+    "default": { "$value": "#262626" }
+  },
+  "accent": {
+    "$type": "color",
+    "default": { "$value": "#60a5fa", "$description": "The theme's blue: tvty's accent." }
+  },
+  "titlebar": {
+    "$type": "color",
+    "background": { "$value": "#141414" },
+    "text": { "$value": "{text.muted}" },
+    "height": { "$type": "dimension", "$value": { "value": 41, "unit": "px" } }
+  },
+  "font": {
+    "family": {
+      "$type": "fontFamily",
+      "ui": { "$value": ["Inter", "sans-serif"] }
+    },
+    "size": {
+      "$type": "dimension",
+      "small": { "$value": { "value": 12, "unit": "px" } },
+      "body": { "$value": { "value": 14, "unit": "px" } },
+      "heading": { "$value": { "value": 16, "unit": "px" } }
+    }
+  },
+  "tvty": {
+    "$description": "tvty's own tokens, read by path.",
+    "text": {
+      "$type": "dimension",
+      "xs": { "$value": { "value": 12, "unit": "px" } },
+      "sm": { "$value": { "value": 14, "unit": "px" } },
+      "base": { "$value": { "value": 16, "unit": "px" } },
+      "lg": { "$value": { "value": 18, "unit": "px" } }
+    }
+  }
+}

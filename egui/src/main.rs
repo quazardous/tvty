@@ -7,6 +7,9 @@ use egui_pop::eframe;
 use egui_pop::egui;
 use egui_pop::prelude::*;
 
+/// The theme tvty starts in: the kit's Default Dark, as GPUI draws it.
+const THEME: &str = "tvty-default-dark";
+
 mod scene;
 mod shell;
 
@@ -22,8 +25,15 @@ fn main() -> eframe::Result {
             .with_decorations(false),
         ..Default::default()
     };
+    let mut themes = egui_pop::tokens::Themes::default();
+    themes
+        .add_json(THEME, include_str!("../themes/tvty-default-dark.tokens.json"))
+        .expect("tvty's theme reads");
     App::builder()
         .name(shell::NAME)
+        .themes(themes)
+        .theme(ThemeSpec::new(THEME))
+        .menu_bar(false)
         .plugins(MinimalPlugins)
         .plugin(FramePlugin::own())
         .plugin(shell::Shell::new(scene))
