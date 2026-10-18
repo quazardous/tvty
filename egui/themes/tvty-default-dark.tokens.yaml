@@ -12,6 +12,9 @@ surface:
     $value: "#0a0a0a"
   sunken:
     $value: "#0a0a0a"
+  hover:
+    $value: "#1f1f1f"
+    $description: "Under the pointer; the title bar's field at rest."
   raised:
     $value: "#151515"
     $description: "A field at rest."

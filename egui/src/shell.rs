@@ -4,6 +4,9 @@
 use egui_pop::egui;
 use egui_pop::prelude::*;
 
+use egui_pop::core::fonts::Weight;
+
+use crate::row::{From, Row, font};
 use crate::scene::Scene;
 
 pub const NAME: &str = "Terminal Velocity";
@@ -25,6 +28,11 @@ impl Plugin for Shell {
 
     fn connect(&mut self, ctx: &mut Ctx<'_>) -> Result<(), PluginError> {
         let scene = std::rc::Rc::new(self.scene.take().unwrap_or_default());
+        let user = if scene.user.is_empty() {
+            "you".to_string()
+        } else {
+            scene.user.clone()
+        };
         let s = scene;
         ctx.block(
             zones::SIDE_BAR,
@@ -85,6 +93,12 @@ impl Plugin for Shell {
                 },
             ),
         );
+        ctx.block(
+            zones::CAPTION,
+            Block::add(BlockId::from_static("tvty.caption"), 0, move |ui, _| {
+                caption(ui, &user)
+            }),
+        );
         Ok(())
     }
 }
@@ -100,67 +114,68 @@ fn tickets_header(ui: &mut egui::Ui) {
         egui::Sense::hover(),
     );
     let painter = ui.painter();
-    painter.hline(
-        rect.x_range(),
-        rect.bottom() - 0.5,
-        egui::Stroke::new(1.0, t.border.default),
-    );
-    let mid = rect.top() + 17.5;
-    let font = |size: f32, weight| {
-        egui_pop::core::fonts::font_id(egui_pop::core::fonts::Role::Ui, weight, size)
-    };
-    let regular = egui_pop::core::fonts::Weight::REGULAR;
-    let text = |x: f32, align: egui::Align2, s: &str, f: egui::FontId, c| {
-        painter.text(egui::pos2(x, mid), align, s, f, c)
-    };
-    let icon = |left: f32, icon: Option<egui_pop::core::icon::Icon>, c| {
-        let r = egui::Rect::from_min_size(egui::pos2(left, mid - 7.5), egui::vec2(15.0, 15.0));
-        if let Some(i) = icon {
-            i.paint(painter, r, c);
-        }
-    };
-    // From the start: a 20 wide button, an icon button (4 + 15 + 4), the title.
-    let mut x = rect.left() + 12.0;
-    text(x + 10.0, egui::Align2::CENTER_CENTER, "›", font(14.0, regular), t.text.muted);
-    x += 20.0 + 8.0;
-    icon(x + 4.0, crate::icons::pinned(), t.accent.default);
-    x += 23.0 + 8.0;
-    text(
-        x,
-        egui::Align2::LEFT_CENTER,
-        "Tickets",
-        font(14.0, egui_pop::core::fonts::Weight::BOLD),
-        t.text.default,
-    );
-    // From the end.
-    let mut x = rect.right() - 12.0;
-    // A glyph button: at least 20 wide, 4 on each side of its glyph.
-    let full = painter.layout_no_wrap("⤢".into(), font(14.0, regular), t.text.muted);
-    let width = (full.size().x + 8.0).max(20.0);
-    text(x - width / 2.0, egui::Align2::CENTER_CENTER, "⤢", font(14.0, regular), t.text.muted);
-    x -= width + 8.0;
-    painter.vline(
-        x - 4.5,
-        egui::Rangef::new(mid - 6.0, mid + 6.0),
-        egui::Stroke::new(1.0, t.border.default),
-    );
-    x -= 9.0 + 8.0;
+    let line = egui::Stroke::new(1.0, t.border.default);
+    painter.hline(rect.x_range(), rect.bottom() - 0.5, line);
+    let (regular, bold) = (Weight::REGULAR, Weight::BOLD);
+    let mut row = Row::new(painter, rect, 12.0, rect.top() + 17.5);
+    let muted = t.text.muted;
+    row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
+    row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
+    row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
+    row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
+    // The separator: 1 wide, 4 on each side, 12 high.
+    let sep = row.room(From::End, 9.0, 8.0);
+    let mid = row.mid();
+    painter.vline(sep.center().x, egui::Rangef::new(mid - 6.0, mid + 6.0), line);
+    // "+ New": a chip, 6 and a border on each side of its label.
     let label = painter.layout_no_wrap("+ New".into(), font(12.0, regular), t.accent.default);
-    let chip = egui::Rect::from_min_max(
-        egui::pos2(x - label.size().x - 14.0, mid - 10.5),
-        egui::pos2(x, mid + 10.5),
-    );
-    painter.rect_stroke(
-        chip,
-        4.0,
-        egui::Stroke::new(1.0, t.border.default),
-        egui::StrokeKind::Inside,
-    );
+    let chip = row
+        .room(From::End, label.size().x.ceil() + 14.0, 8.0)
+        .with_min_y(mid - 10.5)
+        .with_max_y(mid + 10.5);
+    painter.rect_stroke(chip, 4.0, line, egui::StrokeKind::Inside);
     painter.galley(
         egui::pos2(chip.left() + 7.0, mid - label.size().y / 2.0),
         label,
         t.accent.default,
     );
-    x = chip.left() - 8.0;
-    icon(x - 19.0, crate::icons::megaphone(), t.text.muted);
+    row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
+}
+
+/// The title bar's items before the window buttons, as the GPUI build has
+/// them: the ticket to go to (a field), the theme, the language, a message
+/// to every agent, the settings and who tvty acts as.
+fn caption(ui: &mut egui::Ui, user: &str) {
+    let t = Tokens::of(ui.ctx());
+    let regular = Weight::REGULAR;
+    let muted = t.text.muted;
+    // As wide as the GPUI build's items, from the field to the user.
+    let width = 96.0 + 8.0 + 98.0 + 8.0 + 25.0 + 8.0 + 23.0 + 4.0 + 22.0 + 8.0;
+    let user_width = ui
+        .painter()
+        .layout_no_wrap(user.into(), font(14.0, regular), muted)
+        .size()
+        .x;
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(width + user_width, ui.available_height()),
+        egui::Sense::hover(),
+    );
+    let painter = ui.painter();
+    let mut row = Row::new(painter, rect, 0.0, rect.center().y);
+    // Its own 8 to the buttons are the title bar's gap before them.
+    row.text(From::End, user, font(14.0, regular), muted, 0.0);
+    row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
+    row.icon(From::End, crate::icons::message_all(), muted, 4.0);
+    row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
+    row.glyph(From::End, "◐ Default Dark", font(12.0, regular), muted, 8.0);
+    // The field: 96 wide, 20 high, a light fill even at rest.
+    let field = row.room(From::End, 96.0, 8.0);
+    painter.rect_filled(field, 6.0, t.surface.hover);
+    painter.text(
+        egui::pos2(field.left() + 4.0, row.mid()),
+        egui::Align2::LEFT_CENTER,
+        "#...",
+        font(12.0, regular),
+        muted,
+    );
 }

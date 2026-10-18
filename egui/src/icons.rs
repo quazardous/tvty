@@ -34,4 +34,5 @@ icons! {
     app => "tvty.svg", Colour;
     pinned => "icons/keep_fill.svg", Mono;
     megaphone => "icons/megaphone.svg", Mono;
+    message_all => "icons/bot-message-square.svg", Mono;
 }

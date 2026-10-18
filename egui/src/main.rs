@@ -11,6 +11,7 @@ use egui_pop::prelude::*;
 const THEME: &str = "tvty-default-dark";
 
 mod icons;
+mod row;
 mod scene;
 mod shell;
 
@@ -43,7 +44,8 @@ fn main() -> eframe::Result {
         // As tvty starts: the sessions folded to their strip, the tickets
         // panel at its width.
         .folded(&[egui_pop::model::panels::Area::StartSide])
-        .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 428.0)
+        // GPUI's 428 count the window's outline, inside which egui-pop lays out.
+        .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 427.0)
         .plugins(MinimalPlugins)
         .plugin(FramePlugin::own())
         .plugin(shell::Shell::new(scene))
