@@ -53,6 +53,10 @@ fn main() -> eframe::Result {
         .themes(themes)
         .theme(ThemeSpec::new(THEME))
         .menu_bar(false)
+        // As tvty starts: the sessions folded to their strip, the tickets
+        // panel at its width.
+        .folded(&[egui_pop::model::panels::Area::StartSide])
+        .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 428.0)
         .plugins(MinimalPlugins)
         .plugin(FramePlugin::own())
         .plugin(shell::Shell::new(scene))

@@ -160,5 +160,53 @@
         }
       }
     }
+  },
+  "area-strip": {
+    "width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 14,
+        "unit": "px"
+      }
+    },
+    "rest": {
+      "fill": {
+        "$type": "color",
+        "$value": "{surface.canvas}"
+      },
+      "text": {
+        "$type": "color",
+        "$value": "#474747"
+      }
+    }
+  },
+  "area-grip": {
+    "width": {
+      "$type": "dimension",
+      "$value": {
+        "value": 6,
+        "unit": "px"
+      }
+    },
+    "height": {
+      "$type": "dimension",
+      "$value": {
+        "value": 44,
+        "unit": "px"
+      }
+    },
+    "rest": {
+      "fill": {
+        "$type": "color",
+        "$value": "{border.default}"
+      },
+      "radius": {
+        "$type": "dimension",
+        "$value": {
+          "value": 3,
+          "unit": "px"
+        }
+      }
+    }
   }
 }
