@@ -28,6 +28,13 @@ side, cropped and enlarged, the differences framed in red and numbered;
 the images the issues show live on the `egui-shots` branch (images only,
 no shared history).
 
+## Text
+
+GPUI draws with the system UI font, which on the capture box is
+DejaVu Sans, not Inter: the widths of its text match DejaVu Sans to the
+pixel. Glyphs DejaVu Sans lacks (the full list's ⤢) come from
+fontconfig's fallback, FreeSerif; the theme lists both.
+
 ## Gaps found
 
 Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
@@ -41,3 +48,5 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | A side area lying over the centre, with a shadow | egui-pop#6 | open |
 | The title bar always centres the title | egui-pop#7 | open |
 | An application's own icons (SVG), tinted | egui-pop#8 | open |
+| No line around the window; side areas keep egui's 8 px margins | — | fixed: the kit's `window.rest.border-*`, `side-area.padding-*` |
+| A double line under the title bar (egui's panel line and the kit's) | — | fixed: the kit draws it alone |

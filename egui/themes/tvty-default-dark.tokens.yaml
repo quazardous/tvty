@@ -34,6 +34,15 @@ accent:
   default:
     $value: "#60a5fa"
     $description: "The theme's blue: tvty's accent."
+# GPUI's line around the window, 1 px inside its edges.
+window:
+  rest:
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+    border-color:
+      $type: "color"
+      $value: "#333333"
 # The title bar: 41 px with its 1 px line, the title right after the app icon.
 title-bar:
   $description: "tvty's title bar: the title at the start, muted, a line under the bar."
@@ -69,7 +78,11 @@ font:
   family:
     $type: "fontFamily"
     ui:
-      $value: ["Inter", "sans-serif"]
+      # What GPUI draws with on this system (its ".SystemUIFont"): measured,
+      # the widths of its text match DejaVu Sans to the pixel, not Inter.
+      # FreeSerif after it: the glyphs DejaVu Sans lacks (the full list's
+      # ⤢), where fontconfig falls back for GPUI.
+      $value: ["DejaVu Sans", "FreeSerif", "sans-serif"]
   size:
     $type: "dimension"
     small:
@@ -120,8 +133,15 @@ area-grip:
   offset:
     $type: "dimension"
     $value: {value: 4.5, unit: "px"}
-# No separator line along the side areas: GPUI draws none.
+# No separator line along the side areas (GPUI draws none), no margin
+# inside them: each panel lays itself out to the edges.
 side-area:
+  padding-x:
+    $type: "dimension"
+    $value: {value: 0, unit: "px"}
+  padding-y:
+    $type: "dimension"
+    $value: {value: 0, unit: "px"}
   rest:
     border-width:
       $type: "dimension"
