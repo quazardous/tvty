@@ -54,7 +54,23 @@ impl Plugin for Shell {
                 }
             }),
         );
-        let _ = egui::Id::NULL;
+        // tvty's icon where the shell puts its menu button and name: the
+        // window's title follows it (the kit's `title-bar.align: start`).
+        ctx.block(
+            zones::CAPTION_START,
+            Block::replace(
+                egui_pop::api::frame::BLOCK_MENU,
+                BlockId::from_static("tvty.app-icon"),
+                |ui, _| {
+                    ui.add_space(10.0);
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                    if let Some(icon) = crate::app_icon() {
+                        icon.paint(ui.painter(), rect, egui::Color32::WHITE);
+                    }
+                },
+            ),
+        );
         Ok(())
     }
 }

@@ -10,6 +10,20 @@ use egui_pop::prelude::*;
 /// The theme tvty starts in: the kit's Default Dark, as GPUI draws it.
 const THEME: &str = "tvty-default-dark";
 
+/// tvty's own icon, registered once (`egui_pop::core::icon_set`).
+fn app_icon() -> Option<egui_pop::core::icon::Icon> {
+    static ICON: std::sync::OnceLock<Option<egui_pop::core::icon::Icon>> =
+        std::sync::OnceLock::new();
+    *ICON.get_or_init(|| {
+        egui_pop::core::icon_set::register(
+            "tvty",
+            &include_bytes!("../../assets/tvty.svg")[..],
+            egui_pop::core::icon_set::Paint::Colour,
+        )
+        .ok()
+    })
+}
+
 mod scene;
 mod shell;
 
@@ -25,9 +39,14 @@ fn main() -> eframe::Result {
             .with_decorations(false),
         ..Default::default()
     };
+    // Registered before the theme is installed: its textures are made then.
+    let _ = app_icon();
     let mut themes = egui_pop::tokens::Themes::default();
     themes
-        .add_json(THEME, include_str!("../themes/tvty-default-dark.tokens.json"))
+        .add_json(
+            THEME,
+            include_str!("../themes/tvty-default-dark.tokens.json"),
+        )
         .expect("tvty's theme reads");
     App::builder()
         .name(shell::NAME)
