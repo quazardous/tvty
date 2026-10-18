@@ -35,4 +35,8 @@ icons! {
     pinned => "icons/keep_fill.svg", Mono;
     megaphone => "icons/megaphone.svg", Mono;
     message_all => "icons/bot-message-square.svg", Mono;
+    window_minimize => "icons/window-minimize.svg", Mono;
+    window_maximize => "icons/window-maximize.svg", Mono;
+    window_restore => "icons/window-restore.svg", Mono;
+    window_close => "icons/window-close.svg", Mono;
 }

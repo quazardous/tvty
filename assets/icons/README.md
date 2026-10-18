@@ -21,5 +21,10 @@ right).
 `megaphone.svg` and `bot-message-square.svg` are [Lucide](https://lucide.dev)'s, unchanged,
 under the ISC License, © Lucide Contributors (as the GPUI kit ships it).
 
+`window-minimize.svg`, `window-maximize.svg`, `window-restore.svg` and
+`window-close.svg` are the window buttons of the GPUI kit, unchanged, as
+`gpui-kit-assets` ships them, under the Apache License 2.0; tvty-egui
+draws its window buttons with them.
+
 tvty bundles only the few it draws (see `src/icons.rs`), in the theme's
 colours.

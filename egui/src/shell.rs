@@ -84,9 +84,10 @@ impl Plugin for Shell {
                 egui_pop::api::frame::BLOCK_MENU,
                 BlockId::from_static("tvty.app-icon"),
                 |ui, _| {
-                    ui.add_space(10.0);
+                    // GPUI's: 20 points, from 16 inside the window.
+                    ui.add_space(8.0);
                     let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
                     if let Some(icon) = crate::icons::app() {
                         icon.paint(ui.painter(), rect, egui::Color32::WHITE);
                     }

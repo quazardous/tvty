@@ -68,15 +68,40 @@ title-bar:
     border-width:
       $type: "dimension"
       $value: {value: 1, unit: "px"}
-# GPUI's window buttons are 34 px wide.
+# GPUI's window buttons: 34 px wide, its kit's glyphs.
 window-button:
   width:
     $type: "dimension"
     $value: {value: 34, unit: "px"}
+  # GPUI's window glyphs: its kit's icons, 14 px, in the text's colour.
+  rest:
+    text:
+      $type: "color"
+      $value: "{text.default}"
+    indicator-size:
+      $type: "dimension"
+      $value: {value: 14, unit: "px"}
 window-close:
   width:
     $type: "dimension"
     $value: {value: 34, unit: "px"}
+  rest:
+    text:
+      $type: "color"
+      $value: "{text.default}"
+    indicator-size:
+      $type: "dimension"
+      $value: {value: 14, unit: "px"}
+glyph:
+  $type: "string"
+  window-minimize:
+    $value: "tvty.window_minimize"
+  window-maximize:
+    $value: "tvty.window_maximize"
+  window-restore:
+    $value: "tvty.window_restore"
+  window-close:
+    $value: "tvty.window_close"
 font:
   family:
     $type: "fontFamily"
