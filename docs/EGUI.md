@@ -35,18 +35,33 @@ DejaVu Sans, not Inter: the widths of its text match DejaVu Sans to the
 pixel. Glyphs DejaVu Sans lacks (the full list's ⤢) come from
 fontconfig's fallback, FreeSerif; the theme lists both.
 
+GPUI centres a text's line box (1.618 × its size) by the font's own
+metrics; egui centres its row. Text of 12 px lands on the same rows,
+text of 14 px one row lower, the window's title two: a known difference,
+left as it is.
+
+## Where it stands
+
+Startup screen (ref1), share of pixels that differ from GPUI's by more
+than 24 levels: 0.67 %. Every item sits within a pixel of GPUI's; what
+is left is text antialiasing (GPUI's is subpixel, coloured; egui's is
+grey), the vertical text offset above, and the title bar's vertical
+gradient (#111111 to #171717; a kit has no gradient term).
+
 ## Gaps found
 
 Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
+"Done" means done on egui-pop's `claude/visual-kits` branch.
 
 | Gap | Issue | State |
 |---|---|---|
-| The shell always draws a menu bar | egui-pop#2 | fixed: `AppBuilder::menu_bar(false)` |
-| Side areas: egui's frame, a 48 px floor, egui's resize handle, no folded strip | egui-pop#3 | open |
-| The dock's tab bar keeps egui_dock's default style | egui-pop#4 | open |
+| The shell always draws a menu bar | egui-pop#2 | done: `AppBuilder::menu_bar(false)` |
+| Side areas: egui's frame, a 48 px floor, egui's resize handle, no folded strip | egui-pop#3 | done: `area-strip`, `area-grip`, `side-area`, `AppBuilder::shell_panel_size`, `folded` |
+| The dock's tab bar keeps egui_dock's default style | egui-pop#4 | done: `tab`, `tab-bar` kit components |
 | Font families from tokens, weights, a size scale | egui-pop#5 | families and weights done (`egui_pop_core::fonts`), size scale open |
 | A side area lying over the centre, with a shadow | egui-pop#6 | open |
-| The title bar always centres the title | egui-pop#7 | open |
-| An application's own icons (SVG), tinted | egui-pop#8 | open |
-| No line around the window; side areas keep egui's 8 px margins | — | fixed: the kit's `window.rest.border-*`, `side-area.padding-*` |
-| A double line under the title bar (egui's panel line and the kit's) | — | fixed: the kit draws it alone |
+| The title bar always centres the title | egui-pop#7 | done: `title-bar.align` |
+| An application's own icons (SVG), tinted | egui-pop#8 | done: `icon_set`, crisp at any size |
+| No line around the window; side areas keep egui's 8 px margins | — | done: `window.rest.border-*`, `side-area.padding-*` |
+| A double line under the title bar (egui's panel line and the kit's) | — | done: the kit draws it alone |
+| The window buttons' glyphs are egui-pop's | — | done: glyph roles `window-*`, `indicator-size` |

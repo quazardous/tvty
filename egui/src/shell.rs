@@ -47,19 +47,25 @@ impl Plugin for Shell {
         );
         ctx.block(
             zones::MAIN,
-            Block::add(BlockId::from_static("tvty.terminal"), 0, |ui, _| {
+            Block::add(BlockId::from_static("tvty.terminal"), 0, |ui, app| {
                 crate::tip::show(ui.ctx());
-                // Where a terminal would be, before one is picked.
+                // Where a terminal would be, before one is picked: centred
+                // on the terminal's place, which in the GPUI build runs
+                // under the folded sessions' strip and 4 points under the
+                // tickets panel's edge, where its sash sits.
                 let muted = Tokens::of(ui.ctx()).text.muted;
-                ui.centered_and_justified(|ui| {
-                    ui.label(
-                        egui::RichText::new(
-                            "Pick a terminal on the left · ctrl+shift+space shows them all",
-                        )
-                        .size(16.0)
-                        .color(muted),
-                    )
-                });
+                let area = ui.max_rect();
+                let left = ui.ctx().content_rect().left() + 1.0;
+                let right = app
+                    .area_rect(egui_pop::model::panels::Area::EndSide)
+                    .map_or(area.right(), |r| r.left() + 4.0);
+                ui.painter().text(
+                    egui::pos2((left + right) / 2.0, area.center().y),
+                    egui::Align2::CENTER_CENTER,
+                    "Pick a terminal on the left · ctrl+shift+space shows them all",
+                    font(16.0, Weight::REGULAR),
+                    muted,
+                );
             }),
         );
         ctx.block(
