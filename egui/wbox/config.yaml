@@ -1,0 +1,18 @@
+# wbox workspace for tvty-egui: the same compositor and size as tvty's own
+# (dev/tvty-wbox), so their screenshots compare pixel for pixel.
+name: tvty-egui-wbox
+compositor: labwc
+screen: 1280x800
+input_backend: hybrid
+headless: true
+keyboard_layout: us
+clipboard_bridge: false
+log:
+  dir: ./log
+  level: info
+screenshot_dir: ./screenshots
+timeouts:
+  app_render: 5
+  stop: 20
+app:
+  command: ./app.sh
