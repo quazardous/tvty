@@ -43,9 +43,9 @@ fn main() -> eframe::Result {
     let _ = app_icon();
     let mut themes = egui_pop::tokens::Themes::default();
     themes
-        .add_json(
+        .add_text(
             THEME,
-            include_str!("../themes/tvty-default-dark.tokens.json"),
+            include_str!("../themes/tvty-default-dark.tokens.yaml"),
         )
         .expect("tvty's theme reads");
     App::builder()
