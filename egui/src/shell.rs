@@ -48,6 +48,7 @@ impl Plugin for Shell {
         ctx.block(
             zones::MAIN,
             Block::add(BlockId::from_static("tvty.terminal"), 0, |ui, _| {
+                crate::tip::show(ui.ctx());
                 // Where a terminal would be, before one is picked.
                 let muted = Tokens::of(ui.ctx()).text.muted;
                 ui.centered_and_justified(|ui| {

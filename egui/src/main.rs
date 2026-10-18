@@ -12,6 +12,7 @@ const THEME: &str = "tvty-default-dark";
 
 mod icons;
 mod row;
+mod tip;
 mod scene;
 mod shell;
 

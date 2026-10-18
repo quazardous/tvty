@@ -119,8 +119,34 @@ font:
       $value: {value: 14, unit: "px"}
     heading:
       $value: {value: 16, unit: "px"}
+# The tip card: the window's surface, a line in the tips' violet at 60 %.
+tip-card:
+  padding-x:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  padding-y:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  rest:
+    fill:
+      $type: "color"
+      $value: "{surface.canvas}"
+    border-color:
+      $type: "color"
+      $value: "#bd8bee99"
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}
 tvty:
   $description: "tvty's own tokens, read by path."
+  tip:
+    $type: "color"
+    fill:
+      $value: "#bd8bee"
+      $description: "The tips' violet (not the accent's blue, which says other things)."
+    text:
+      $value: "#141414"
+      $description: "Text on the tips' violet."
   text:
     $type: "dimension"
     xs:
