@@ -165,7 +165,7 @@
     "width": {
       "$type": "dimension",
       "$value": {
-        "value": 14,
+        "value": 15,
         "unit": "px"
       }
     },
@@ -204,6 +204,24 @@
         "$type": "dimension",
         "$value": {
           "value": 3,
+          "unit": "px"
+        }
+      }
+    },
+    "offset": {
+      "$type": "dimension",
+      "$value": {
+        "value": 4.5,
+        "unit": "px"
+      }
+    }
+  },
+  "side-area": {
+    "rest": {
+      "border-width": {
+        "$type": "dimension",
+        "$value": {
+          "value": 0,
           "unit": "px"
         }
       }
