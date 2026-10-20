@@ -5,6 +5,8 @@
 #   scripts/bench test                 the working tree as it is, committed
 #                                      or not (sent first), then its tests
 #   scripts/bench check branch=<b>     a branch pushed to GitHub, unsent
+#   scripts/bench binary               the working tree built there, its
+#                                      debug binary put in target/debug
 #   scripts/bench up                   whether the box answers (exit 0)
 #   scripts/bench -- <command...>      any box command: box, list,
 #                                      status <id>, fetch <id>, health
@@ -25,6 +27,20 @@ case "${1:-}" in
     --) shift; box "$@"; exit ;;
 esac
 job=$1; shift
+# The tree built there, the binary fetched into target/debug: swapped in
+# whole, so a tvty running from it keeps going.
+if [ "$job" = binary ]; then
+    "$0" build "$@"
+    got=$(mktemp -d)
+    trap 'rm -rf "$got"' EXIT
+    box fetch latest build src=tvty-local bin < /dev/null | tar -x -C "$got"
+    bin=$(find "$got" -type f -name tvty | head -1)
+    [ -n "$bin" ] || { echo "bench: no binary in the build's output" >&2; exit 1; }
+    mkdir -p target/debug
+    install -m 755 "$bin" target/debug/tvty.new && mv -f target/debug/tvty.new target/debug/tvty
+    echo "bench: target/debug/tvty from the box"
+    exit
+fi
 # A branch named: GitHub's. Otherwise this tree, files deleted left out.
 if printf '%s\n' "$@" | grep -q '^branch='; then
     box run "$job" "$@" < /dev/null
