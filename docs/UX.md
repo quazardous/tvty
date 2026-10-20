@@ -635,9 +635,14 @@ from. **Rename to …** comes once nothing stands in the way; the options
 follow the project under its new name. The remote repository is left as
 it is. *Folder*: what the folder's `.aiball.yaml` sets, as
 aiball resolves and writes it (tvty never opens that file) — where the
-loops started there run (session host or tmux) and its Claude's Remote
-Control, each saying where its value comes from (the file, the machine's
-global config, the default), ↺ removing it from the file; a project with
+loops started there run (session host or tmux), its Claude's Remote
+Control, and the Claude Code config dir its loops start Claude with
+(`CLAUDE_CONFIG_DIR`: its own account, settings and sessions; typed, Enter
+writes it, empty shows the default), each saying where its value comes
+from (the file, the machine's global config, the default), ↺ removing it
+from the file. A value that the running loops take only once restarted
+says so under the settings, with **Restart** (on a new conversation: the
+sessions live in the config dir); a project with
 several folders (a lead's, a crew's) shows one at a time, and says which
 other folders the same file serves. *Board*: the board's keys the project
 sets over the board's values, and a link to all of them.
@@ -700,7 +705,9 @@ send, send & hold (not AFK ∞, until released), release holds; what
 became of each loop is said.
 
 **The usage arrow**, in the title bar before the box to go to a ticket:
-the subscription against the steady pace, the one that would use it up
+the subscription of the account the shown terminal's project runs on (its
+config dir; any loop's reading while none of its agents read one) against
+the steady pace, the one that would use it up
 right at its window's end (at a fifth of the five hours, a fifth of the
 quota). Above it a red ↑, below it a green ↓, faint near the pace and
 full from 20 points away. Its figure says the gap, and a small drawing

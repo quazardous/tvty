@@ -1680,11 +1680,20 @@ pub struct ProjectSettings {
     /// a key aiball adds shows with no code of tvty's own.
     #[serde(default)]
     pub settings: Vec<FolderSetting>,
+    /// The Claude Code config dir its loops start with (`CLAUDE_CONFIG_DIR`),
+    /// resolved: the folder's own, the daemon's env, or `~/.claude`.
+    #[serde(default)]
+    pub config_dir: Setting<String>,
+    /// After a write: the folder's running loops still on another value of
+    /// it, which take it only once restarted.
+    #[serde(default)]
+    pub restart_loops: Vec<String>,
 }
 
 /// A folder setting as aiball describes it: its key in `.aiball.yaml`, its
 /// type (`enum`: one of `options`; `boolean_or_name`: true, false or a
-/// name), its default and value, where the value comes from.
+/// name; `path`: a folder, `~` taken), its default and value, where the
+/// value comes from.
 #[derive(Clone, Debug, Default, PartialEq, Deserialize)]
 pub struct FolderSetting {
     pub key: String,

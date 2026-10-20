@@ -7,12 +7,17 @@
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::{Value as Json, json};
+use std::collections::HashMap;
+
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 
 use super::{Away, Shell, option_group, option_note, reset_button, setting_frame};
 use crate::aiball::{FolderSetting, ProjectSettings, Setting};
 use crate::activity::{self, Activity};
 use crate::options::Section;
 use crate::theme::p;
+use crate::ui::Named as _;
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 
@@ -22,6 +27,14 @@ pub(super) struct ProjectOpts {
     project: String,
     folders: Vec<(String, Option<Result<ProjectSettings, String>>)>,
     chosen: usize,
+    /// The `path` settings' inputs, by folder and key, with the value they
+    /// were last filled with.
+    paths: HashMap<(String, String), (Entity<InputState>, String)>,
+    /// Loops still on an older value of a setting written here, which take
+    /// it once restarted.
+    restart: Vec<String>,
+    /// Their restart under way.
+    restarting: bool,
 }
 
 /// The scope list atop the options: Global, then the board's projects,
@@ -120,9 +133,16 @@ impl Shell {
                 self.rename_for(&project, window, cx);
                 if self.project_opts.as_ref().is_none_or(|o| o.project != project) {
                     let folders = folders_of(&project, &self.board.homes, &self.board.known);
-                    self.project_opts = Some(ProjectOpts { project, folders: folders.into_iter().map(|f| (f, None)).collect(), chosen: 0 });
+                    self.project_opts = Some(ProjectOpts {
+                        project,
+                        folders: folders.into_iter().map(|f| (f, None)).collect(),
+                        chosen: 0,
+                        paths: HashMap::new(),
+                        restart: Vec::new(),
+                        restarting: false,
+                    });
                 }
-                self.load_project_settings(cx);
+                self.load_project_settings(window, cx);
             }
             None => {
                 self.project_opts = None;
@@ -150,18 +170,21 @@ impl Shell {
     }
 
     /// Asks aiball how each of the project's folders is configured.
-    pub(super) fn load_project_settings(&mut self, cx: &mut Context<Self>) {
+    pub(super) fn load_project_settings(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let Some(opts) = self.project_opts.as_ref() else { return };
         let (project, folders) = (opts.project.clone(), opts.folders.iter().map(|(f, _)| f.clone()).collect::<Vec<_>>());
         let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let read = cx
                 .background_executor()
                 .spawn(async move { folders.into_iter().map(|f| { let s = aiball.project_settings(&f).map_err(|e| format!("{e:#}")); (f, Some(s)) }).collect::<Vec<_>>() })
                 .await;
-            let _ = this.update(cx, |shell, cx| {
-                if let Some(opts) = shell.project_opts.as_mut().filter(|o| o.project == project) {
-                    opts.folders = read;
+            let _ = this.update_in(cx, |shell, window, cx| {
+                if shell.project_opts.as_ref().is_some_and(|o| o.project == project) {
+                    shell.fill_paths(&read, window, cx);
+                    if let Some(opts) = shell.project_opts.as_mut() {
+                        opts.folders = read;
+                    }
                     cx.notify();
                 }
             });
@@ -170,22 +193,107 @@ impl Shell {
     }
 
     /// Writes one key in the shown folder's `.aiball.yaml` (null: removed),
-    /// then reads every folder again (a file may serve several).
-    fn write_project_setting(&mut self, key: String, value: Json, cx: &mut Context<Self>) {
+    /// then reads every folder again (a file may serve several). The loops
+    /// that take it only once restarted are kept, to offer their restart.
+    fn write_project_setting(&mut self, key: String, value: Json, window: &mut Window, cx: &mut Context<Self>) {
         let Some(opts) = self.project_opts.as_ref() else { return };
         let Some((cwd, _)) = opts.folders.get(opts.chosen) else { return };
         let cwd = cwd.clone();
         let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let done = {
                 let key = key.clone();
                 cx.background_executor().spawn(async move { aiball.project_settings_set(&cwd, json!({ "key": key, "value": value })) }).await
             };
-            let _ = this.update(cx, |shell, cx| {
-                if let Err(error) = done {
-                    activity::publish(cx, Activity::failed(None, &crate::t!("projectopts-failed"), format!("{key}: {error:#}")));
+            let _ = this.update_in(cx, |shell, window, cx| {
+                match done {
+                    Err(error) => activity::publish(cx, Activity::failed(None, &crate::t!("projectopts-failed"), format!("{key}: {error:#}"))),
+                    Ok(settings) => {
+                        if let Some(opts) = shell.project_opts.as_mut() {
+                            for name in settings.restart_loops {
+                                if !opts.restart.contains(&name) {
+                                    opts.restart.push(name);
+                                }
+                            }
+                        }
+                    }
                 }
-                shell.load_project_settings(cx);
+                shell.load_project_settings(window, cx);
+            });
+        })
+        .detach();
+    }
+
+    /// An input for each `path` setting read, filled with its value; one
+    /// the user is typing in is left alone until the value changes.
+    fn fill_paths(&mut self, read: &[(String, Option<Result<ProjectSettings, String>>)], window: &mut Window, cx: &mut Context<Self>) {
+        let mut wanted = Vec::new();
+        for (folder, settings) in read {
+            let Some(Ok(settings)) = settings else { continue };
+            for setting in settings.settings.iter().filter(|s| s.kind == "path") {
+                // Its own value only: unset, the input is empty and says the default.
+                let value = setting.value.as_str().filter(|_| setting.from == "file").map(home_tilde).unwrap_or_default();
+                let default = setting.default.as_str().map(home_tilde).unwrap_or_else(|| "~/.claude".into());
+                wanted.push(((folder.clone(), setting.key.clone()), value, default));
+            }
+        }
+        for (at, value, default) in wanted {
+            let known = self.project_opts.as_ref().and_then(|o| o.paths.get(&at)).map(|(input, was)| (input.clone(), was.clone()));
+            match known {
+                Some((_, was)) if was == value => {}
+                Some((input, _)) => {
+                    input.update(cx, |input, cx| input.set_value(value.clone(), window, cx));
+                    if let Some(opts) = self.project_opts.as_mut() {
+                        opts.paths.insert(at, (input, value));
+                    }
+                }
+                None => {
+                    let input = cx.new(|cx| InputState::new(window, cx).placeholder(default).default_value(value.clone()));
+                    let key = at.1.clone();
+                    cx.subscribe_in(&input, window, move |shell: &mut Self, input, event: &InputEvent, window, cx| {
+                        if matches!(event, InputEvent::PressEnter { .. }) {
+                            let typed = input.read(cx).value().trim().to_string();
+                            let value = if typed.is_empty() { Json::Null } else { Json::String(typed) };
+                            shell.write_project_setting(key.clone(), value, window, cx);
+                        }
+                    })
+                    .detach();
+                    if let Some(opts) = self.project_opts.as_mut() {
+                        opts.paths.insert(at, (input, value));
+                    }
+                }
+            }
+        }
+    }
+
+    /// Restarts the loops that still run on an older value of a setting:
+    /// each on a new conversation, as the config dir holds the sessions.
+    fn restart_project_loops(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(opts) = self.project_opts.as_mut() else { return };
+        if opts.restarting || opts.restart.is_empty() {
+            return;
+        }
+        opts.restarting = true;
+        let names = opts.restart.clone();
+        let aiball = self.aiball.clone();
+        cx.notify();
+        cx.spawn_in(window, async move |this, cx| {
+            let failed = cx
+                .background_executor()
+                .spawn(async move { names.iter().filter_map(|name| crate::loops::restart(&aiball, name, None).err().map(|e| format!("{name}: {e:#}"))).collect::<Vec<_>>() })
+                .await;
+            let _ = this.update_in(cx, |shell, window, cx| {
+                if let Some(opts) = shell.project_opts.as_mut() {
+                    opts.restarting = false;
+                    opts.restart.clear();
+                }
+                let activity = if failed.is_empty() {
+                    Activity::done(None, crate::t!("projectopts-restarted"))
+                } else {
+                    Activity::failed(None, &crate::t!("projectopts-restart-failed"), failed.join("; "))
+                };
+                activity::publish(cx, activity);
+                shell.load_project_settings(window, cx);
             });
         })
         .detach();
@@ -260,6 +368,26 @@ impl Shell {
         for setting in &settings.settings {
             out = out.child(self.folder_row(setting, cx));
         }
+        if !opts.restart.is_empty() {
+            let count = opts.restart.len();
+            out = out.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_3()
+                    .text_sm()
+                    .text_color(p().warning)
+                    .child(div().flex_1().min_w_0().child(crate::t!("projectopts-restart-needed", loops = opts.restart.join(", "), count = count)))
+                    .child(if opts.restarting {
+                        div().text_color(p().muted).child(crate::t!("projectopts-restarting")).into_any_element()
+                    } else {
+                        buttons::chip("options-folder-restart", crate::t!("projectopts-restart", count = count))
+                            .py_0p5()
+                            .on_click(cx.listener(|shell, _, window, cx| shell.restart_project_loops(window, cx)))
+                            .into_any_element()
+                    }),
+            );
+        }
         out
     }
 
@@ -277,10 +405,17 @@ impl Shell {
                     .py_0p5()
                     .text_sm()
                     .chosen(chosen)
-                    .when(!chosen, |d| d.on_click(cx.listener(move |shell, _, _, cx| shell.write_project_setting(key.clone(), wanted.clone(), cx)))),
+                    .when(!chosen, |d| d.on_click(cx.listener(move |shell, _, window, cx| shell.write_project_setting(key.clone(), wanted.clone(), window, cx)))),
             );
         };
+        let mut field = None;
         match setting.kind.as_str() {
+            "path" => {
+                let at = (self.project_opts.as_ref().and_then(|o| o.folders.get(o.chosen)).map(|(f, _)| f.clone()).unwrap_or_default(), setting.key.clone());
+                field = self.project_opts.as_ref().and_then(|o| o.paths.get(&at)).map(|(input, _)| {
+                    div().named(SharedString::from(format!("options-folder-{}", setting.key))).w(px(280.)).flex_none().child(Input::new(input).small())
+                });
+            }
             "boolean_or_name" => {
                 let named = setting.value.as_str().filter(|n| !n.is_empty()).map(str::to_string);
                 let on = setting.value.as_bool() == Some(true) || named.is_some();
@@ -295,10 +430,10 @@ impl Shell {
         }
         let reset = {
             let key = setting.key.clone();
-            cx.listener(move |shell, _, _, cx| shell.write_project_setting(key.clone(), Json::Null, cx))
+            cx.listener(move |shell, _, window, cx| shell.write_project_setting(key.clone(), Json::Null, window, cx))
         };
         setting_frame(key.clone(), label(&setting.label, &setting.from), setting.description.clone().into(), away.as_ref())
-            .child(div().flex().flex_wrap().gap_1().flex_none().children(chips))
+            .child(div().flex().flex_wrap().gap_1().flex_none().children(chips).children(field))
             .child(reset_button(&key, away.as_ref(), reset))
     }
 
@@ -348,6 +483,14 @@ fn label(name: &str, from: &str) -> Div {
         .gap_2()
         .child(name.to_string())
         .child(div().text_xs().font_weight(FontWeight::NORMAL).text_color(if from.set() { crate::theme::imported() } else { p().muted }).child(from.said().to_string()))
+}
+
+/// A path as typed: the home folder as `~`.
+fn home_tilde(path: &str) -> String {
+    match std::env::var("HOME") {
+        Ok(home) if !home.is_empty() && (path == home || path.starts_with(&format!("{home}/"))) => format!("~{}", &path[home.len()..]),
+        _ => path.to_string(),
+    }
 }
 
 /// A setting's value as said: `off`, `on`, a name, an option.

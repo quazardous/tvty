@@ -2856,7 +2856,7 @@ impl Shell {
             self.options = Some(Section::Appearance);
             theme::load(cx);
             self.load_remote(cx);
-            self.load_project_settings(cx);
+            self.load_project_settings(window, cx);
             self.new_scope_select(window, cx);
             self.new_language_select(window, cx);
             // Keys go to the search, not to the terminal: ctrl+, and type.

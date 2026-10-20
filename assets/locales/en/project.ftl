@@ -53,6 +53,17 @@ projectopts-also-serves = It also serves {$others}: a change here is theirs too.
 projectopts-on-named = on: {$name}
 projectopts-none-set = {$project} sets none of the board's config: it has the board's values.
 projectopts-all-keys = All its keys
+projectopts-restart-needed = { $count ->
+    [one] {$loops} still runs on the old value: it takes the new one once restarted, on a new conversation.
+   *[other] {$loops} still run on the old value: they take the new one once restarted, on a new conversation.
+}
+projectopts-restart = { $count ->
+    [one] Restart it
+   *[other] Restart them
+}
+projectopts-restarting = Restarting…
+projectopts-restarted = loops restarted
+projectopts-restart-failed = restart
 
 # The project renamed (its options' Name)
 rename-placeholder = new name

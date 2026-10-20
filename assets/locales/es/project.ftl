@@ -52,6 +52,17 @@ projectopts-also-serves = También sirve a {$others}: un cambio aquí vale para 
 projectopts-on-named = activado: {$name}
 projectopts-none-set = {$project} no fija nada de la config del tablero: tiene los valores del tablero.
 projectopts-all-keys = Todas sus claves
+projectopts-restart-needed = { $count ->
+    [one] {$loops} sigue con el valor anterior: toma el nuevo al reiniciarse, en una conversación nueva.
+   *[other] {$loops} siguen con el valor anterior: toman el nuevo al reiniciarse, en una conversación nueva.
+}
+projectopts-restart = { $count ->
+    [one] Reiniciarlo
+   *[other] Reiniciarlos
+}
+projectopts-restarting = Reiniciando…
+projectopts-restarted = bucles reiniciados
+projectopts-restart-failed = reinicio
 
 # The project renamed (its options' Name)
 rename-placeholder = nuevo nombre
