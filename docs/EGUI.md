@@ -20,6 +20,12 @@ python3 egui/scripts/scene.py dev/fake-aiball/home/sock > dev/scene.json
 cd egui && TVTY_EGUI_SCENE=../dev/scene.json cargo run
 ```
 
+`TVTY_EGUI_FULL=1` opens the full ticket list at start (the panel's ⤢
+opens it too, Escape closes it). `egui/scripts/install-desktop` puts
+"tvty-egui Dev" in the desktop's launcher, on the debug build and
+`dev/scene.json`. The fake board moves on its own (a ticket stops being
+"hot"): dump the scene again right before comparing.
+
 ## Comparing
 
 `egui/wbox/` runs tvty-egui in the same compositor and size as
@@ -30,10 +36,23 @@ no shared history).
 
 ## Text
 
-GPUI draws with the system UI font, which on the capture box is
-DejaVu Sans, not Inter: the widths of its text match DejaVu Sans to the
-pixel. Glyphs DejaVu Sans lacks (the full list's ⤢) come from
-fontconfig's fallback, FreeSerif; the theme lists both.
+GPUI on Linux draws ".SystemUIFont" with the first installed font of its
+own fallback stack (Helvetica, Segoe UI, Ubuntu, Adwaita Sans, Cantarell,
+Noto Sans, DejaVu Sans, Arial), looked up by exact family name: Adwaita
+Sans on GNOME, DejaVu Sans on a bare box. Glyphs it lacks (the panel's ⤢)
+come from cosmic-text's fallbacks (Noto Sans Symbols...) or FreeSerif.
+The theme lists the same stack, without Ubuntu: egui-pop takes that
+name for egui's bundled Ubuntu-Light before any system font, where GPUI
+skips it when Ubuntu is not installed.
+
+GPUI draws a variable face (Adwaita Sans) at its default instance
+whatever the weight asked: its bold is regular there. egui-pop sets the
+face's `wght` axis, so tvty-egui drops the weight to draw what GPUI
+draws; `TVTY_EGUI_WEIGHTS` keeps it, for a box whose UI font is static.
+
+GPUI rounds a text's line box to whole pixels: `round(1.618 × size)`,
+19, 23, 26 and 29 for 12, 14, 16 and 18. Laid out on fractions, a column
+of rows drifts by a pixel every few rows.
 
 GPUI centres a text's line box (1.618 × its size) by the font's own
 metrics; egui centres its row. Text of 12 px lands on the same rows,

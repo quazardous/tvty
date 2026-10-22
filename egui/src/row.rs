@@ -22,8 +22,16 @@ pub enum From {
     End,
 }
 
+/// The font GPUI draws `weight` with. On Linux GPUI draws a variable
+/// face (Adwaita Sans, GNOME's) at its default instance whatever the
+/// weight asked: its bold is regular there. egui-pop sets the face's
+/// `wght` axis, so the weight is dropped here to draw what GPUI draws.
+/// A box whose UI font is static (DejaVu Sans) draws GPUI's bold: set
+/// `TVTY_EGUI_WEIGHTS` there.
 pub fn font(size: f32, weight: Weight) -> FontId {
-    fonts::font_id(Role::Ui, weight, size)
+    static WEIGHTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    let weights = *WEIGHTS.get_or_init(|| std::env::var_os("TVTY_EGUI_WEIGHTS").is_some());
+    fonts::font_id(Role::Ui, if weights { weight } else { Weight::REGULAR }, size)
 }
 
 impl<'a> Row<'a> {

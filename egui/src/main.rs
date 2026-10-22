@@ -10,6 +10,8 @@ use egui_pop::prelude::*;
 /// The theme tvty starts in: the kit's Default Dark, as GPUI draws it.
 const THEME: &str = "tvty-default-dark";
 
+mod board;
+mod fulllist;
 mod icons;
 mod row;
 mod tip;

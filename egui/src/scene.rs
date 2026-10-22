@@ -18,8 +18,9 @@ pub struct Project {
     pub name: String,
     #[serde(default)]
     pub sessions: Vec<Session>,
+    /// Its tickets as the list reads them, closed ones too.
     #[serde(default)]
-    pub tickets: Vec<Ticket>,
+    pub tickets: Vec<crate::board::Ticket>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -28,14 +29,6 @@ pub struct Session {
     /// `busy`, `idle` or `boot`.
     #[serde(default)]
     pub state: String,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct Ticket {
-    pub id: u64,
-    pub title: String,
-    #[serde(default)]
-    pub status: String,
 }
 
 impl Scene {

@@ -111,7 +111,7 @@ font:
       # GNOME 47, DejaVu Sans on a bare box). Then, for the glyphs it
       # lacks (the full list's ⤢), cosmic-text's own fallbacks, then
       # FreeSerif, where a box without them falls back.
-      $value: ["Helvetica", "Segoe UI", "Ubuntu", "Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans", "Arial", "FreeSans", "Noto Sans Symbols", "Noto Sans Symbols2", "FreeSerif", "sans-serif"]
+      $value: ["Helvetica", "Segoe UI", "Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans", "Arial", "FreeSans", "Noto Sans Symbols", "Noto Sans Symbols2", "FreeSerif", "sans-serif"]
   size:
     $type: "dimension"
     small:
@@ -201,3 +201,115 @@ side-area:
     border-width:
       $type: "dimension"
       $value: {value: 0, unit: "px"}
+# The kit's status colours, as gpui-component's dark theme has them.
+danger:
+  $type: "color"
+  $value: "#f87171"
+warning:
+  $type: "color"
+  $value: "#facc15"
+success:
+  $type: "color"
+  $value: "#4ade80"
+info:
+  $type: "color"
+  $value: "#22d3ee"
+# The full list's boxes, as the GPUI build draws them.
+indicator-badge:
+  $description: "What tickets ask of the user (the critical one, decisions, unread): GPUI's pill, 6 from its sides, the line box of its small text, dark ink on its colour."
+  height:
+    $type: "dimension"
+    $value: {value: 19, unit: "px"}
+  padding-x:
+    $type: "dimension"
+    $value: {value: 6, unit: "px"}
+  font-size:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  rest:
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "#141414"
+selectable-row:
+  $description: "The full list's choices: the chosen one on the selection's blue, a light fill under the pointer, no outline."
+  rest:
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"
+  selected:
+    fill:
+      $type: "color"
+      $value: "#0e152b"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+  hover:
+    fill:
+      $type: "color"
+      $value: "{surface.hover}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"
+  active:
+    fill:
+      $type: "color"
+      $value: "#0e152b"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"
+toggle-chip:
+  $description: "The full list's filters: a thin outline, the accent's outline on the selection's blue while on."
+  rest:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"
+  selected:
+    fill:
+      $type: "color"
+      $value: "#0e152b"
+    border-color:
+      $type: "color"
+      $value: "{accent.default}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+search-field:
+  rest:
+    fill:
+      $type: "color"
+      $value: "{surface.raised}"
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}
+list-row:
+  hover:
+    fill:
+      $type: "color"
+      $value: "{surface.hover}"

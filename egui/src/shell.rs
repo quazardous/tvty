@@ -33,7 +33,7 @@ impl Plugin for Shell {
         } else {
             scene.user.clone()
         };
-        let s = scene;
+        let s = scene.clone();
         ctx.block(
             zones::SIDE_BAR,
             Block::add(BlockId::from_static("tvty.sessions"), 0, move |ui, _| {
@@ -48,7 +48,9 @@ impl Plugin for Shell {
         ctx.block(
             zones::MAIN,
             Block::add(BlockId::from_static("tvty.terminal"), 0, |ui, app| {
-                crate::tip::show(ui.ctx());
+                if !crate::fulllist::is_open(ui.ctx()) {
+                    crate::tip::show(ui.ctx());
+                }
                 // Where a terminal would be, before one is picked: centred
                 // on the terminal's place, which in the GPUI build runs
                 // under the folded sessions' strip and 4 points under the
@@ -81,6 +83,13 @@ impl Plugin for Shell {
                             .color(muted),
                     );
                 });
+            }),
+        );
+        // The full list, over the window under its title bar, while open.
+        ctx.block(
+            zones::OVERLAYS,
+            Block::add(BlockId::from_static("tvty.full-list"), 0, move |ui, _| {
+                crate::fulllist::show(ui.ctx(), &scene)
             }),
         );
         // tvty's icon where the shell puts its menu button and name: the
@@ -130,7 +139,10 @@ fn tickets_header(ui: &mut egui::Ui) {
     row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
     row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
     row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
-    row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
+    let full = row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
+    if ui.interact(full, ui.id().with("full-list"), egui::Sense::click()).clicked() {
+        crate::fulllist::set_open(ui.ctx(), true);
+    }
     // The separator: 1 wide, 4 on each side, 12 high.
     let sep = row.room(From::End, 9.0, 8.0);
     let mid = row.mid();
