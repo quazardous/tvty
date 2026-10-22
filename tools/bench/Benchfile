@@ -8,7 +8,10 @@
 #                                  (scripts/bench sends the working tree)
 #
 # Jobs: `test` (the workspace's tests), `check` (clippy: its warnings said,
-# only an error fails).
+# only an error fails), `egui-test` (tvty-egui's tests, in egui/, its own
+# workspace: egui-pop checked out beside tvty, as egui/Cargo.toml expects).
+#
+#   run egui-test branch=egui-pop
 # A pushed tree and a branch build in the same place (/tmp/w/tvty), so
 # they share one target directory and cargo does not rebuild everything.
 
@@ -30,14 +33,21 @@ env = { CARGO_HOME = "/cargo", CARGO_TARGET_DIR = "/target", CARGO_INCREMENTAL =
 repo = "https://github.com/quazardous/tvty.git"
 ref = "${branch:-main}"
 
+[checkout.egui-pop]
+repo = "https://github.com/quazardous/egui-pop.git"
+ref = "main"
+
 [fetch]
-run = ["cd /work/${src:-tvty} && CARGO_NET_OFFLINE=false cargo fetch --locked"]
+run = ["cd /work/${src:-tvty} && CARGO_NET_OFFLINE=false cargo fetch --locked",
+       # tvty-egui's crates, where the branch has it (egui-pop in /work beside)
+       "[ ! -f /work/${src:-tvty}/egui/Cargo.toml ] || [ ! -d /work/egui-pop ] || (cd /work/${src:-tvty}/egui && CARGO_NET_OFFLINE=false cargo fetch --locked)"]
 
 [storage]
 target = { about = "tvty's cargo target directories, one per branch, a new one starting from main's", lock = true, seed = "main" }
 registry = "the cargo registry, shared by every job"
 cargo-git = "the cargo git dependencies, shared by every job"
 sccache = "sccache's compile cache, shared by every job and branch"
+egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "15g" }
 
 [jobs.test]
 cores = 5
@@ -57,4 +67,15 @@ command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode
  && cargo clippy --workspace --all-targets --locked --offline 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "check.log", kind = "log" } }
+timeout = "1h"
+
+[jobs.egui-test]
+cores = 5
+memory = "6g"
+cwd = "/work/${src:-tvty}"
+command = """rm -rf /tmp/w/tvty /tmp/w/egui-pop && mkdir -p /tmp/w/tvty /tmp/w/egui-pop \
+ && cp -r --preserve=mode . /tmp/w/tvty/ && cp -r --preserve=mode /work/egui-pop/. /tmp/w/egui-pop/ && cd /tmp/w/tvty/egui \
+ && cargo test --locked --offline 2>&1 | tee /out/egui-test.log; exit ${PIPESTATUS[0]}"""
+mounts = { egui-target = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
+outputs = { log = { path = "egui-test.log", kind = "log" } }
 timeout = "1h"
