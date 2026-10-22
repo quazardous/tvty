@@ -19,13 +19,13 @@ use crate::row::font;
 use crate::scene::Scene;
 
 /// GPUI's sizes: `text_xs`, `text_sm`, the window's text, `text_lg`.
-const XS: f32 = 12.0;
-const SM: f32 = 14.0;
-const BASE: f32 = 16.0;
+pub(crate) const XS: f32 = 12.0;
+pub(crate) const SM: f32 = 14.0;
+pub(crate) const BASE: f32 = 16.0;
 const LG: f32 = 18.0;
 
 /// GPUI's line box: 1.618 times the text's size, in whole pixels.
-fn line(size: f32) -> f32 {
+pub(crate) fn line(size: f32) -> f32 {
     (size * 1.618).round()
 }
 
@@ -45,20 +45,20 @@ pub fn set_open(ctx: &egui::Context, open: bool) {
 }
 
 /// The colours of the GPUI build's palette the list draws with.
-struct Palette {
-    bg: Color32,
-    border: Color32,
-    text: Color32,
-    muted: Color32,
-    accent: Color32,
-    danger: Color32,
-    warning: Color32,
-    success: Color32,
-    info: Color32,
+pub(crate) struct Palette {
+    pub(crate) bg: Color32,
+    pub(crate) border: Color32,
+    pub(crate) text: Color32,
+    pub(crate) muted: Color32,
+    pub(crate) accent: Color32,
+    pub(crate) danger: Color32,
+    pub(crate) warning: Color32,
+    pub(crate) success: Color32,
+    pub(crate) info: Color32,
 }
 
 impl Palette {
-    fn of(t: &Tokens) -> Self {
+    pub(crate) fn of(t: &Tokens) -> Self {
         let c = |name: &str, or: Color32| t.color(name).unwrap_or(or);
         Palette {
             bg: t.surface.canvas,
@@ -112,12 +112,12 @@ impl Palette {
 }
 
 /// Text in a line box: `size` high text centred in `line(size)`.
-struct Pen<'a> {
-    painter: &'a egui::Painter,
+pub(crate) struct Pen<'a> {
+    pub(crate) painter: &'a egui::Painter,
 }
 
 impl Pen<'_> {
-    fn galley(&self, s: &str, size: f32, weight: Weight, color: Color32, max: Option<f32>) -> std::sync::Arc<egui::Galley> {
+    pub(crate) fn galley(&self, s: &str, size: f32, weight: Weight, color: Color32, max: Option<f32>) -> std::sync::Arc<egui::Galley> {
         let mut job = egui::text::LayoutJob::simple_singleline(s.to_string(), font(size, weight), color);
         if let Some(width) = max {
             job.wrap = egui::text::TextWrapping::truncate_at_width(width.max(0.0));
@@ -126,19 +126,21 @@ impl Pen<'_> {
     }
 
     /// The text from `x`, in the line box from `top`; its width.
-    fn text(&self, x: f32, top: f32, s: &str, size: f32, weight: Weight, color: Color32) -> f32 {
+    pub(crate) fn text(&self, x: f32, top: f32, s: &str, size: f32, weight: Weight, color: Color32) -> f32 {
         self.text_max(x, top, s, size, weight, color, None)
     }
 
-    fn text_max(&self, x: f32, top: f32, s: &str, size: f32, weight: Weight, color: Color32, max: Option<f32>) -> f32 {
+    pub(crate) fn text_max(&self, x: f32, top: f32, s: &str, size: f32, weight: Weight, color: Color32, max: Option<f32>) -> f32 {
         let g = self.galley(s, size, weight, color, max);
         let w = g.size().x;
-        let y = top + (line(size) - g.size().y) / 2.0;
+        // GPUI's line box starts on a whole pixel: a box centred on a
+        // half one goes up.
+        let y = top.floor() + (line(size) - g.size().y) / 2.0;
         self.painter.galley(pos2(x, y), g, color);
         w
     }
 
-    fn width(&self, s: &str, size: f32, weight: Weight) -> f32 {
+    pub(crate) fn width(&self, s: &str, size: f32, weight: Weight) -> f32 {
         self.galley(s, size, weight, Color32::WHITE, None).size().x
     }
 }
@@ -195,7 +197,8 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
     let title = "Tickets — all projects";
     x += pen.text(x, mid - line(LG) / 2.0, title, LG, Weight::BOLD, p.text);
     let cx = KitCx { painter: &painter, ppp: ui.ctx().pixels_per_point() };
-    draw_badges(&kit, &pen, &cx, pos2(x + 12.0, mid), &alerts);
+    // GPUI's badges there sit a pixel under the header's middle.
+    draw_badges(&kit, &pen, &cx, pos2(x + 12.0, mid + 1.0), &alerts);
     // From the end: "✕  Esc", a separator, "+ New ticket", how many shown.
     let mut end = header.right() - 16.0;
     let link = |end: &mut f32, s: &str, size: f32, color: Color32| {
@@ -327,7 +330,7 @@ fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: R
     pen.text(rect.left() + 12.0, rect.center().y - line(SM) / 2.0, "Search titles…", SM, Weight::REGULAR, p.muted);
 }
 
-fn badges_width(kit: &Kit, pen: &Pen<'_>, alerts: &Alerts) -> f32 {
+pub(crate) fn badges_width(kit: &Kit, pen: &Pen<'_>, alerts: &Alerts) -> f32 {
     let mut w = 0.0;
     let mut n = 0;
     for (on, text) in [(alerts.critical, "!".to_string()), (alerts.decisions > 0, alerts.decisions.to_string()), (alerts.unread > 0, alerts.unread.to_string())] {
@@ -342,7 +345,7 @@ fn badges_width(kit: &Kit, pen: &Pen<'_>, alerts: &Alerts) -> f32 {
 
 /// The badges of what tickets ask of the user, from `at` (its x, the
 /// line's middle), 4 apart: the critical "!", the decisions, the unread.
-fn draw_badges(kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, at: Pos2, alerts: &Alerts) -> f32 {
+pub(crate) fn draw_badges(kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, at: Pos2, alerts: &Alerts) -> f32 {
     let mut x = at.x;
     let items = [
         (alerts.critical, "!".to_string(), Tone::Danger),
@@ -360,7 +363,8 @@ fn draw_badges(kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, at: Pos2, alerts: &Aler
         first = false;
         let galley = pen.galley(&text, XS, Weight::REGULAR, Color32::PLACEHOLDER, None);
         let size = kit.indicator_badge.measure(galley.size());
-        let rect = Rect::from_min_size(pos2(x, at.y - size.y / 2.0), size);
+        // On a whole pixel, as GPUI places a box centred on a half one.
+        let rect = Rect::from_min_size(pos2(x, (at.y - size.y / 2.0).floor()), size);
         kit.indicator_badge.paint_part(cx, &Part { rect, room: rect, state: State::REST.toned(tone), label: Some(&galley) });
         x = rect.right();
     }

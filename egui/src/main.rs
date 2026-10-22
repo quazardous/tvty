@@ -17,6 +17,7 @@ mod row;
 mod tip;
 mod scene;
 mod shell;
+mod sidebar;
 
 fn main() -> eframe::Result {
     let scene = scene::Scene::load();
@@ -46,9 +47,12 @@ fn main() -> eframe::Result {
         .themes(themes)
         .theme(ThemeSpec::new(THEME))
         .menu_bar(false)
-        // As tvty starts: the sessions folded to their strip, the tickets
-        // panel at its width.
-        .folded(&[egui_pop::model::panels::Area::StartSide])
+        // As tvty starts: the sessions folded to their strip (open with
+        // TVTY_EGUI_SIDEBAR, to compare), lying over the centre when
+        // open; the tickets panel at its width.
+        .folded(if std::env::var_os("TVTY_EGUI_SIDEBAR").is_some() { &[] } else { &[egui_pop::model::panels::Area::StartSide] })
+        .over(&[egui_pop::model::panels::Area::StartSide])
+        .shell_panel_size(egui_pop::api::workbench::PANEL_SIDE_BAR, sidebar::WIDTH)
         // GPUI's 428 count the window's outline, inside which egui-pop lays out.
         .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 427.0)
         .plugins(MinimalPlugins)

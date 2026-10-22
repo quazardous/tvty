@@ -11,24 +11,39 @@ pub struct Scene {
     pub user: String,
     #[serde(default)]
     pub projects: Vec<Project>,
+    /// aiball's consumers (`consumer.list`).
+    #[serde(default)]
+    pub consumers: Vec<Consumer>,
+    /// The tmux sessions: name and start folder.
+    #[serde(default)]
+    pub sessions: Vec<(String, String)>,
+    /// The terminals tvty keeps open, and each project's order of them.
+    #[serde(default)]
+    pub open: Vec<String>,
+    #[serde(default)]
+    pub order: std::collections::HashMap<String, Vec<String>>,
+}
+
+/// An agent or a human, as aiball lists them.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Consumer {
+    pub consumer_id: String,
+    #[serde(default)]
+    pub kind: String,
+    pub project: Option<String>,
+    pub cwd: Option<String>,
+    pub state: Option<String>,
+    pub present: Option<bool>,
+    pub ping_unseen: Option<u64>,
+    pub counters: Option<serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
 pub struct Project {
     pub name: String,
-    #[serde(default)]
-    pub sessions: Vec<Session>,
     /// Its tickets as the list reads them, closed ones too.
     #[serde(default)]
     pub tickets: Vec<crate::board::Ticket>,
-}
-
-#[derive(Clone, Debug, Default, Deserialize)]
-pub struct Session {
-    pub name: String,
-    /// `busy`, `idle` or `boot`.
-    #[serde(default)]
-    pub state: String,
 }
 
 impl Scene {

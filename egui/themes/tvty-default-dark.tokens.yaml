@@ -160,9 +160,10 @@ tvty:
       $value: {value: 18, unit: "px"}
 # The folded side bar: a 15 px strip, its grip drawn by the DragHandle glyph.
 area-strip:
+  # GPUI's strip: 14 inside the window's outline, its edge line included.
   width:
     $type: "dimension"
-    $value: {value: 15, unit: "px"}
+    $value: {value: 14, unit: "px"}
   rest:
     fill:
       $type: "color"
@@ -191,6 +192,10 @@ area-grip:
 # No separator line along the side areas (GPUI draws none), no margin
 # inside them: each panel lays itself out to the edges.
 side-area:
+  # GPUI's sessions list lies over the centre without a shadow to see.
+  shadow-color:
+    $type: "color"
+    $value: "{transparent}"
   padding-x:
     $type: "dimension"
     $value: {value: 0, unit: "px"}
@@ -313,3 +318,74 @@ list-row:
     fill:
       $type: "color"
       $value: "{surface.hover}"
+# The sessions list's boxes, as the GPUI build draws them.
+tab:
+  $description: "The sessions list's tabs: words in the accent's underline when chosen, muted otherwise; no box."
+  rest:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.muted}"
+  selected:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    text:
+      $type: "color"
+      $value: "{text.default}"
+    indicator-size:
+      $type: "dimension"
+      $value: {value: 2, unit: "px"}
+  hover:
+    fill:
+      $type: "color"
+      $value: "{surface.hover}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+field:
+  rest:
+    fill:
+      $type: "color"
+      $value: "{surface.raised}"
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}
+pill:
+  $description: "An agent's counters (b, e): on the hover's grey and muted at zero, lit in their colour with dark ink."
+  rest:
+    fill:
+      $type: "color"
+      $value: "#1b1b1b"
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.muted}"
+  tone:
+    accent:
+      fill:
+        $type: "color"
+        $value: "{accent.default}"
+      text:
+        $type: "color"
+        $value: "#141414"
+    info:
+      fill:
+        $type: "color"
+        $value: "{info}"
+      text:
+        $type: "color"
+        $value: "#141414"

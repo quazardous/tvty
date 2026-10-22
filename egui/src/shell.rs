@@ -36,19 +36,14 @@ impl Plugin for Shell {
         let s = scene.clone();
         ctx.block(
             zones::SIDE_BAR,
-            Block::add(BlockId::from_static("tvty.sessions"), 0, move |ui, _| {
-                for project in &s.projects {
-                    ui.strong(&project.name);
-                    for session in &project.sessions {
-                        ui.label(&session.name);
-                    }
-                }
-            }),
+            Block::add(BlockId::from_static("tvty.sessions"), 0, move |ui, _| crate::sidebar::show(ui, &s)),
         );
         ctx.block(
             zones::MAIN,
             Block::add(BlockId::from_static("tvty.terminal"), 0, |ui, app| {
-                if !crate::fulllist::is_open(ui.ctx()) {
+                // Tips off, as the tests' tvty has them: TVTY_EGUI_TIPS=0.
+                let tips = std::env::var_os("TVTY_EGUI_TIPS").is_none_or(|v| v != "0");
+                if tips && !crate::fulllist::is_open(ui.ctx()) {
                     crate::tip::show(ui.ctx());
                 }
                 // Where a terminal would be, before one is picked: centred

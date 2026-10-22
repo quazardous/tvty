@@ -20,7 +20,9 @@ python3 egui/scripts/scene.py dev/fake-aiball/home/sock > dev/scene.json
 cd egui && TVTY_EGUI_SCENE=../dev/scene.json cargo run
 ```
 
-`TVTY_EGUI_FULL=1` opens the full ticket list at start (the panel's ⤢
+`TVTY_EGUI_SIDEBAR=1` starts with the sessions list open (over the
+centre, as GPUI lays it), `TVTY_EGUI_TIPS=0` without the tip card, as
+the tests' tvty has tips off. `TVTY_EGUI_FULL=1` opens the full ticket list at start (the panel's ⤢
 opens it too, Escape closes it). `egui/scripts/install-desktop` puts
 "tvty-egui Dev" in the desktop's launcher, on the debug build and
 `dev/scene.json`. The fake board moves on its own (a ticket stops being
@@ -52,7 +54,8 @@ draws; `TVTY_EGUI_WEIGHTS` keeps it, for a box whose UI font is static.
 
 GPUI rounds a text's line box to whole pixels: `round(1.618 × size)`,
 19, 23, 26 and 29 for 12, 14, 16 and 18. Laid out on fractions, a column
-of rows drifts by a pixel every few rows.
+of rows drifts by a pixel every few rows. A line box (or a badge)
+centred on a half pixel starts on the whole pixel above it.
 
 GPUI centres a text's line box (1.618 × its size) by the font's own
 metrics; egui centres its row. Text of 12 px lands on the same rows,
@@ -60,6 +63,14 @@ text of 14 px one row lower, the window's title two: a known difference,
 left as it is.
 
 ## Where it stands
+
+On this machine (GNOME, Adwaita Sans), share of pixels that differ by
+more than 24 levels, same data on both sides: the startup screen 0.6 %,
+the sessions list open 1.3 %, the full ticket list 4.7 % (its scroll bar
+and the text's antialiasing). Every item sits on GPUI's pixel or one
+off.
+
+Earlier, on the capture box:
 
 Startup screen (ref1), share of pixels that differ from GPUI's by more
 than 24 levels: 0.67 %. Every item sits within a pixel of GPUI's; what
@@ -86,3 +97,4 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | The window buttons' glyphs are egui-pop's | — | done: glyph roles `window-*`, `indicator-size` |
 | A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | open; the theme leaves Ubuntu out |
 | Scroll bars keep egui's default style: no kit component | egui-pop#60 | open |
+| No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | open; tvty-egui paints the bands |
