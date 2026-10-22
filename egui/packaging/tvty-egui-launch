@@ -1,0 +1,5 @@
+#!/bin/sh
+# Runs tvty-egui's development build (@BIN@) on the scene the comparison
+# uses (@SCENE@), unless TVTY_EGUI_SCENE names another.
+export TVTY_EGUI_SCENE="${TVTY_EGUI_SCENE:-@SCENE@}"
+exec "@BIN@" "$@"

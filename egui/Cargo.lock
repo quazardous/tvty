@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "egui-pop"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "egui",
  "egui-pop-api",
@@ -889,7 +889,7 @@ dependencies = [
 
 [[package]]
 name = "egui-pop-api"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "egui",
@@ -906,7 +906,7 @@ dependencies = [
 
 [[package]]
 name = "egui-pop-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "egui",
  "egui-phosphor",
@@ -917,11 +917,12 @@ dependencies = [
  "resvg",
  "serde",
  "serde_json",
+ "skrifa",
 ]
 
 [[package]]
 name = "egui-pop-model"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "log",
  "serde",
@@ -930,15 +931,17 @@ dependencies = [
 
 [[package]]
 name = "egui-pop-tokens"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
+ "flate2",
  "serde-saphyr",
  "serde_json",
+ "zip",
 ]
 
 [[package]]
 name = "egui-pop-win32"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -1912,6 +1915,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.13.2",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -3283,6 +3298,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.12.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "54ec2755506471f54baf5e4bb5499d8e510cc1caf271270e778a736bd2d7336c"
+
+[[package]]
 name = "uds_windows"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4271,6 +4292,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "zip"
+version = "9.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e04976da629d3b04204ba8105b396a193af8ad2583b2c79bfb3ab8af580a11e"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap",
+ "memchr",
+ "nix",
+ "typed-path",
 ]
 
 [[package]]

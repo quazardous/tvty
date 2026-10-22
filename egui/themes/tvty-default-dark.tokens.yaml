@@ -106,11 +106,12 @@ font:
   family:
     $type: "fontFamily"
     ui:
-      # What GPUI draws with on this system (its ".SystemUIFont"): measured,
-      # the widths of its text match DejaVu Sans to the pixel, not Inter.
-      # FreeSerif after it: the glyphs DejaVu Sans lacks (the full list's
-      # ⤢), where fontconfig falls back for GPUI.
-      $value: ["DejaVu Sans", "FreeSerif", "sans-serif"]
+      # What GPUI draws with on Linux (its ".SystemUIFont"): the first
+      # installed font of its fallback stack, in its order (Adwaita Sans on
+      # GNOME 47, DejaVu Sans on a bare box). Then, for the glyphs it
+      # lacks (the full list's ⤢), cosmic-text's own fallbacks, then
+      # FreeSerif, where a box without them falls back.
+      $value: ["Helvetica", "Segoe UI", "Ubuntu", "Adwaita Sans", "Cantarell", "Noto Sans", "DejaVu Sans", "Arial", "FreeSans", "Noto Sans Symbols", "Noto Sans Symbols2", "FreeSerif", "sans-serif"]
   size:
     $type: "dimension"
     small:

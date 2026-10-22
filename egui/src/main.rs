@@ -24,6 +24,8 @@ fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_title(shell::NAME)
+            // The launcher's StartupWMClass: the dock groups the window under it.
+            .with_app_id("tvty-egui")
             .with_inner_size([1280.0, 800.0])
             .with_decorations(false),
         ..Default::default()

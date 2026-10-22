@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=tvty-egui Dev
+Comment=Terminal Velocity's window rebuilt on egui-pop (experiment)
+Exec=@EXEC@
+Icon=tvty
+StartupWMClass=tvty-egui
+Terminal=false
+Categories=Development;
