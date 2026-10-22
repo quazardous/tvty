@@ -70,7 +70,7 @@ gradient (#111111 to #171717; a kit has no gradient term).
 ## Gaps found
 
 Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
-"Done" means done on egui-pop's `claude/visual-kits` branch.
+"Done" means on egui-pop's main.
 
 | Gap | Issue | State |
 |---|---|---|
@@ -84,3 +84,5 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | No line around the window; side areas keep egui's 8 px margins | — | done: `window.rest.border-*`, `side-area.padding-*` |
 | A double line under the title bar (egui's panel line and the kit's) | — | done: the kit draws it alone |
 | The window buttons' glyphs are egui-pop's | — | done: glyph roles `window-*`, `indicator-size` |
+| A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | open; the theme leaves Ubuntu out |
+| Scroll bars keep egui's default style: no kit component | egui-pop#60 | open |
