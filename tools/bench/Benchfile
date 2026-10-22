@@ -8,8 +8,10 @@
 #                                  (scripts/bench sends the working tree)
 #
 # Jobs: `test` (the workspace's tests), `check` (clippy: its warnings said,
-# only an error fails), `egui-test` (tvty-egui's tests, in egui/, its own
-# workspace: egui-pop checked out beside tvty, as egui/Cargo.toml expects).
+# only an error fails), `build` (the debug binary, fetched back to run it
+# here: the box runs the same Fedora as the development machine),
+# `egui-test` (tvty-egui's tests, in egui/, its own workspace: egui-pop
+# checked out beside tvty, as egui/Cargo.toml expects).
 #
 #   run egui-test branch=egui-pop
 # A pushed tree and a branch build in the same place (/tmp/w/tvty), so
@@ -67,6 +69,17 @@ command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode
  && cargo clippy --workspace --all-targets --locked --offline 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "check.log", kind = "log" } }
+timeout = "1h"
+
+[jobs.build]
+cores = 5
+memory = "6g"
+cwd = "/work/${src:-tvty}"
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+ && cargo build --locked --offline 2>&1 | tee /out/build.log; rc=${PIPESTATUS[0]}; \
+[ $rc = 0 ] && mkdir -p /out/bin && cp /target/debug/tvty /out/bin/tvty; exit $rc"""
+mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
+outputs = { bin = { path = "bin/", kind = "file" }, log = { path = "build.log", kind = "log" } }
 timeout = "1h"
 
 [jobs.egui-test]

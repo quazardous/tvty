@@ -92,10 +92,13 @@ scripts/bench up && scripts/bench test   # else: cargo test, here
 scripts/bench check branch=my-branch     # a branch pushed to GitHub
 ```
 
+`scripts/bench binary` builds the working tree there and puts its debug
+binary in `target/debug`, swapped in whole: what wbox runs, built off
+this machine (the box runs the same Fedora).
+
 The box's address and key are this machine's own, in `.secrets/`
 (git-ignored): `BENCH_HOST` in `.secrets/bench.env`, the key in
-`.secrets/bench.key`. What wbox needs, the binary it runs, is still built
-here.
+`.secrets/bench.key`.
 
 ## Something to attach to
 

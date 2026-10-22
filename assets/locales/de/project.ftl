@@ -52,6 +52,17 @@ projectopts-also-serves = Sie gilt auch für {$others}: eine Änderung hier gilt
 projectopts-on-named = an: {$name}
 projectopts-none-set = {$project} setzt nichts von der Board-Config: es hat die Werte des Boards.
 projectopts-all-keys = Alle seine Schlüssel
+projectopts-restart-needed = { $count ->
+    [one] {$loops} läuft noch mit dem alten Wert: den neuen übernimmt er nach einem Neustart, in einer neuen Unterhaltung.
+   *[other] {$loops} laufen noch mit dem alten Wert: den neuen übernehmen sie nach einem Neustart, in einer neuen Unterhaltung.
+}
+projectopts-restart = { $count ->
+    [one] Neu starten
+   *[other] Neu starten
+}
+projectopts-restarting = Neustart…
+projectopts-restarted = Schleifen neu gestartet
+projectopts-restart-failed = Neustart
 
 # The project renamed (its options' Name)
 rename-placeholder = neuer Name

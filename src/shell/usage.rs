@@ -27,9 +27,10 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             loop {
                 let shown = this.update(cx, |shell, cx| {
-                    if let Some(usage) = crate::usage::freshest(shell.board.bars.values()).cloned() {
+                    let each: Vec<_> = crate::usage::freshest_each(shell.board.bars.values()).into_iter().cloned().collect();
+                    if !each.is_empty() {
                         let now = crate::status::now();
-                        crate::config::update::<History>(cx, |history| history.take(&usage, now));
+                        crate::config::update::<History>(cx, |history| each.iter().for_each(|usage| history.take(usage, now)));
                         cx.notify();
                     }
                 });
@@ -42,10 +43,20 @@ impl Shell {
         .detach();
     }
 
+    /// The reading of the account the shown terminal's project runs on:
+    /// its agents' newest; any loop's when none of them read one yet.
+    fn shown_usage(&self) -> Option<&crate::usage::BarUsage> {
+        let project = self.selected.as_deref().and_then(|s| self.terminal_of(s)).map(|(project, _)| project);
+        let own = project.and_then(|name| self.board.projects.iter().find(|p| p.name == name)).and_then(|p| {
+            crate::usage::freshest(p.terminals.iter().filter_map(|t| t.agent.as_deref()).filter_map(|a| self.board.bars.get(a)))
+        });
+        own.or_else(|| crate::usage::freshest(self.board.bars.values()))
+    }
+
     /// None until a loop read the usage from its Claude.
     pub(super) fn usage_arrow(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         let now = crate::status::now();
-        let usage = crate::usage::freshest(self.board.bars.values())?;
+        let usage = self.shown_usage()?;
         let pace = crate::usage::pace(usage, now)?;
         let chart = crate::usage::chart(crate::config::get::<History>(cx), usage, now);
         let display = self.usage_display.unwrap_or_else(|| self.applied.usage.display());

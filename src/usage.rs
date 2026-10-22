@@ -19,6 +19,10 @@ pub struct BarUsage {
     #[serde(default)]
     pub seven_day: Option<UsageWindow>,
     pub read_at: String,
+    /// The Claude Code config dir the loop runs on: whose account, as each
+    /// has its own quota.
+    #[serde(default)]
+    pub config_dir: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -137,13 +141,28 @@ pub fn paces(usage: &BarUsage, now: u64) -> Vec<Pace> {
 }
 
 /// The newest reading among the loops' bars: the quota is the account's,
-/// so any loop's reading is everyone's. A gone loop's last one counts too.
+/// so any loop's reading on it is everyone's. A gone loop's last one counts
+/// too.
 pub fn freshest<'a>(bars: impl IntoIterator<Item = &'a BarRead>) -> Option<&'a BarUsage> {
     bars.into_iter()
         .filter_map(|read| read.bar.usage.as_ref())
         .filter_map(|usage| Some((parse_time(&usage.read_at)?, usage)))
         .max_by_key(|(at, _)| *at)
         .map(|(_, usage)| usage)
+}
+
+/// The newest reading of each account (config dir) among the bars.
+pub fn freshest_each<'a>(bars: impl IntoIterator<Item = &'a BarRead>) -> Vec<&'a BarUsage> {
+    let mut each: Vec<(u64, &BarUsage)> = Vec::new();
+    for usage in bars.into_iter().filter_map(|read| read.bar.usage.as_ref()) {
+        let Some(at) = parse_time(&usage.read_at) else { continue };
+        match each.iter_mut().find(|(_, kept)| kept.config_dir == usage.config_dir) {
+            Some(kept) if kept.0 < at => *kept = (at, usage),
+            Some(_) => {}
+            None => each.push((at, usage)),
+        }
+    }
+    each.into_iter().map(|(_, usage)| usage).collect()
 }
 
 /// How the arrow's figure says the gap; a click on it goes to the next.
@@ -274,6 +293,9 @@ pub struct Sample {
     /// When it was read.
     pub at: u64,
     pub used: f64,
+    /// The account's config dir; none for a loop that does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub config_dir: Option<String>,
 }
 
 /// `usage.json`: the readings of the windows still running, kept by tvty
@@ -310,22 +332,27 @@ impl History {
             for (window, reading) in [(Window::FiveHour, &usage.five_hour), (Window::SevenDay, &usage.seven_day)] {
                 let Some(reading) = reading else { continue };
                 let Some(resets_at) = parse_time(&reading.resets_at) else { continue };
-                let last = self.samples.iter().rev().find(|s| s.window == window && same_window(s.resets_at, resets_at));
+                let last = self.samples.iter().rev().find(|s| s.window == window && s.config_dir == usage.config_dir && same_window(s.resets_at, resets_at));
                 if last.is_some_and(|l| at <= l.at || (l.used == reading.used_percentage && at - l.at < KEEP_SAME)) {
                     continue;
                 }
-                self.samples.push(Sample { window, resets_at, at, used: reading.used_percentage.clamp(0., 100.) });
+                let used = reading.used_percentage.clamp(0., 100.);
+                self.samples.push(Sample { window, resets_at, at, used, config_dir: usage.config_dir.clone() });
             }
         }
         self.samples.retain(|s| s.resets_at > now);
     }
 
-    /// The window's curve: from its start, where nothing is used, through
-    /// each reading, in time.
-    pub fn points(&self, window: Window, resets_at: u64) -> Vec<(u64, f64)> {
+    /// The window's curve on one account: from its start, where nothing is
+    /// used, through each reading, in time.
+    pub fn points(&self, window: Window, resets_at: u64, config_dir: Option<&str>) -> Vec<(u64, f64)> {
         let start = resets_at.saturating_sub(window.length());
-        let mut points: Vec<(u64, f64)> =
-            self.samples.iter().filter(|s| s.window == window && same_window(s.resets_at, resets_at) && s.at >= start).map(|s| (s.at, s.used)).collect();
+        let mut points: Vec<(u64, f64)> = self
+            .samples
+            .iter()
+            .filter(|s| s.window == window && s.config_dir.as_deref() == config_dir && same_window(s.resets_at, resets_at) && s.at >= start)
+            .map(|s| (s.at, s.used))
+            .collect();
         points.sort_by_key(|(at, _)| *at);
         points.insert(0, (start, 0.));
         points
@@ -393,7 +420,7 @@ pub struct Chart {
 pub fn chart(history: &History, usage: &BarUsage, now: u64) -> Option<Chart> {
     let pace = pace(usage, now)?;
     let (window, resets_at) = (pace.window, pace.resets_at);
-    let mut points = history.points(window, resets_at);
+    let mut points = history.points(window, resets_at, usage.config_dir.as_deref());
     if let Some(at) = parse_time(&usage.read_at).filter(|at| points.last().is_some_and(|(last, _)| at > last)) {
         points.push((at, pace.used));
     }
@@ -442,7 +469,7 @@ mod tests {
     fn a_window_gone_by_says_nothing() {
         assert_eq!(Pace::of(Window::FiveHour, &UsageWindow { used_percentage: 90., resets_at: iso(NOW - 1) }, NOW), None);
         // The week then.
-        let usage = BarUsage { five_hour: Some(UsageWindow { used_percentage: 90., resets_at: iso(NOW - 1) }), seven_day: Some(window(10., 86400)), read_at: iso(NOW) };
+        let usage = BarUsage { five_hour: Some(UsageWindow { used_percentage: 90., resets_at: iso(NOW - 1) }), seven_day: Some(window(10., 86400)), read_at: iso(NOW), config_dir: None };
         assert_eq!(pace(&usage, NOW).map(|p| p.window), Some(Window::SevenDay));
     }
 
@@ -468,7 +495,7 @@ mod tests {
     }
 
     fn reading(five_hour: Option<UsageWindow>, at: u64) -> BarUsage {
-        BarUsage { five_hour, seven_day: None, read_at: iso(at) }
+        BarUsage { five_hour, seven_day: None, read_at: iso(at), config_dir: None }
     }
 
     #[test]
@@ -482,7 +509,7 @@ mod tests {
         assert_eq!(history.samples.len(), 1);
         history.take(&reading(Some(UsageWindow { used_percentage: 34., resets_at: iso(resets) }), NOW + 600), NOW + 600);
         // From the window's start, where nothing was used.
-        assert_eq!(history.points(Window::FiveHour, resets), vec![(resets - 5 * 3600, 0.), (NOW, 30.), (NOW + 600, 34.)]);
+        assert_eq!(history.points(Window::FiveHour, resets, None), vec![(resets - 5 * 3600, 0.), (NOW, 30.), (NOW + 600, 34.)]);
         // Once it reset, forgotten.
         history.take(&reading(None, resets + 1), resets + 1);
         assert!(history.samples.is_empty());
@@ -526,5 +553,16 @@ mod tests {
         assert_eq!(span(45 * 60), "45m");
         assert_eq!(span(100 * 60), "1h40");
         assert_eq!(span(52 * 3600), "2d 4h");
+    }
+
+    #[test]
+    fn each_account_keeps_its_own_curve() {
+        let resets = NOW + 3600;
+        let mut history = History::default();
+        let on = |dir: Option<&str>, used: f64, at: u64| BarUsage { config_dir: dir.map(str::to_string), ..reading(Some(UsageWindow { used_percentage: used, resets_at: iso(resets) }), at) };
+        history.take(&on(None, 30., NOW), NOW);
+        history.take(&on(Some("/w/.claude-work"), 70., NOW + 60), NOW);
+        assert_eq!(history.points(Window::FiveHour, resets, None), vec![(resets - 5 * 3600, 0.), (NOW, 30.)]);
+        assert_eq!(history.points(Window::FiveHour, resets, Some("/w/.claude-work")), vec![(resets - 5 * 3600, 0.), (NOW + 60, 70.)]);
     }
 }
