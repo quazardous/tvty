@@ -6,6 +6,7 @@
 newproject-title = Nouveau projet
 newproject-step-folder = Dossier
 newproject-step-identity = Qui y travaille
+newproject-step-advanced = Avancé
 newproject-step-done = Mise en place
 newproject-step-next = Et ensuite
 
@@ -27,6 +28,8 @@ newproject-open-running = Ouvrir {$label}, en marche
 newproject-open = Ouvrir {$name}
 newproject-next = Suivant →
 newproject-back = ← Retour
+newproject-advanced = Paramètres avancés →
+newproject-advanced-about = Les autres réglages du dossier, tels qu'aiball les décrit, et deux du projet. Chacun part de ce que dit le dossier, sinon de la valeur par défaut d'aiball ; rien n'est écrit avant « Mettre en place ».
 
 ## Qui y travaille
 
@@ -41,8 +44,6 @@ newproject-crew = un agent d'équipe
 newproject-crew-about = À côté du responsable du projet, sur les tickets qu'on lui donne ; sinon : le responsable.
 newproject-host = ses boucles sur l'hôte d'aiball
 newproject-host-about = Où tournent les boucles démarrées dans ce dossier ; sinon : dans {$mux}.
-newproject-rc = Remote Control
-newproject-rc-about = Son Claude se rejoint depuis claude.ai et l'app Claude.
 newproject-private = un projet privé
 newproject-private-about = aiball lui sert son kit privé (pas de tickets publics, pas d'abonnés).
 newproject-noclaim = pas de claim
@@ -60,7 +61,7 @@ newproject-then-sets = puis règle {$what} dans .aiball.yaml
 newproject-files = .mcp.json : le serveur MCP d'aiball pour Claude Code · .aiball.yaml : projet, agent, rôle, où tournent ses boucles.
 newproject-set-up = Mettre en place
 newproject-setting-up = Mise en place…
-newproject-unsaved = mis en place, mais où tournent ses boucles et son Remote Control n'ont pas été enregistrés : {$error}
+newproject-unsaved = mis en place, mais ses réglages n'ont pas été enregistrés : {$error}
 newproject-set-in = réglé {$what} dans {$file}
 
 ## Mise en place

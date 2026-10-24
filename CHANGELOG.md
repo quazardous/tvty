@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - A project chooses the Claude Code config dir its agents run on (its own account, settings and sessions) from its options page, with a restart of the loops that still run on the old one; the usage arrow follows the account of the project in view.
+- "New project" has an Advanced step, which may be skipped: the Claude Code config dir, the Remote Control, how agents ask questions, a private project, no claiming — set before the first session starts.
 
 ## [0.16.0-beta.1] - 2026-10-13
 

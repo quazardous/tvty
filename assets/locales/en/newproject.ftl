@@ -6,6 +6,7 @@
 newproject-title = New project
 newproject-step-folder = Folder
 newproject-step-identity = Who works in it
+newproject-step-advanced = Advanced
 newproject-step-done = Set up
 newproject-step-next = What next
 
@@ -27,6 +28,8 @@ newproject-open-running = Open {$label}, running
 newproject-open = Open {$name}
 newproject-next = Next →
 newproject-back = ← Back
+newproject-advanced = Advanced settings →
+newproject-advanced-about = The folder's other settings, as aiball describes them, and two of the project's. Each starts as the folder says, else at aiball's default; nothing is written before "Set it up".
 
 ## Who works in it
 
@@ -41,8 +44,6 @@ newproject-crew = a crew agent
 newproject-crew-about = Beside the project's lead, on the tickets it is given; off: the lead.
 newproject-host = its loops on aiball's host
 newproject-host-about = Where the loops started in this folder run; off: in {$mux}.
-newproject-rc = Remote Control
-newproject-rc-about = Its Claude can be reached from claude.ai and the Claude app.
 newproject-private = a private project
 newproject-private-about = aiball serves it its private kit (no public tickets, no followers).
 newproject-noclaim = no claiming
@@ -60,7 +61,7 @@ newproject-then-sets = then sets {$what} in .aiball.yaml
 newproject-files = .mcp.json: aiball's MCP server for Claude Code · .aiball.yaml: project, agent, role, where its loops run.
 newproject-set-up = Set it up
 newproject-setting-up = Setting it up…
-newproject-unsaved = set up, but where its loops run and its Remote Control were not saved: {$error}
+newproject-unsaved = set up, but its settings were not saved: {$error}
 newproject-set-in = set {$what} in {$file}
 
 ## Set up

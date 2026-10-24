@@ -6,6 +6,7 @@
 newproject-title = Proyecto nuevo
 newproject-step-folder = Carpeta
 newproject-step-identity = Quién trabaja en él
+newproject-step-advanced = Avanzado
 newproject-step-done = Configurado
 newproject-step-next = Y después
 
@@ -27,6 +28,8 @@ newproject-open-running = Abrir {$label}, en marcha
 newproject-open = Abrir {$name}
 newproject-next = Siguiente →
 newproject-back = ← Atrás
+newproject-advanced = Ajustes avanzados →
+newproject-advanced-about = Los demás ajustes de la carpeta, tal como aiball los describe, y dos del proyecto. Cada uno parte de lo que dice la carpeta, si no del valor por defecto de aiball; nada se escribe antes de «Configurarlo».
 
 ## Quién trabaja en él
 
@@ -41,8 +44,6 @@ newproject-crew = un agente de equipo
 newproject-crew-about = Junto al responsable del proyecto, en los tickets que se le dan; si no: el responsable.
 newproject-host = sus bucles en el host de aiball
 newproject-host-about = Dónde corren los bucles arrancados en esta carpeta; si no: en {$mux}.
-newproject-rc = Remote Control
-newproject-rc-about = Su Claude se puede retomar desde claude.ai y la app de Claude.
 newproject-private = un proyecto privado
 newproject-private-about = aiball le sirve su kit privado (sin tickets públicos, sin seguidores).
 newproject-noclaim = sin claim
@@ -60,7 +61,7 @@ newproject-then-sets = luego fija {$what} en .aiball.yaml
 newproject-files = .mcp.json: el servidor MCP de aiball para Claude Code · .aiball.yaml: proyecto, agente, rol, dónde corren sus bucles.
 newproject-set-up = Configurarlo
 newproject-setting-up = Configurando…
-newproject-unsaved = configurado, pero dónde corren sus bucles y su Remote Control no se guardaron: {$error}
+newproject-unsaved = configurado, pero sus ajustes no se guardaron: {$error}
 newproject-set-in = fijado {$what} en {$file}
 
 ## Configurado

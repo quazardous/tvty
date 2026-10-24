@@ -486,7 +486,7 @@ fn label(name: &str, from: &str) -> Div {
 }
 
 /// A path as typed: the home folder as `~`.
-fn home_tilde(path: &str) -> String {
+pub(super) fn home_tilde(path: &str) -> String {
     match std::env::var("HOME") {
         Ok(home) if !home.is_empty() && (path == home || path.starts_with(&format!("{home}/"))) => format!("~{}", &path[home.len()..]),
         _ => path.to_string(),

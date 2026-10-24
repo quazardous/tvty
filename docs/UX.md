@@ -46,20 +46,32 @@ right (`src/shell/newproject.rs`):
    says what it is: missing, a file, a git repository, or already an aiball
    project (its `.aiball.yaml`) — then "Open it" shows that project.
 2. **Who works in it**: the project's and the agent's names, proposed from
-   the folder (`app`, `app-claude`), a crew agent or the lead, a private
-   project, no claiming — each with what it means. aiball says, as they are
+   the folder (`app`, `app-claude`), a crew agent or the lead, where its
+   loops run — each with what it means. aiball says, as they are
    chosen, what it will do (a dry run of its `project.init`: creates, keeps
    or updates `.mcp.json` and `.aiball.yaml`), why it would not (a folder it
    cannot write, a name it refuses), and whether the project is on the board
-   already — then the folder joins it.
-3. **Set it up**: aiball does it, through its API (`project.init`, what
-   `aiball init` does; no command run, whatever the OS), and tvty shows what
-   it said, or its error.
-4. **What next**: start the agent ("Start its first session", on aiball's
+   already — then the folder joins it. "Set it up" is there already;
+   "Advanced settings" goes on to the next step.
+3. **Advanced** (may be skipped): the folder's other settings as aiball
+   describes them (`project.settings`), drawn from their description as on
+   the project's options page — the Claude Code config dir (a path, with
+   Browse…), the Remote Control, how its agent asks questions; a key aiball
+   adds shows with no code of tvty's — then a private project and no
+   claiming. Each starts as the folder's configuration says (the "imported"
+   colour, and where from), else at aiball's default; what differs is set
+   once the folder is set up ("then sets …" under both steps).
+4. **Set it up**: aiball does it, through its API (`project.init`, what
+   `aiball init` does; no command run, whatever the OS), then sets the
+   settings chosen (`project.settings_set`), and tvty shows what it said,
+   or its error.
+5. **What next**: start the agent ("Start its first session", on aiball's
    host: the project shows in the list, its tickets beside); accept
    aiball's MCP server when Claude Code asks at its first start in the
    folder (`/mcp` if refused); install aiball's skill when this machine has
-   none (`aiball init skill`); give it work with "+ New".
+   none (`aiball init skill`); give it work with "+ New". A new Claude
+   config dir must have been through Claude's first run (its theme, its
+   login) before a loop starts on it.
 
 Nothing is written before "Set it up"; Esc leaves a box, then closes it.
 

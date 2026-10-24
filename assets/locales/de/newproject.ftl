@@ -6,6 +6,7 @@
 newproject-title = Neues Projekt
 newproject-step-folder = Ordner
 newproject-step-identity = Wer darin arbeitet
+newproject-step-advanced = Erweitert
 newproject-step-done = Einrichtung
 newproject-step-next = Wie weiter
 
@@ -27,6 +28,8 @@ newproject-open-running = {$label} öffnen, läuft
 newproject-open = {$name} öffnen
 newproject-next = Weiter →
 newproject-back = ← Zurück
+newproject-advanced = Erweiterte Einstellungen →
+newproject-advanced-about = Die übrigen Einstellungen des Ordners, wie aiball sie beschreibt, und zwei des Projekts. Jede beginnt mit dem, was der Ordner sagt, sonst mit aiballs Standard; vor „Einrichten“ wird nichts geschrieben.
 
 ## Wer darin arbeitet
 
@@ -41,8 +44,6 @@ newproject-crew = ein Crew-Agent
 newproject-crew-about = Neben dem Lead des Projekts, auf den Tickets, die er bekommt; aus: der Lead.
 newproject-host = seine Loops auf aiballs Host
 newproject-host-about = Wo die in diesem Ordner gestarteten Loops laufen; aus: in {$mux}.
-newproject-rc = Remote Control
-newproject-rc-about = Sein Claude ist von claude.ai und der Claude-App aus erreichbar.
 newproject-private = ein privates Projekt
 newproject-private-about = aiball liefert ihm sein privates Kit (keine öffentlichen Tickets, keine Follower).
 newproject-noclaim = kein Claim
@@ -60,7 +61,7 @@ newproject-then-sets = setzt dann {$what} in .aiball.yaml
 newproject-files = .mcp.json: aiballs MCP-Server für Claude Code · .aiball.yaml: Projekt, Agent, Rolle, wo seine Loops laufen.
 newproject-set-up = Einrichten
 newproject-setting-up = Wird eingerichtet…
-newproject-unsaved = eingerichtet, aber wo seine Loops laufen und sein Remote Control wurden nicht gespeichert: {$error}
+newproject-unsaved = eingerichtet, aber seine Einstellungen wurden nicht gespeichert: {$error}
 newproject-set-in = {$what} in {$file} gesetzt
 
 ## Eingerichtet
