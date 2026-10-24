@@ -19,6 +19,9 @@ use gpui_kit::*;
 
 use super::Shell;
 use crate::aiball::{FolderSetting, InitAsk, InitDone, ProjectSettings, Setting};
+
+/// The setting of the Claude Code config dir the folder's loops start with.
+const CONFIG_DIR: &str = "claude.config_dir";
 use crate::loops::Start;
 use crate::theme::p;
 use crate::ui::buttons::{self, Look as _};
@@ -68,6 +71,9 @@ pub(super) struct NewProject {
     /// The input of each `path` setting, by its key: empty, the value
     /// aiball resolves stays.
     paths: HashMap<String, Entity<InputState>>,
+    /// A new config dir typed: prepared from the one in force (its
+    /// instructions and skills linked, as `claude-config --fork` does).
+    prepare: bool,
     running: bool,
     /// What aiball would do with the choices as they stand (a dry run),
     /// for the `asked`-th of them: or why it would not.
@@ -75,6 +81,9 @@ pub(super) struct NewProject {
     asked: u64,
     /// What aiball did: or why it did not.
     outcome: Option<Result<InitDone, String>>,
+    /// The folder's settings once set up: whether its config dir can take
+    /// a loop yet.
+    after: Option<ProjectSettings>,
     /// The folder aiball was last asked about, and its configuration as
     /// aiball resolves it (tvty reads no `.aiball.yaml` itself).
     found: Option<(PathBuf, ProjectSettings)>,
@@ -254,10 +263,12 @@ impl Shell {
             on_host: true,
             advanced: Vec::new(),
             paths: HashMap::new(),
+            prepare: false,
             running: false,
             preview: None,
             asked: 0,
             outcome: None,
+            after: None,
             found: None,
             imported: None,
         });
@@ -426,7 +437,7 @@ impl Shell {
             return;
         }
         let ask = Self::init_ask(wizard, cx);
-        let (on_host, chosen) = (wizard.on_host, Self::advanced_chosen(wizard, cx));
+        let (on_host, chosen, prepare) = (wizard.on_host, Self::advanced_chosen(wizard, cx), wizard.prepare);
         wizard.running = true;
         cx.notify();
         let aiball = self.aiball.clone();
@@ -445,8 +456,15 @@ impl Shell {
                         if let Some(session) = session {
                             aiball.project_settings_set(&ask.cwd, serde_json::json!({ "session": session })).map_err(unsaved)?;
                         }
+                        let mut forked = None;
                         for (key, value) in &others {
-                            aiball.project_settings_set(&ask.cwd, serde_json::json!({ "key": key, "value": value })).map_err(unsaved)?;
+                            let mut patch = serde_json::json!({ "key": key, "value": value });
+                            // A new config dir prepared from the one in force.
+                            if key == CONFIG_DIR && prepare {
+                                patch["fork"] = serde_json::json!({});
+                            }
+                            let set = aiball.project_settings_set(&ask.cwd, patch).map_err(unsaved)?;
+                            forked = forked.or(set.fork.map(|f| (said_value(value), f)));
                         }
                         // Said with what aiball did.
                         let mut set = Vec::new();
@@ -454,13 +472,28 @@ impl Shell {
                         set.extend(others.iter().map(|(key, value)| format!("{key}: {}", said_value(value))));
                         let file = now.file.clone().unwrap_or_default();
                         done.steps.push(crate::aiball::InitStep { detail: None, message: crate::t!("newproject-set-in", what = set.join(", "), file = file.clone()), action: "patched".into(), file });
+                        if let Some((dir, fork)) = forked {
+                            let message = crate::t!(
+                                "newproject-prepared",
+                                from = super::projectopts::home_tilde(&fork.from),
+                                linked = if fork.linked.is_empty() { "—".to_string() } else { fork.linked.join(", ") },
+                                copied = if fork.copied.is_empty() { "—".to_string() } else { fork.copied.join(", ") }
+                            );
+                            done.steps.push(crate::aiball::InitStep { detail: None, message, action: "created".into(), file: dir });
+                        }
                     }
-                    Ok(done)
+                    // Its settings now: whether its config dir can take a loop.
+                    let after = aiball.project_settings(&ask.cwd).ok();
+                    Ok((done, after))
                 })
                 .await;
             let _ = this.update(cx, |shell, cx| {
                 if let Some(wizard) = shell.new_project.as_mut() {
                     wizard.running = false;
+                    let said = said.map(|(done, after)| {
+                        wizard.after = after;
+                        done
+                    });
                     wizard.outcome = Some(said);
                     wizard.step = Step::Done;
                 }
@@ -665,7 +698,10 @@ impl Shell {
             was.clone()
         };
         let mut then: Vec<String> = session_to_write(&against, wizard.on_host).map(|s| format!("claude_loop.session: {s}")).into_iter().collect();
-        then.extend(settings_to_write(&against, &Self::advanced_chosen(wizard, cx)).iter().map(|(key, value)| format!("{key}: {}", said_value(value))));
+        then.extend(settings_to_write(&against, &Self::advanced_chosen(wizard, cx)).iter().map(|(key, value)| {
+            let prepared = (key == CONFIG_DIR && wizard.prepare).then(|| format!(" {}", crate::t!("newproject-then-prepared"))).unwrap_or_default();
+            format!("{key}: {}{prepared}", said_value(value))
+        }));
         // What aiball would do: each file, and whether the project is new.
         let plan = match &wizard.preview {
             Some(Ok(done)) => done.steps.iter().map(|step| crate::t!("newproject-will-file", will = will(&step.action), file = step.file.clone())).collect::<Vec<_>>().join(" · "),
@@ -830,6 +866,20 @@ impl Shell {
                     )
                     .child(div().pl(px(162.)).text_xs().text_color(p().muted).child(setting.description.clone())),
             );
+            // Another config dir typed: prepared from the one in force, or not.
+            let typed = wizard.paths.get(&setting.key).map(|i| i.read(cx).value().trim().to_string()).unwrap_or_default();
+            if setting.key == CONFIG_DIR && !typed.is_empty() {
+                let from = setting.value.as_str().map(super::projectopts::home_tilde).unwrap_or_else(|| "~/.claude".into());
+                page = page.child(div().pl(px(162.)).child(Self::wizard_tick(
+                    "new-project-prepare",
+                    wizard.prepare,
+                    crate::t!("newproject-prepare", from = from.clone()),
+                    crate::t!("newproject-prepare-about", from = from),
+                    None,
+                    |w| w.prepare = !w.prepare,
+                    cx,
+                )));
+            }
         }
         let page = page
             .child(Self::wizard_tick("new-project-private", wizard.private, crate::t!("newproject-private"), crate::t!("newproject-private-about"), None, |w| w.private = !w.private, cx))
@@ -909,6 +959,12 @@ impl Shell {
             .flex()
             .flex_col()
             .gap_4()
+            // Its config dir not through Claude's first run yet: a loop
+            // cannot answer those screens.
+            .children(wizard.after.as_ref().filter(|a| a.config_dir_state.is_some_and(|s| !s.first_run_done)).map(|after| {
+                let dir = &after.config_dir.value;
+                item("·", crate::t!("newproject-next-first-run"), crate::t!("newproject-next-first-run-about", dir = super::projectopts::home_tilde(dir), path = dir.clone()))
+            }))
             .child(item(
                 "1",
                 crate::t!("newproject-next-start"),
@@ -1052,6 +1108,22 @@ mod tests {
         // The machine's config sets where loops run too.
         let global = Setting { value: "tmux".to_string(), from: "global".into() };
         assert!(global.set() && global.said() == "from aiball's global config");
+    }
+
+    #[test]
+    fn a_forked_config_dir_and_its_state_read_as_aiball_answers() {
+        let after = settings(json!({
+            "config_dir": { "value": "/w/u/.claude-app", "from": "file" },
+            "config_dir_state": { "exists": true, "first_run_done": false, "has_account": false },
+            "fork": { "from": "/w/u/.claude", "linked": ["CLAUDE.md", "skills"], "copied": ["settings.json"], "kept": [], "moved_aside": null, "unknown": [], "mcp_servers": 0 }
+        }));
+        let state = after.config_dir_state.unwrap();
+        assert!(state.exists && !state.first_run_done && !state.has_account);
+        let fork = after.fork.unwrap();
+        assert_eq!((fork.from.as_str(), fork.linked.len(), fork.copied[0].as_str()), ("/w/u/.claude", 2, "settings.json"));
+        // A read that forked nothing: neither said.
+        let bare = settings(json!({}));
+        assert!(bare.config_dir_state.is_none() && bare.fork.is_none());
     }
 
     #[test]

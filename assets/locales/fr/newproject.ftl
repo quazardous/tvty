@@ -30,6 +30,10 @@ newproject-next = Suivant →
 newproject-back = ← Retour
 newproject-advanced = Paramètres avancés →
 newproject-advanced-about = Les autres réglages du dossier, tels qu'aiball les décrit, et deux du projet. Chacun part de ce que dit le dossier, sinon de la valeur par défaut d'aiball ; rien n'est écrit avant « Mettre en place ».
+newproject-prepare = le préparer depuis {$from}
+newproject-prepare-about = Comme claude-config --fork d'aiball : les instructions, skills, agents et commandes liés à ceux de {$from}, pour que leurs mises à jour arrivent aux deux ; settings.json et les plugins copiés ; jamais le compte ni les sessions.
+newproject-then-prepared = (préparé depuis celui en vigueur)
+newproject-prepared = préparé depuis {$from} : liés {$linked} · copiés {$copied}
 
 ## Qui y travaille
 
@@ -77,6 +81,8 @@ newproject-next-start-host = « Démarrer sa première session » démarre le Cl
 newproject-next-start-mux = « Démarrer sa première session » démarre le Claude Code de {$agent} dans {$mux}, dans le dossier du projet ; son terminal s'ouvre ici, ses tickets à côté.
 newproject-next-mcp = Accepter le serveur MCP d'aiball
 newproject-next-mcp-about = À son premier démarrage dans ce dossier, Claude Code demande s'il doit utiliser le serveur MCP que déclare .mcp.json (aiball) : accepte-le. Sans lui, l'agent ne peut ni lire le board ni répondre à ses tickets. Refusé par erreur ? /mcp dans Claude Code l'active.
+newproject-next-first-run = Lancer Claude une fois dans son dossier de config
+newproject-next-first-run-about = {$dir} n'est pas passé par le premier lancement de Claude (son thème, son login), auquel une boucle ne sait pas répondre : lance une fois CLAUDE_CONFIG_DIR={$path} claude dans un terminal, puis démarre la session.
 newproject-next-skill = Installer le skill d'aiball
 newproject-next-skill-about = Claude Code n'a pas encore le skill d'aiball sur cette machine : `aiball init skill`, une fois, l'installe — l'agent connaît alors les bons gestes du board.
 newproject-next-work = Lui donner du travail

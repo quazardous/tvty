@@ -60,7 +60,11 @@ right (`src/shell/newproject.rs`):
    adds shows with no code of tvty's — then a private project and no
    claiming. Each starts as the folder's configuration says (the "imported"
    colour, and where from), else at aiball's default; what differs is set
-   once the folder is set up ("then sets …" under both steps).
+   once the folder is set up ("then sets …" under both steps). Another
+   config dir typed may be **prepared from the one in force** (aiball's
+   fork: the instructions, skills, agents and commands linked to it,
+   `settings.json` and the plugins copied, never the account nor the
+   sessions); the outcome says what was linked and copied.
 4. **Set it up**: aiball does it, through its API (`project.init`, what
    `aiball init` does; no command run, whatever the OS), then sets the
    settings chosen (`project.settings_set`), and tvty shows what it said,
@@ -69,9 +73,10 @@ right (`src/shell/newproject.rs`):
    host: the project shows in the list, its tickets beside); accept
    aiball's MCP server when Claude Code asks at its first start in the
    folder (`/mcp` if refused); install aiball's skill when this machine has
-   none (`aiball init skill`); give it work with "+ New". A new Claude
-   config dir must have been through Claude's first run (its theme, its
-   login) before a loop starts on it.
+   none (`aiball init skill`); give it work with "+ New". When the
+   folder's config dir has not been through Claude's first run (its theme,
+   its login: aiball's `config_dir_state`), the first item says to run
+   `CLAUDE_CONFIG_DIR=… claude` once, which a loop cannot do.
 
 Nothing is written before "Set it up"; Esc leaves a box, then closes it.
 

@@ -30,6 +30,10 @@ newproject-next = Next →
 newproject-back = ← Back
 newproject-advanced = Advanced settings →
 newproject-advanced-about = The folder's other settings, as aiball describes them, and two of the project's. Each starts as the folder says, else at aiball's default; nothing is written before "Set it up".
+newproject-prepare = prepare it from {$from}
+newproject-prepare-about = As aiball's claude-config --fork: the instructions, skills, agents and commands linked to {$from}'s, so their updates reach both; settings.json and the plugins copied; never the account nor the sessions.
+newproject-then-prepared = (prepared from the one in force)
+newproject-prepared = prepared from {$from}: linked {$linked} · copied {$copied}
 
 ## Who works in it
 
@@ -77,6 +81,8 @@ newproject-next-start-host = "Start its first session" starts {$agent}'s Claude 
 newproject-next-start-mux = "Start its first session" starts {$agent}'s Claude Code in {$mux}, in the project's folder; its terminal opens here, its tickets beside.
 newproject-next-mcp = Accept aiball's MCP server
 newproject-next-mcp-about = At its first start in this folder, Claude Code asks whether to use the MCP server that .mcp.json declares (aiball): accept it. Without it the agent can neither read the board nor answer its tickets. Refused by mistake? /mcp in Claude Code turns it on.
+newproject-next-first-run = Run Claude once in its config dir
+newproject-next-first-run-about = {$dir} has not been through Claude's first run (its theme, its login), which a loop cannot answer: run CLAUDE_CONFIG_DIR={$path} claude once in a terminal, then start the session.
 newproject-next-skill = Install aiball's skill
 newproject-next-skill-about = Claude Code has no aiball skill on this machine yet: `aiball init skill`, once, installs it — the agent then knows the board's good gestures.
 newproject-next-work = Give it work

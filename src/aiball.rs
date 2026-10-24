@@ -1688,6 +1688,39 @@ pub struct ProjectSettings {
     /// it, which take it only once restarted.
     #[serde(default)]
     pub restart_loops: Vec<String>,
+    /// What the resolved config dir is: there, through Claude's first run,
+    /// with an account.
+    #[serde(default)]
+    pub config_dir_state: Option<ConfigDirState>,
+    /// After a write that forked the new config dir: what aiball carried.
+    #[serde(default)]
+    pub fork: Option<ForkDone>,
+}
+
+/// A Claude Code config dir, as aiball finds it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Deserialize)]
+pub struct ConfigDirState {
+    #[serde(default)]
+    pub exists: bool,
+    /// Through Claude's first run (theme, login): a loop can start on it.
+    #[serde(default)]
+    pub first_run_done: bool,
+    #[serde(default)]
+    pub has_account: bool,
+}
+
+/// A config dir forked from another (`claude-config --fork`): its entries
+/// linked to the other's, copied, or already there and kept.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ForkDone {
+    #[serde(default)]
+    pub from: String,
+    #[serde(default)]
+    pub linked: Vec<String>,
+    #[serde(default)]
+    pub copied: Vec<String>,
+    #[serde(default)]
+    pub kept: Vec<String>,
 }
 
 /// A folder setting as aiball describes it: its key in `.aiball.yaml`, its

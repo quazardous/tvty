@@ -30,6 +30,10 @@ newproject-next = Siguiente →
 newproject-back = ← Atrás
 newproject-advanced = Ajustes avanzados →
 newproject-advanced-about = Los demás ajustes de la carpeta, tal como aiball los describe, y dos del proyecto. Cada uno parte de lo que dice la carpeta, si no del valor por defecto de aiball; nada se escribe antes de «Configurarlo».
+newproject-prepare = prepararlo desde {$from}
+newproject-prepare-about = Como claude-config --fork de aiball: las instrucciones, skills, agentes y comandos enlazados a los de {$from}, para que sus actualizaciones lleguen a ambos; settings.json y los plugins copiados; nunca la cuenta ni las sesiones.
+newproject-then-prepared = (preparado desde el vigente)
+newproject-prepared = preparado desde {$from}: enlazados {$linked} · copiados {$copied}
 
 ## Quién trabaja en él
 
@@ -77,6 +81,8 @@ newproject-next-start-host = «Arrancar su primera sesión» arranca el Claude C
 newproject-next-start-mux = «Arrancar su primera sesión» arranca el Claude Code de {$agent} en {$mux}, en la carpeta del proyecto; su terminal se abre aquí, sus tickets al lado.
 newproject-next-mcp = Aceptar el servidor MCP de aiball
 newproject-next-mcp-about = En su primer arranque en esta carpeta, Claude Code pregunta si usar el servidor MCP que declara .mcp.json (aiball): acéptalo. Sin él, el agente no puede ni leer el tablero ni responder a sus tickets. ¿Rechazado por error? /mcp en Claude Code lo activa.
+newproject-next-first-run = Ejecutar Claude una vez en su carpeta de config
+newproject-next-first-run-about = {$dir} no ha pasado por el primer arranque de Claude (su tema, su login), al que un bucle no sabe responder: ejecuta una vez CLAUDE_CONFIG_DIR={$path} claude en una terminal, luego inicia la sesión.
 newproject-next-skill = Instalar el skill de aiball
 newproject-next-skill-about = Claude Code aún no tiene el skill de aiball en esta máquina: `aiball init skill`, una vez, lo instala — el agente conoce entonces los buenos gestos del tablero.
 newproject-next-work = Darle trabajo

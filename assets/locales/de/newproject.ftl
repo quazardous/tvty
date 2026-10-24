@@ -30,6 +30,10 @@ newproject-next = Weiter →
 newproject-back = ← Zurück
 newproject-advanced = Erweiterte Einstellungen →
 newproject-advanced-about = Die übrigen Einstellungen des Ordners, wie aiball sie beschreibt, und zwei des Projekts. Jede beginnt mit dem, was der Ordner sagt, sonst mit aiballs Standard; vor „Einrichten“ wird nichts geschrieben.
+newproject-prepare = aus {$from} vorbereiten
+newproject-prepare-about = Wie aiballs claude-config --fork: Anweisungen, Skills, Agenten und Befehle mit denen von {$from} verlinkt, damit ihre Updates beide erreichen; settings.json und die Plugins kopiert; nie das Konto oder die Sitzungen.
+newproject-then-prepared = (aus dem geltenden vorbereitet)
+newproject-prepared = aus {$from} vorbereitet: verlinkt {$linked} · kopiert {$copied}
 
 ## Wer darin arbeitet
 
@@ -77,6 +81,8 @@ newproject-next-start-host = „Erste Sitzung starten“ startet das Claude Code
 newproject-next-start-mux = „Erste Sitzung starten“ startet das Claude Code von {$agent} in {$mux}, im Ordner des Projekts; sein Terminal öffnet sich hier, seine Tickets daneben.
 newproject-next-mcp = aiballs MCP-Server annehmen
 newproject-next-mcp-about = Beim ersten Start in diesem Ordner fragt Claude Code, ob es den MCP-Server nutzen soll, den .mcp.json angibt (aiball): Nimm ihn an. Ohne ihn kann der Agent weder das Board lesen noch auf seine Tickets antworten. Versehentlich abgelehnt? /mcp in Claude Code schaltet ihn ein.
+newproject-next-first-run = Claude einmal in seinem Config-Ordner starten
+newproject-next-first-run-about = {$dir} hat Claudes ersten Start (Thema, Login) noch nicht durchlaufen, den ein Loop nicht beantworten kann: führe einmal CLAUDE_CONFIG_DIR={$path} claude in einem Terminal aus, dann starte die Sitzung.
 newproject-next-skill = aiballs Skill installieren
 newproject-next-skill-about = Claude Code hat auf diesem Rechner noch keinen aiball-Skill: `aiball init skill`, einmal, installiert ihn — dann kennt der Agent die richtigen Handgriffe auf dem Board.
 newproject-next-work = Ihm Arbeit geben
