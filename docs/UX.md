@@ -61,7 +61,9 @@ right (`src/shell/newproject.rs`):
    claiming. Each starts as the folder's configuration says (the "imported"
    colour, and where from), else at aiball's default; what differs is set
    once the folder is set up ("then sets …" under both steps). Another
-   config dir typed may be **prepared from the one in force** (aiball's
+   config dir typed, when aiball finds no account there (it asks
+   `project.settings` about that dir, nothing written), may be
+   **prepared from the one in force**, ticked by default (aiball's
    fork: the instructions, skills, agents and commands linked to it,
    `settings.json` and the plugins copied, never the account nor the
    sessions); the outcome says what was linked and copied.

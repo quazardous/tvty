@@ -1017,6 +1017,12 @@ impl Aiball {
         self.rpc("project.settings", json!({ "cwd": cwd }))
     }
 
+    /// The folder's settings, and what `config_dir` is as a Claude Code
+    /// config dir (`candidate`), before it is chosen: nothing written.
+    pub fn project_settings_with(&self, cwd: &str, config_dir: &str) -> anyhow::Result<ProjectSettings> {
+        self.rpc("project.settings", json!({ "cwd": cwd, "config_dir": config_dir }))
+    }
+
     /// Sets where the folder's loops run (`session`) and its Claude's Remote
     /// Control (`remote_control`) in the `.aiball.yaml` they read
     /// (`project.settings_set`): the keys `patch` gives, a null one removed
@@ -1695,6 +1701,25 @@ pub struct ProjectSettings {
     /// After a write that forked the new config dir: what aiball carried.
     #[serde(default)]
     pub fork: Option<ForkDone>,
+    /// Asked with a `config_dir`: that dir, expanded, and what it is.
+    #[serde(default)]
+    pub candidate: Option<ConfigDirCandidate>,
+}
+
+/// A config dir not chosen yet, as aiball finds it.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ConfigDirCandidate {
+    #[serde(default)]
+    pub dir: String,
+    #[serde(default)]
+    pub state: ConfigDirState,
+}
+
+impl ConfigDirState {
+    /// Nothing of an account there yet: a dir to prepare.
+    pub fn is_new(&self) -> bool {
+        !self.exists || !self.has_account
+    }
 }
 
 /// A Claude Code config dir, as aiball finds it.

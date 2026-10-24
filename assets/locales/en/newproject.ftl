@@ -34,6 +34,7 @@ newproject-prepare = prepare it from {$from}
 newproject-prepare-about = As aiball's claude-config --fork: the instructions, skills, agents and commands linked to {$from}'s, so their updates reach both; settings.json and the plugins copied; never the account nor the sessions.
 newproject-then-prepared = (prepared from the one in force)
 newproject-prepared = prepared from {$from}: linked {$linked} · copied {$copied}
+newproject-prepared-nothing = prepared from {$from}: nothing to carry there, the dir is left as Claude will make it
 
 ## Who works in it
 

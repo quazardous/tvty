@@ -34,6 +34,7 @@ newproject-prepare = aus {$from} vorbereiten
 newproject-prepare-about = Wie aiballs claude-config --fork: Anweisungen, Skills, Agenten und Befehle mit denen von {$from} verlinkt, damit ihre Updates beide erreichen; settings.json und die Plugins kopiert; nie das Konto oder die Sitzungen.
 newproject-then-prepared = (aus dem geltenden vorbereitet)
 newproject-prepared = aus {$from} vorbereitet: verlinkt {$linked} · kopiert {$copied}
+newproject-prepared-nothing = aus {$from} vorbereitet: dort nichts zu übernehmen, der Ordner bleibt, wie Claude ihn anlegt
 
 ## Wer darin arbeitet
 

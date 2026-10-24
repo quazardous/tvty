@@ -34,6 +34,7 @@ newproject-prepare = le préparer depuis {$from}
 newproject-prepare-about = Comme claude-config --fork d'aiball : les instructions, skills, agents et commandes liés à ceux de {$from}, pour que leurs mises à jour arrivent aux deux ; settings.json et les plugins copiés ; jamais le compte ni les sessions.
 newproject-then-prepared = (préparé depuis celui en vigueur)
 newproject-prepared = préparé depuis {$from} : liés {$linked} · copiés {$copied}
+newproject-prepared-nothing = préparé depuis {$from} : rien à reprendre là, le dossier reste tel que Claude le fera
 
 ## Qui y travaille
 

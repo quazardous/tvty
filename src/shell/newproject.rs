@@ -74,6 +74,12 @@ pub(super) struct NewProject {
     /// A new config dir typed: prepared from the one in force (its
     /// instructions and skills linked, as `claude-config --fork` does).
     prepare: bool,
+    /// The box flipped by the user: what aiball says of the dir no longer
+    /// sets it.
+    prepare_flipped: bool,
+    /// The config dir typed and what aiball says it is: the box shows for
+    /// a new one only, ticked.
+    candidate: Option<(String, crate::aiball::ConfigDirState)>,
     running: bool,
     /// What aiball would do with the choices as they stand (a dry run),
     /// for the `asked`-th of them: or why it would not.
@@ -264,6 +270,8 @@ impl Shell {
             advanced: Vec::new(),
             paths: HashMap::new(),
             prepare: false,
+            prepare_flipped: false,
+            candidate: None,
             running: false,
             preview: None,
             asked: 0,
@@ -334,6 +342,42 @@ impl Shell {
         .detach();
     }
 
+    /// Asks aiball what the config dir typed is (nothing written): a new
+    /// one is prepared by default; the answer for the dir still typed only
+    /// is kept.
+    fn ask_config_dir(&mut self, cx: &mut Context<Self>) {
+        let Some(wizard) = self.new_project.as_ref() else { return };
+        let typed = wizard.paths.get(CONFIG_DIR).map(|i| i.read(cx).value().trim().to_string()).unwrap_or_default();
+        if typed.is_empty() {
+            return;
+        }
+        let cwd = expand(wizard.folder.read(cx).value().trim()).display().to_string();
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let asked = typed.clone();
+            let said = cx.background_executor().spawn(async move { aiball.project_settings_with(&cwd, &asked) }).await;
+            let _ = this.update(cx, |shell, cx| {
+                let Some(wizard) = shell.new_project.as_mut() else { return };
+                let now = wizard.paths.get(CONFIG_DIR).map(|i| i.read(cx).value().trim().to_string());
+                if now.as_deref() != Some(typed.as_str()) {
+                    return;
+                }
+                match said.map(|s| s.candidate) {
+                    Ok(Some(candidate)) => {
+                        if !wizard.prepare_flipped {
+                            wizard.prepare = candidate.state.is_new();
+                        }
+                        wizard.candidate = Some((typed, candidate.state));
+                    }
+                    Ok(None) => {}
+                    Err(error) => log::warn!("new project: config dir {typed}: {error:#}"),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
     /// From the folder to who works in it: the choices filled from the
     /// folder's configuration (what its `.aiball.yaml` says, else aiball's
     /// defaults, else names from the folder), unless already made for this
@@ -362,8 +406,12 @@ impl Shell {
                 let own = setting.value.as_str().filter(|_| setting.from == "file").map(super::projectopts::home_tilde).unwrap_or_default();
                 let resolved = setting.value.as_str().map(super::projectopts::home_tilde).unwrap_or_default();
                 let input = cx.new(|cx| InputState::new(window, cx).placeholder(resolved).default_value(own));
-                cx.subscribe(&input, |shell, _, event: &InputEvent, cx| {
+                let candidate = setting.key == CONFIG_DIR;
+                cx.subscribe(&input, move |shell, _, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Change) {
+                        if candidate {
+                            shell.ask_config_dir(cx);
+                        }
                         shell.preview_init(cx);
                         cx.notify();
                     }
@@ -414,6 +462,13 @@ impl Shell {
         .detach();
     }
 
+    /// Whether the config dir typed is to be prepared: a new one, its box
+    /// ticked.
+    fn preparing(wizard: &NewProject, cx: &App) -> bool {
+        let typed = wizard.paths.get(CONFIG_DIR).map(|i| i.read(cx).value().trim().to_string()).unwrap_or_default();
+        wizard.prepare && wizard.candidate.as_ref().is_some_and(|(dir, state)| *dir == typed && state.is_new())
+    }
+
     /// The advanced settings as chosen: a path as typed (left empty, not
     /// chosen), the others as picked.
     fn advanced_chosen(wizard: &NewProject, cx: &App) -> Vec<(String, serde_json::Value)> {
@@ -437,7 +492,7 @@ impl Shell {
             return;
         }
         let ask = Self::init_ask(wizard, cx);
-        let (on_host, chosen, prepare) = (wizard.on_host, Self::advanced_chosen(wizard, cx), wizard.prepare);
+        let (on_host, chosen, prepare) = (wizard.on_host, Self::advanced_chosen(wizard, cx), Self::preparing(wizard, cx));
         wizard.running = true;
         cx.notify();
         let aiball = self.aiball.clone();
@@ -473,12 +528,18 @@ impl Shell {
                         let file = now.file.clone().unwrap_or_default();
                         done.steps.push(crate::aiball::InitStep { detail: None, message: crate::t!("newproject-set-in", what = set.join(", "), file = file.clone()), action: "patched".into(), file });
                         if let Some((dir, fork)) = forked {
-                            let message = crate::t!(
-                                "newproject-prepared",
-                                from = super::projectopts::home_tilde(&fork.from),
-                                linked = if fork.linked.is_empty() { "—".to_string() } else { fork.linked.join(", ") },
-                                copied = if fork.copied.is_empty() { "—".to_string() } else { fork.copied.join(", ") }
-                            );
+                            let from = super::projectopts::home_tilde(&fork.from);
+                            // Nothing carried: the dir it comes from has nothing (or is not there).
+                            let message = if fork.linked.is_empty() && fork.copied.is_empty() && fork.kept.is_empty() {
+                                crate::t!("newproject-prepared-nothing", from = from)
+                            } else {
+                                crate::t!(
+                                    "newproject-prepared",
+                                    from = from,
+                                    linked = if fork.linked.is_empty() { "—".to_string() } else { fork.linked.join(", ") },
+                                    copied = if fork.copied.is_empty() { "—".to_string() } else { fork.copied.join(", ") }
+                                )
+                            };
                             done.steps.push(crate::aiball::InitStep { detail: None, message, action: "created".into(), file: dir });
                         }
                     }
@@ -699,7 +760,7 @@ impl Shell {
         };
         let mut then: Vec<String> = session_to_write(&against, wizard.on_host).map(|s| format!("claude_loop.session: {s}")).into_iter().collect();
         then.extend(settings_to_write(&against, &Self::advanced_chosen(wizard, cx)).iter().map(|(key, value)| {
-            let prepared = (key == CONFIG_DIR && wizard.prepare).then(|| format!(" {}", crate::t!("newproject-then-prepared"))).unwrap_or_default();
+            let prepared = (key == CONFIG_DIR && Self::preparing(wizard, cx)).then(|| format!(" {}", crate::t!("newproject-then-prepared"))).unwrap_or_default();
             format!("{key}: {}{prepared}", said_value(value))
         }));
         // What aiball would do: each file, and whether the project is new.
@@ -868,7 +929,8 @@ impl Shell {
             );
             // Another config dir typed: prepared from the one in force, or not.
             let typed = wizard.paths.get(&setting.key).map(|i| i.read(cx).value().trim().to_string()).unwrap_or_default();
-            if setting.key == CONFIG_DIR && !typed.is_empty() {
+            let new_dir = wizard.candidate.as_ref().is_some_and(|(dir, state)| *dir == typed && state.is_new());
+            if setting.key == CONFIG_DIR && !typed.is_empty() && new_dir {
                 let from = setting.value.as_str().map(super::projectopts::home_tilde).unwrap_or_else(|| "~/.claude".into());
                 page = page.child(div().pl(px(162.)).child(Self::wizard_tick(
                     "new-project-prepare",
@@ -876,7 +938,10 @@ impl Shell {
                     crate::t!("newproject-prepare", from = from.clone()),
                     crate::t!("newproject-prepare-about", from = from),
                     None,
-                    |w| w.prepare = !w.prepare,
+                    |w| {
+                        w.prepare = !w.prepare;
+                        w.prepare_flipped = true;
+                    },
                     cx,
                 )));
             }
@@ -901,6 +966,9 @@ impl Shell {
                 let _ = this.update(cx, |shell, cx| {
                     if let Some(input) = shell.new_project.as_ref().and_then(|w| w.paths.get(&key)).cloned() {
                         input.update(cx, |i, cx| i.set_value(super::projectopts::home_tilde(&path.display().to_string()), window, cx));
+                    }
+                    if key == CONFIG_DIR {
+                        shell.ask_config_dir(cx);
                     }
                     shell.preview_init(cx);
                     cx.notify();
@@ -1121,6 +1189,11 @@ mod tests {
         assert!(state.exists && !state.first_run_done && !state.has_account);
         let fork = after.fork.unwrap();
         assert_eq!((fork.from.as_str(), fork.linked.len(), fork.copied[0].as_str()), ("/w/u/.claude", 2, "settings.json"));
+        // A dir asked about before it is chosen: new without an account.
+        let asked = settings(json!({ "candidate": { "dir": "/w/u/.claude-x", "state": { "exists": true, "first_run_done": true, "has_account": false } } }));
+        assert!(asked.candidate.unwrap().state.is_new());
+        let used = crate::aiball::ConfigDirState { exists: true, first_run_done: true, has_account: true };
+        assert!(!used.is_new() && crate::aiball::ConfigDirState::default().is_new());
         // A read that forked nothing: neither said.
         let bare = settings(json!({}));
         assert!(bare.config_dir_state.is_none() && bare.fork.is_none());
