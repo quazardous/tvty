@@ -77,6 +77,14 @@ pub fn set_cursor(choice: Option<&str>) {
     CURSOR_BLINK.store(mode, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// Whether a copy lets go of the screen held under a selection
+/// (`terminal.copy_unfreezes`).
+static COPY_UNFREEZES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_copy_unfreezes(on: bool) {
+    COPY_UNFREEZES.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 /// Whether a paste lets go of the screen held under a selection
 /// (`terminal.paste_unfreezes`).
 static PASTE_UNFREEZES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
@@ -698,6 +706,9 @@ impl TerminalView {
         if let Some(text) = text {
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             crate::bus::emit(cx, crate::bus::Signal::Copied);
+            if COPY_UNFREEZES.load(std::sync::atomic::Ordering::Relaxed) {
+                self.clear_selection(cx);
+            }
         }
     }
 

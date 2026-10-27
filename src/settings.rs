@@ -44,6 +44,8 @@ pub struct Terminal {
     /// blinks.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cursor: Option<String>,
+    /// A copy lets go of the screen held still under a selection.
+    pub copy_unfreezes: bool,
     /// A paste lets go of the screen held still under a selection.
     pub paste_unfreezes: bool,
     /// A paste brings the terminal scrolled back to its bottom.
@@ -52,7 +54,7 @@ pub struct Terminal {
 
 impl Default for Terminal {
     fn default() -> Self {
-        Self { scrollback: None, cursor: None, paste_unfreezes: true, paste_scrolls_down: true }
+        Self { scrollback: None, cursor: None, copy_unfreezes: true, paste_unfreezes: true, paste_scrolls_down: true }
     }
 }
 
@@ -373,6 +375,14 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Lines of history",
         about: "What each terminal keeps to scroll back through. More costs memory: about 4 KB a line at 160 columns, so 5000 lines is about 19 MB a terminal at most. A tmux session's history is tmux's own (its history-limit).",
         kind: Kind::Number { min: 0., max: 100000., step: 1000., default: 5000., unit: "", integer: true, slider: false },
+    },
+    Setting {
+        key: "terminal.copy_unfreezes",
+        page: "Layout",
+        group: "Terminal",
+        label: "Copy",
+        about: "A selection holds the terminal's screen still; a copy (Ctrl+Shift+C, the menu's Copy) lets it go and shows the live screen again. Off, the screen stays held until a paste, Esc or a key typed.",
+        kind: Kind::Toggle { default: true, on: "lets the screen go", off: "keeps it held" },
     },
     Setting {
         key: "terminal.paste_unfreezes",
