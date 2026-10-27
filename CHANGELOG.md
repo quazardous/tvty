@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A project chooses the Claude Code config dir its agents run on (its own account, settings and sessions) from its options page, with a restart of the loops that still run on the old one; the usage arrow follows the account of the project in view.
 - "New project" has an Advanced step, which may be skipped: the Claude Code config dir, the Remote Control, how agents ask questions, a private project, no claiming — set before the first session starts. A new config dir can be prepared from the one in force (its instructions and skills linked), and the wizard says when it must first be run once by hand.
 - A copy from a terminal lets go of the screen held still under the selection, as a paste already did; a setting (Layout > Terminal > Copy) keeps it held.
+- A selection dragged past the top or the bottom of a terminal scrolls its history, a tmux session's too, so that more than a screen can be selected.
 
 ## [0.16.0-beta.1] - 2026-10-13
 

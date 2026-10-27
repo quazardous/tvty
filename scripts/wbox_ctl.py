@@ -22,7 +22,7 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
-    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N, WBOX_DRAG_SECONDS=S)
+    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2   (WBOX_DRAG_STEPS=N, WBOX_DRAG_SECONDS=S, WBOX_DRAG_HOLD=S)
     wbox_ctl.py dblclick CONFIG [-s key=value ...] X Y
     wbox_ctl.py move   CONFIG [-s key=value ...] X1 Y1 X2 Y2 STEPS SECONDS
                        (the pointer glides, no button: hovering, to measure it)
@@ -202,6 +202,9 @@ def main():
             client._motion(vp, x1 + (x2 - x1) * i // steps, y1 + (y2 - y1) * i // steps)
             client.roundtrip()
             clock.sleep(pause)
+        # WBOX_DRAG_HOLD: seconds the button stays down at the end (a
+        # selection dragged past an edge scrolls meanwhile).
+        clock.sleep(float(os.environ.get("WBOX_DRAG_HOLD", "0")))
         client._send(vp, 2, client._uint(wp._now_ms()) + client._uint(wp.BTN_LEFT) + client._uint(wp.RELEASED))
         client._send(vp, 4)
         client.roundtrip()

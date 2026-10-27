@@ -220,6 +220,20 @@ pub struct TerminalView {
     /// Code draws its screen again and again), and the drag would lose it
     /// under the pointer. Put back after each output and each move.
     dragging: Option<Selection>,
+    /// Where the selection being made began (its kind, cell and side): it
+    /// is made again from there when the screen held still gets tmux's
+    /// history.
+    anchor: Option<(SelectionType, GridPoint, Side)>,
+    /// The pointer past the top or the bottom of the grid while a
+    /// selection is dragged: the view scrolls that way, faster the further
+    /// out it is.
+    edge: Option<Point<Pixels>>,
+    /// The timer that scrolls at the edge runs.
+    edge_ticking: bool,
+    /// A tmux session's history under the screen held still: tmux keeps it,
+    /// not the emulator, so it is asked of tmux at the first drag past an
+    /// edge.
+    tmux_history: TmuxHistory,
     /// The selection once the button is released, kept by tvty too: the
     /// program (or tmux, redrawing its client) writes the same text again,
     /// the emulator drops the selection, and tvty puts it back — as long as
@@ -453,6 +467,10 @@ impl TerminalView {
             selecting: false,
             menu: None,
             dragging: None,
+            anchor: None,
+            edge: None,
+            edge_ticking: false,
+            tmux_history: TmuxHistory::Unasked,
             kept: None,
             selected_text: None,
             hover_link: None,
@@ -543,11 +561,13 @@ impl TerminalView {
     fn freeze(&mut self) {
         if self.frozen.is_none() {
             self.frozen = Some(Arc::new(FairMutex::new(screen_copy(&self.term.lock()))));
+            self.tmux_history = TmuxHistory::Unasked;
         }
     }
 
     /// The live screen again.
     fn unfreeze(&mut self, cx: &mut Context<Self>) {
+        self.edge = None;
         if self.frozen.take().is_some() {
             self.term.lock().selection = None;
             cx.notify();
@@ -943,6 +963,7 @@ impl TerminalView {
         let selection = Selection::new(kind, point, side);
         self.shown().lock().selection = Some(selection.clone());
         self.dragging = Some(selection);
+        self.anchor = Some((kind, point, side));
         self.kept = None;
         self.selected_text = None;
         self.selecting = true;
@@ -966,7 +987,13 @@ impl TerminalView {
         if !self.selecting || event.pressed_button != Some(MouseButton::Left) {
             return;
         }
-        let (point, side) = self.grid_point(event.position);
+        self.drag_to(event.position, cx);
+    }
+
+    /// The selection being made, stretched to the cell under `position`
+    /// (past the grid: its nearest row).
+    fn drag_to(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        let (point, side) = self.grid_point(position);
         let shown = self.shown().clone();
         let mut term = shown.lock();
         // From tvty's own copy: the emulator's may have been dropped.
@@ -981,11 +1008,118 @@ impl TerminalView {
         cx.notify();
     }
 
+    /// The pointer moved while a selection is dragged, wherever it is in
+    /// the window: past the top or the bottom of the grid, the view scrolls
+    /// that way until the button is released or the pointer comes back.
+    fn drag_moved(&mut self, position: Point<Pixels>, cx: &mut Context<Self>) {
+        if !self.selecting {
+            return;
+        }
+        let (origin, cell) = self.layout;
+        let bottom = origin.y + cell.height * self.shown().lock().screen_lines() as f32;
+        if position.y >= origin.y && position.y < bottom {
+            self.edge = None;
+            return;
+        }
+        self.edge = Some(position);
+        self.drag_to(position, cx);
+        if !self.edge_ticking {
+            self.edge_ticking = true;
+            cx.spawn(async move |this, cx| {
+                loop {
+                    cx.background_executor().timer(EDGE_TICK).await;
+                    if !this.update(cx, |view, cx| view.edge_tick(cx)).unwrap_or(false) {
+                        break;
+                    }
+                }
+            })
+            .detach();
+        }
+    }
+
+    /// One step of the scroll at the edge: a line, more the further out
+    /// the pointer is. False once it stops.
+    fn edge_tick(&mut self, cx: &mut Context<Self>) -> bool {
+        let Some(position) = self.edge.filter(|_| self.selecting && self.frozen.is_some()) else {
+            self.edge_ticking = false;
+            return false;
+        };
+        if self.tmux_session.is_some() {
+            match self.tmux_history {
+                TmuxHistory::Unasked => {
+                    self.ask_tmux_history(cx);
+                    return true;
+                }
+                TmuxHistory::Asked => return true,
+                TmuxHistory::Read => {}
+            }
+        }
+        let (origin, cell) = self.layout;
+        let shown = self.shown().clone();
+        let bottom = origin.y + cell.height * shown.lock().screen_lines() as f32;
+        let (beyond, up) = if position.y < origin.y { (origin.y - position.y, true) } else { (position.y - bottom, false) };
+        let lines = (1 + (f32::from(beyond) / f32::from(cell.height).max(1.)) as i32).min(EDGE_LINES_MAX);
+        shown.lock().scroll_display(Scroll::Delta(if up { lines } else { -lines }));
+        self.drag_to(position, cx);
+        true
+    }
+
+    /// Asks tmux for the session's history and screen, off the UI thread:
+    /// the screen held still is then rebuilt over them.
+    fn ask_tmux_history(&mut self, cx: &mut Context<Self>) {
+        let Some(session) = self.tmux_session.clone() else { return };
+        self.tmux_history = TmuxHistory::Asked;
+        cx.spawn(async move |this, cx| {
+            let captured = cx
+                .background_executor()
+                .spawn(async move {
+                    // `=name:` — exactly this session, its current pane;
+                    // -e: with its colours.
+                    let target = format!("={session}:");
+                    crate::mux::command(&["capture-pane", "-p", "-e", "-S", "-", "-E", "-", "-t", &target])
+                        .stderr(std::process::Stdio::null())
+                        .output()
+                        .ok()
+                        .filter(|out| out.status.success())
+                        .map(|out| out.stdout)
+                })
+                .await;
+            let _ = this.update(cx, |view, cx| view.with_tmux_history(captured, cx));
+        })
+        .detach();
+    }
+
+    /// The screen held still, rebuilt over the history tmux gave, scrolled
+    /// to where it was; the selection being made follows it. Nothing
+    /// changes when the screen cannot be found in it.
+    fn with_tmux_history(&mut self, captured: Option<Vec<u8>>, cx: &mut Context<Self>) {
+        self.tmux_history = TmuxHistory::Read;
+        let (Some(captured), Some(frozen)) = (captured, self.frozen.clone()) else { return };
+        if !self.selecting {
+            return;
+        }
+        let Some((copy, shift)) = history_copy(&frozen.lock(), &captured) else {
+            log::debug!("tmux history: the screen held still is not in it");
+            return;
+        };
+        self.frozen = Some(Arc::new(FairMutex::new(copy)));
+        if let Some((kind, point, side)) = self.anchor {
+            let point = GridPoint::new(Line(point.line.0 + shift), point.column);
+            self.anchor = Some((kind, point, side));
+            self.dragging = Some(Selection::new(kind, point, side));
+        }
+        if let Some(position) = self.edge {
+            self.drag_to(position, cx);
+        }
+        cx.notify();
+    }
+
     fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
         if !self.selecting {
             return;
         }
         self.selecting = false;
+        self.edge = None;
         // A click without a drag selects nothing.
         let shown = self.shown().clone();
         let mut term = shown.lock();
@@ -1196,6 +1330,20 @@ fn tmux_scroller(session: String, place: Arc<std::sync::Mutex<TmuxPlace>>) -> st
         }
     });
     send
+}
+
+/// How often a selection dragged past an edge scrolls, and the most lines
+/// a step scrolls.
+const EDGE_TICK: std::time::Duration = std::time::Duration::from_millis(50);
+const EDGE_LINES_MAX: i32 = 10;
+
+/// A tmux session's history under the screen held still.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum TmuxHistory {
+    Unasked,
+    Asked,
+    /// Read (or found wanting: the screen stays as it was).
+    Read,
 }
 
 /// A tmux pane's place in its history: lines scrolled up, lines kept.
@@ -1871,6 +2019,21 @@ impl Element for TerminalElement {
                 window.paint_quad(cursor);
             }
         });
+        // A selection being dragged follows the pointer out of the grid
+        // (the view scrolls), and ends wherever the button is released.
+        if let Some(view) = self.view.clone().filter(|view| view.read(cx).selecting) {
+            let moved = view.clone();
+            window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                if phase == DispatchPhase::Bubble && event.pressed_button == Some(MouseButton::Left) {
+                    moved.update(cx, |view, cx| view.drag_moved(event.position, cx));
+                }
+            });
+            window.on_mouse_event(move |event: &MouseUpEvent, phase, window, cx| {
+                if phase == DispatchPhase::Bubble && event.button == MouseButton::Left {
+                    view.update(cx, |view, cx| view.on_mouse_up(event, window, cx));
+                }
+            });
+        }
     }
 }
 
@@ -2116,26 +2279,86 @@ fn box_quads(arms: [u8; 4], cell: Bounds<Pixels>, color: Hsla) -> Vec<PaintQuad>
 /// the rows on screen (its history scrolled as it is), the cursor, the
 /// colours the program set.
 fn screen_copy(term: &Term<Listener>) -> Term<Listener> {
-    use alacritty_terminal::vte::ansi::Handler as _;
     let (columns, lines) = (term.columns(), term.screen_lines());
     // Its events go nowhere.
     let (sender, _) = unbounded();
-    // The screen only: no history to keep for it.
     let mut copy = Term::new(Config { scrolling_history: 0, ..Config::default() }, &TermSize::new(columns, lines), Listener(sender));
-    let offset = term.grid().display_offset() as i32;
-    for line in 0..lines as i32 {
-        for column in 0..columns {
-            copy.grid_mut()[Line(line)][Column(column)] = term.grid()[Line(line - offset)][Column(column)].clone();
-        }
-    }
-    copy.grid_mut().cursor.point = term.grid().cursor.point;
-    let colors = term.colors();
+    // The history with the screen, scrolled where it was: a selection
+    // dragged past an edge goes on into it.
+    *copy.grid_mut() = term.grid().clone();
+    copy_colours(term, &mut copy);
+    copy
+}
+
+fn copy_colours(from: &Term<Listener>, to: &mut Term<Listener>) {
+    use alacritty_terminal::vte::ansi::Handler as _;
+    let colors = from.colors();
     for index in 0..alacritty_terminal::term::color::COUNT {
         if let Some(rgb) = colors[index] {
-            copy.set_color(index, rgb);
+            to.set_color(index, rgb);
         }
     }
-    copy
+}
+
+/// A screen held still rebuilt over a tmux pane's history and screen
+/// (`capture-pane -e` of it all), scrolled to show the same lines; and how
+/// far the lines moved (a line `l` of `frozen` is `l + shift` of the copy).
+/// None when the screen is not found in what tmux gave.
+fn history_copy(frozen: &Term<Listener>, captured: &[u8]) -> Option<(Term<Listener>, i32)> {
+    let (columns, lines) = (frozen.columns(), frozen.screen_lines());
+    let mut rows: Vec<&[u8]> = captured.split(|&b| b == b'\n').collect();
+    if rows.last().is_some_and(|row| row.is_empty()) {
+        rows.pop();
+    }
+    let (sender, _) = unbounded();
+    let config = Config { scrolling_history: rows.len() + 2 * lines, ..Config::default() };
+    let mut copy = Term::new(config, &TermSize::new(columns, lines), Listener(sender));
+    let mut parser: alacritty_terminal::vte::ansi::Processor = alacritty_terminal::vte::ansi::Processor::new();
+    // No cursor: it would be drawn in the middle of the history.
+    parser.advance(&mut copy, b"\x1b[?25l");
+    for (index, row) in rows.iter().enumerate() {
+        if index > 0 {
+            parser.advance(&mut copy, b"\r\n");
+        }
+        parser.advance(&mut copy, row);
+        parser.advance(&mut copy, b"\x1b[0m");
+    }
+    // The pane's rows held still (tmux's status line below them aside),
+    // looked for from the bottom: the place where most of their written
+    // rows are the same (tmux writes its copy mode's position over one).
+    let offset = frozen.grid().display_offset() as i32;
+    let held: Vec<String> = (0..lines.saturating_sub(1) as i32).map(|row| row_text(frozen, Line(row - offset))).collect();
+    let written = held.iter().filter(|row| !row.is_empty()).count();
+    let total = rows.len();
+    let first = total.saturating_sub(lines) as i32;
+    let at = |index: usize| row_text(&copy, Line(index as i32 - first));
+    let (mut best, mut found) = (0, None);
+    for top in (0..=total.saturating_sub(held.len())).rev() {
+        let same = held.iter().enumerate().filter(|(row, text)| !text.is_empty() && at(top + row) == **text).count();
+        if same > best {
+            (best, found) = (same, Some(top));
+        }
+    }
+    let top = found.filter(|_| best + 1 >= written && written > 0)?;
+    // Enough lines below its top for a screen, then scrolled up to it.
+    for _ in total..top + lines {
+        parser.advance(&mut copy, b"\r\n");
+    }
+    let first = total.max(top + lines) - lines;
+    copy.scroll_display(Scroll::Delta((first - top) as i32));
+    copy_colours(frozen, &mut copy);
+    Some((copy, top as i32 - first as i32 + offset))
+}
+
+/// A row's text, its trailing blanks left out.
+fn row_text(term: &Term<Listener>, line: Line) -> String {
+    let row = &term.grid()[line];
+    let text: String = (0..term.columns())
+        .map(|column| &row[Column(column)])
+        .filter(|cell| !cell.flags.contains(Flags::WIDE_CHAR_SPACER))
+        .map(|cell| cell.c)
+        .collect();
+    text.trim_end().to_string()
 }
 
 /// A terminal's screen drawn elsewhere — a card of the slider or the
@@ -2176,7 +2399,12 @@ impl Snapshot {
 
 #[cfg(test)]
 mod tests {
-    use super::keystroke_bytes;
+    use super::{Listener, history_copy, keystroke_bytes, row_text, screen_copy};
+    use alacritty_terminal::grid::{Dimensions as _, Scroll};
+    use alacritty_terminal::index::Line;
+    use alacritty_terminal::term::test::TermSize;
+    use alacritty_terminal::term::{Config, Term};
+    use futures::channel::mpsc::unbounded;
     use gpui_kit::{Keystroke, Modifiers};
 
     fn key(key: &str, key_char: Option<&str>, modifiers: Modifiers) -> Keystroke {
@@ -2194,5 +2422,56 @@ mod tests {
     fn alt_and_a_key_without_character_still_sends_it() {
         let alt = Modifiers { alt: true, ..Default::default() };
         assert_eq!(keystroke_bytes(&key("x", None, alt), false), Some(b"\x1bx".to_vec()));
+    }
+    /// A terminal of `lines` rows, 20 columns, with `text` written in it.
+    fn written(lines: usize, text: &str) -> Term<Listener> {
+        let (sender, _) = unbounded();
+        let mut term = Term::new(Config::default(), &TermSize::new(20, lines), Listener(sender));
+        let mut parser: alacritty_terminal::vte::ansi::Processor = alacritty_terminal::vte::ansi::Processor::new();
+        parser.advance(&mut term, text.as_bytes());
+        term
+    }
+
+    /// The text of the screen's row `row` as it is scrolled.
+    fn shown(term: &Term<Listener>, row: i32) -> String {
+        row_text(term, Line(row - term.grid().display_offset() as i32))
+    }
+
+    #[test]
+    fn a_tmux_screen_held_still_is_found_in_its_history_and_scrolls_into_it() {
+        // Five rows: four of the pane, tmux's status line.
+        let frozen = written(5, "c\r\nd\r\ne\r\nf\r\n[status]");
+        let (copy, shift) = history_copy(&frozen, b"a\nb\nc\nd\ne\nf\ng\n").expect("found");
+        assert_eq!((0..4).map(|row| shown(&copy, row)).collect::<Vec<_>>(), ["c", "d", "e", "f"]);
+        // A line of the screen held still is the same line of the copy.
+        assert_eq!(row_text(&copy, Line(1 + shift)), "d");
+        // Above it, the history.
+        assert_eq!(row_text(&copy, Line(-1 + shift)), "b");
+        assert_eq!(row_text(&copy, Line(-2 + shift)), "a");
+        // Below it, what the pane wrote since.
+        assert_eq!(row_text(&copy, Line(4 + shift)), "g");
+    }
+
+    #[test]
+    fn a_tmux_screen_held_still_is_found_under_its_copy_mode_position() {
+        // tmux writes "[2/9]" over the top row while scrolled back.
+        let frozen = written(4, "x   [2/9]\r\ny\r\nz\r\n[status]");
+        let (copy, _) = history_copy(&frozen, b"w\nx\ny\nz\nlast\n").expect("found");
+        assert_eq!(shown(&copy, 1), "y");
+    }
+
+    #[test]
+    fn a_screen_not_in_the_history_changes_nothing() {
+        let frozen = written(3, "p\r\nq\r\n[status]");
+        assert!(history_copy(&frozen, b"a\nb\nc\n").is_none());
+    }
+
+    #[test]
+    fn a_screen_held_still_keeps_the_history_and_where_it_was_scrolled() {
+        let mut term = written(3, "1\r\n2\r\n3\r\n4\r\n5");
+        term.scroll_display(Scroll::Delta(1));
+        let copy = screen_copy(&term);
+        assert_eq!((0..3).map(|row| shown(&copy, row)).collect::<Vec<_>>(), ["2", "3", "4"]);
+        assert_eq!(copy.grid().history_size(), 2);
     }
 }
