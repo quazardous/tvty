@@ -330,7 +330,8 @@ impl Shell {
         // the countdown to the next wake once it is armed — as claude-loop's
         // tmux line shows it.
         let pending = unseen > 0 || backlog.is_some_and(|b| b > 0);
-        let cwd = status.as_ref().and_then(|s| s.cwd.clone()).map(|cwd| home_short(&cwd));
+        let full_cwd = status.as_ref().and_then(|s| s.cwd.clone());
+        let cwd = full_cwd.as_deref().map(home_short);
         let backlog_open = self.backlog_view.as_ref().is_some_and(|v| v.agent == agent);
         let target = (agent.clone(), project.to_string());
 
@@ -613,6 +614,8 @@ impl Shell {
                 // tab says its name too): the controls stay.
                 .child(item().flex_shrink(1.).min_w_0().overflow_hidden().text_color(ink(p().text)).child(div().min_w_0().truncate().child(agent.clone())))
                 .children(cwd.map(|cwd| item().flex_shrink(1000.).min_w_0().overflow_hidden().child(div().min_w_0().truncate().child(cwd))))
+                // Its Claude config dir: after the folder, kept when the folder gives way.
+                .children(full_cwd.as_deref().map(|full| crate::tips::target("agent.config", self.config_chip(&agent, full, cx)).flex_none()))
                 .children(self.backlog_view.as_ref().filter(|v| v.agent == agent).map(|v| self.backlog_list(v, cx)))
                 .into_any_element(),
         )

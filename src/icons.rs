@@ -71,6 +71,8 @@ icons! {
     // The ticket panel held beside the terminal, or let over it.
     Pinned => "keep_fill.svg",
     Unpinned => "keep.svg",
+    // A loop's Claude Code config dir (its account), in the agent bar.
+    ConfigDir => "manage_accounts.svg",
 }
 
 impl AssetSource for Assets {

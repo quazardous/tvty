@@ -65,6 +65,7 @@ tip_files![
     "afk",
     "remote-control",
     "move-loop",
+    "config-dir",
     "critical",
     "references",
     "comment-link",

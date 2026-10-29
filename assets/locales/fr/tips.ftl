@@ -14,6 +14,7 @@ tip-bulk = **Ctrl+clic** choisit des tickets, **Maj+clic** une plage : puis ferm
 tip-afk = **{$key}** fait tourner le mode AFK de l'agent affiché : sa boucle toute seule ▶, retenue 10 minutes ‖, retenue jusqu'à ce que tu la libères ■.
 tip-remote-control = **RC** s'allume dans la barre de l'agent quand son Claude est en Remote Control : suis-le et réponds-lui depuis claude.ai. `/rc` l'active.
 tip-move-loop = La pastille **… · commandes** de la barre de l'agent (hôte, tmux ou psmux) : un clic prend ou laisse les commandes, ou déplace la boucle de l'autre côté.
+tip-config-dir = L'icône après le dossier de l'agent donne son dossier de config Claude Code (son compte) : un clic le fait passer sur un autre, sa conversation avec lui.
 tip-critical = Un **!** rouge marque le ticket critique : l'ouvert qui en retient le plus d'autres. Le faire avancer libère le plus de travail.
 tip-references = Chaque **#N** d'un ticket est un lien, même vers un ticket d'un autre projet : un clic l'ouvre.
 tip-comment-link = Clique sur la marque **#C.** d'un commentaire pour copier son lien, puis colle-le dans n'importe quel ticket ou dans la boîte « Aller à un ticket ».

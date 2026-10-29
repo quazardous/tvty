@@ -497,7 +497,17 @@ claude-loop ran it in returns to its shell, saying where the loop went);
 **RC**, lit while its Claude is in Remote Control, whatever turned it on —
 its folder's setting or `/rc` typed — as its loop reads it on the screen
 (said, not set: none from a loop too old to say it); its name and where it
-works. A gesture aiball refuses
+works, then **its Claude Code config dir** (its account, settings and
+sessions): an icon, muted on the default dir, lit when the folder has its
+own, whose tip names it; a click opens what it runs on (where the setting
+comes from) and the other dirs aiball's folders run on, each with its
+projects — one never run (no first run, no account) is said, not chosen. A
+dir chosen asks first ("Restart the folder's loops on … now?", or once they
+are idle), then, once every loop of the folder is idle ("⟳ to … once its
+loops are idle" meanwhile, which can be taken back), the loops stop, the
+folder's Claude sessions move to the new dir as its setting changes
+(`project.settings_set` with `move_sessions`), and the loops start again on
+their conversations; a notice says how many files moved. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread

@@ -1704,6 +1704,20 @@ pub struct ProjectSettings {
     /// Asked with a `config_dir`: that dir, expanded, and what it is.
     #[serde(default)]
     pub candidate: Option<ConfigDirCandidate>,
+    /// After a write that moved the folder's Claude sessions to the new
+    /// config dir (`move_sessions`): what moved.
+    #[serde(default)]
+    pub sessions: Option<SessionsMoved>,
+}
+
+/// The folder's Claude sessions moved to another config dir: the files
+/// moved, those both dirs had (the newer kept, the older put aside).
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct SessionsMoved {
+    #[serde(default)]
+    pub moved: u64,
+    #[serde(default)]
+    pub replaced: Vec<Value>,
 }
 
 /// A config dir not chosen yet, as aiball finds it.

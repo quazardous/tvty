@@ -14,6 +14,7 @@ tip-bulk = **Ctrl+click** picks tickets, **Shift+click** a range: then close, sn
 tip-afk = **{$key}** steps the shown agent's AFK mode: on its own ▶, held 10 minutes ‖, held until you let go ■.
 tip-remote-control = **RC** lights up in the agent bar while its Claude is in Remote Control: follow and answer it from claude.ai. `/rc` turns it on.
 tip-move-loop = The agent bar's **… · controls** chip (host, tmux or psmux): a click takes or leaves the controls, or moves the loop to the other side.
+tip-config-dir = The icon after the agent's folder names its Claude Code config dir (its account): a click switches it to another, its conversation carried along.
 tip-critical = A red **!** marks the critical ticket: the open one that holds back the most others. Moving it frees the most work.
 tip-references = Every **#N** in a ticket is a link, even to a ticket of another project: a click opens it.
 tip-comment-link = Click a comment's **#C.** mark to copy its link, then paste it into any ticket or the go-to box.

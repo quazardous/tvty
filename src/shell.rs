@@ -29,6 +29,7 @@ use crate::newticket::{CloseNewTicket, Created, NewTicketForm};
 use crate::notify::{self, Kind, Notice};
 
 mod agentbar;
+mod configdir;
 mod control;
 mod ended;
 mod resume;
@@ -194,6 +195,14 @@ pub struct Shell {
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
+    /// The agent whose config dir popup is open, the dir asked for there
+    /// (said before done), each folder's dir as last read, and the
+    /// switches held until their loops are idle, by agent.
+    config_menu: Option<String>,
+    config_asked: Option<(String, configdir::Choice)>,
+    config_dirs: HashMap<String, configdir::FolderDir>,
+    config_switches: HashMap<String, configdir::Switch>,
+    config_reading: bool,
     /// The loop whose kernel is being respawned.
     reloading: Option<String>,
     backlog_view: Option<agentbar::BacklogView>,
@@ -843,6 +852,11 @@ impl Shell {
             restart_asked: None,
             moves: HashMap::new(),
             restarting: None,
+            config_menu: None,
+            config_asked: None,
+            config_dirs: HashMap::new(),
+            config_switches: HashMap::new(),
+            config_reading: false,
             reloading: None,
             backlog_view: None,
             session_scrolls: Default::default(),
@@ -1122,6 +1136,7 @@ impl Shell {
         self.sync_panel(cx);
         self.sync_full_list(cx);
         self.offer_restart(cx);
+        self.advance_config_switches(cx);
     }
 
     /// The board moved on the bus: built again shortly, once for a burst.
@@ -2580,9 +2595,11 @@ impl Shell {
                 self.options_search.update(cx, |search, cx| search.set_value("", window, cx));
                 cx.notify();
             }
-        } else if key == "escape" && (self.move_asked.is_some() || self.restart_asked.is_some()) {
+        } else if key == "escape" && (self.move_asked.is_some() || self.restart_asked.is_some() || self.config_menu.is_some()) {
             self.move_asked = None;
             self.restart_asked = None;
+            self.config_menu = None;
+            self.config_asked = None;
             cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;

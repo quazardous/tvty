@@ -12,6 +12,8 @@ They are licensed under the **Apache License 2.0**
 
 `stop_circle.svg` is the plain outlined one.
 
+`manage_accounts.svg` is the plain outlined one.
+
 `keep_fill.svg` is the filled pin (`keep_fill1_24px.svg`).
 
 `chat_bubble_mine.svg` is
