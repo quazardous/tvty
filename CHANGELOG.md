@@ -33,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- A list of sections whose heights were set by hand (the tickets' bands, the sessions) no longer pushes its last section under the bottom of a shorter window: the sections give way, each keeping its scroll.
+- A list of sections whose heights were set by hand (the tickets' bands, the sessions) no longer pushes its last section under the bottom of a shorter window: the last gives way first, then the others, each keeping its scroll; dragging a title keeps the border under the pointer.
 
 ## [0.17.0-beta.1] - 2026-10-27
 
