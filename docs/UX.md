@@ -162,7 +162,11 @@ the loop's other terminals (claude-loop's) become copies, which say
 which to stop (through aiball: they stay restartable) — the sessions'
 picker, below: switched on, stopped; off, it runs on — or to keep them
 all, or cancel; "Remember this choice" keeps the answer for them all
-(Settings > Layout > Sessions > On quit).
+(Settings > Layout > Sessions > On quit). The stop can wait: "or later:"
+10m, 30m, 1h, 2h, 6h — the dialog stays open and counts down ("stopping
+and quitting in 29:58"), and at zero the sessions switched on stop and
+tvty quits; closing the dialog, or quitting another way, drops it, and a
+tvty closed meanwhile stops nothing.
 
 **A sheet** is tvty's large panel, for what asks more than a yes or a
 no: over the dimmed window, a head (the title, a line saying what each

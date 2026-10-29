@@ -106,3 +106,6 @@ workspaces-opened = { $count ->
 workspaces-opening = {$name} wird geöffnet
 workspaces-added = {$project} ist in {$name}
 workspaces-shown-tip = das Terminal, das gezeigt wird, sobald die Sitzungen zurück sind
+workspaces-quit-later = oder später:
+workspaces-quit-later-tip = Die {$count} eingeschalteten anhalten und in {$delay} beenden: der Dialog zählt herunter; ihn zu schließen oder anders zu beenden verwirft es
+workspaces-quit-in = Anhalten und Beenden in {$left}

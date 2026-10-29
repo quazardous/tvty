@@ -20,6 +20,18 @@ use crate::tip::Tip as _;
 use crate::ui::buttons;
 use crate::workspaces::{Group, Mode, Opening, Session, Workspace, opening};
 
+/// The delays a quit that stops the sessions can wait: said, in minutes.
+const QUIT_DELAYS: &[(&str, u64)] = &[("10m", 10), ("30m", 30), ("1h", 60), ("2h", 120), ("6h", 360)];
+
+/// What is left of a countdown: `1:05:09`, `4:07`.
+fn countdown(left: std::time::Duration) -> String {
+    let s = left.as_secs();
+    match (s / 3600, s / 60 % 60, s % 60) {
+        (0, m, s) => format!("{m}:{s:02}"),
+        (h, m, s) => format!("{h}:{m:02}:{s:02}"),
+    }
+}
+
 /// A hold mark's side (▶/■ that turns an agent's hold): a square, so that
 /// its border under the pointer is one.
 pub(super) const HOLD_MARK: f32 = 15.;
@@ -69,6 +81,10 @@ pub(super) struct Picker {
     rows: Vec<PickRow>,
     /// Restarting: the loop whose terminal is shown once back (its radio).
     shown: Option<String>,
+    /// Quitting later: when the ticked sessions stop and tvty quits. The
+    /// dialog stays open meanwhile; closing it, or quitting otherwise,
+    /// drops it.
+    deadline: Option<std::time::Instant>,
 }
 
 impl Picker {
@@ -277,9 +293,39 @@ impl Shell {
     }
 
     fn open_picker(&mut self, what: PickFor, rows: Vec<PickRow>, cx: &mut Context<Self>) {
-        self.picker = Some(Picker { what, rows, shown: None });
+        self.picker = Some(Picker { what, rows, shown: None, deadline: None });
         self.remember = false;
         cx.notify();
+    }
+
+    /// Quitting `delay` from now, the ticked sessions stopped then: the
+    /// dialog counts down, and answers itself at zero.
+    fn quit_later(&mut self, delay: std::time::Duration, cx: &mut Context<Self>) {
+        let Some(picker) = self.picker.as_mut().filter(|p| p.what == PickFor::Quit) else { return };
+        let deadline = std::time::Instant::now() + delay;
+        picker.deadline = Some(deadline);
+        cx.notify();
+        cx.spawn(async move |this, cx| {
+            loop {
+                cx.background_executor().timer(std::time::Duration::from_secs(1)).await;
+                let going = this.update(cx, |shell, cx| {
+                    // Closed, answered, or armed again: this count is over.
+                    if shell.picker.as_ref().and_then(|p| p.deadline) != Some(deadline) {
+                        return false;
+                    }
+                    if std::time::Instant::now() >= deadline {
+                        shell.picker_answer(true, cx);
+                        return false;
+                    }
+                    cx.notify();
+                    true
+                });
+                if !matches!(going, Ok(true)) {
+                    break;
+                }
+            }
+        })
+        .detach();
     }
 
     pub(super) fn cancel_picker(&mut self, cx: &mut Context<Self>) -> bool {
@@ -664,12 +710,33 @@ impl Shell {
         };
         let go = |label: String, cx: &mut Context<Self>| buttons::primary("picker-go", label).on_click(cx.listener(|shell, _, _, cx| shell.picker_answer(true, cx)));
         let answers = match &picker.what {
-            PickFor::Quit => div()
-                .flex()
-                .gap_2()
-                .child(cancel)
-                .child(none("picker-none", crate::t!("workspaces-quit-keep"), cx))
-                .child(go(crate::t!("workspaces-quit-stop", count = ticked), cx)),
+            PickFor::Quit => {
+                // Later: a delay chosen counts down here; nothing stops before.
+                let later = match picker.deadline {
+                    Some(deadline) => div()
+                        .named("picker-countdown")
+                        .text_color(p().warning)
+                        .child(crate::t!("workspaces-quit-in", left = countdown(deadline.saturating_duration_since(std::time::Instant::now())))),
+                    None => QUIT_DELAYS.iter().fold(
+                        div().named("picker-later").flex().items_center().gap_1().child(div().text_sm().text_color(p().muted).child(crate::t!("workspaces-quit-later"))),
+                        |row, &(label, minutes)| {
+                            row.child(
+                                buttons::chip(SharedString::from(format!("picker-later-{label}")), label)
+                                    .tip(crate::t!("workspaces-quit-later-tip", count = ticked, delay = label))
+                                    .on_click(cx.listener(move |shell, _, _, cx| shell.quit_later(std::time::Duration::from_secs(minutes * 60), cx))),
+                            )
+                        },
+                    ),
+                };
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(cancel)
+                    .child(none("picker-none", crate::t!("workspaces-quit-keep"), cx))
+                    .when(ticked > 0, |d| d.child(later))
+                    .child(go(crate::t!("workspaces-quit-stop", count = ticked), cx))
+            }
             PickFor::New | PickFor::Save(_) => div().flex().gap_2().child(cancel).child(go(crate::t!("workspaces-keep"), cx)),
             PickFor::Shut(_) => div()
                 .flex()
@@ -954,6 +1021,13 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_countdown_says_hours_only_when_there_are_some() {
+        assert_eq!(super::countdown(std::time::Duration::from_secs(247)), "4:07");
+        assert_eq!(super::countdown(std::time::Duration::from_secs(3909)), "1:05:09");
+        assert_eq!(super::countdown(std::time::Duration::from_secs(0)), "0:00");
+    }
+
     // Not `super::*`: the kit's own `test` attribute would come with it.
     use super::{Mode, restart_rows};
     use std::collections::HashSet;
