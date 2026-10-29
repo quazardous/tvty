@@ -160,7 +160,10 @@ ICON_SIZES = 16 24 32 48 64 128 256 512
 # emptied (kondo, cargo clean) without taking the installed tvty with it. The
 # copy goes in by a rename, so a running tvty keeps its own file and takes the
 # new one on restart.
-install: build
+# BUILD= installs the binary as it is (one fetched from a bench box) with no
+# local build first.
+BUILD ?= build
+install: $(BUILD)
 	$(MAKE) --no-print-directory desktop-files
 	install -Dm755 "$(BIN)" "$(BIN_DIR)/.tvty.new"
 	mv -f "$(BIN_DIR)/.tvty.new" "$(BIN_DIR)/tvty"
