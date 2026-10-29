@@ -23,6 +23,20 @@ use crate::tip::Tip as _;
 use crate::ui::buttons;
 use crate::ui::chipbar::{self, Edge};
 
+/// The projects a dir's line names; the others are counted ("+12").
+const PROJECTS_SHOWN: usize = 3;
+/// The widest a dir's path is drawn in the popup: a longer one is cut.
+const POPUP_PATH_MAX: f32 = 420.;
+
+/// The projects on a dir, as its line says them: the first few, then how
+/// many more.
+fn projects_said(projects: &[String]) -> String {
+    match projects.len() {
+        n if n <= PROJECTS_SHOWN => projects.join(", "),
+        n => format!("{} +{}", projects[..PROJECTS_SHOWN].join(", "), n - PROJECTS_SHOWN),
+    }
+}
+
 /// The longest a switch waits for the folder's loops to stop.
 const STOP_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 
@@ -209,7 +223,7 @@ impl Shell {
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(div().font_weight(FontWeight::BOLD).child(home_short(&f.dir.value)))
+                .child(div().max_w(px(POPUP_PATH_MAX)).truncate().font_weight(FontWeight::BOLD).child(home_short(&f.dir.value)))
                 .child(muted(f.dir.said())),
             None => div().child("…"),
         });
@@ -273,10 +287,11 @@ impl Shell {
                 .flex()
                 .items_center()
                 .gap_2()
-                .child(home_short(&choice.dir))
+                .child(div().max_w(px(POPUP_PATH_MAX)).truncate().child(home_short(&choice.dir)))
                 .when(choice.default, |d| d.child(div().text_xs().text_color(p().muted).child(crate::t!("agentbar-config-default"))))
-                .child(div().text_xs().text_color(p().muted).child(choice.projects.join(", ")))
+                .child(div().text_xs().text_color(p().muted).child(projects_said(&choice.projects)))
                 .when(!choice.ready, |d| d.child(div().text_xs().text_color(p().warning).child(crate::t!("agentbar-config-not-ready"))));
+            let (all, choice_ready) = (choice.projects.clone(), choice.ready);
             let chip = buttons::chip_if(SharedString::from(format!("agent-config-to-{i}")), label, choice.ready);
             let chip = if choice.ready {
                 let agent = agent.to_string();
@@ -287,6 +302,8 @@ impl Shell {
             } else {
                 chip.tip(crate::t!("agentbar-config-not-ready-tip"))
             };
+            // Every project on it, when the line names only some.
+            let chip = if all.len() > PROJECTS_SHOWN && choice_ready { chip.tip(all.join(", ")) } else { chip };
             col = col.child(chip);
         }
         line(col)
@@ -447,6 +464,14 @@ mod tests {
         // The layer below is set back by removing the folder's own dir.
         assert_eq!(offered[0].value(), None);
         assert_eq!(offered[1].value().as_deref(), Some("/h/.claude-new"));
+    }
+
+    #[test]
+    fn a_dir_used_by_many_projects_names_three_then_counts() {
+        let names = |n: usize| (0..n).map(|i| format!("p{i}")).collect::<Vec<_>>();
+        assert_eq!(super::projects_said(&names(2)), "p0, p1");
+        assert_eq!(super::projects_said(&names(3)), "p0, p1, p2");
+        assert_eq!(super::projects_said(&names(30)), "p0, p1, p2 +27");
     }
 
     #[test]
