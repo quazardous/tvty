@@ -84,3 +84,5 @@ messages-next-tip = Next tip
 messages-turn-off = Turn tips off
 messages-tips-off = Tips are off: Settings > Layout > Tips turns them back on
 messages-tips-again = Every tip will show again, one at a time
+messages-shells-reopened = {$count} terminal(s) reopened where they were
+messages-shells-reopen-failed = reopening the terminals

@@ -81,3 +81,5 @@ messages-next-tip = Nächster Tipp
 messages-turn-off = Tipps ausschalten
 messages-tips-off = Tipps sind aus: Einstellungen > Layout > Tipps schaltet sie wieder ein
 messages-tips-again = Jeder Tipp wird wieder gezeigt, einer nach dem anderen
+messages-shells-reopened = {$count} Terminal(s) dort wieder geöffnet, wo sie waren
+messages-shells-reopen-failed = Wiederöffnen der Terminals

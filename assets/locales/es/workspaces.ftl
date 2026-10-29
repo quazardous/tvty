@@ -109,3 +109,5 @@ workspaces-shown-tip = el terminal mostrado cuando vuelvan las sesiones
 workspaces-quit-later = o más tarde:
 workspaces-quit-later-tip = Detener las {$count} marcadas y salir en {$delay}: el diálogo hace la cuenta atrás; cerrarlo, o salir de otro modo, la anula
 workspaces-quit-in = deteniendo y saliendo en {$left}
+workspaces-shell = terminal · {$cwd}
+workspaces-reopen-shells = Reabrir también los terminales

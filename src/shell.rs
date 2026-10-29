@@ -3549,6 +3549,7 @@ impl Shell {
         let fixed: Option<&[(&str, &str)]> = match key {
             "sessions.on_quit" => Some(&[("stop", "settings-quit-stop"), ("keep", "settings-quit-keep")]),
             "sessions.on_start" => Some(&[("restart", "settings-start-restart"), ("fresh", "settings-start-fresh"), ("leave", "settings-start-leave")]),
+            "sessions.shells_on_start" => Some(&[("reopen", "settings-shells-reopen"), ("no", "settings-shells-no")]),
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
             "terminal.cursor" => Some(&[("steady", "settings-cursor-steady"), ("program", "settings-cursor-program")]),
@@ -3560,6 +3561,7 @@ impl Shell {
             "appearance.theme" => (Some(theme::current(cx)), None),
             "sessions.on_quit" => (self.applied.sessions.on_quit.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.on_start" => (self.applied.sessions.on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
+            "sessions.shells_on_start" => (self.applied.sessions.shells_on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.order" => (self.applied.sessions.order.clone().map(SharedString::from), Some(crate::t!("settings-order-recent").into())),
             "terminal.cursor" => (self.applied.terminal.cursor.clone().map(SharedString::from), Some(crate::t!("settings-cursor-blink").into())),
             "usage.display" => (self.applied.usage.display.clone().map(SharedString::from), Some(crate::t!("settings-usage-ratio").into())),
@@ -4536,7 +4538,7 @@ impl Shell {
     /// opens it once it is listed.
     fn new_terminal(&mut self, cx: &mut Context<Self>) {
         let home = tvty_config::home().map(|h| h.to_string_lossy().into_owned()).unwrap_or_else(|| "/".into());
-        self.open_shell("term", home, cx);
+        self.open_shell("term", home, None, cx);
     }
 
     /// Starts a shell in a project's folder: listed with the project, after
@@ -4551,12 +4553,12 @@ impl Shell {
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' })
             .collect();
-        self.open_shell(&prefix, folder, cx);
+        self.open_shell(&prefix, folder, Some(project.to_string()), cx);
     }
 
     /// Starts a shell on the daemon's host, named `<prefix>-<n>`, in `cwd`,
     /// and opens it once it is listed.
-    fn open_shell(&mut self, prefix: &str, cwd: String, cx: &mut Context<Self>) {
+    fn open_shell(&mut self, prefix: &str, cwd: String, project: Option<String>, cx: &mut Context<Self>) {
         // Every name the host knows, a stopped session's too (it keeps its name
         // until it is removed), those being stopped, and those asked already.
         let mut taken: std::collections::HashSet<String> = self.live.session_names().into_iter().collect();
@@ -4569,6 +4571,8 @@ impl Shell {
         let fallback = if cfg!(windows) { "powershell.exe" } else { "bash" };
         let shell = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| fallback.into());
         let aiball = self.aiball.clone();
+        // Kept, to be started again where it was if found gone at start.
+        let kept = crate::settings::KeptShell { name: name.clone(), cwd: cwd.clone(), argv: vec![shell.clone()], project };
         cx.spawn(async move |this, cx| {
             let started = {
                 let name = name.clone();
@@ -4577,7 +4581,12 @@ impl Shell {
             let _ = this.update(cx, |shell, cx| {
                 shell.shells_asked.remove(&name);
                 match started {
-                    Ok(()) => shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX)),
+                    Ok(()) => {
+                        shell.settings.workspace.kept_shells.retain(|k| k.name != kept.name);
+                        shell.settings.workspace.kept_shells.push(kept);
+                        shell.settings.save(cx);
+                        shell.open_when_running = Some(format!("{}{name}", sessions::HOSTED_PREFIX))
+                    }
                     Err(error) => activity::publish(cx, Activity::failed(None, &crate::t!("misc-new-terminal"), format!("{error:#}"))),
                 }
             });

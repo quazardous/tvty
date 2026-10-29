@@ -81,3 +81,5 @@ messages-next-tip = Astuce suivante
 messages-turn-off = Désactiver les astuces
 messages-tips-off = Astuces désactivées : Réglages > Disposition > Astuces les réactive
 messages-tips-again = Chaque astuce se montrera de nouveau, une à la fois
+messages-shells-reopened = {$count} terminal(aux) rouvert(s) là où ils étaient
+messages-shells-reopen-failed = réouverture des terminaux

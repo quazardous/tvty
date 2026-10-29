@@ -81,3 +81,5 @@ messages-next-tip = Consejo siguiente
 messages-turn-off = Desactivar los consejos
 messages-tips-off = Consejos desactivados: Ajustes > Disposición > Consejos los reactiva
 messages-tips-again = Cada consejo se mostrará de nuevo, uno a la vez
+messages-shells-reopened = {$count} terminal(es) reabierto(s) donde estaban
+messages-shells-reopen-failed = reapertura de los terminales

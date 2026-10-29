@@ -49,7 +49,7 @@ impl Shell {
             return self.quit_now(cx);
         }
         match self.applied.sessions.on_quit.as_deref() {
-            Some("stop") => self.stop_and_quit(loops, cx),
+            Some("stop") => self.stop_and_quit(loops, Vec::new(), cx),
             Some("keep") => self.quit_now(cx),
             // Asked: which stop, which run on (the sessions' picker).
             _ => self.pick_quit(loops, cx),
@@ -109,8 +109,9 @@ impl Shell {
     }
 
     /// Stops `loops` (at most [`STOP_WAIT`]), keeps them to offer at the next
-    /// start, then quits.
-    pub(super) fn stop_and_quit(&mut self, loops: Vec<String>, cx: &mut Context<Self>) {
+    /// start, then quits; `shells` (host sessions) are stopped first, kept
+    /// to start again at the next start.
+    pub(super) fn stop_and_quit(&mut self, loops: Vec<String>, shells: Vec<String>, cx: &mut Context<Self>) {
         // The terminals open and the one shown, as they are now: their
         // sessions ending while the loops stop do not change them.
         self.save_workspace(cx);
@@ -124,6 +125,11 @@ impl Shell {
         cx.spawn(async move |this, cx| {
             let (done, wait) = futures::channel::oneshot::channel();
             std::thread::spawn(move || {
+                for name in &shells {
+                    if let Err(error) = aiball.stop_terminal(name) {
+                        log::warn!("quit: the terminal {name} did not stop: {error:#}");
+                    }
+                }
                 let began = std::time::Instant::now();
                 let asked: Vec<crate::loops::KnownLoop> = known
                     .into_iter()
@@ -194,6 +200,17 @@ impl Shell {
             .filter(|n| known(n) && !running.contains(n))
             .collect();
         names.extend(still_stopped);
+        // The shells kept whose session is gone (aiball or the machine
+        // restarted): started again, offered, or let go, as set.
+        let listed = self.live.session_names();
+        let gone: Vec<crate::settings::KeptShell> = self.settings.workspace.kept_shells.iter().filter(|k| !listed.contains(&k.name)).cloned().collect();
+        let mut shells = Vec::new();
+        log::info!("start: shells kept {:?}, gone {:?}", self.settings.workspace.kept_shells.iter().map(|k| &k.name).collect::<Vec<_>>(), gone.iter().map(|k| &k.name).collect::<Vec<_>>());
+        match self.applied.sessions.shells_on_start.as_deref() {
+            Some("reopen") => self.start_shells(gone, cx),
+            Some("no") => self.settings.workspace.kept_shells.retain(|k| listed.contains(&k.name)),
+            _ => shells = gone,
+        }
         self.settings.save(cx);
         if !still_running.is_empty() {
             let agents: Vec<String> = still_running
@@ -206,15 +223,64 @@ impl Shell {
                 crate::activity::Activity::failed(None, &crate::t!("messages-quit-stop-failed"), crate::t!("messages-ran-on", agents = agents.join(", "))),
             );
         }
-        if names.is_empty() {
+        if names.is_empty() && shells.is_empty() {
             return;
         }
-        match self.applied.sessions.on_start.as_deref() {
-            Some("restart") => self.restart_loops(names, true, self.shown_at_start.clone(), cx),
-            Some("fresh") => self.restart_loops(names, false, self.shown_at_start.clone(), cx),
-            Some("leave") => {}
-            _ => self.pick_restart(names, still_running, cx),
+        let asked = match self.applied.sessions.on_start.as_deref() {
+            _ if names.is_empty() => false,
+            Some("restart") => {
+                self.restart_loops(names.clone(), true, self.shown_at_start.clone(), cx);
+                false
+            }
+            Some("fresh") => {
+                self.restart_loops(names.clone(), false, self.shown_at_start.clone(), cx);
+                false
+            }
+            Some("leave") => false,
+            _ => true,
+        };
+        // The loops asked about, and the shells with them; the shells alone
+        // when the loops' answer was remembered.
+        if asked {
+            self.pick_restart(names, still_running, shells, cx);
+        } else if !shells.is_empty() {
+            self.pick_restart(Vec::new(), Vec::new(), shells, cx);
         }
+    }
+
+    /// Starts again, off the UI thread, the shells kept that are gone:
+    /// under their name, in their folder; the workspace opens them as they
+    /// come (they are still among its terminals).
+    pub(super) fn start_shells(&mut self, shells: Vec<crate::settings::KeptShell>, cx: &mut Context<Self>) {
+        if shells.is_empty() {
+            return;
+        }
+        let open = self.settings.workspace.open_terminals.clone();
+        if self.restoring.is_none() {
+            self.restoring = Some(super::tabs::Restoring::new(open, self.shown_at_start.clone()));
+        }
+        let aiball = self.aiball.clone();
+        cx.spawn(async move |this, cx| {
+            let count = shells.len();
+            let failed = cx
+                .background_executor()
+                .spawn(async move {
+                    shells
+                        .iter()
+                        .filter_map(|k| aiball.start_terminal(&k.name, &k.argv, &k.cwd).err().map(|error| format!("{}: {error:#}", k.name)))
+                        .collect::<Vec<_>>()
+                })
+                .await;
+            let _ = this.update(cx, |shell, cx| {
+                let activity = match failed.first() {
+                    None => crate::activity::Activity::done(None, crate::t!("messages-shells-reopened", count = count)),
+                    Some(_) => crate::activity::Activity::failed(None, &crate::t!("messages-shells-reopen-failed"), failed.join("; ")),
+                };
+                crate::activity::publish(cx, activity);
+                let _ = shell.refresh_now.unbounded_send(());
+            });
+        })
+        .detach();
     }
 
     /// Restarts `names`, resuming their conversation: each in its hold as

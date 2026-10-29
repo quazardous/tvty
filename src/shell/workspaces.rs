@@ -72,6 +72,8 @@ pub(super) struct PickRow {
     opening: Option<Opening>,
     /// Kept in a workspace with this mode (saving one that does not run).
     kept: Option<Mode>,
+    /// A shell, not a Claude: stopped at quit, started again at start.
+    shell: Option<crate::settings::KeptShell>,
 }
 
 /// The picker: what for, and its sessions.
@@ -129,11 +131,28 @@ fn restart_rows(loops: &[String], still: &[String], held: &std::collections::Has
                 fixed: ran_on,
                 opening: None,
                 kept: None,
+                shell: None,
             }
         })
         .collect();
     rows.sort_by(|a, b| (&a.project, &a.agent).cmp(&(&b.project, &b.agent)));
     rows
+}
+
+/// A shell in the picker: in its project's group, or the terminals'.
+fn shell_row(kept: &crate::settings::KeptShell, checked: bool) -> PickRow {
+    PickRow {
+        project: kept.project.clone().unwrap_or_else(|| crate::sessions::HOSTED_GROUP.to_string()),
+        agent: kept.name.clone(),
+        loop_name: None,
+        now: None,
+        note: crate::t!("workspaces-shell", cwd = super::loopstabs::home_short(&kept.cwd)),
+        checked,
+        fixed: false,
+        opening: None,
+        kept: None,
+        shell: Some(kept.clone()),
+    }
 }
 
 impl Shell {
@@ -186,6 +205,7 @@ impl Shell {
             fixed: false,
             opening: None,
             kept: None,
+            shell: None,
         }
     }
 
@@ -203,6 +223,9 @@ impl Shell {
             })
             .collect();
         rows.sort_by(|a, b| (&a.project, &a.agent).cmp(&(&b.project, &b.agent)));
+        // The shells open, which run on: switched off, to stop on demand.
+        let listed = self.live.session_names();
+        rows.extend(self.settings.workspace.kept_shells.iter().filter(|k| listed.contains(&k.name)).map(|k| shell_row(k, false)));
         self.open_picker(PickFor::Quit, rows, cx);
     }
 
@@ -350,7 +373,8 @@ impl Shell {
                     self.set_pref("sessions.on_quit", tvty_config::Value::Choice(Some(if checked { "stop" } else { "keep" }.into())), cx);
                 }
                 let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
-                if loops.is_empty() { self.quit_now(cx) } else { self.stop_and_quit(loops, cx) }
+                let shells: Vec<String> = chosen.iter().filter_map(|r| r.shell.as_ref().map(|k| k.name.clone())).collect();
+                if loops.is_empty() && shells.is_empty() { self.quit_now(cx) } else { self.stop_and_quit(loops, shells, cx) }
             }
             PickFor::New | PickFor::Save(_) => {
                 let name = match &picker.what {
@@ -384,6 +408,7 @@ impl Shell {
                     let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
                     let shown = self.shown_after(&picker_shown, &loops);
                     self.restart_loops(loops, true, shown, cx);
+                    self.start_shells(chosen.iter().filter_map(|r| r.shell.clone()).collect(), cx);
                 }
             }
         }
@@ -414,6 +439,12 @@ impl Shell {
             let choice = if as_they_were { "restart" } else { "fresh" };
             self.set_pref("sessions.on_start", tvty_config::Value::Choice(Some(choice.into())), cx);
         }
+        let shells: Vec<crate::settings::KeptShell> = picker.rows.iter().filter(|r| r.checked).filter_map(|r| r.shell.clone()).collect();
+        if self.remember && picker.rows.iter().any(|r| r.shell.is_some()) {
+            let choice = if shells.is_empty() { "no" } else { "reopen" };
+            self.set_pref("sessions.shells_on_start", tvty_config::Value::Choice(Some(choice.into())), cx);
+        }
+        self.start_shells(shells, cx);
         let loops: Vec<String> = picker.rows.iter().filter(|r| r.checked && !r.fixed).filter_map(|r| r.loop_name.clone()).collect();
         if !loops.is_empty() {
             let shown = self.shown_after(&picker.shown, &loops);
@@ -424,8 +455,9 @@ impl Shell {
 
     /// At start: the sessions stopped when tvty quit, offered to restart —
     /// each ticked, its mark as it was (▶ on its own, ■ held).
-    pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, cx: &mut Context<Self>) {
-        let rows = restart_rows(&loops, &still, &self.board.held, &self.board.known);
+    pub(super) fn pick_restart(&mut self, loops: Vec<String>, still: Vec<String>, shells: Vec<crate::settings::KeptShell>, cx: &mut Context<Self>) {
+        let mut rows = restart_rows(&loops, &still, &self.board.held, &self.board.known);
+        rows.extend(shells.iter().map(|k| shell_row(k, true)));
         // The one shown when tvty was left, chosen again.
         let shown = self.shown_at_start.clone();
         let chosen = rows
@@ -650,7 +682,9 @@ impl Shell {
                     .child(div().text_color(if row.fixed { p().muted } else { p().text }).child(row.agent.clone()))
                     .child(div().text_xs().text_color(p().muted).child(row.note.clone()));
                 // Restarting: a radio on its left, the terminal shown once back.
-                let radio = (matches!(picker.what, PickFor::Restart) && !row.fixed).then(|| {
+                // A shell opens where it was: no radio, its room kept.
+                let spacer = (matches!(picker.what, PickFor::Restart) && row.shell.is_some()).then(|| div().flex_none().size(px(14.)).into_any_element());
+                let radio = (matches!(picker.what, PickFor::Restart) && !row.fixed && row.shell.is_none()).then(|| {
                     let name = row.loop_name.clone();
                     let on = name.is_some() && picker.shown == name;
                     let can = row.checked;
@@ -697,7 +731,7 @@ impl Shell {
                     )
                     .into_any_element()
                 };
-                group = group.child(div().pl_2().flex().items_center().gap_2().children(radio).child(line));
+                group = group.child(div().pl_2().flex().items_center().gap_2().children(radio).children(spacer).child(line));
             }
             list = list.child(group);
         }
@@ -747,7 +781,25 @@ impl Shell {
             PickFor::Open(_) => div().flex().gap_2().child(cancel).child(go(crate::t!("workspaces-open-do", count = ticked), cx)),
             PickFor::Restart => div()
                 .flex()
+                .items_center()
                 .gap_2()
+                // The shells all at once: on or off.
+                .when(picker.rows.iter().any(|r| r.shell.is_some()), |d| {
+                    let on = picker.rows.iter().filter(|r| r.shell.is_some()).all(|r| r.checked);
+                    d.child(buttons::switch(
+                        "picker-shells",
+                        on,
+                        crate::t!("workspaces-reopen-shells"),
+                        cx.listener(|shell, wanted: &bool, _, cx| {
+                            if let Some(picker) = shell.picker.as_mut() {
+                                for row in picker.rows.iter_mut().filter(|r| r.shell.is_some()) {
+                                    row.checked = *wanted;
+                                }
+                            }
+                            cx.notify();
+                        }),
+                    ))
+                })
                 .child(none("picker-none", crate::t!("workspaces-not-now"), cx))
                 .child(buttons::secondary("picker-fresh", crate::t!("workspaces-restart-fresh", count = ticked)).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(false, cx))))
                 .child(buttons::primary("picker-go", crate::t!("workspaces-restart-as-were", count = ticked)).on_click(cx.listener(|shell, _, _, cx| shell.picker_restart(true, cx)))),
@@ -1021,6 +1073,20 @@ impl Shell {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_shell_kept_is_offered_in_its_group_or_the_terminals() {
+        let kept = |project: Option<&str>| crate::settings::KeptShell {
+            name: "alpha-1".into(),
+            cwd: "/w/alpha".into(),
+            argv: vec!["bash".into()],
+            project: project.map(Into::into),
+        };
+        let row = super::shell_row(&kept(Some("alpha")), true);
+        assert_eq!((row.project.as_str(), row.agent.as_str(), row.checked, row.loop_name.as_deref()), ("alpha", "alpha-1", true, None));
+        assert_eq!(row.shell, Some(kept(Some("alpha"))));
+        assert_eq!(super::shell_row(&kept(None), false).project, crate::sessions::HOSTED_GROUP);
+    }
+
     #[test]
     fn a_countdown_says_hours_only_when_there_are_some() {
         assert_eq!(super::countdown(std::time::Duration::from_secs(247)), "4:07");

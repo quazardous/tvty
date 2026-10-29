@@ -268,7 +268,19 @@ impl Shell {
                 open.push(session.clone());
             }
         }
-        if open != self.settings.workspace.open_terminals || self.selected != self.settings.workspace.shown_terminal {
+        // A shell closed while it runs is let go; one gone (aiball or the
+        // machine restarted) stays kept, to be offered at start.
+        let kept_before = self.settings.workspace.kept_shells.len();
+        let listed = self.live.session_names();
+        self.settings
+            .workspace
+            .kept_shells
+            .retain(|k| !listed.contains(&k.name) || open.iter().any(|s| s.strip_prefix(crate::sessions::HOSTED_PREFIX) == Some(k.name.as_str())));
+        let pruned = self.settings.workspace.kept_shells.len() != kept_before;
+        if pruned {
+            log::info!("workspace: shells no longer open let go, {} kept, open {open:?}", self.settings.workspace.kept_shells.len());
+        }
+        if pruned || open != self.settings.workspace.open_terminals || self.selected != self.settings.workspace.shown_terminal {
             self.settings.workspace.open_terminals = open;
             self.settings.workspace.shown_terminal = self.selected.clone();
             self.settings.save(cx);

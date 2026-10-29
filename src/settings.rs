@@ -139,11 +139,16 @@ pub struct Sessions {
     /// `leave` them; none: ask.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub on_start: Option<String>,
+    /// At start, the terminals that are not Claude's (shells) found gone
+    /// (aiball or the machine restarted): `reopen` them where they were,
+    /// leave them (`no`); none: ask, with the loops.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub shells_on_start: Option<String>,
 }
 
 impl Default for Sessions {
     fn default() -> Self {
-        Self { order: None, show_hub: false, on_quit: None, on_start: None }
+        Self { order: None, show_hub: false, on_quit: None, on_start: None, shells_on_start: None }
     }
 }
 
@@ -175,19 +180,20 @@ struct SessionsRead {
     show_hub: bool,
     on_quit: Option<String>,
     on_start: Option<String>,
+    shells_on_start: Option<String>,
 }
 
 impl Default for SessionsRead {
     fn default() -> Self {
-        let Sessions { order, show_hub, on_quit, on_start } = Sessions::default();
-        Self { order, recent_first: None, show_hub, on_quit, on_start }
+        let Sessions { order, show_hub, on_quit, on_start, shells_on_start } = Sessions::default();
+        Self { order, recent_first: None, show_hub, on_quit, on_start, shells_on_start }
     }
 }
 
 impl From<SessionsRead> for Sessions {
     fn from(read: SessionsRead) -> Self {
         let order = read.order.or_else(|| (read.recent_first == Some(false)).then(|| "alpha".to_string()));
-        Self { order, show_hub: read.show_hub, on_quit: read.on_quit, on_start: read.on_start }
+        Self { order, show_hub: read.show_hub, on_quit: read.on_quit, on_start: read.on_start, shells_on_start: read.shells_on_start }
     }
 }
 
@@ -505,6 +511,14 @@ pub const SCHEMA: Schema = Schema(&[
         kind: Kind::Choice,
     },
     Setting {
+        key: "sessions.shells_on_start",
+        page: "Layout",
+        group: "Sessions",
+        label: "Terminals on start",
+        about: "The terminals open in tvty that are not Claude's (shells), found gone at start (aiball or the machine restarted): ask, with the loops; reopen them where they were (same name, folder and place); or leave them.",
+        kind: Kind::Choice,
+    },
+    Setting {
         key: "tickets.panel_overlay",
         page: "Layout",
         group: "Ticket panel",
@@ -697,6 +711,23 @@ pub struct Workspace {
     /// The standing instructions given last (the 📢), newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standing_history: Vec<String>,
+    /// The shells tvty started on aiball's host and keeps open: started
+    /// again where they were when found gone at start.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kept_shells: Vec<KeptShell>,
+}
+
+/// A shell started on aiball's host, as tvty started it: what starts it
+/// again under the same name.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KeptShell {
+    /// The host session's name (`term-1`, `<project>-2`).
+    pub name: String,
+    pub cwd: String,
+    pub argv: Vec<String>,
+    /// The project it was opened in; none: the "terminals" group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<String>,
 }
 
 impl Stored for Workspace {
@@ -715,6 +746,7 @@ impl Stored for Workspace {
             terminal_order: HashMap::new(),
             project_order: Vec::new(),
             standing_history: Vec::new(),
+            kept_shells: Vec::new(),
         })
     }
 }

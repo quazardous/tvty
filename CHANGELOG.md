@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The terminals that are not Claude's come back at start when aiball or the machine restarted: offered with the loops ("Reopen the terminals too"), or reopened on their own as set (Layout > Sessions > Terminals on start).
 - Quitting with the Claude sessions stopped can wait: 10 minutes to 6 hours, the dialog counting down meanwhile, closing it calls it off.
 - The agent bar names its Claude Code config dir (an icon after its folder) and switches it to another one aiball's folders use: the folder's loops restart on it once idle, their conversations carried along.
 - `make install` copies the build into `~/.local/bin`, with the desktop's launcher: the checkout's build folder can then be emptied without losing Terminal Velocity. `make syminstall` (formerly `make install-desktop`) keeps the launcher that runs the build where it is.
