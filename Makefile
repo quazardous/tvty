@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: desktop-check emoji-font install-desktop uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down fake-agents readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
+.PHONY: desktop-check emoji-font install install-desktop desktop-files uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down fake-agents readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -24,6 +24,7 @@ help:
 	@echo ""
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
+	@echo "make install          build, then a copy of the build in ~/.local/bin and the desktop's launcher: target/ can be emptied"
 	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
 	@echo "make fake-agents          two more projects on the fake aiball, a loop each (scripts/fake-agent)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
@@ -147,14 +148,31 @@ emoji-font:
 	@echo "colour emoji font in $(EMOJI_FONT_DIR): restart tvty"
 
 # The launcher and the icon, for this user (no sudo). The launcher runs
-# ~/.local/bin/tvty, which runs BIN (the debug build by default): always
-# there, even when BIN's folder is mounted after the session starts.
+# ~/.local/bin/tvty: with install-desktop a script that runs BIN (the debug
+# build by default), always there even when BIN's folder is mounted after the
+# session starts; with install a copy of BIN itself.
 DATA_DIR = $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
 BIN_DIR = $(HOME)/.local/bin
 BIN ?= $(CURDIR)/target/debug/tvty
 ICON_SIZES = 16 24 32 48 64 128 256 512
 
-install-desktop:
+# A copy of the build, not a launcher pointing at it: target/ can then be
+# emptied (kondo, cargo clean) without taking the installed tvty with it. The
+# copy goes in by a rename, so a running tvty keeps its own file and takes the
+# new one on restart.
+install: build
+	$(MAKE) --no-print-directory desktop-files
+	install -Dm755 "$(BIN)" "$(BIN_DIR)/.tvty.new"
+	mv -f "$(BIN_DIR)/.tvty.new" "$(BIN_DIR)/tvty"
+	@echo "Terminal Velocity installed: $(BIN_DIR)/tvty, a copy of $(BIN)"
+
+install-desktop: desktop-files
+	sed 's|@BIN@|$(BIN)|' packaging/linux/tvty-launch >"$(BIN_DIR)/.tvty.new"
+	chmod 755 "$(BIN_DIR)/.tvty.new"
+	mv -f "$(BIN_DIR)/.tvty.new" "$(BIN_DIR)/tvty"
+	@echo "Terminal Velocity installed: $(BIN_DIR)/tvty runs $(BIN)"
+
+desktop-files:
 	install -Dm644 assets/tvty.svg "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg"
 	@if command -v magick >/dev/null; then \
 		for s in $(ICON_SIZES); do \
@@ -163,12 +181,9 @@ install-desktop:
 		done; \
 	else echo "no ImageMagick: the scalable icon only"; fi
 	mkdir -p "$(DATA_DIR)/applications" "$(BIN_DIR)"
-	sed 's|@BIN@|$(BIN)|' packaging/linux/tvty-launch >"$(BIN_DIR)/tvty"
-	chmod 755 "$(BIN_DIR)/tvty"
 	sed 's|@EXEC@|$(BIN_DIR)/tvty|' packaging/linux/tvty.desktop >"$(DATA_DIR)/applications/tvty.desktop"
 	-gtk-update-icon-cache -q -t "$(DATA_DIR)/icons/hicolor" 2>/dev/null
 	-update-desktop-database -q "$(DATA_DIR)/applications" 2>/dev/null
-	@echo "Terminal Velocity installed: $(BIN_DIR)/tvty runs $(BIN)"
 
 uninstall-desktop:
 	rm -f "$(DATA_DIR)/applications/tvty.desktop" "$(DATA_DIR)/icons/hicolor/scalable/apps/tvty.svg" "$(BIN_DIR)/tvty"

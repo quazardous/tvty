@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `make install` copies the build into `~/.local/bin`, with the desktop's launcher: the checkout's build folder can then be emptied without losing Terminal Velocity.
+
 ## [0.17.0-beta.1] - 2026-10-27
 
 ### Added
