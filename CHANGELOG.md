@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.18.0-beta.1] - 2026-10-29
+
 ### Added
 
 - The terminals that are not Claude's come back at start when aiball or the machine restarted: offered with the loops ("Reopen the terminals too"), or reopened on their own as set (Layout > Sessions > Terminals on start).
