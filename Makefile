@@ -1,5 +1,5 @@
 # tvty — everyday targets. `make help` lists them.
-.PHONY: desktop-check emoji-font install install-desktop desktop-files uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down fake-agents readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
+.PHONY: desktop-check emoji-font install syminstall install-desktop desktop-files uninstall-desktop help build run check public-check wbox-up wbox-down wbox-restart wbox-shot wbox-click wbox-key wbox-type wbox-scroll wbox-log fake-up sim-up flood-up fake-down aiball-up aiball-down fake-agents readme-up readme-shots readme-down proxy-up proxy-down proxy-logs
 
 help:
 	@echo "make build            cargo build (debug)"
@@ -25,7 +25,7 @@ help:
 	@echo "a throwaway aiball with a demo project, for the ticket panel:"
 	@echo "make emoji-font       colour emoji in the terminals (downloads Noto Color Emoji)"
 	@echo "make install          build, then a copy of the build in ~/.local/bin and the desktop's launcher: target/ can be emptied"
-	@echo "make install-desktop  Terminal Velocity in the desktop's launcher, with its icon (BIN= the binary)"
+	@echo "make syminstall       the desktop's launcher runs the build where it is, rebuilt in place (BIN= the binary)"
 	@echo "make fake-agents          two more projects on the fake aiball, a loop each (scripts/fake-agent)"
 	@echo "make aiball-up / aiball-down   (point tvty at it with AIBALL_SOCK, see docs/TESTING.md)"
 	@echo "make proxy-up / proxy-down / proxy-logs   aiball on two machines in docker, a hub and a proxy node:"
@@ -148,7 +148,7 @@ emoji-font:
 	@echo "colour emoji font in $(EMOJI_FONT_DIR): restart tvty"
 
 # The launcher and the icon, for this user (no sudo). The launcher runs
-# ~/.local/bin/tvty: with install-desktop a script that runs BIN (the debug
+# ~/.local/bin/tvty: with syminstall a script that runs BIN (the debug
 # build by default), always there even when BIN's folder is mounted after the
 # session starts; with install a copy of BIN itself.
 DATA_DIR = $(or $(XDG_DATA_HOME),$(HOME)/.local/share)
@@ -166,7 +166,10 @@ install: build
 	mv -f "$(BIN_DIR)/.tvty.new" "$(BIN_DIR)/tvty"
 	@echo "Terminal Velocity installed: $(BIN_DIR)/tvty, a copy of $(BIN)"
 
-install-desktop: desktop-files
+# The older name of syminstall.
+install-desktop: syminstall
+
+syminstall: desktop-files
 	sed 's|@BIN@|$(BIN)|' packaging/linux/tvty-launch >"$(BIN_DIR)/.tvty.new"
 	chmod 755 "$(BIN_DIR)/.tvty.new"
 	mv -f "$(BIN_DIR)/.tvty.new" "$(BIN_DIR)/tvty"

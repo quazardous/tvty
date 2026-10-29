@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `make install` copies the build into `~/.local/bin`, with the desktop's launcher: the checkout's build folder can then be emptied without losing Terminal Velocity.
+- `make install` copies the build into `~/.local/bin`, with the desktop's launcher: the checkout's build folder can then be emptied without losing Terminal Velocity. `make syminstall` (formerly `make install-desktop`) keeps the launcher that runs the build where it is.
 
 ## [0.17.0-beta.1] - 2026-10-27
 

@@ -69,10 +69,10 @@ sudo pacman -S base-devel libxkbcommon libxkbcommon-x11 libxcb wayland \
 
 git clone https://github.com/quazardous/tvty && cd tvty
 cargo build --release
-make install-desktop BIN=$PWD/target/release/tvty
+make syminstall BIN=$PWD/target/release/tvty
 ```
 
-`make install-desktop` puts a small launcher in `~/.local/bin/tvty` that
+`make syminstall` puts a small launcher in `~/.local/bin/tvty` that
 runs the build where it is. `make install` builds (debug) and copies the
 build itself there instead: the checkout's `target` can then be emptied
 (`cargo clean`) and Terminal Velocity still starts; run it again after each

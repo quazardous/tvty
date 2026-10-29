@@ -1,6 +1,6 @@
 #!/bin/sh
 # Terminal Velocity's launcher, installed beside the user's commands
-# (~/.local/bin/tvty) by `make install-desktop`. The desktop's launcher runs
+# (~/.local/bin/tvty) by `make syminstall`. The desktop's launcher runs
 # this, not the build itself: a build in a folder mounted after the session
 # starts (an encrypted home folder) is not there when the desktop reads its
 # launchers, and a launcher whose program is missing is dropped — pinned
