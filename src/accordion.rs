@@ -277,7 +277,11 @@ impl Section {
             .flex()
             .flex_col()
             .map(|d| match height {
-                Some(height) => d.flex_none().h(px(height)),
+                // A height set by hand gives way when the list is shorter (a
+                // smaller window): the sections below keep their least
+                // height in view, and their scroll, rather than going under
+                // the bottom.
+                Some(height) => d.flex_grow(0.).flex_shrink(1.).h(px(height)),
                 None => d.flex_initial(),
             })
             .min_h(px(TITLE_HEIGHT + keep))

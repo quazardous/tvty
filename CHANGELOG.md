@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `make install` copies the build into `~/.local/bin`, with the desktop's launcher: the checkout's build folder can then be emptied without losing Terminal Velocity. `make syminstall` (formerly `make install-desktop`) keeps the launcher that runs the build where it is.
 
+### Fixed
+
+- A list of sections whose heights were set by hand (the tickets' bands, the sessions) no longer pushes its last section under the bottom of a shorter window: the sections give way, each keeping its scroll.
+
 ## [0.17.0-beta.1] - 2026-10-27
 
 ### Added
