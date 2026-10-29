@@ -29,7 +29,7 @@ run = [
       vulkan-loader-devel fontconfig-devel freetype-devel alsa-lib-devel \
  && dnf clean all""",
 ]
-env = { CARGO_HOME = "/cargo", CARGO_TARGET_DIR = "/target", CARGO_INCREMENTAL = "0", RUSTC_WRAPPER = "sccache", SCCACHE_DIR = "/sccache", SCCACHE_CACHE_SIZE = "6G", CARGO_PROFILE_DEV_DEBUG = "line-tables-only", CARGO_PROFILE_TEST_DEBUG = "line-tables-only", RUST_BACKTRACE = "1", HOME = "/tmp/home" }
+env = { CARGO_HOME = "/cargo", CARGO_TARGET_DIR = "/target", RUSTC_WRAPPER = "sccache", SCCACHE_DIR = "/sccache", SCCACHE_CACHE_SIZE = "6G", CARGO_PROFILE_DEV_DEBUG = "line-tables-only", CARGO_PROFILE_TEST_DEBUG = "line-tables-only", RUST_BACKTRACE = "1", HOME = "/tmp/home" }
 
 [checkout.tvty]
 repo = "https://github.com/quazardous/tvty.git"
@@ -46,17 +46,17 @@ run = ["cd /work/${src:-tvty} && CARGO_NET_OFFLINE=false cargo fetch --locked",
 
 [storage]
 target = { about = "tvty's cargo target directories, one per branch, a new one starting from main's", lock = true, seed = "main", until = "branch", ttl = "14d", max = "8g" }
-registry = { about = "the cargo registry, shared by every job", keep = true, max = "2g" }
-cargo-git = { about = "the cargo git dependencies, shared by every job", keep = true, max = "1g" }
-sccache = { about = "sccache's compile cache, shared by every job and branch", keep = true, max = "6g" }
-egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "15g" }
+registry = { about = "the cargo registry, shared by every job", keep = true, max = "3g", tmp = false }
+cargo-git = { about = "the cargo git dependencies, shared by every job", keep = true, max = "1g", tmp = false }
+sccache = { about = "sccache's compile cache, shared by every job and branch", keep = true, max = "6g", tmp = false }
+egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "4g" }
 
 [jobs.test]
 about = "the workspace tests"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
-command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cd /tmp/w/tvty \
  && cargo test --workspace --locked --offline 2>&1 | tee /out/test.log; exit ${PIPESTATUS[0]}"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "test.log", kind = "log" } }
@@ -67,7 +67,7 @@ about = "clippy on the workspace: warnings said, only an error fails"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
-command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cd /tmp/w/tvty \
  && cargo clippy --workspace --all-targets --locked --offline 2>&1 | tee /out/check.log; exit ${PIPESTATUS[0]}"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "check.log", kind = "log" } }
@@ -78,7 +78,7 @@ about = "the debug binary, fetched back to run on the development machine"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
-command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode . /tmp/w/tvty/ && cd /tmp/w/tvty \
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cd /tmp/w/tvty \
  && cargo build --locked --offline 2>&1 | tee /out/build.log; rc=${PIPESTATUS[0]}; \
 [ $rc = 0 ] && mkdir -p /out/bin && cp /target/debug/tvty /out/bin/tvty; exit $rc"""
 mounts = { "target/${branch:-main}" = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
@@ -91,7 +91,7 @@ cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
 command = """rm -rf /tmp/w/tvty /tmp/w/egui-pop && mkdir -p /tmp/w/tvty /tmp/w/egui-pop \
- && cp -r --preserve=mode . /tmp/w/tvty/ && cp -r --preserve=mode /work/egui-pop/. /tmp/w/egui-pop/ && cd /tmp/w/tvty/egui \
+ && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cp -r --preserve=mode,timestamps /work/egui-pop/. /tmp/w/egui-pop/ && cd /tmp/w/tvty/egui \
  && cargo test --locked --offline 2>&1 | tee /out/egui-test.log; exit ${PIPESTATUS[0]}"""
 mounts = { egui-target = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "egui-test.log", kind = "log" } }
