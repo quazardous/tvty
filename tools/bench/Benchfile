@@ -45,13 +45,14 @@ run = ["cd /work/${src:-tvty} && CARGO_NET_OFFLINE=false cargo fetch --locked",
        "[ ! -f /work/${src:-tvty}/egui/Cargo.toml ] || [ ! -d /work/egui-pop ] || (cd /work/${src:-tvty}/egui && CARGO_NET_OFFLINE=false cargo fetch --locked)"]
 
 [storage]
-target = { about = "tvty's cargo target directories, one per branch, a new one starting from main's", lock = true, seed = "main" }
-registry = "the cargo registry, shared by every job"
-cargo-git = "the cargo git dependencies, shared by every job"
-sccache = "sccache's compile cache, shared by every job and branch"
+target = { about = "tvty's cargo target directories, one per branch, a new one starting from main's", lock = true, seed = "main", until = "branch", ttl = "14d", max = "8g" }
+registry = { about = "the cargo registry, shared by every job", keep = true, max = "2g" }
+cargo-git = { about = "the cargo git dependencies, shared by every job", keep = true, max = "1g" }
+sccache = { about = "sccache's compile cache, shared by every job and branch", keep = true, max = "6g" }
 egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "15g" }
 
 [jobs.test]
+about = "the workspace tests"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
@@ -62,6 +63,7 @@ outputs = { log = { path = "test.log", kind = "log" } }
 timeout = "1h"
 
 [jobs.check]
+about = "clippy on the workspace: warnings said, only an error fails"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
@@ -72,6 +74,7 @@ outputs = { log = { path = "check.log", kind = "log" } }
 timeout = "1h"
 
 [jobs.build]
+about = "the debug binary, fetched back to run on the development machine"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
@@ -83,6 +86,7 @@ outputs = { bin = { path = "bin/", kind = "file" }, log = { path = "build.log", 
 timeout = "1h"
 
 [jobs.egui-test]
+about = "tvty-egui's tests, egui-pop checked out beside"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
