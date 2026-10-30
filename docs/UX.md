@@ -168,8 +168,9 @@ and quitting in 29:58"), and at zero the sessions switched on stop and
 tvty quits; closing the dialog, or quitting another way, drops it, and a
 tvty closed meanwhile stops nothing. The terminals that are not Claude's
 (shells opened with >_, in a project or among the terminals) are listed
-there too, switched off: they run on, aiball's host holds them; one
-switched on is stopped. tvty keeps each shell open — its name, folder,
+there too, switched on as the loops are: stopped with them (and with
+"stop" remembered), offered again at the next start; one switched off runs
+on, aiball's host holding it. tvty keeps each shell open — its name, folder,
 shell and group — and, at start, one whose session is gone (aiball or the
 machine restarted, or stopped at quit) is offered in the restart sheet
 with the loops, under its group, with "Reopen the terminals too" turning

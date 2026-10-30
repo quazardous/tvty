@@ -223,9 +223,9 @@ impl Shell {
             })
             .collect();
         rows.sort_by(|a, b| (&a.project, &a.agent).cmp(&(&b.project, &b.agent)));
-        // The shells open, which run on: switched off, to stop on demand.
-        let listed = self.live.session_names();
-        rows.extend(self.settings.workspace.kept_shells.iter().filter(|k| listed.contains(&k.name)).map(|k| shell_row(k, false)));
+        // The shells open, switched on as the loops are: stopped with them,
+        // offered again at the next start.
+        rows.extend(self.running_shells().iter().map(|k| shell_row(k, true)));
         self.open_picker(PickFor::Quit, rows, cx);
     }
 

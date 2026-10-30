@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - At start, a terminal that is not Claude's, offered for reopening, no longer shows the hold mark of a loop.
 - The terminals that are not Claude's opened before this came, or elsewhere, are kept too: they come back like the others when aiball or the machine restarted.
+- Quitting with the sessions stopped stops the terminals that are not Claude's too (switched on in the dialog, as the loops), so that the next start offers them again.
 - The agent bar's config dir popup stays within the window when a dir serves many projects: three named, the others counted, all of them in its tip.
 
 ## [0.18.0-beta.1] - 2026-10-29

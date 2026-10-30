@@ -28,6 +28,12 @@ impl Shell {
             .collect()
     }
 
+    /// The shells tvty keeps whose session runs now: those a quit stops.
+    pub(super) fn running_shells(&self) -> Vec<crate::settings::KeptShell> {
+        let listed = self.live.session_names();
+        self.settings.workspace.kept_shells.iter().filter(|k| listed.contains(&k.name)).cloned().collect()
+    }
+
     /// The window is asked to close: tvty quits at once, or asks first.
     /// Answers whether it may close now.
     pub(super) fn close_asked(&mut self, window: &mut Window, cx: &mut Context<Self>) -> bool {
@@ -49,7 +55,10 @@ impl Shell {
             return self.quit_now(cx);
         }
         match self.applied.sessions.on_quit.as_deref() {
-            Some("stop") => self.stop_and_quit(loops, Vec::new(), cx),
+            Some("stop") => {
+                let shells = self.running_shells().into_iter().map(|k| k.name).collect();
+                self.stop_and_quit(loops, shells, cx)
+            }
             Some("keep") => self.quit_now(cx),
             // Asked: which stop, which run on (the sessions' picker).
             _ => self.pick_quit(loops, cx),
