@@ -15,12 +15,35 @@ pub struct Active {
     pub by: String,
     /// What it offers to accept it on; none: accepted as a whole.
     pub options: Vec<PlanOption>,
+    /// Its options can be accepted several together; else exactly one.
+    pub multiple: bool,
 }
 
-/// The option taken by Accept: the one chosen while it is still offered,
-/// else the recommended one.
-pub fn picked(options: &[PlanOption], chosen: Option<&str>) -> Option<String> {
-    options.iter().find(|o| chosen == Some(o.key.as_str())).or_else(|| options.iter().find(|o| o.recommended)).map(|o| o.key.clone())
+/// The options taken by Accept. Exactly one: the one chosen while it is
+/// still offered, else the recommended one. Several: those ticked while
+/// still offered, none if all were unticked; until a first tick, the
+/// recommended.
+pub fn picked(options: &[PlanOption], multiple: bool, chosen: Option<&[String]>) -> Vec<String> {
+    let offered = |key: &String| options.iter().any(|o| o.key == *key);
+    let recommended = options.iter().filter(|o| o.recommended).map(|o| o.key.clone());
+    match chosen {
+        Some(chosen) if multiple => chosen.iter().filter(|key| offered(key)).cloned().collect(),
+        Some(chosen) if chosen.iter().any(offered) => chosen.iter().filter(|key| offered(key)).take(1).cloned().collect(),
+        _ if multiple => recommended.collect(),
+        _ => recommended.take(1).collect(),
+    }
+}
+
+/// What is picked once `key` is clicked: alone on a plan taking exactly
+/// one, in or out of the others on one taking several.
+pub fn clicked(picked: &[String], multiple: bool, key: &str) -> Vec<String> {
+    if !multiple {
+        return vec![key.to_string()];
+    }
+    if picked.iter().any(|k| k == key) {
+        return picked.iter().filter(|k| *k != key).cloned().collect();
+    }
+    picked.iter().cloned().chain([key.to_string()]).collect()
 }
 
 /// A plan's options as offered: the recommended one first.
@@ -110,7 +133,7 @@ pub fn read(thread: &Thread) -> Reading {
     let latest_id = latest.as_ref().map(|(id, _, _)| *id);
     let active = latest
         .filter(|(_, _, d)| d.status == "pending")
-        .map(|(message, by, d)| Active { message, kind: d.kind, by, options: d.options });
+        .map(|(message, by, d)| Active { message, kind: d.kind, by, options: d.options, multiple: d.multiple });
     let ticket_decision = thread
         .ticket
         .decision()
@@ -420,13 +443,40 @@ mod tests {
         let active = read(&t).active.unwrap();
         let keys: Vec<_> = super::offered(&active.options).into_iter().map(|o| o.key).collect();
         assert_eq!(keys, ["B", "A", "C"]);
+        assert!(!active.multiple);
         // Accept takes the one chosen, else the recommended; one gone from
         // the list no longer counts; with none recommended, nothing yet.
-        assert_eq!(super::picked(&active.options, Some("C")).as_deref(), Some("C"));
-        assert_eq!(super::picked(&active.options, None).as_deref(), Some("B"));
-        assert_eq!(super::picked(&active.options, Some("gone")).as_deref(), Some("B"));
+        let keys = |keys: &[&str]| keys.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        assert_eq!(super::picked(&active.options, false, Some(&keys(&["C"]))), ["C"]);
+        assert_eq!(super::picked(&active.options, false, None), ["B"]);
+        assert_eq!(super::picked(&active.options, false, Some(&keys(&["gone"]))), ["B"]);
         let plain: Vec<_> = active.options.iter().filter(|o| !o.recommended).cloned().collect();
-        assert_eq!(super::picked(&plain, None), None);
+        assert!(super::picked(&plain, false, None).is_empty());
+        // A click replaces the choice.
+        assert_eq!(super::clicked(&keys(&["B"]), false, "C"), ["C"]);
+    }
+
+    #[test]
+    fn a_plan_taking_several_ticks_them_the_recommended_to_begin_with() {
+        let plan = serde_json::json!({"decision": {"kind": "plan", "status": "pending", "multiple": true, "options": [
+            {"key": "A", "label": "One"}, {"key": "B", "label": "Other", "recommended": true}, {"key": "C", "label": "Third"},
+        ]}});
+        let t = thread(serde_json::json!([comment(2, "demo-claude", plan)]));
+        let active = read(&t).active.unwrap();
+        assert!(active.multiple);
+        let keys = |keys: &[&str]| keys.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        let picked = |chosen: Option<&[String]>| super::picked(&active.options, true, chosen);
+        assert_eq!(picked(None), ["B"]);
+        // A tick adds, a second one takes it out; one gone no longer counts.
+        let ticked = super::clicked(&picked(None), true, "A");
+        assert_eq!(ticked, ["B", "A"]);
+        assert_eq!(picked(Some(&ticked)), ["B", "A"]);
+        assert_eq!(super::clicked(&ticked, true, "B"), ["A"]);
+        assert_eq!(picked(Some(&keys(&["A", "gone"]))), ["A"]);
+        // All unticked stays so: the recommended does not come back.
+        let none = super::clicked(&keys(&["B"]), true, "B");
+        assert!(none.is_empty());
+        assert!(picked(Some(&none)).is_empty());
     }
 
     #[test]

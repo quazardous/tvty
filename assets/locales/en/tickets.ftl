@@ -211,6 +211,7 @@ tickets-claim-assigns = {$agent} holds it by a claim: a click assigns it to them
 tickets-unassign-tip = unassign: takes it back from {$holder}; nobody holds it, it waits for whoever takes it
 tickets-without-notifying = without notifying
 tickets-option-choose-one = Choose one:
+tickets-option-choose-several = Choose one or more:
 tickets-option-recommended = recommended
 tickets-reply-keep = Reply, keep the hand
 tickets-reply-ways-tip = Other ways to send it (ctrl+shift+enter: keep the hand)

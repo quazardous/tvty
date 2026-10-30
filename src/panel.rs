@@ -86,8 +86,8 @@ struct Detail {
     /// The next reply notifies nobody.
     /// The next reply goes without notifying anyone.
     quiet: bool,
-    /// The option chosen of a plan that offers some: (its message, the key).
-    picked: Option<(u64, String)>,
+    /// The options chosen of a plan that offers some: (its message, the keys).
+    picked: Option<(u64, Vec<String>)>,
     /// The short menus under the reply box: snooze, priority.
     menu: Option<Menu>,
 }
@@ -1068,8 +1068,8 @@ impl TicketPanel {
     }
 
     /// `option`: the one accepted, of a plan that offers some.
-    fn decide(&mut self, message: u64, accept: bool, option: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(&crate::t!(if accept { "tickets-did-accepted" } else { "tickets-did-rejected" }), move |aiball, _, _| aiball.decide(message, accept, option.as_deref()), window, cx);
+    fn decide(&mut self, message: u64, accept: bool, picked: Vec<String>, multiple: bool, window: &mut Window, cx: &mut Context<Self>) {
+        self.act(&crate::t!(if accept { "tickets-did-accepted" } else { "tickets-did-rejected" }), move |aiball, _, _| aiball.decide(message, accept, &picked, multiple), window, cx);
     }
 
     fn moderate(&mut self, message: u64, approve: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -1536,7 +1536,7 @@ impl TicketPanel {
                 &ticket.by_agent,
                 &ticket.created_at,
                 read.ticket_decision.clone(),
-                ticket.decision().and_then(|d| d.option),
+                ticket.decision().and_then(|d| d.accepted_on()),
                 None,
                 false,
                 false,
@@ -1570,8 +1570,9 @@ impl TicketPanel {
         let unmoderated = ticket.status == "pending";
         let decision = read.active.clone().filter(|a| a.by != user).map(|active| {
             let message = active.message;
-            let chosen = detail.picked.as_ref().filter(|(m, _)| *m == message).map(|(_, key)| key.as_str());
-            let picked = thread::picked(&active.options, chosen);
+            let multiple = active.multiple;
+            let chosen = detail.picked.as_ref().filter(|(m, _)| *m == message).map(|(_, keys)| keys.as_slice());
+            let picked = thread::picked(&active.options, multiple, chosen);
             let accept = crate::t!(match active.kind.as_str() {
                 "resolution" => "tickets-accept-close",
                 "wontfix" => "tickets-accept-wontfix",
@@ -1605,24 +1606,24 @@ impl TicketPanel {
                             buttons::answer("reject", crate::t!("tickets-reject"))
                                 .danger()
                                 .disabled(detail.busy || !typed)
-                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, None, window, cx))),
+                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, Vec::new(), false, window, cx))),
                         )
                         .child({
-                            let option = picked.clone();
+                            let picked = picked.clone();
                             buttons::answer("accept", accept)
                                 .success()
-                                .disabled(detail.busy || (!active.options.is_empty() && option.is_none()))
-                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, option.clone(), window, cx)))
+                                .disabled(detail.busy || (!active.options.is_empty() && picked.is_empty()))
+                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, picked.clone(), multiple, window, cx)))
                         })),
                 )
-                // A plan with options: one chosen, the recommended to begin
-                // with; Accept takes it.
+                // A plan with options: one chosen, or several ticked, the
+                // recommended to begin with; Accept takes them.
                 .when(!unmoderated && !active.options.is_empty(), |d| {
-                    d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-option-choose-one"))).child(div().flex().flex_col().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
-                        let on = picked.as_deref() == Some(option.key.as_str());
-                        let key = option.key.clone();
+                    d.child(div().text_xs().text_color(p().muted).child(crate::t!(if multiple { "tickets-option-choose-several" } else { "tickets-option-choose-one" }))).child(div().flex().flex_col().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
+                        let on = picked.contains(&option.key);
+                        let next = thread::clicked(&picked, multiple, &option.key);
                         div()
-                            .named(SharedString::from(format!("option-{key}")))
+                            .named(SharedString::from(format!("option-{}", option.key)))
                             .flex()
                             .gap_2()
                             .px_1()
@@ -1635,13 +1636,14 @@ impl TicketPanel {
                                     .flex_none()
                                     .mt_0p5()
                                     .size(px(14.))
-                                    .rounded_full()
+                                    .map(|d| if multiple { d.rounded_sm() } else { d.rounded_full() })
                                     .border_1()
                                     .border_color(if on { p().accent } else { p().border })
                                     .flex()
                                     .items_center()
                                     .justify_center()
-                                    .when(on, |d| d.child(div().size(px(6.)).rounded_full().bg(p().accent))),
+                                    .when(on && multiple, |d| d.text_xs().line_height(px(12.)).text_color(p().accent).child("✓"))
+                                    .when(on && !multiple, |d| d.child(div().size(px(6.)).rounded_full().bg(p().accent))),
                             )
                             .child(
                                 div()
@@ -1664,7 +1666,7 @@ impl TicketPanel {
                             })
                             .on_click(cx.listener(move |panel, _, _, cx| {
                                 if let Some(detail) = panel.detail.as_mut() {
-                                    detail.picked = Some((message, key.clone()));
+                                    detail.picked = Some((message, next.clone()));
                                 }
                                 cx.notify();
                             }))
@@ -2375,7 +2377,7 @@ impl TicketPanel {
                         &comment.by_agent,
                         &comment.created_at,
                         entry.decision.clone(),
-                        comment.decision().and_then(|d| d.option),
+                        comment.decision().and_then(|d| d.accepted_on()),
                         entry.step.map(|latest| (latest, comment.step_resume())),
                         comment.keeps_the_hand() && comment.by_agent == user,
                         entry.pending,

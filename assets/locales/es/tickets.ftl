@@ -225,6 +225,7 @@ tickets-claim-assigns = {$agent} lo tiene por un claim: un clic se lo asigna
 tickets-unassign-tip = desasignar: se lo quita a {$holder}; nadie lo tiene, espera a quien lo tome
 tickets-without-notifying = sin notificar
 tickets-option-choose-one = Elige una:
+tickets-option-choose-several = Elige una o varias:
 tickets-option-recommended = recomendado
 tickets-reply-keep = Responder, conservar el turno
 tickets-reply-ways-tip = Otras formas de enviar (ctrl+mayús+intro: conservar el turno)

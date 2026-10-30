@@ -211,6 +211,7 @@ tickets-claim-assigns = {$agent} hält es per Claim: Ein Klick weist es ihm zu
 tickets-unassign-tip = Zuweisung aufheben: nimmt es {$holder} weg; niemand hält es, es wartet auf den, der es nimmt
 tickets-without-notifying = leise
 tickets-option-choose-one = Wähle eine aus:
+tickets-option-choose-several = Wähle eine oder mehrere aus:
 tickets-option-recommended = empfohlen
 tickets-reply-keep = Antworten, am Zug bleiben
 tickets-reply-ways-tip = Andere Arten zu senden (Strg+Umschalt+Enter: am Zug bleiben)

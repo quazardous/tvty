@@ -843,8 +843,19 @@ pub struct Decision {
     pub decided_by: Option<String>,
     /// What a plan offers to accept it on; none: accepted as a whole.
     pub options: Vec<PlanOption>,
+    /// Its options can be accepted several together; else exactly one.
+    pub multiple: bool,
     /// The option it was accepted on.
     pub option: Option<String>,
+    /// The options it was accepted on, when it takes several.
+    pub chosen: Vec<String>,
+}
+
+impl Decision {
+    /// What it was accepted on, as its comment says it.
+    pub fn accepted_on(&self) -> Option<String> {
+        self.option.clone().or_else(|| (!self.chosen.is_empty()).then(|| self.chosen.join(", ")))
+    }
 }
 
 /// One of the ways a plan can be accepted.
@@ -868,13 +879,19 @@ fn decision_of(meta: Option<&str>) -> Option<Decision> {
         status: decision.get("status")?.as_str()?.to_string(),
         decided_by: decision.get("decided_by").and_then(Value::as_str).map(str::to_string),
         options: decision.get("options").and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default(),
+        multiple: decision.get("multiple").and_then(Value::as_bool).unwrap_or(false),
         option: decision.get("option").and_then(Value::as_str).map(str::to_string),
+        chosen: decision.get("chosen").and_then(|c| serde_json::from_value(c.clone()).ok()).unwrap_or_default(),
     })
 }
 
-fn decide_params(comment: u64, accept: bool, option: Option<&str>) -> Value {
+/// `picked`: the options an accept takes. A plan that takes several says
+/// them as a list, even one; any other, as its one option.
+fn decide_params(comment: u64, accept: bool, picked: &[String], multiple: bool) -> Value {
     let mut params = json!({ "id": comment, "status": if accept { "accepted" } else { "rejected" } });
-    if let Some(option) = option {
+    if multiple {
+        params["options"] = json!(picked);
+    } else if let Some(option) = picked.first() {
         params["option"] = json!(option);
     }
     params
@@ -1540,8 +1557,8 @@ impl Aiball {
     }
 
     /// Accept or reject the decision a comment carries.
-    pub fn decide(&self, comment: u64, accept: bool, option: Option<&str>) -> anyhow::Result<()> {
-        self.rpc_do("message.decide", decide_params(comment, accept, option))
+    pub fn decide(&self, comment: u64, accept: bool, picked: &[String], multiple: bool) -> anyhow::Result<()> {
+        self.rpc_do("message.decide", decide_params(comment, accept, picked, multiple))
     }
 
     /// An upload's bytes, through the socket (`/api/uploads/<sha>`).
@@ -2146,9 +2163,13 @@ mod critical_tests {
     fn an_accept_says_its_option_and_a_decision_reads_its_options() {
         use super::{PlanOption, decide_params, decision_of};
         use serde_json::json;
-        assert_eq!(decide_params(7, true, None), json!({ "id": 7, "status": "accepted" }));
-        assert_eq!(decide_params(7, true, Some("B")), json!({ "id": 7, "status": "accepted", "option": "B" }));
-        assert_eq!(decide_params(7, false, None), json!({ "id": 7, "status": "rejected" }));
+        let keys = |keys: &[&str]| keys.iter().map(|k| k.to_string()).collect::<Vec<_>>();
+        assert_eq!(decide_params(7, true, &[], false), json!({ "id": 7, "status": "accepted" }));
+        assert_eq!(decide_params(7, true, &keys(&["B"]), false), json!({ "id": 7, "status": "accepted", "option": "B" }));
+        assert_eq!(decide_params(7, false, &[], false), json!({ "id": 7, "status": "rejected" }));
+        // A plan that takes several: a list, even of one.
+        assert_eq!(decide_params(7, true, &keys(&["A", "C"]), true), json!({ "id": 7, "status": "accepted", "options": ["A", "C"] }));
+        assert_eq!(decide_params(7, true, &keys(&["A"]), true), json!({ "id": 7, "status": "accepted", "options": ["A"] }));
         let meta = json!({ "decision": { "kind": "plan", "status": "accepted", "option": "B", "options": [
             { "key": "A", "label": "One" },
             { "key": "B", "label": "Other", "recommended": true },
@@ -2156,10 +2177,18 @@ mod critical_tests {
         .to_string();
         let decision = decision_of(Some(&meta)).unwrap();
         assert_eq!(decision.option.as_deref(), Some("B"));
+        assert_eq!(decision.accepted_on().as_deref(), Some("B"));
+        assert!(!decision.multiple);
         assert_eq!(decision.options[1], PlanOption { key: "B".into(), label: "Other".into(), recommended: true });
         // A plan with none: accepted as a whole.
         let plain = json!({ "decision": { "kind": "plan", "status": "pending" } }).to_string();
         assert!(decision_of(Some(&plain)).unwrap().options.is_empty());
+        assert_eq!(decision_of(Some(&plain)).unwrap().accepted_on(), None);
+        // One that took several says them.
+        let several = json!({ "decision": { "kind": "plan", "status": "accepted", "multiple": true, "chosen": ["A", "C"] } }).to_string();
+        let decision = decision_of(Some(&several)).unwrap();
+        assert!(decision.multiple);
+        assert_eq!(decision.accepted_on().as_deref(), Some("A, C"));
     }
 
     #[test]
