@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A plan with options shows one accept button per option, the recommended first, and the choice on the decided comment.
+- A plan with options offers them as radio buttons, the recommended chosen to begin with; Accept takes the choice, and the decided comment says which.
 - The ▾ of Reply sends a reply while keeping the hand (Ctrl+Shift+Enter): no agent is woken and the comment says so.
 - The usage arrow's setting has an Auto mode, now the default: each start shows the display last clicked to.
 - Ctrl held while dragging a section's title pulls the sections below as a block, their sizes kept.

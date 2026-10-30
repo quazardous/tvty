@@ -17,6 +17,12 @@ pub struct Active {
     pub options: Vec<PlanOption>,
 }
 
+/// The option taken by Accept: the one chosen while it is still offered,
+/// else the recommended one.
+pub fn picked(options: &[PlanOption], chosen: Option<&str>) -> Option<String> {
+    options.iter().find(|o| chosen == Some(o.key.as_str())).or_else(|| options.iter().find(|o| o.recommended)).map(|o| o.key.clone())
+}
+
 /// A plan's options as offered: the recommended one first.
 pub fn offered(options: &[PlanOption]) -> Vec<PlanOption> {
     let mut offered = options.to_vec();
@@ -414,6 +420,13 @@ mod tests {
         let active = read(&t).active.unwrap();
         let keys: Vec<_> = super::offered(&active.options).into_iter().map(|o| o.key).collect();
         assert_eq!(keys, ["B", "A", "C"]);
+        // Accept takes the one chosen, else the recommended; one gone from
+        // the list no longer counts; with none recommended, nothing yet.
+        assert_eq!(super::picked(&active.options, Some("C")).as_deref(), Some("C"));
+        assert_eq!(super::picked(&active.options, None).as_deref(), Some("B"));
+        assert_eq!(super::picked(&active.options, Some("gone")).as_deref(), Some("B"));
+        let plain: Vec<_> = active.options.iter().filter(|o| !o.recommended).cloned().collect();
+        assert_eq!(super::picked(&plain, None), None);
     }
 
     #[test]

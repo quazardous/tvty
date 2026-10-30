@@ -86,6 +86,8 @@ struct Detail {
     /// The next reply notifies nobody.
     /// The next reply goes without notifying anyone.
     quiet: bool,
+    /// The option chosen of a plan that offers some: (its message, the key).
+    picked: Option<(u64, String)>,
     /// The short menus under the reply box: snooze, priority.
     menu: Option<Menu>,
 }
@@ -787,6 +789,7 @@ impl TicketPanel {
             unfolded: HashSet::new(),
             scroll: ScrollHandle::new(),
             quiet: false,
+            picked: None,
             menu: None,
         });
         self.load(ticket, true, cx);
@@ -1567,6 +1570,8 @@ impl TicketPanel {
         let unmoderated = ticket.status == "pending";
         let decision = read.active.clone().filter(|a| a.by != user).map(|active| {
             let message = active.message;
+            let chosen = detail.picked.as_ref().filter(|(m, _)| *m == message).map(|(_, key)| key.as_str());
+            let picked = thread::picked(&active.options, chosen);
             let accept = crate::t!(match active.kind.as_str() {
                 "resolution" => "tickets-accept-close",
                 "wontfix" => "tickets-accept-wontfix",
@@ -1602,23 +1607,56 @@ impl TicketPanel {
                                 .disabled(detail.busy || !typed)
                                 .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, None, window, cx))),
                         )
-                        .when(active.options.is_empty(), |d| {
-                            d.child(
-                                buttons::answer("accept", accept)
-                                    .success()
-                                    .disabled(detail.busy)
-                                    .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, None, window, cx))),
-                            )
+                        .child({
+                            let option = picked.clone();
+                            buttons::answer("accept", accept)
+                                .success()
+                                .disabled(detail.busy || (!active.options.is_empty() && option.is_none()))
+                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, option.clone(), window, cx)))
                         })),
                 )
-                // A plan with options: accepted on one of them, the
-                // recommended first and the only one coloured.
+                // A plan with options: one chosen, the recommended to begin
+                // with; Accept takes it.
                 .when(!unmoderated && !active.options.is_empty(), |d| {
-                    d.child(div().flex().flex_wrap().justify_end().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
+                    d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-option-choose-one"))).child(div().flex().flex_col().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
+                        let on = picked.as_deref() == Some(option.key.as_str());
                         let key = option.key.clone();
-                        let button = buttons::answer(SharedString::from(format!("accept-{key}")), format!("{}: {}", option.key, option.label)).disabled(detail.busy);
-                        let button = if option.recommended { button.success() } else { button.outline() };
-                        button.on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, Some(key.clone()), window, cx)))
+                        div()
+                            .named(SharedString::from(format!("option-{key}")))
+                            .flex()
+                            .gap_2()
+                            .px_1()
+                            .py_0p5()
+                            .rounded_sm()
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p().hover))
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .mt_0p5()
+                                    .size(px(14.))
+                                    .rounded_full()
+                                    .border_1()
+                                    .border_color(if on { p().accent } else { p().border })
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .when(on, |d| d.child(div().size(px(6.)).rounded_full().bg(p().accent))),
+                            )
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .text_sm()
+                                    .child(option.label.clone())
+                                    .when(option.recommended, |d| d.child(div().text_xs().text_color(p().success).child(crate::t!("tickets-option-recommended")))),
+                            )
+                            .on_click(cx.listener(move |panel, _, _, cx| {
+                                if let Some(detail) = panel.detail.as_mut() {
+                                    detail.picked = Some((message, key.clone()));
+                                }
+                                cx.notify();
+                            }))
                     })))
                 })
                 .when(!typed && !unmoderated, |d| {
