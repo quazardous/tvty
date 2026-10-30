@@ -5470,8 +5470,13 @@ impl Render for Shell {
             // A section's title dragged, in the sessions list or the panel.
             .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
                 if crate::accordion::drag_to(event.drag(cx), event.event.position.y) {
-                    shell.panel.update(cx, |_, cx| cx.notify());
-                    cx.notify();
+                    // Only the list dragged draws again: the tickets' is the
+                    // panel's, the sessions' the shell's.
+                    if event.drag(cx).list.as_ref() == "tickets" {
+                        shell.panel.update(cx, |_, cx| cx.notify());
+                    } else {
+                        cx.notify();
+                    }
                     // Kept once the drag rests, wherever it is let go.
                     shell.heights_moved += 1;
                     let moved = shell.heights_moved;

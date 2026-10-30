@@ -519,7 +519,9 @@ impl Shell {
     /// The ▶ of a project with no loop of this machine running: what it
     /// starts. None while one runs, or with nothing to start it from.
     pub(super) fn project_play(&self, project: &str) -> Option<Play> {
-        play(project, &self.board.known, &self.board.homes, self.project_folder(project))
+        // The folder looked for on disk only when nothing known gives one:
+        // this runs on every frame, for every project.
+        play(project, &self.board.known, &self.board.homes, || self.project_folder(project))
     }
 
     /// The ▶ clicked: the loop started, as its row in "idle" or "+ session"
@@ -820,7 +822,7 @@ pub(super) enum Play {
 }
 
 /// The ▶ of `project`: none while a loop of it runs here.
-pub(super) fn play(project: &str, known: &[crate::loops::KnownLoop], homes: &[(String, Option<String>, String)], folder: Option<String>) -> Option<Play> {
+pub(super) fn play(project: &str, known: &[crate::loops::KnownLoop], homes: &[(String, Option<String>, String)], folder: impl FnOnce() -> Option<String>) -> Option<Play> {
     let of = |l: &&crate::loops::KnownLoop| l.project.as_deref() == Some(project);
     if known.iter().filter(of).any(|l| l.running) {
         return None;
@@ -829,7 +831,7 @@ pub(super) fn play(project: &str, known: &[crate::loops::KnownLoop], homes: &[(S
         return Some(Play::Again(l.clone()));
     }
     let agent = homes.iter().find(|h| h.1.as_deref() == Some(project)).map(|h| h.0.clone());
-    Some(Play::New { cwd: folder?, agent })
+    Some(Play::New { cwd: folder()?, agent })
 }
 
 /// A path with the home directory as `~`.
@@ -868,17 +870,17 @@ mod tests {
         };
         let homes = vec![("alpha-claude".to_string(), Some("alpha".to_string()), "/w/alpha".to_string())];
         // One runs: no ▶.
-        assert_eq!(play("alpha", &[lp("main", None, true)], &homes, Some("/w/alpha".into())), None);
+        assert_eq!(play("alpha", &[lp("main", None, true)], &homes, || Some("/w/alpha".into())), None);
         // Stopped: the main one again, before a crew.
         let stopped = [lp("crew", Some("crew"), false), lp("main", None, false)];
-        assert!(matches!(play("alpha", &stopped, &homes, None), Some(Play::Again(l)) if l.name == "main"));
+        assert!(matches!(play("alpha", &stopped, &homes, || None), Some(Play::Again(l)) if l.name == "main"));
         // None known: a new one in its folder, for its agent.
         assert_eq!(
-            play("alpha", &[], &homes, Some("/w/alpha".into())),
+            play("alpha", &[], &homes, || Some("/w/alpha".into())),
             Some(Play::New { cwd: "/w/alpha".into(), agent: Some("alpha-claude".into()) })
         );
         // No folder to start in: no ▶.
-        assert_eq!(play("alpha", &[], &homes, None), None);
+        assert_eq!(play("alpha", &[], &homes, || None), None);
     }
 
     #[test]
