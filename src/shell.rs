@@ -5244,8 +5244,14 @@ impl Render for Shell {
         if self.dragged && !cx.has_active_drag() {
             self.end_resize(window, cx);
         }
-        let bar = self.agent_bar(cx);
-        let tabs = self.tab_bar(cx);
+        let bar = {
+            let _timing = crate::stats::Timing::new("agentbar");
+            self.agent_bar(cx)
+        };
+        let tabs = {
+            let _timing = crate::stats::Timing::new("tabs");
+            self.tab_bar(cx)
+        };
         let ended = self.ended_shown().map(|e| self.ended_view(e, cx));
         // A session of the hub shown: its page, in the terminal's place.
         let on_hub = self.hub_agent_shown().map(|hub| self.hub_view(hub));
@@ -5319,7 +5325,10 @@ impl Render for Shell {
                 .occlude()
                 .flex()
                 .shadow_lg()
-                .child(self.sidebar(self.sidebar_width(window), cx))
+                .child({
+                    let _timing = crate::stats::Timing::new("sidebar");
+                    self.sidebar(self.sidebar_width(window), cx)
+                })
                 .child(self.edge(Side::Left, cx))
         });
         let left = {

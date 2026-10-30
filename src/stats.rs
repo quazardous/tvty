@@ -1,4 +1,6 @@
-//! Rendering measurements, on when `$TVTY_STATS` names a file to append to:
+//! Rendering measurements, in development builds only (`stats_off.rs` stands
+//! in a release), on when `$TVTY_STATS` names a file to append to, or from
+//! `tvty inspect stats on|off` on the tvty that runs:
 //! - `echo <ms>`: from a keystroke sent to the PTY to the first frame painted
 //!   after the PTY answered;
 //! - `stream <frames> fps <wakeups> wakeups, prepaint max <ms>`: every second the PTY talked,
@@ -9,12 +11,17 @@
 //!   before the size was sent (the settle while a side is dragged);
 //! - `cards <n> max <ms>`: every second cards were drawn (the slider, the
 //!   gallery), the most any one frame spent preparing them all;
-//! - `window <n> frames, max <ms>, total <ms>`: every second the window was
-//!   drawn, from the shell's render to its last paint (views, layout and
-//!   paint of everything but the overlays drawn after).
+//! - `window <n> frames, p50 <ms>, p95 <ms>, max <ms>, total <ms>`: every
+//!   second the window was drawn, from the shell's render to its last paint
+//!   (views, layout and paint of everything but the overlays drawn after),
+//!   then the slowest of each part: the views' renders (`shell`, and inside
+//!   it `sidebar`, `tabs`, `agentbar`; `panel`, `terminal`), `tree`,
+//!   `layout+prepaint`, `paint`.
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex};
 use std::time::Instant;
 
@@ -38,6 +45,8 @@ struct State {
     window_frames: u32,
     window_max: f64,
     window_total: f64,
+    /// This second's frames, for their median and 95th percentile.
+    window_all: Vec<f64>,
     window_second: Instant,
     /// The views' renders this second: name, how many, the slowest.
     parts: Vec<(&'static str, u32, f64)>,
@@ -46,10 +55,18 @@ struct State {
     probe_prepaint: Option<Instant>,
 }
 
-static STATE: LazyLock<Option<Mutex<State>>> = LazyLock::new(|| {
-    let path = std::env::var("TVTY_STATS").ok().filter(|p| !p.is_empty())?;
+/// Whether anything is measured: a frame's many calls cost a load when not.
+static ON: AtomicBool = AtomicBool::new(false);
+
+static STATE: LazyLock<Mutex<Option<State>>> = LazyLock::new(|| {
+    let state = std::env::var("TVTY_STATS").ok().filter(|p| !p.is_empty()).and_then(|path| opened(Path::new(&path)));
+    ON.store(state.is_some(), Ordering::Relaxed);
+    Mutex::new(state)
+});
+
+fn opened(path: &Path) -> Option<State> {
     let file = OpenOptions::new().create(true).append(true).open(path).ok()?;
-    Some(Mutex::new(State {
+    Some(State {
         file,
         key: None,
         reflow: None,
@@ -64,18 +81,47 @@ static STATE: LazyLock<Option<Mutex<State>>> = LazyLock::new(|| {
         window_frames: 0,
         window_max: 0.,
         window_total: 0.,
+        window_all: Vec::new(),
         window_second: Instant::now(),
         parts: Vec::new(),
         probe_layout: None,
         probe_prepaint: None,
-    }))
-});
+    })
+}
+
+/// Reads `$TVTY_STATS`, at start.
+pub fn init() {
+    LazyLock::force(&STATE);
+}
+
+/// Starts measuring into `path`, or stops (`None`), on the tvty that runs.
+/// Whether it is measuring now.
+pub fn set(path: Option<&Path>) -> bool {
+    let state = path.and_then(opened);
+    let on = state.is_some();
+    if let Ok(mut current) = STATE.lock() {
+        *current = state;
+    }
+    ON.store(on, Ordering::Relaxed);
+    on
+}
 
 fn with(f: impl FnOnce(&mut State)) {
-    if let Some(state) = STATE.as_ref() {
-        if let Ok(mut state) = state.lock() {
-            f(&mut state);
+    if !ON.load(Ordering::Relaxed) {
+        return;
+    }
+    if let Ok(mut state) = STATE.lock() {
+        if let Some(state) = state.as_mut() {
+            f(state);
         }
+    }
+}
+
+/// The value at `share` (0 to 1) of `sorted`.
+fn percentile(sorted: &[f64], share: f64) -> f64 {
+    match sorted.len() {
+        0 => 0.,
+        n => sorted[((n - 1) as f64 * share).round() as usize],
     }
 }
 
@@ -186,13 +232,20 @@ pub fn window_painted() {
         s.window_frames += 1;
         s.window_max = s.window_max.max(ms);
         s.window_total += ms;
+        s.window_all.push(ms);
         if s.window_second.elapsed().as_secs_f64() >= 1. {
             let parts: String = s.parts.iter().map(|(n, c, m)| format!(", {n} {c}× max {m:.1} ms")).collect();
+            s.window_all.sort_by(f64::total_cmp);
             let _ = writeln!(
                 s.file,
-                "window {} frames, max {:.1} ms, total {:.1} ms{parts}",
-                s.window_frames, s.window_max, s.window_total
+                "window {} frames, p50 {:.1} ms, p95 {:.1} ms, max {:.1} ms, total {:.1} ms{parts}",
+                s.window_frames,
+                percentile(&s.window_all, 0.5),
+                percentile(&s.window_all, 0.95),
+                s.window_max,
+                s.window_total
             );
+            s.window_all.clear();
             s.parts.clear();
             s.window_frames = 0;
             s.window_max = 0.;
@@ -200,6 +253,11 @@ pub fn window_painted() {
             s.window_second = Instant::now();
         }
     });
+}
+
+/// The probe, for the window's last child.
+pub fn probe() -> Option<Probe> {
+    Some(Probe)
 }
 
 /// An element that paints nothing and tells [`window_painted`]: laid last,
@@ -289,5 +347,19 @@ impl Timing {
 impl Drop for Timing {
     fn drop(&mut self) {
         rendered(self.0, self.1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::percentile;
+
+    #[test]
+    fn percentiles_read_a_sorted_list() {
+        assert_eq!(percentile(&[], 0.5), 0.);
+        assert_eq!(percentile(&[3.], 0.95), 3.);
+        let ms: Vec<f64> = (1..=100).map(f64::from).collect();
+        assert_eq!(percentile(&ms, 0.5), 51.);
+        assert_eq!(percentile(&ms, 0.95), 95.);
     }
 }

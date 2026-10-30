@@ -30,6 +30,16 @@ jobs:
         run: cargo build --locked --workspace
       - name: Tests
         run: cargo test --locked --workspace
+      # The render debug stays out of a release: not its code, not its names.
+      - name: A release without the render debug
+        run: |
+          cargo build --locked --release
+          for name in TVTY_STATS TVTY_DEBUG_CONTROL; do
+            if grep -aq "$name" target/release/tvty; then
+              echo "$name is in the release binary" >&2
+              exit 1
+            fi
+          done
       # How far each language goes, and how much of the interface is
       # translatable, in the job's summary. Fails only on a real fault (a
       # file that does not read, a word asked for that English has not).

@@ -41,6 +41,10 @@ mod sessions;
 mod settings;
 mod shell;
 mod sidecol;
+#[cfg(any(debug_assertions, feature = "render-debug"))]
+mod stats;
+#[cfg(not(any(debug_assertions, feature = "render-debug")))]
+#[path = "stats_off.rs"]
 mod stats;
 mod status;
 mod terminal;
@@ -82,6 +86,7 @@ fn main() {
         let args: Vec<String> = std::env::args().skip(2).collect();
         std::process::exit(control::inspect(&args));
     }
+    stats::init();
     // `tvty i18n [LANG] [--markdown]`: how far each language goes, said and done.
     if std::env::args().nth(1).as_deref() == Some("i18n") {
         let args: Vec<String> = std::env::args().skip(2).collect();
@@ -210,6 +215,6 @@ impl Render for Frame {
             // shell's own render is cheap, and the cached views inside it —
             // the terminal, the panel — are reused unless they changed.
             .child(self.0.clone())
-            .child(div().absolute().child(stats::Probe))
+            .child(div().absolute().children(stats::probe()))
     }
 }

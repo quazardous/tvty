@@ -405,10 +405,31 @@ With `TVTY_STATS=<file>` (set in the wbox config, to
   talked. The second is a full second: a burst shorter than that reads low,
   so measure on a sustained stream (`tvty-flood`).
 
-- `window <n> frames, max <ms>, total <ms>, <view> <n>× max <ms>…` — each
-  second the window was drawn: every frame, from the frame view's render to
-  its last paint, then how often each view rendered and the phases (`tree`,
-  `layout+prepaint`, `paint`).
+- `window <n> frames, p50 <ms>, p95 <ms>, max <ms>, total <ms>, <view> <n>×
+  max <ms>…` — each second the window was drawn: every frame, from the frame
+  view's render to its last paint, with their median and 95th percentile; then
+  how often each view rendered (`shell`, and inside it `sidebar`, `tabs`,
+  `agentbar`; `panel`; `terminal`) and the phases (`tree`, `layout+prepaint`,
+  `paint`).
+
+**On a tvty that runs:** `tvty inspect stats on` starts measuring into
+`tvty-stats.log` in its state directory, without a restart, and `tvty inspect
+stats off` stops.
+
+**None of this is in a release.** The measures, `TVTY_STATS`, the debug control
+and the elements' marks are compiled only in development builds
+(`debug_assertions`) or with the `render-debug` feature; CI checks the release
+binary for those names. `tvty inspect` still reads `state` and `focus` in a
+release, not the elements.
+
+**Timings in a test tvty overstate the lists:** with the debug control on (as
+`scripts/test-env` sets it), each named element carries a canvas. Measure with
+it off, `TVTY_DEBUG_CONTROL= ` before sourcing `scripts/test-env`, for what a
+real tvty costs; the debug control then does not answer, so look with `shot`.
+
+**A profile**, GPUI's layout included: `cargo install samply`, then `samply
+record -p <pid>` on the tvty while the gesture runs. It needs
+`kernel.perf_event_paranoid` at 1 or less.
 
 A board the size of a real one: `scripts/fake-aiball-load.py
 $PWD/dev/fake-aiball/home/sock 300` files 300 tickets on the throwaway

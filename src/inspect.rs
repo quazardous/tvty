@@ -4,10 +4,13 @@
 //! control is on (`TVTY_DEBUG_CONTROL`): off, nothing is recorded.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+#[cfg(any(debug_assertions, feature = "render-debug"))]
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use gpui_kit::*;
 
+#[cfg(any(debug_assertions, feature = "render-debug"))]
 static ON: AtomicBool = AtomicBool::new(false);
 static FRAME: AtomicU64 = AtomicU64::new(0);
 /// Each element seen: its id, where it was painted, in which frame, and
@@ -45,13 +48,21 @@ pub fn still_animating() -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// Turns the recording on, once, at start.
+/// Turns the recording on, once, at start. Not in a release build: the marks
+/// (a canvas per named element) are not in it.
+#[cfg(any(debug_assertions, feature = "render-debug"))]
 pub fn enable() {
     ON.store(true, Ordering::Relaxed);
 }
 
+#[cfg(any(debug_assertions, feature = "render-debug"))]
 pub fn enabled() -> bool {
     ON.load(Ordering::Relaxed)
+}
+
+#[cfg(not(any(debug_assertions, feature = "render-debug")))]
+pub const fn enabled() -> bool {
+    false
 }
 
 /// A new frame is being drawn: what is not drawn again goes.

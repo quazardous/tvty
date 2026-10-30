@@ -115,6 +115,9 @@ async fn read(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWindowCon
     let cmd = command.get("cmd").and_then(Value::as_str).unwrap_or_default();
     match cmd {
         "state" | "focus" => {}
+        #[cfg(not(any(debug_assertions, feature = "render-debug")))]
+        "tree" | "query" | "where" | "text" => return json!({ "error": "the elements' marks are not in a release build" }),
+        #[cfg(any(debug_assertions, feature = "render-debug"))]
         "tree" | "query" | "where" | "text" => {
             if !inspect::enabled() {
                 inspect::enable();
@@ -123,9 +126,27 @@ async fn read(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWindowCon
                 }
             }
         }
-        other => return json!({ "error": format!("{other:?}: not here, which only reads (state, focus, tree, query, where, text)") }),
+        // Measures, and changes nothing else: the render debug's, not in a release.
+        #[cfg(any(debug_assertions, feature = "render-debug"))]
+        "stats" => return stats_switch(command),
+        #[cfg(not(any(debug_assertions, feature = "render-debug")))]
+        "stats" => return json!({ "error": "the render debug is not in a release build" }),
+        other => return json!({ "error": format!("{other:?}: not here, which only reads (state, focus, tree, query, where, text, stats)") }),
     }
     carry_out(command, this, cx).await
+}
+
+/// `stats on|off`: the measures into `tvty-stats.log` beside the state, or stopped.
+#[cfg(any(debug_assertions, feature = "render-debug"))]
+fn stats_switch(command: &Value) -> Value {
+    let on = command.get("id").and_then(Value::as_str) != Some("off");
+    let path = crate::config::dir(tvty_config::Place::State).map(|dir| dir.join("tvty-stats.log"));
+    let wanted = if on { path.as_deref() } else { None };
+    let measuring = crate::stats::set(wanted);
+    if on && !measuring {
+        return json!({ "error": "the measures' file could not be opened" });
+    }
+    json!({ "measuring": measuring, "file": path.filter(|_| measuring).map(|p| p.display().to_string()) })
 }
 
 async fn carry_out(command: &Value, this: &WeakEntity<Shell>, cx: &mut AsyncWindowContext) -> Value {

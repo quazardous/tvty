@@ -45,6 +45,7 @@ fn over_tcp() -> bool {
 
 /// Where the control waits: a socket where there are Unix sockets, else
 /// the file saying the TCP port and its secret.
+#[cfg(any(debug_assertions, feature = "render-debug"))]
 pub fn rendezvous() -> Option<PathBuf> {
     at("tvty-control")
 }
@@ -61,15 +62,18 @@ fn at(name: &str) -> Option<PathBuf> {
 
 /// Opens the control when `TVTY_DEBUG_CONTROL` asks for it: the requests,
 /// to carry out.
+#[cfg(any(debug_assertions, feature = "render-debug"))]
 pub fn start() -> Option<UnboundedReceiver<Request>> {
-    // Never in a release build: it drives the window and fakes failures.
-    if !cfg!(debug_assertions) {
-        return None;
-    }
     std::env::var_os("TVTY_DEBUG_CONTROL").filter(|v| !v.is_empty())?;
     crate::inspect::enable();
     let path = rendezvous()?;
     opened(&path, true)
+}
+
+/// Never in a release build: it drives the window and fakes failures.
+#[cfg(not(any(debug_assertions, feature = "render-debug")))]
+pub fn start() -> Option<UnboundedReceiver<Request>> {
+    None
 }
 
 /// Opens the inspection, in every tvty, the user's too: what it shows and
