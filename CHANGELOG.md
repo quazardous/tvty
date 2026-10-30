@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- At start, a terminal that is not Claude's, offered for reopening, no longer shows the hold mark of a loop.
 - The agent bar's config dir popup stays within the window when a dir serves many projects: three named, the others counted, all of them in its tip.
 
 ## [0.18.0-beta.1] - 2026-10-29

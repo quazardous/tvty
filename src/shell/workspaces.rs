@@ -642,7 +642,10 @@ impl Shell {
                 };
                 // Restarting: its mark turns its hold (kept by aiball), the
                 // one it restarts in.
-                let restart_hold = (matches!(picker.what, PickFor::Restart) && !row.fixed).then(|| (row.agent.clone(), row.now == Some(Mode::Stop)));
+                // A shell has no hold: no mark, no button, its room kept.
+                let shell_row = row.shell.is_some();
+                let restart_hold =
+                    (matches!(picker.what, PickFor::Restart) && !row.fixed && !shell_row).then(|| (row.agent.clone(), row.now == Some(Mode::Stop)));
                 let mark = div()
                     .named(SharedString::from(format!("pick-hold-{}", row.agent)))
                     .flex_none()
@@ -656,7 +659,7 @@ impl Shell {
                     // the mark a button, with nothing moving.
                     .border_1()
                     .border_color(gpui::transparent_black())
-                    .child(crate::icons::loop_glyph(glyph, colour, 9.))
+                    .when(!shell_row, |d| d.child(crate::icons::loop_glyph(glyph, colour, 9.)))
                     .when_some(restart_hold, |d, (agent, held)| {
                         d.cursor_pointer()
                             .hover(|d| d.bg(p().active).border_color(p().warning))
