@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.0-beta.1] - 2026-10-30
+
 ### Added
 
 - A project with no Claude session running has a ▶ in the left panel, beside its >_: one click starts Claude Code, its stopped loop again or a new one in its folder.
