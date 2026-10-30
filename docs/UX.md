@@ -94,7 +94,12 @@ The sessions list (the left panel's "Sessions" tab, ‹ folds it) has three fold
 each with its count, like the ticket list's bands (one component,
 `src/accordion.rs`: ▾/▸ and a click, each section scrolls on its own and
 they share the height — **dragging a title** moves the border with the
-section above, its least height kept; the heights are kept with the layout,
+section above and as few sections as can be: up, those above give way (the
+nearest first, each down to its least height) and the one just below grows
+by as much; down, those below give way the same way, then the last is
+pushed into the room left under it and gives way too, and the title stops
+only once all are at their least; **Ctrl held**, the sections below follow
+as a block, their heights kept; the heights are kept with the layout,
 and a double click on a title gives the list its shares back): **live** (the sessions that run, by project),
 **idle** (the loops this machine knows, as aiball lists them
 (`loop.list`), that are stopped: ▶ start runs one again where it worked, for
