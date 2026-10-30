@@ -17,13 +17,14 @@ All notable changes to this project will be documented in this file.
 >   has a public link — they're noise otherwise. Mention the change,
 >   not the ticket.
 > - **Version bump = SemVer**: any `### Added` entry is at least
->   MINOR; `### Fixed` - An image inside a sentence opens in the viewer with a click: it is drawn as a thumbnail under its line, not as a tiny picture in the text.
-alone is PATCH; breaking change is MAJOR.
+>   MINOR; `### Fixed` alone is PATCH; breaking change is MAJOR.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.20.0-beta.1] - 2026-10-30
 
 ### Added
 
@@ -36,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- An image inside a sentence opens in the viewer with a click: it is drawn as a thumbnail under its line, not as a tiny picture in the text.
 - Under a folded section, dragging a title resizes the first open section above, as dragging the folded title does, instead of moving the sections below.
 - Folding or unfolding a section leaves its title where it is.
 - Dragging a section's title no longer redraws the whole window at each move.
