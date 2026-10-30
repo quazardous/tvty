@@ -58,12 +58,6 @@ pub fn image_snippet(before: &str, after: &str, url: &str) -> String {
     format!("{lead}![pasted]({url}){tail}")
 }
 
-/// What a quoted question adds at the end of `text`.
-pub fn quote_block(text: &str, question: &str) -> String {
-    let lead = if text.is_empty() || text.ends_with('\n') { "" } else { "\n\n" };
-    format!("{lead}> {question}\n\n")
-}
-
 /// An image on the clipboard: its bytes, its content type, a file name.
 pub fn clipboard_image(cx: &App) -> Option<(Vec<u8>, String, String)> {
     let image = cx.read_from_clipboard()?.into_entries().find_map(|entry| match entry {
@@ -104,7 +98,7 @@ mod preview_tests {
 
 #[cfg(test)]
 mod tests {
-    use super::{image_snippet, mention_start, quote_block, typed_mention};
+    use super::{image_snippet, mention_start, typed_mention};
 
     #[test]
     fn a_mention_is_the_word_before_the_cursor() {
@@ -125,9 +119,4 @@ mod tests {
         assert_eq!(image_snippet("look", " more", "/u/a.png"), "\n![pasted](/u/a.png)\n");
     }
 
-    #[test]
-    fn a_quote_starts_a_paragraph() {
-        assert_eq!(quote_block("", "Why?"), "> Why?\n\n");
-        assert_eq!(quote_block("Sure", "Why?"), "\n\n> Why?\n\n");
-    }
 }

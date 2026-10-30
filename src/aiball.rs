@@ -1338,11 +1338,6 @@ impl Aiball {
         Ok(answer.get("cancelled").and_then(Value::as_bool))
     }
 
-    /// Marks a question (`- [ ]` in a comment) answered by a comment.
-    pub fn answer_question(&self, message: u64, question: &str, answered_in: u64) -> anyhow::Result<()> {
-        self.rpc_do("message.answer_question", json!({ "id": message, "qid": question, "answered_in": answered_in }))
-    }
-
     /// Snoozes a ticket until `until` (ISO 8601), or wakes it (`None`).
     pub fn snooze(&self, ticket: u64, until: Option<&str>) -> anyhow::Result<()> {
         match until {

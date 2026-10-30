@@ -23,7 +23,6 @@ use crate::ui::ticketref;
 use crate::ui::ticket_text::{TicketText, TicketTextEvent};
 use crate::rowstate::{self, Band, Glyph, RowState, Stripe, Turn};
 use crate::thread::{self as reading, DecisionState, Entry, Shape};
-use crate::thread;
 use crate::composer;
 use crate::icons::{self, Icon};
 use crate::tip::Tip as _;
@@ -83,8 +82,6 @@ struct Detail {
     unfolded: HashSet<u64>,
     /// The thread's scroll: it opens on its latest word, next to the reply.
     scroll: ScrollHandle,
-    /// Questions the reply answers: (message, question id).
-    answers: Vec<(u64, String)>,
     /// The next reply notifies nobody.
     /// The next reply goes without notifying anyone.
     quiet: bool,
@@ -788,7 +785,6 @@ impl TicketPanel {
             busy: false,
             unfolded: HashSet::new(),
             scroll: ScrollHandle::new(),
-            answers: Vec::new(),
             quiet: false,
             menu: None,
         });
@@ -966,7 +962,7 @@ impl TicketPanel {
             return;
         };
         let ticket = detail.ticket;
-        let (way, answers) = (ReplyWay { keep, quiet: detail.quiet }, detail.answers.clone());
+        let way = ReplyWay { keep, quiet: detail.quiet };
         // The reply's words, in its notification.
         let quote = crate::thread::excerpt(Some(&body), crate::live::EXCERPT);
         self.gesture(
@@ -974,11 +970,7 @@ impl TicketPanel {
             quote,
             move |aiball| {
                 if !body.is_empty() {
-                    let comment = aiball.reply(&project, ticket, &body, way)?;
-                    // The questions it answers get their box ticked.
-                    for (message, question) in &answers {
-                        aiball.answer_question(*message, question, comment)?;
-                    }
+                    aiball.reply(&project, ticket, &body, way)?;
                 }
                 then(aiball, &project, ticket)
             },
@@ -988,7 +980,6 @@ impl TicketPanel {
                     .update(cx, |reply, cx| reply.set_value("", window, cx));
                 panel.reply_preview = false;
                 if let Some(detail) = panel.detail.as_mut() {
-                    detail.answers.clear();
                     detail.quiet = false;
                     detail.menu = None;
                 }
@@ -1022,18 +1013,6 @@ impl TicketPanel {
             detail.menu = if detail.menu == Some(menu) { None } else { Some(menu) };
             cx.notify();
         }
-    }
-
-    /// Quotes a question into the reply; sending the reply ticks it.
-    fn answer(&mut self, message: u64, question: thread::Question, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(detail) = self.detail.as_mut() else { return };
-        if detail.answers.iter().any(|(m, q)| *m == message && *q == question.id) {
-            return;
-        }
-        detail.answers.push((message, question.id));
-        let text = self.reply.read(cx).value().to_string();
-        crate::field::append(&self.reply, &composer::quote_block(&text, &question.text), window, cx);
-        cx.notify();
     }
 
     /// The `@name` being typed at the end of the reply, if any.
@@ -1781,9 +1760,6 @@ impl TicketPanel {
                 .into_any_element()
             })
             .children(mentions)
-            .when(!detail.answers.is_empty(), |d| {
-                d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-sending-answers", count = detail.answers.len())))
-            })
             .child(
                 div()
                     .flex()
@@ -2316,26 +2292,6 @@ impl TicketPanel {
                 )
         });
         let commits = comment.commits();
-        // Its open questions: a click quotes one into the reply, which ticks
-        // it once sent.
-        let questions = thread::questions(comment.body.as_deref());
-        let mut questions_row = div().flex().flex_col().gap_1();
-        for question in &questions {
-            let queued = detail.answers.iter().any(|(m, q)| *m == comment.id && *q == question.id);
-            let (message, pick) = (comment.id, question.clone());
-            questions_row = questions_row.child(
-                buttons::chip(
-                    SharedString::from(format!("question-{}-{}", comment.id, question.id)),
-                    div().flex_none().text_color(p().accent).child(crate::t!(if queued { "tickets-in-reply" } else { "tickets-answer" })),
-                )
-                .gap_2()
-                .py_0p5()
-                .text_xs()
-                .chosen(queued)
-                    .child(div().flex_1().min_w_0().truncate().child(question.text.clone()))
-                    .on_click(cx.listener(move |panel, _, window, cx| panel.answer(message, pick.clone(), window, cx))),
-            );
-        }
         div()
             .flex()
             .flex_col()
@@ -2394,7 +2350,6 @@ impl TicketPanel {
                 _ => d,
             })
             .children(moderation)
-            .when(open && !questions.is_empty(), |d| d.child(questions_row))
             .when(open && !commits.is_empty(), |d| {
                 d.child(div().text_xs().text_color(p().muted).child(commits.join(" · ")))
             })

@@ -69,8 +69,3 @@ pub fn replace_range<T: Editable + Focusable>(input: &Entity<T>, range: Range<us
     window.focus(&focus, cx);
 }
 
-/// Adds `text` at the end; the cursor goes after it.
-pub fn append<T: Editable + Focusable>(input: &Entity<T>, text: &str, window: &mut Window, cx: &mut App) {
-    let end = input.read(cx).text().len();
-    replace_range(input, end..end, text, window, cx);
-}

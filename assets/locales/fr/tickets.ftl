@@ -170,8 +170,6 @@ tickets-rel-duplicates = doublon de
 tickets-rel-duplicated = a pour doublon
 tickets-rel-parent = parent de
 tickets-rel-child = enfant de
-tickets-answer = Répondre
-tickets-in-reply = ✓ dans la réponse
 tickets-step = étape
 tickets-resumes = reprend
 tickets-resumes-on = sur
@@ -201,10 +199,6 @@ tickets-editing = Modification de #{$id}
 tickets-edit-keys = ctrl+entrée enregistre · échap remet comme avant
 tickets-title-first = D'abord un titre.
 tickets-nothing-to-preview = Rien à prévisualiser pour l'instant.
-tickets-sending-answers = { $count ->
-    [one] La réponse répond à {$count} question.
-   *[other] La réponse répond à {$count} questions.
-}
 tickets-close = Fermer
 tickets-reopen = Rouvrir
 tickets-wake = Réveiller

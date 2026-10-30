@@ -163,8 +163,6 @@ tickets-rel-duplicates = Duplikat von
 tickets-rel-duplicated = dupliziert durch
 tickets-rel-parent = Eltern von
 tickets-rel-child = Kind von
-tickets-answer = Antworten
-tickets-in-reply = ✓ in der Antwort
 tickets-step = Schritt
 tickets-resumes = geht weiter
 tickets-resumes-on = bei
@@ -194,10 +192,6 @@ tickets-editing = Bearbeitung von #{$id}
 tickets-edit-keys = Strg+Enter speichert · Esc stellt es zurück
 tickets-title-first = Erst ein Titel.
 tickets-nothing-to-preview = Noch nichts in der Vorschau.
-tickets-sending-answers = { $count ->
-    [one] Das Senden beantwortet {$count} Frage.
-   *[other] Das Senden beantwortet {$count} Fragen.
-}
 tickets-close = Schließen
 tickets-reopen = Wieder öffnen
 tickets-wake = Wecken

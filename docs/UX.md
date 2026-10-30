@@ -442,8 +442,7 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   mentions, the comment says "keeps the hand"; Ctrl+Shift+Enter), where a plain
   Reply hands over; `@` at the end of the reply
   offers who to mention; an image pasted (Ctrl+V) goes to aiball's uploads
-  and its link into the reply; an open question (`- [ ]`) of a comment has
-  an Answer chip that quotes it into the reply, and sending ticks it.
+  and its link into the reply.
 - **Full screen** (⤢ more in the detail, or opening a ticket from the full
   list): the title across the top; on the left third what holds for the
   ticket as a whole — its state and chips, lifecycle and snooze, its fields
