@@ -516,6 +516,36 @@ impl Shell {
         })
     }
 
+    /// The ▶ of a project with no loop of this machine running: what it
+    /// starts. None while one runs, or with nothing to start it from.
+    pub(super) fn project_play(&self, project: &str) -> Option<Play> {
+        play(project, &self.board.known, &self.board.homes, self.project_folder(project))
+    }
+
+    /// The ▶ clicked: the loop started, as its row in "idle" or "+ session"
+    /// would; its session opens once it runs.
+    pub(super) fn play_project(&mut self, project: &str, cx: &mut Context<Self>) {
+        match self.project_play(project) {
+            Some(Play::Again(l)) => {
+                let start = Start {
+                    cwd: l.cwd.clone(),
+                    project: Some(project.to_string()),
+                    agent: l.agent().map(str::to_string),
+                    crew: l.role.as_deref() == Some("crew"),
+                    again: l.on_host().then(|| l.name.clone()),
+                    mode: None,
+                    resume: crate::loops::Resume::Ask,
+                };
+                self.start_loop(start, cx);
+            }
+            Some(Play::New { cwd, agent }) => {
+                let start = Start { cwd, project: Some(project.to_string()), agent, crew: false, again: None, mode: None, resume: crate::loops::Resume::Ask };
+                self.start_on_host(start, cx);
+            }
+            None => {}
+        }
+    }
+
     /// "+ session" on a project: opens its form, prefilled — the directory
     /// of a loop or an agent of the project, and its agent.
     pub(super) fn ask_new_session(&mut self, project: String, window: &mut Window, cx: &mut Context<Self>) {
@@ -780,6 +810,28 @@ impl Shell {
     }
 }
 
+/// What a project's ▶ starts: its stopped loop again, on its conversation
+/// (the main one's, else the first), or a new loop in its folder for its
+/// agent, as "+ session" would prefill it.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Play {
+    Again(crate::loops::KnownLoop),
+    New { cwd: String, agent: Option<String> },
+}
+
+/// The ▶ of `project`: none while a loop of it runs here.
+pub(super) fn play(project: &str, known: &[crate::loops::KnownLoop], homes: &[(String, Option<String>, String)], folder: Option<String>) -> Option<Play> {
+    let of = |l: &&crate::loops::KnownLoop| l.project.as_deref() == Some(project);
+    if known.iter().filter(of).any(|l| l.running) {
+        return None;
+    }
+    if let Some(l) = known.iter().filter(of).min_by_key(|l| l.role.is_some()) {
+        return Some(Play::Again(l.clone()));
+    }
+    let agent = homes.iter().find(|h| h.1.as_deref() == Some(project)).map(|h| h.0.clone());
+    Some(Play::New { cwd: folder?, agent })
+}
+
 /// A path with the home directory as `~`.
 pub(super) fn home_short(path: &str) -> String {
     match tvty_config::home() {
@@ -800,9 +852,34 @@ fn shorten(path: &str, home: &std::path::Path) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{one_per_agent, shorten};
+    use super::{Play, one_per_agent, play, shorten};
     use crate::loops::KnownLoop;
     use std::path::Path;
+
+    #[test]
+    fn play_starts_the_projects_stopped_loop_again_or_a_new_one() {
+        let lp = |name: &str, role: Option<&str>, running: bool| KnownLoop {
+            name: name.into(),
+            cwd: "/w/alpha".into(),
+            project: Some("alpha".into()),
+            role: role.map(Into::into),
+            running,
+            ..Default::default()
+        };
+        let homes = vec![("alpha-claude".to_string(), Some("alpha".to_string()), "/w/alpha".to_string())];
+        // One runs: no ▶.
+        assert_eq!(play("alpha", &[lp("main", None, true)], &homes, Some("/w/alpha".into())), None);
+        // Stopped: the main one again, before a crew.
+        let stopped = [lp("crew", Some("crew"), false), lp("main", None, false)];
+        assert!(matches!(play("alpha", &stopped, &homes, None), Some(Play::Again(l)) if l.name == "main"));
+        // None known: a new one in its folder, for its agent.
+        assert_eq!(
+            play("alpha", &[], &homes, Some("/w/alpha".into())),
+            Some(Play::New { cwd: "/w/alpha".into(), agent: Some("alpha-claude".into()) })
+        );
+        // No folder to start in: no ▶.
+        assert_eq!(play("alpha", &[], &homes, None), None);
+    }
 
     #[test]
     fn a_path_under_home_reads_from_tilde() {

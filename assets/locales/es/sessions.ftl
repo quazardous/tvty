@@ -160,3 +160,5 @@ sessions-user = con qué nombre actúa tvty en el tablero de aiball
 sessions-hold-held = retenido: su próximo arranque queda retenido hasta que lo sueltes; un clic lo deja correr solo
 sessions-hold-free = solo: su próximo arranque corre solo; un clic lo retiene hasta que lo sueltes
 sessions-hold-failed = retener o soltar {$agent}
+sessions-play-again = Reiniciar {$agent}, en su conversación
+sessions-play-new = Iniciar Claude Code en {$cwd}

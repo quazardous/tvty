@@ -4777,6 +4777,22 @@ impl Shell {
                             .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
                     )
                 })
+                // No loop of it runs here: ▶ starts one (its stopped one
+                // again, or a new one as "+ session" would).
+                .when_some(project.on_board.then(|| self.project_play(&project.name)).flatten(), |d, play| {
+                    let name = project.name.clone();
+                    let tip = match &play {
+                        loopstabs::Play::Again(l) => crate::t!("sessions-play-again", agent = l.agent().unwrap_or(&l.name).to_string()),
+                        loopstabs::Play::New { cwd, .. } => crate::t!("sessions-play-new", cwd = loopstabs::home_short(cwd)),
+                    };
+                    let busy = self.starting.is_some();
+                    d.child(
+                        buttons::link(SharedString::from(format!("play-{name}")), if busy { "…" } else { "▶" })
+                            .text_xs()
+                            .tip(tip)
+                            .when(!busy, |b| b.on_click(cx.listener(move |shell, _, _, cx| shell.play_project(&name, cx)))),
+                    )
+                })
                 // A plain shell in the project's folder, listed with it.
                 .when(project.on_board, |d| {
                     let name = project.name.clone();

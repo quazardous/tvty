@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A project with no Claude session running has a ▶ in the left panel, beside its >_: one click starts Claude Code, its stopped loop again or a new one in its folder.
+
 ### Fixed
 
 - At start, a terminal that is not Claude's, offered for reopening, no longer shows the hold mark of a loop.

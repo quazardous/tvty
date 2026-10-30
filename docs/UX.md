@@ -18,6 +18,12 @@ A new one gets its tooltip with it.
   goes with the project whose folder it **started** in (a `cd` later does
   not move it). "+ terminal" opens one in the home directory, listed under
   "terminals".
+- A project with no Claude loop of this machine running (only shells, or
+  its agents offline) has a **▶** before its `>_`: it starts Claude Code
+  with no form — its stopped loop again, on its conversation (the main
+  agent's first), else a new loop in its folder for its agent, as
+  "+ session" would prefill it. Its tip says which; the session opens once
+  it runs, and the ▶ goes while a loop of the project runs.
 - The projects carry the counters: the critical ticket, the decisions
   waiting for you, the unread — so a collapsed project still says it needs
   you. The critical ticket's red **!** opens it (the project's first, when

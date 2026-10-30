@@ -160,3 +160,5 @@ sessions-user = als wer tvty auf aiballs Board handelt
 sessions-hold-held = gehalten: sein nächster Start bleibt gehalten, bis du ihn loslässt; ein Klick lässt ihn allein laufen
 sessions-hold-free = allein: sein nächster Start läuft allein; ein Klick hält ihn, bis du ihn loslässt
 sessions-hold-failed = {$agent} halten oder loslassen
+sessions-play-again = {$agent} neu starten, auf seiner Unterhaltung
+sessions-play-new = Claude Code in {$cwd} starten

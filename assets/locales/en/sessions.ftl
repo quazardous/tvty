@@ -160,3 +160,5 @@ sessions-user = who tvty acts as on aiball's board
 sessions-hold-held = held: its next start is held until you let it go; a click lets it run on its own
 sessions-hold-free = on its own: its next start runs on its own; a click holds it until you let it go
 sessions-hold-failed = holding or letting go {$agent}
+sessions-play-again = Restart {$agent}, on its conversation
+sessions-play-new = Start Claude Code in {$cwd}
