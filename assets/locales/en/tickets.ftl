@@ -214,7 +214,13 @@ tickets-assign-to = Assign to
 tickets-no-agent = the project has no agent
 tickets-claim-assigns = {$agent} holds it by a claim: a click assigns it to them
 tickets-unassign-tip = unassign: takes it back from {$holder}; nobody holds it, it waits for whoever takes it
-tickets-without-notifying = without notifying
+tickets-reply-keep = Reply, keep the hand
+tickets-reply-quiet = Reply without notifying
+tickets-reply-keep-quiet = Reply, keep the hand, without notifying
+tickets-reply-ways-tip = Other ways to send it (ctrl+shift+enter: keep the hand)
+tickets-you-keep-the-hand = You keep the hand: no agent is on it until your next reply
+tickets-keeps-the-hand = keeps the hand
+tickets-keeps-the-hand-tip = Not done yet: this comment wakes no agent, except one it mentions
 tickets-reply = Reply
 
 ## The column of fields

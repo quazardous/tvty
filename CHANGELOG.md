@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- The ▾ of Reply sends a reply while keeping the hand (Ctrl+Shift+Enter): no agent is woken and the comment says so. "Without notifying" moved into this menu.
 - The usage arrow's setting has an Auto mode, now the default: each start shows the display last clicked to.
 - Ctrl held while dragging a section's title pulls the sections below as a block, their sizes kept.
 - A ticket whose last word is an agent's question, handing it back, shows a question mark in the lists: amber when the answer is yours, its tip saying whose.

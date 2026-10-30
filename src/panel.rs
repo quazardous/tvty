@@ -16,7 +16,7 @@ use gpui_kit::*;
 
 use crate::kernel::catalog::{self as catalogs, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
-use crate::aiball::{Aiball, Comment, Thread, TicketHeader, TicketRow};
+use crate::aiball::{Aiball, Comment, ReplyWay, Thread, TicketHeader, TicketRow};
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::fields;
 use crate::ui::ticketref;
@@ -86,10 +86,17 @@ struct Detail {
     /// Questions the reply answers: (message, question id).
     answers: Vec<(u64, String)>,
     /// The next reply notifies nobody.
-    quiet: bool,
     /// The short menus under the reply box: snooze, priority.
     menu: Option<Menu>,
 }
+
+/// The ways to send a reply, in the ▾ of Reply: for this send only.
+const REPLY_WAYS: [(&str, &str, ReplyWay); 4] = [
+    ("reply-plain", "tickets-reply", ReplyWay { keep: false, quiet: false }),
+    ("reply-keep", "tickets-reply-keep", ReplyWay { keep: true, quiet: false }),
+    ("reply-quiet", "tickets-reply-quiet", ReplyWay { keep: false, quiet: true }),
+    ("reply-keep-quiet", "tickets-reply-keep-quiet", ReplyWay { keep: true, quiet: true }),
+];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Menu {
@@ -97,6 +104,8 @@ enum Menu {
     Priority,
     /// Who it is assigned to: the project's agents.
     Assignee,
+    /// The other ways to send the reply.
+    Reply,
 }
 
 /// The fields chosen in a dropdown, full screen.
@@ -782,7 +791,6 @@ impl TicketPanel {
             unfolded: HashSet::new(),
             scroll: ScrollHandle::new(),
             answers: Vec::new(),
-            quiet: false,
             menu: None,
         });
         self.load(ticket, true, cx);
@@ -929,6 +937,18 @@ impl TicketPanel {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        self.act_with(what, ReplyWay::default(), then, window, cx);
+    }
+
+    /// As [`Self::act`], the reply going out `way`.
+    fn act_with(
+        &mut self,
+        what: &str,
+        way: ReplyWay,
+        then: impl FnOnce(&Aiball, &str, u64) -> anyhow::Result<()> + Send + 'static,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
         let body = self.reply.read(cx).value().trim().to_string();
         // What it says: the gesture, and the reply that carries its why.
         let what = match (what.is_empty(), body.is_empty()) {
@@ -947,7 +967,7 @@ impl TicketPanel {
             return;
         };
         let ticket = detail.ticket;
-        let (quiet, answers) = (detail.quiet, detail.answers.clone());
+        let answers = detail.answers.clone();
         // The reply's words, in its notification.
         let quote = crate::thread::excerpt(Some(&body), crate::live::EXCERPT);
         self.gesture(
@@ -955,7 +975,7 @@ impl TicketPanel {
             quote,
             move |aiball| {
                 if !body.is_empty() {
-                    let comment = aiball.reply(&project, ticket, &body, quiet)?;
+                    let comment = aiball.reply(&project, ticket, &body, way)?;
                     // The questions it answers get their box ticked.
                     for (message, question) in &answers {
                         aiball.answer_question(*message, question, comment)?;
@@ -970,7 +990,6 @@ impl TicketPanel {
                 panel.reply_preview = false;
                 if let Some(detail) = panel.detail.as_mut() {
                     detail.answers.clear();
-                    detail.quiet = false;
                     detail.menu = None;
                 }
             },
@@ -1077,11 +1096,11 @@ impl TicketPanel {
         self.act(&crate::t!(if closed { "tickets-did-closed" } else { "tickets-did-reopened" }), move |aiball, project, ticket| aiball.set_closed(project, ticket, closed), window, cx);
     }
 
-    fn send_reply(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+    fn send_reply(&mut self, way: ReplyWay, window: &mut Window, cx: &mut Context<Self>) {
         if self.reply.read(cx).value().trim().is_empty() {
             return;
         }
-        self.act("", |_, _, _| Ok(()), window, cx);
+        self.act_with("", way, |_, _, _| Ok(()), window, cx);
     }
 
     fn toggle_fold(&mut self, id: u64, cx: &mut Context<Self>) {
@@ -1535,6 +1554,7 @@ impl TicketPanel {
                 read.ticket_decision.clone(),
                 None,
                 false,
+                false,
                 has_talk.then_some(body_open),
                 &user,
                 cx,
@@ -1652,6 +1672,12 @@ impl TicketPanel {
                             .on_click(cx.listener(move |panel, _, window, cx| panel.snooze(Some(hours), window, cx)))
                     }),
                 ),
+                Menu::Reply => row.children(REPLY_WAYS.map(|(id, words, way)| {
+                    buttons::chip(id, crate::t!(words))
+                        .py_0p5()
+                        .text_xs()
+                        .on_click(cx.listener(move |panel, _, window, cx| panel.send_reply(way, window, cx)))
+                })),
                 Menu::Assignee => {
                     let mut row = row.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-assign-to")));
                     let own = self.catalog.as_ref().filter(|c| Some(&c.project) == self.project().as_ref()).map(|c| c.own.clone());
@@ -1694,7 +1720,6 @@ impl TicketPanel {
                 }
             }
         });
-        let quiet = detail.quiet;
         let actions = div()
             .named("ticket-actions")
             .flex()
@@ -1747,7 +1772,8 @@ impl TicketPanel {
                 crate::focusmode::on_hover(
                     div()
                         .key_context(crate::keymap::COMPOSER)
-                        .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(window, cx)))
+                        .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSend, window, cx| panel.send_reply(ReplyWay::default(), window, cx)))
+                        .on_action(cx.listener(|panel, _: &crate::keymap::ComposerSendKeep, window, cx| panel.send_reply(ReplyWay { keep: true, quiet: false }, window, cx)))
                         .child(Textarea::new(&self.reply)),
                     self.reply.read(cx).focus_handle(cx),
                 )
@@ -1792,26 +1818,21 @@ impl TicketPanel {
                     })
                     .child(div().flex_1())
                     .child(
-                        buttons::chip("quiet", crate::t!("tickets-without-notifying"))
-                            .py_0p5()
-                            .text_xs()
-                            .when(!quiet, |d| d.text_color(p().muted))
-                            .chosen(quiet)
-                            .on_click(cx.listener(|panel, _, _, cx| {
-                                if let Some(detail) = panel.detail.as_mut() {
-                                    detail.quiet = !detail.quiet;
-                                }
-                                cx.notify();
-                            })),
-                    )
-                    .child(
                         crate::tips::target(
                             "panel.reply",
                             buttons::primary("send", crate::t!("tickets-reply"))
                                 .loading(detail.busy)
-                                .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(window, cx))),
+                                .on_click(cx.listener(|panel, _, window, cx| panel.send_reply(ReplyWay::default(), window, cx))),
                         )
                         .flex_none(),
+                    )
+                    // Its ▾: the other ways to send, in the menu below.
+                    .child(
+                        div().named("send-ways").flex_none().ml(px(-2.)).tip(crate::t!("tickets-reply-ways-tip")).child(
+                            buttons::primary("send-ways-open", "▾")
+                                .disabled(detail.busy)
+                                .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Reply, cx))),
+                        ),
                     ),
             )
             // Under the buttons, where their ▾ points.
@@ -2308,6 +2329,7 @@ impl TicketPanel {
                         &comment.created_at,
                         entry.decision.clone(),
                         entry.step.map(|latest| (latest, comment.step_resume())),
+                        comment.keeps_the_hand() && comment.by_agent == user,
                         entry.pending,
                         foldable.then_some(open),
                         user,
@@ -2474,6 +2496,7 @@ impl TicketPanel {
         when: &str,
         decision: Option<(String, DecisionState)>,
         step: Option<(bool, (Option<String>, Option<u64>))>,
+        keeps: bool,
         pending: bool,
         fold: Option<bool>,
         user: &str,
@@ -2531,6 +2554,7 @@ impl TicketPanel {
                     },
                 )
             })
+            .when(keeps, |d| d.child(div().named(("keeps", id)).child(crate::t!("tickets-keeps-the-hand")).tip(crate::t!("tickets-keeps-the-hand-tip"))))
             .when(pending, |d| d.child(pill(crate::t!("tickets-to-moderate"), p().warning)))
             .when(fold.is_some(), |d| {
                 d.rounded_sm()

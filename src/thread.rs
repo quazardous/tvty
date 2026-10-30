@@ -344,12 +344,11 @@ pub fn sentence(thread: &Thread, reading: &Reading, row: Option<&RowState>, stal
         }
         return line;
     }
-    let last = thread
-        .comments
-        .iter()
-        .rev()
-        .find(|c| c.kind == "comment_added" && c.status != "rejected")
-        .map(|c| c.by_agent.as_str());
+    let last = thread.comments.iter().rev().find(|c| c.kind == "comment_added" && c.status != "rejected");
+    if last.is_some_and(|c| c.by_agent == user && c.keeps_the_hand()) && row.is_some_and(|r| r.turn == Turn::You) {
+        return crate::t!("tickets-you-keep-the-hand");
+    }
+    let last = last.map(|c| c.by_agent.as_str());
     match row.map(|r| r.turn) {
         Some(Turn::You) => match (last, holder.as_deref()) {
             (Some(speaker), _) if speaker != user => crate::t!("tickets-yours-answer", who = speaker),

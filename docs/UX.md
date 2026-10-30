@@ -433,8 +433,11 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   view it is in (Settings > Ticket list > Thread has both).
 - **The frequent gestures stay at hand** in the panel — a dev's round is
   read, decide or answer, next: a click on the priority chip changes it;
-  Snooze gives an hour, a day, three days, a week or a month (Wake when snoozed); "without
-  notifying" sends the next reply to nobody; `@` at the end of the reply
+  Snooze gives an hour, a day, three days, a week or a month (Wake when snoozed); the ▾ of
+  Reply sends this one reply otherwise: keeping the hand (no agent's turn, no
+  agent woken but one it mentions, the comment says "keeps the hand";
+  Ctrl+Shift+Enter), without notifying anyone, or both; a plain Reply hands
+  over and notifies; `@` at the end of the reply
   offers who to mention; an image pasted (Ctrl+V) goes to aiball's uploads
   and its link into the reply; an open question (`- [ ]`) of a comment has
   an Answer chip that quotes it into the reply, and sending ticks it.

@@ -881,6 +881,11 @@ impl Comment {
         (!summary.is_empty()).then(|| summary.to_string())
     }
 
+    /// Its author said it with `handback: false`: not done, nobody's turn yet.
+    pub fn keeps_the_hand(&self) -> bool {
+        meta_of(self.meta.as_deref()).and_then(|m| m.get("handback").and_then(Value::as_bool)) == Some(false)
+    }
+
     /// A step: `then: continue`.
     pub fn is_step(&self) -> bool {
         meta_of(self.meta.as_deref())
@@ -1108,20 +1113,9 @@ impl Aiball {
         self.rpc_do("ticket.step", json!({ "id": ticket }))
     }
 
-    /// Posts a comment; `quiet`: without notifying anyone (scope
-    /// internal). Answers the comment's id.
-    pub fn reply(&self, project: &str, ticket: u64, body: &str, quiet: bool) -> anyhow::Result<u64> {
-        let mut message = json!({
-            "project": project,
-            "kind": "comment_added",
-            "ticket_id": ticket,
-            "parent_id": ticket,
-            "body": body,
-        });
-        if quiet {
-            message["scope"] = json!("internal");
-        }
-        let answer: Value = self.rpc("message.post", message)?;
+    /// Posts a comment. Answers the comment's id.
+    pub fn reply(&self, project: &str, ticket: u64, body: &str, way: ReplyWay) -> anyhow::Result<u64> {
+        let answer: Value = self.rpc("message.post", reply_message(project, ticket, body, way))?;
         answer.get("id").and_then(Value::as_u64).context("the new comment has no id")
     }
 
@@ -1628,6 +1622,33 @@ pub struct NewTicket {
     pub level: String,
 }
 
+/// How a reply goes out; each send chooses, none is remembered.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ReplyWay {
+    /// The author keeps the hand: no agent's turn (`handback: false`).
+    pub keep: bool,
+    /// Without notifying anyone (scope internal).
+    pub quiet: bool,
+}
+
+fn reply_message(project: &str, ticket: u64, body: &str, way: ReplyWay) -> Value {
+    let mut message = json!({
+        "project": project,
+        "kind": "comment_added",
+        "ticket_id": ticket,
+        "parent_id": ticket,
+        "body": body,
+    });
+    if way.quiet {
+        message["scope"] = json!("internal");
+    }
+    // Only when kept: a plain answer says nothing of it, as it hands over.
+    if way.keep {
+        message["handback"] = json!(false);
+    }
+    message
+}
+
 /// The message that files `ticket` whole, labels included: aiball checks
 /// everything first and files it at once, or refuses it at once. The
 /// defaults (normal priority, default scope, a task) and empty fields left
@@ -2103,6 +2124,19 @@ mod said_tests {
 #[cfg(test)]
 mod critical_tests {
     use super::Critical;
+
+    #[test]
+    fn a_plain_reply_says_nothing_of_the_hand_and_a_kept_one_does() {
+        use super::{ReplyWay, reply_message};
+        use serde_json::json;
+        let message = |keep, quiet| reply_message("p", 3, "b", ReplyWay { keep, quiet });
+        let plain = message(false, false);
+        assert!(plain.get("handback").is_none() && plain.get("scope").is_none());
+        assert_eq!(message(true, false)["handback"], json!(false));
+        assert_eq!(message(false, true)["scope"], json!("internal"));
+        let both = message(true, true);
+        assert_eq!((&both["handback"], &both["scope"]), (&json!(false), &json!("internal")));
+    }
 
     #[test]
     fn a_critical_ticket_says_how_long_it_went_quiet() {

@@ -65,6 +65,7 @@ actions!(
         SendTab,
         SendBackTab,
         ComposerSend,
+        ComposerSendKeep,
         Quit,
     ]
 );
@@ -221,7 +222,10 @@ fn apply(cx: &mut App) {
     // Ctrl+Enter sends what a composer holds: bound over the kit's box, which
     // would put a new line in first (and after the window's Ctrl+Enter,
     // which stays the newest notification everywhere else).
-    cx.bind_keys([KeyBinding::new("ctrl-enter", ComposerSend, Some("Composer > Input"))]);
+    cx.bind_keys([
+        KeyBinding::new("ctrl-enter", ComposerSend, Some("Composer > Input")),
+        KeyBinding::new("ctrl-shift-enter", ComposerSendKeep, Some("Composer > Input")),
+    ]);
 }
 
 /// Binds the defaults and `keymap.toml` over them — once the kit has bound
