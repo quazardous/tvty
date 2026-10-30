@@ -11,6 +11,7 @@ tickets-none-open = Ningún ticket abierto.
 tickets-loading = Cargando…
 tickets-back = ← Tickets
 tickets-fold-panel = Plegar el panel de tickets
+tickets-unfold-panel = Desplegar el panel de tickets
 tickets-pinned = Fijado: el panel queda junto al terminal. Sin fijar: se superpone a él
 tickets-no-session = ninguna sesión abierta
 tickets-megaphone = La consigna permanente del proyecto y el foco de despertar

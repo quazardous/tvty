@@ -33,6 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The folded side strips say what a click does and its key in a tip.
 - The message to every agent closes once sent (Send, Send & hold, Release holds), what each loop did said in a notice; refused, it stays open with the error.
 
 ## [0.19.2-beta.1] - 2026-10-30

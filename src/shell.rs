@@ -195,6 +195,8 @@ pub struct Shell {
     pub(super) moves: HashMap<String, (String, std::time::Instant)>,
     /// The agent whose Claude is being restarted.
     restarting: Option<String>,
+    /// Each project's folder as the ▶ read it: found on disk, once per board.
+    play_folders: std::cell::RefCell<HashMap<String, Option<String>>>,
     /// The agent whose config dir popup is open, the dir asked for there
     /// (said before done), each folder's dir as last read, and the
     /// switches held until their loops are idle, by agent.
@@ -852,6 +854,7 @@ impl Shell {
             restart_asked: None,
             moves: HashMap::new(),
             restarting: None,
+            play_folders: Default::default(),
             config_menu: None,
             config_asked: None,
             config_dirs: HashMap::new(),
@@ -1128,6 +1131,7 @@ impl Shell {
         }
         if self.board != board {
             self.board = board;
+            self.play_folders.borrow_mut().clear();
             // The board's tickets title their references at once.
             crate::ui::ticketref::learn(cx, self.board.tickets.values().flatten());
             self.update_needs(cx);
@@ -4517,6 +4521,11 @@ impl Shell {
             .border_color(p().border)
             .cursor_pointer()
             .hover(|d| d.bg(p().surface.blend(p().active)))
+            // What a click does, and its key; a mark's own tip says more.
+            .tip(match side {
+                Side::Left => buttons::hint(cx, &crate::t!("sessions-unfold"), "sidebar.toggle"),
+                Side::Right => buttons::hint(cx, &crate::t!("tickets-unfold-panel"), "panel.toggle"),
+            })
             .children(marks.into_iter().enumerate().map(|(i, mark)| {
                 let shape = match mark.glyph {
                     Some(glyph) => crate::icons::loop_glyph(glyph, mark.colour, 7.),

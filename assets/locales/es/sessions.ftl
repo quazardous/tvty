@@ -15,6 +15,7 @@ sessions-new-project-tip = una carpeta se vuelve proyecto de aiball (aiball init
 sessions-new-terminal-tip = un terminal propio, que sobrevive a tvty
 sessions-filter = Filtrar…  ctrl+shift+f
 sessions-fold = Plegar la lista de sesiones
+sessions-unfold = Desplegar la lista de sesiones
 
 ## Sus grupos
 

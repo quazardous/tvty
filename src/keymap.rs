@@ -176,6 +176,29 @@ pub fn current(cx: &App) -> Keymap {
     keymap
 }
 
+thread_local! {
+    /// The first key of each command asked, for the file as it last was: a
+    /// tooltip asks on every frame, and a keymap is hundreds of allocations.
+    static FIRST_KEYS: std::cell::RefCell<(Option<Shortcuts>, std::collections::HashMap<String, Option<String>>)> = Default::default();
+}
+
+/// The first key of `command`, said, in the keymap in force.
+pub fn first_key(cx: &App, command: &str) -> Option<String> {
+    let file = config::get::<Shortcuts>(cx);
+    FIRST_KEYS.with(|cache| {
+        let mut cache = cache.borrow_mut();
+        if cache.0.as_ref() != Some(file) {
+            *cache = (Some(file.clone()), Default::default());
+        }
+        if let Some(key) = cache.1.get(command) {
+            return key.clone();
+        }
+        let key = current(cx).keys_of(command).first().map(|k| k.pretty());
+        cache.1.insert(command.to_string(), key.clone());
+        key
+    })
+}
+
 /// The keymap with its defaults only.
 #[cfg(test)]
 pub fn current_defaults() -> Keymap {

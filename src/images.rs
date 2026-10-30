@@ -33,7 +33,8 @@ pub struct Picture {
     /// Where aiball keeps it on this machine, if it is here.
     pub path: Option<PathBuf>,
     /// The same, as a `data:` URL, for an image inside a sentence.
-    data_url: String,
+    /// Shared: a picture is cloned on every frame its text shows.
+    data_url: Arc<str>,
 }
 
 impl std::fmt::Debug for Picture {
@@ -84,7 +85,7 @@ pub fn inline(thread: &mut Thread, aiball: &Aiball, cache: &Cache) {
             entry(&reference);
         }
         *text = rewrite(text, &|reference| match entry(reference) {
-            Entry::Loaded(p) => Link::Data(p.data_url),
+            Entry::Loaded(p) => Link::Data(p.data_url.to_string()),
             Entry::TooLarge => Link::TooLarge,
             Entry::Missing => Link::Missing,
         });
@@ -136,7 +137,7 @@ fn read(reference: &str, attachment: Option<&Attachment>, aiball: &Aiball) -> En
         width,
         height,
         path,
-        data_url,
+        data_url: data_url.into(),
     })
 }
 
@@ -213,7 +214,9 @@ pub enum Segment {
 /// A text cut into markdown and the images alone on their line, read from
 /// `cache` (see [`inline`]).
 pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
-    let known = cache.lock().map(|c| c.clone()).unwrap_or_default();
+    // Read in place: this runs on every frame, and the cache holds the images.
+    let locked = cache.lock();
+    let known = locked.as_deref().ok();
     let mut out = Vec::new();
     let mut prose = String::new();
     for line in text.lines() {
@@ -231,7 +234,7 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
                 prose.clear();
                 let mut row = Vec::new();
                 for (alt, reference) in images {
-                    match known.get(&reference) {
+                    match known.and_then(|k| k.get(&reference)) {
                         Some(Entry::Loaded(p)) => row.push(Picture { alt, ..p.clone() }),
                         Some(Entry::TooLarge) => out.push(Segment::Note(crate::t!("misc-image-too-large"))),
                         _ => out.push(Segment::Note(crate::t!("misc-image-unavailable"))),
@@ -311,9 +314,10 @@ pub fn load(text: &str, aiball: &Aiball, cache: &Cache) -> bool {
 /// URLs from `cache` — and, with `all`, those alone on their line too, for a
 /// view that does not draw them itself. One not read yet says so.
 pub fn preview(text: &str, cache: &Cache, all: bool) -> String {
-    let known = cache.lock().map(|c| c.clone()).unwrap_or_default();
-    let link = |reference: &str| match known.get(reference) {
-        Some(Entry::Loaded(p)) => Link::Data(p.data_url.clone()),
+    let locked = cache.lock();
+    let known = locked.as_deref().ok();
+    let link = |reference: &str| match known.and_then(|k| k.get(reference)) {
+        Some(Entry::Loaded(p)) => Link::Data(p.data_url.to_string()),
         Some(Entry::TooLarge) => Link::TooLarge,
         _ => Link::Missing,
     };
@@ -438,7 +442,7 @@ mod tests {
             width: 1,
             height: 1,
             path: None,
-            data_url: String::new(),
+            data_url: "".into(),
         };
         let cache = Arc::new(Mutex::new(std::collections::HashMap::from([("/uploads/a.png".to_string(), Entry::Loaded(picture))])));
         let parts = segments("> ![shot](/uploads/a.png)", &cache);

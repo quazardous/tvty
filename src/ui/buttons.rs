@@ -171,8 +171,8 @@ pub fn separator() -> Div {
 /// `text`, and the first key of `command` as the keymap in force says it:
 /// an icon's tooltip.
 pub fn hint(cx: &App, text: &str, command: &str) -> String {
-    match crate::keymap::current(cx).keys_of(command).first() {
-        Some(key) => format!("{text} · {}", key.pretty()),
+    match crate::keymap::first_key(cx, command) {
+        Some(key) => format!("{text} · {key}"),
         None => text.to_string(),
     }
 }

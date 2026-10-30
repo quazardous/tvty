@@ -11,6 +11,7 @@ tickets-none-open = Aucun ticket ouvert.
 tickets-loading = Chargement…
 tickets-back = ← Tickets
 tickets-fold-panel = Replier le panneau des tickets
+tickets-unfold-panel = Déplier le panneau des tickets
 tickets-pinned = Épinglé : le panneau reste à côté du terminal. Non épinglé : il passe par-dessus
 tickets-no-session = aucune session ouverte
 tickets-megaphone = La consigne permanente du projet et le focus de réveil

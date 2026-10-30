@@ -230,6 +230,11 @@ pub fn filter_words(text: &str) -> Vec<String> {
 /// Whether every word is found in one field or another of a row (its
 /// project, its agent, its name, its folder); no word: every row.
 pub fn found(words: &[String], fields: &[&str]) -> bool {
+    // Asked for every row of every list on every frame: nothing to allocate
+    // with no filter.
+    if words.is_empty() {
+        return true;
+    }
     let haystack = fields.iter().map(|f| f.to_lowercase()).collect::<Vec<_>>().join("\n");
     words.iter().all(|w| haystack.contains(w.as_str()))
 }

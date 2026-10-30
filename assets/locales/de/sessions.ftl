@@ -15,6 +15,7 @@ sessions-new-project-tip = ein Ordner wird zum aiball-Projekt (aiball init), dan
 sessions-new-terminal-tip = ein eigenes Terminal, das tvty überdauert
 sessions-filter = Filtern…  ctrl+shift+f
 sessions-fold = Die Liste der Sitzungen einklappen
+sessions-unfold = Sitzungsliste aufklappen
 
 ## Ihre Gruppen
 

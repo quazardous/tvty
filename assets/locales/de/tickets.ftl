@@ -11,6 +11,7 @@ tickets-none-open = Kein offenes Ticket.
 tickets-loading = Wird geladen…
 tickets-back = ← Tickets
 tickets-fold-panel = Das Ticket-Panel einklappen
+tickets-unfold-panel = Ticket-Bereich aufklappen
 tickets-pinned = Angeheftet: Das Panel bleibt neben dem Terminal. Nicht angeheftet: Es liegt darüber
 tickets-no-session = keine Sitzung offen
 tickets-megaphone = Die ständige Anweisung des Projekts und der Weck-Fokus

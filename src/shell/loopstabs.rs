@@ -53,6 +53,9 @@ pub(super) struct NewSession {
     /// claude-loop's tmux.
     on_host: bool,
     busy: bool,
+    /// Whether the directory typed is one, checked as it is typed (not on
+    /// every frame: a stat).
+    exists: bool,
 }
 
 /// What a stopped session's trash forgets.
@@ -521,7 +524,9 @@ impl Shell {
     pub(super) fn project_play(&self, project: &str) -> Option<Play> {
         // The folder looked for on disk only when nothing known gives one:
         // this runs on every frame, for every project.
-        play(project, &self.board.known, &self.board.homes, || self.project_folder(project))
+        play(project, &self.board.known, &self.board.homes, || {
+            self.play_folders.borrow_mut().entry(project.to_string()).or_insert_with(|| self.project_folder(project)).clone()
+        })
     }
 
     /// The ▶ clicked: the loop started, as its row in "idle" or "+ session"
@@ -558,13 +563,18 @@ impl Shell {
         let cwd = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-form-cwd")).default_value(cwd_value));
         let agent = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("sessions-form-agent")).default_value(agent_value));
         // The directory is checked as it is typed.
-        cx.subscribe(&cwd, |_, _, event: &gpui_kit::component::input::InputEvent, cx| {
+        cx.subscribe(&cwd, |shell, cwd, event: &gpui_kit::component::input::InputEvent, cx| {
             if matches!(event, gpui_kit::component::input::InputEvent::Change) {
+                let exists = std::path::Path::new(cwd.read(cx).value().trim()).is_dir();
+                if let Some(form) = shell.new_session.as_mut() {
+                    form.exists = exists;
+                }
                 cx.notify();
             }
         })
         .detach();
-        self.new_session = Some(NewSession { project, cwd, agent, crew: false, on_host: true, busy: false });
+        let exists = std::path::Path::new(cwd.read(cx).value().trim()).is_dir();
+        self.new_session = Some(NewSession { project, cwd, agent, crew: false, on_host: true, busy: false, exists });
         cx.notify();
     }
 
@@ -574,7 +584,7 @@ impl Shell {
         let crew = form.crew;
         let on_host = form.on_host;
         let cwd = form.cwd.read(cx).value().to_string();
-        let exists = std::path::Path::new(cwd.trim()).is_dir();
+        let exists = form.exists;
         Some(
             div()
                 .flex()

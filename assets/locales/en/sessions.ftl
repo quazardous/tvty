@@ -15,6 +15,7 @@ sessions-new-project-tip = a folder made an aiball project (aiball init), then i
 sessions-new-terminal-tip = a terminal of its own, which outlives tvty
 sessions-filter = Filter…  ctrl+shift+f
 sessions-fold = Fold the sessions' list
+sessions-unfold = Unfold the sessions' list
 
 ## Its groups
 
