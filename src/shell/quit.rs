@@ -129,7 +129,7 @@ impl Shell {
         self.settings.save(cx);
         crate::settings::flush(cx);
         crate::instance::release();
-        match std::process::Command::new(&exe).spawn() {
+        match std::process::Command::new(&exe).env(crate::instance::RESTARTED, "1").spawn() {
             Ok(child) => {
                 log::info!("restart: {} started (pid {}), this one quits", exe.display(), child.id());
                 cx.quit();
@@ -138,6 +138,18 @@ impl Shell {
                 self.quitting = false;
                 crate::activity::publish(cx, crate::activity::Activity::failed(None, &crate::t!("messages-restart-tvty-failed"), format!("{}: {error}", exe.display())));
             }
+        }
+    }
+
+    /// The shells kept whose session is gone are let go, those being started
+    /// again (`started`) apart: one offered is offered once.
+    pub(super) fn let_go_gone_shells(&mut self, started: &[crate::settings::KeptShell], cx: &mut Context<Self>) {
+        let listed = self.live.session_names();
+        let kept = &mut self.settings.workspace.kept_shells;
+        let before = kept.len();
+        kept.retain(|k| listed.contains(&k.name) || started.iter().any(|s| s.name == k.name));
+        if kept.len() != before {
+            self.settings.save(cx);
         }
     }
 

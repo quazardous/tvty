@@ -76,6 +76,7 @@ fn main() {
     // sessions of their own, which tmux refuses while $TMUX is set.
     // SAFETY: no other thread exists yet.
     unsafe { std::env::remove_var("TMUX") };
+    instance::read_restarted();
     // `tvty --version`: said and done — for the updater, and for a human.
     if std::env::args().nth(1).as_deref().is_some_and(|a| a == "--version" || a == "-V") {
         println!("tvty {}", env!("CARGO_PKG_VERSION"));

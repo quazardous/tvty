@@ -15,6 +15,27 @@ use tvty_ipc::{Conn, Endpoint, Listener};
 use crate::config;
 use tvty_config::Place;
 
+/// Set by "Restart tvty" on the tvty it starts: that start only loads the
+/// binary, it asks nothing.
+pub const RESTARTED: &str = "TVTY_RESTARTED";
+
+static RESTARTED_NOW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// Takes the word out of the environment, for the terminals not to inherit
+/// it. To call before any other thread exists.
+pub fn read_restarted() {
+    if std::env::var_os(RESTARTED).is_some() {
+        RESTARTED_NOW.store(true, std::sync::atomic::Ordering::Relaxed);
+        // SAFETY: no other thread exists yet (see above).
+        unsafe { std::env::remove_var(RESTARTED) };
+    }
+}
+
+/// This tvty was started by "Restart tvty".
+pub fn restarted() -> bool {
+    RESTARTED_NOW.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 /// What a later launch asks of the running tvty.
 #[derive(Debug, PartialEq)]
 pub struct Raise {

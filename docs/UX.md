@@ -189,7 +189,9 @@ shell and group — and, at start, one whose session is gone (aiball or the
 machine restarted, or stopped at quit) is offered in the restart sheet
 with the loops, under its group, with "Reopen the terminals too" turning
 them all on or off; reopened, it starts again under its name, in its
-folder, and opens at its place. What was typed in it is not kept.
+folder, and opens at its place; left off, or "Not now", it is let go, offered
+once. What was typed in it is not kept. "Restart tvty" only loads the binary
+on disk: its terminals reopen, nothing is asked at its start.
 Settings > Layout > Sessions > Terminals on start: ask, reopen them, or
 leave them.
 

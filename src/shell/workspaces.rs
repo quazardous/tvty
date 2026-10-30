@@ -352,11 +352,13 @@ impl Shell {
     }
 
     pub(super) fn cancel_picker(&mut self, cx: &mut Context<Self>) -> bool {
-        let open = self.picker.take().is_some();
-        if open {
-            cx.notify();
+        let Some(picker) = self.picker.take() else { return false };
+        // As "Not now".
+        if picker.restarting() {
+            self.let_go_gone_shells(&[], cx);
         }
-        open
+        cx.notify();
+        true
     }
 
     // ── Its answer ───────────────────────────────────────────────────────
@@ -404,11 +406,13 @@ impl Shell {
                 if self.remember && !checked {
                     self.set_pref("sessions.on_start", tvty_config::Value::Choice(Some("leave".into())), cx);
                 }
+                let shells: Vec<crate::settings::KeptShell> = if checked { chosen.iter().filter_map(|r| r.shell.clone()).collect() } else { Vec::new() };
+                self.let_go_gone_shells(&shells, cx);
                 if checked {
                     let loops: Vec<String> = chosen.iter().filter_map(|r| r.loop_name.clone()).collect();
                     let shown = self.shown_after(&picker_shown, &loops);
                     self.restart_loops(loops, true, shown, cx);
-                    self.start_shells(chosen.iter().filter_map(|r| r.shell.clone()).collect(), cx);
+                    self.start_shells(shells, cx);
                 }
             }
         }
@@ -444,6 +448,7 @@ impl Shell {
             let choice = if shells.is_empty() { "no" } else { "reopen" };
             self.set_pref("sessions.shells_on_start", tvty_config::Value::Choice(Some(choice.into())), cx);
         }
+        self.let_go_gone_shells(&shells, cx);
         self.start_shells(shells, cx);
         let loops: Vec<String> = picker.rows.iter().filter(|r| r.checked && !r.fixed).filter_map(|r| r.loop_name.clone()).collect();
         if !loops.is_empty() {

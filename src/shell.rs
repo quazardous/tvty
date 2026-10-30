@@ -892,7 +892,7 @@ impl Shell {
             remember: false,
             stopping_all: false,
             quitting: false,
-            restart_offered: false,
+            restart_offered: crate::instance::restarted(),
             loops_gone_since: HashMap::new(),
             shown_at_start: None,
             copied: None,
