@@ -29,6 +29,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Ctrl held while dragging a section's title pulls the sections below as a block, their sizes kept.
 - A ticket whose last word is an agent's question, handing it back, shows a question mark in the lists: amber when the answer is yours, its tip saying whose.
 
+### Fixed
+
+- Under a folded section, dragging a title resizes the first open section above, as dragging the folded title does, instead of moving the sections below.
+
 ## [0.19.3-beta.1] - 2026-10-30
 
 ### Fixed

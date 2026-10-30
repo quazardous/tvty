@@ -107,6 +107,21 @@ fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], upper
     (height, taken)
 }
 
+/// The section a title's drag resizes: the one above it, or if that one is
+/// folded (it has no height to change) the first above that is not, with the
+/// height of the folded ones between. `sections`: the list's, top first.
+fn resized_above(above: &str, sections: &[(String, Placed)]) -> Option<(String, Placed, f32)> {
+    let at = sections.iter().position(|(k, _)| k == above)?;
+    let mut folded = 0.;
+    for (key, section) in sections[..=at].iter().rev() {
+        if section.height > TITLE_HEIGHT + 0.5 {
+            return Some((key.clone(), *section, folded));
+        }
+        folded += section.height;
+    }
+    None
+}
+
 fn key(list: &str, section: &str) -> String {
     format!("{list}/{section}")
 }
@@ -156,7 +171,10 @@ pub fn drag_to(drag: &SectionDrag, y: Pixels, pull: bool) -> bool {
     let key = key(&drag.list, &drag.above);
     let prefix = format!("{}/", drag.list);
     let Ok(placed) = placed().lock().map(|p| p.clone()) else { return false };
-    let Some(above) = placed.get(&key).copied() else { return false };
+    let mut sections: Vec<(String, Placed)> = placed.iter().filter(|(k, _)| k.starts_with(&prefix)).map(|(k, p)| (k.clone(), *p)).collect();
+    sections.sort_by(|a, b| a.1.top.total_cmp(&b.1.top));
+    // Nothing to resize above it (all folded): the title stays.
+    let Some((key, above, folded)) = resized_above(&key, &sections) else { return false };
     let Ok(mut heights) = heights_store().lock() else { return false };
     // The heights set by hand, as they show: one that gave way (a shorter
     // window) is taken at its shown height, so that the list fits.
@@ -171,12 +189,12 @@ pub fn drag_to(drag: &SectionDrag, y: Pixels, pull: bool) -> bool {
     // The room left under the last section, in a list its sections do not fill.
     let end = placed.iter().filter(|(k, _)| k.starts_with(&prefix)).map(|(_, p)| p.top + p.height).fold(above.top + above.height, f32::max);
     let empty = list_bottoms().lock().ok().and_then(|b| b.get(drag.list.as_ref()).copied()).map_or(0., |bottom| bottom - end);
-    // The pointer holds the title about its middle.
     // The sections above it, the nearest first: a drag up goes on through them.
     let mut upper: Vec<(String, Placed)> =
         placed.iter().filter(|(k, p)| k.starts_with(&prefix) && p.top < above.top).map(|(k, p)| (k.clone(), *p)).collect();
     upper.sort_by(|a, b| b.1.top.total_cmp(&a.1.top));
-    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2., above, &below, &upper, empty, pull);
+    // The pointer holds the title about its middle.
+    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2. - folded, above, &below, &upper, empty, pull);
     let mut changed = heights.insert(key, height) != Some(height);
     for (k, h) in taken {
         changed |= heights.insert(k, h) != Some(h);
@@ -473,10 +491,24 @@ impl Section {
 
 #[cfg(test)]
 mod tests {
-    use super::{Placed, plan_drag};
+    use super::{Placed, plan_drag, resized_above};
 
     fn at(top: f32, least: f32, height: f32) -> Placed {
         Placed { top, least, height }
+    }
+
+    #[test]
+    fn a_title_under_a_folded_section_resizes_the_first_open_one_above() {
+        let list = |parts: &[(&str, f32, f32)]| parts.iter().map(|(k, top, h)| (k.to_string(), at(*top, 28., *h))).collect::<Vec<_>>();
+        // Open above it: that one.
+        let open = list(&[("a", 0., 200.), ("b", 200., 100.)]);
+        assert_eq!(resized_above("a", &open), Some(("a".to_string(), at(0., 28., 200.), 0.)));
+        // Folded above it: the first open one, past the folded heights.
+        let folded = list(&[("a", 0., 200.), ("b", 200., 28.), ("c", 228., 100.)]);
+        assert_eq!(resized_above("b", &folded), Some(("a".to_string(), at(0., 28., 200.), 28.)));
+        // All folded above it: nothing to resize, the title stays.
+        let none = list(&[("a", 0., 28.), ("b", 28., 100.)]);
+        assert_eq!(resized_above("a", &none), None);
     }
 
     #[test]
