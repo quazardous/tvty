@@ -158,30 +158,42 @@ fn content_type_of(reference: &str) -> &'static str {
     }
 }
 
-/// The images a text cites at the end of its lines, `(alt, reference)`, in
-/// order: those tvty draws.
+/// The images a text cites on its lines, `(alt, reference)`, in order: those
+/// tvty draws.
 fn cited(text: &str) -> Vec<(String, String)> {
-    text.lines().filter_map(trailing_images).flat_map(|(_, images)| images).collect()
+    text.lines().filter_map(line_images).flat_map(|(_, images)| images).collect()
 }
 
-/// A line that ends with images (`Look: ![a](…) ![b](…)`): the words before
-/// them, and the images. `None` when the line has none at its end.
-fn trailing_images(line: &str) -> Option<(String, Vec<(String, String)>)> {
-    let trimmed = line.trim_end();
-    // The images start at the first `![` from which the rest is only images.
-    let mut from = trimmed.len();
-    let mut found = None;
-    while let Some(at) = trimmed[..from].rfind("![") {
-        match images_of_line(&trimmed[at..]) {
-            Some(images) => {
-                found = Some((at, images));
-                from = at;
+/// A line that cites images (`Look: ![a](…) ![b](…) there`): its words without
+/// them, and the images. `None` when it has none tvty can take out: a table's
+/// row stays whole, and so does an image in a code span.
+fn line_images(line: &str) -> Option<(String, Vec<(String, String)>)> {
+    if line.trim_start().starts_with('|') {
+        return None;
+    }
+    let mut words = String::with_capacity(line.len());
+    let mut images = Vec::new();
+    let mut rest = line.trim_end();
+    while let Some(at) = rest.find("![") {
+        words.push_str(&rest[..at]);
+        let in_code = words.matches('`').count() % 2 == 1;
+        match rest[at..].find(')').map(|close| at + close + 1).filter(|_| !in_code) {
+            Some(end) if images_of_line(&rest[at..end]).is_some() => {
+                images.extend(images_of_line(&rest[at..end]).into_iter().flatten());
+                rest = &rest[end..];
+                // The space on each side of it was one.
+                if words.is_empty() || words.ends_with(' ') {
+                    rest = rest.trim_start_matches(' ');
+                }
             }
-            None => break,
+            _ => {
+                words.push_str("![");
+                rest = &rest[at + 2..];
+            }
         }
     }
-    let (at, images) = found?;
-    Some((trimmed[..at].trim_end().to_string(), images))
+    words.push_str(rest);
+    (!images.is_empty()).then(|| (words.trim_end().to_string(), images))
 }
 
 /// The images of a line, when the line holds nothing else: `None` otherwise.
@@ -205,13 +217,13 @@ fn images_of_line(line: &str) -> Option<Vec<(String, String)>> {
 pub enum Segment {
     /// Markdown, for the kit.
     Text(String),
-    /// Images alone on their line(s): drawn by tvty.
+    /// The images of its line(s): drawn by tvty.
     Pictures(Vec<Picture>),
     /// What could not be shown, and why.
     Note(String),
 }
 
-/// A text cut into markdown and the images alone on their line, read from
+/// A text cut into markdown and the images of its lines, read from
 /// `cache` (see [`inline`]).
 pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
     // Read in place: this runs on every frame, and the cache holds the images.
@@ -220,7 +232,7 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
     let mut out = Vec::new();
     let mut prose = String::new();
     for line in text.lines() {
-        match trailing_images(line) {
+        match line_images(line) {
             Some((words, images)) => {
                 // The words stay text; the images go under them. A quote's
                 // mark alone (`> ![…](…)`) is no words: no empty quote.
@@ -259,7 +271,7 @@ pub fn segments(text: &str, cache: &Cache) -> Vec<Segment> {
     out
 }
 
-/// Every image a text shows alone on its line, in order: the viewer's.
+/// Every image a text draws, in order: the viewer's.
 pub fn pictures(text: &str, cache: &Cache) -> Vec<Picture> {
     segments(text, cache)
         .into_iter()
@@ -310,9 +322,9 @@ pub fn load(text: &str, aiball: &Aiball, cache: &Cache) -> bool {
     came
 }
 
-/// What a preview shows of `text`: its images inside a sentence as `data:`
-/// URLs from `cache` — and, with `all`, those alone on their line too, for a
-/// view that does not draw them itself. One not read yet says so.
+/// What a preview shows of `text`: the images tvty cannot draw as `data:`
+/// URLs from `cache` — and, with `all`, the others too, for a view that does
+/// not draw them itself. One not read yet says so.
 pub fn preview(text: &str, cache: &Cache, all: bool) -> String {
     let locked = cache.lock();
     let known = locked.as_deref().ok();
@@ -327,16 +339,16 @@ pub fn preview(text: &str, cache: &Cache, all: bool) -> String {
     text.split('\n').map(|line| rewrite_line(line, &link)).collect::<Vec<_>>().join("\n")
 }
 
-/// `text` with each image inside a sentence (`… ![alt](/uploads/…) …`)
-/// turned into what `link` makes of it. Images that end their line stay —
-/// tvty draws them —, and so do plain links to uploads.
+/// `text` with each image tvty cannot draw (a table's, a code span's) turned
+/// into what `link` makes of it. The others stay — tvty draws them —, and so
+/// do plain links to uploads.
 pub fn rewrite(text: &str, link: &dyn Fn(&str) -> Link) -> String {
     let mut out = String::with_capacity(text.len());
     for (i, line) in text.split('\n').enumerate() {
         if i > 0 {
             out.push('\n');
         }
-        if trailing_images(line).is_some() {
+        if line_images(line).is_some() {
             out.push_str(line);
         } else {
             out.push_str(&rewrite_line(line, link));
@@ -374,7 +386,7 @@ fn rewrite_line(text: &str, link: &dyn Fn(&str) -> Link) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Cache, Entry, Link, api_ref, cited, every_image, images_of_line, preview, rewrite, trailing_images};
+    use super::{Cache, Entry, Link, api_ref, cited, every_image, images_of_line, line_images, preview, rewrite};
 
     fn link(reference: &str) -> Link {
         match reference {
@@ -385,12 +397,9 @@ mod tests {
     }
 
     #[test]
-    fn an_image_inside_a_sentence_becomes_a_data_url() {
-        assert_eq!(
-            rewrite("see ![shot](/uploads/a.png) here", &link),
-            "see ![shot](data:image/png;base64,AAA) here"
-        );
-        assert_eq!(rewrite("a ![x](/uploads/gone.png) b", &link), "a *(image unavailable)* b");
+    fn an_image_tvty_cannot_draw_becomes_a_data_url() {
+        assert_eq!(rewrite("| ![shot](/uploads/a.png) |", &link), "| ![shot](data:image/png;base64,AAA) |");
+        assert_eq!(rewrite("| ![x](/uploads/gone.png) |", &link), "| *(image unavailable)* |");
     }
 
     #[test]
@@ -409,12 +418,20 @@ mod tests {
     }
 
     #[test]
-    fn images_ending_a_line_are_tvtys_too() {
-        let (words, images) = trailing_images("Le panneau : ![p](/uploads/a.png)").unwrap();
-        assert_eq!((words.as_str(), images.len()), ("Le panneau :", 1));
-        assert_eq!(trailing_images("![p](/uploads/a.png) then words"), None);
-        let line = "see ![a](/uploads/a.png) here";
-        assert_eq!(rewrite(line, &link), "see ![a](data:image/png;base64,AAA) here");
+    fn images_anywhere_on_a_line_are_tvtys_too() {
+        let of = |line| line_images(line).map(|(words, images)| (words, images.len()));
+        assert_eq!(of("Le panneau : ![p](/uploads/a.png)"), Some(("Le panneau :".to_string(), 1)));
+        assert_eq!(of("![p](/uploads/a.png) then words"), Some(("then words".to_string(), 1)));
+        assert_eq!(of("see ![a](/uploads/a.png) here ![b](/uploads/b.png), and"), Some(("see here , and".to_string(), 2)));
+        assert_eq!(of("- in a list ![a](/uploads/a.png)"), Some(("- in a list".to_string(), 1)));
+        // What is not one of its uploads, or cannot be taken out, stays.
+        assert_eq!(of("see ![a](https://x/y.png) here"), None);
+        assert_eq!(of("the [log](/uploads/log.txt)"), None);
+        assert_eq!(of("the mark `![a](/uploads/a.png)` here"), None);
+        assert_eq!(of("| ![a](/uploads/a.png) |"), None);
+        // A broken one does not hide the next.
+        assert_eq!(of("a ![b c ![d](/uploads/d.png)"), Some(("a ![b c".to_string(), 1)));
+        assert_eq!(of("a ![b]( c ![d](/uploads/d.png)"), Some(("a ![b]( c".to_string(), 1)));
     }
 
     #[test]
@@ -424,11 +441,8 @@ mod tests {
 
     #[test]
     fn plain_links_stay() {
-        let text = "the [log](/uploads/log.txt) and ![a](/uploads/a.png) in a sentence";
-        assert_eq!(
-            rewrite(text, &link),
-            "the [log](/uploads/log.txt) and ![a](data:image/png;base64,AAA) in a sentence"
-        );
+        let text = "| the [log](/uploads/log.txt) and ![a](/uploads/a.png) |";
+        assert_eq!(rewrite(text, &link), "| the [log](/uploads/log.txt) and ![a](data:image/png;base64,AAA) |");
     }
 
     #[test]
@@ -454,14 +468,14 @@ mod tests {
 
     #[test]
     fn a_preview_finds_every_image_and_draws_those_it_read() {
-        let text = "see ![a](/uploads/a.png) here\n![shot](/uploads/b.png)";
+        let text = "| ![a](/uploads/a.png) |\n![shot](/uploads/b.png)";
         assert_eq!(every_image(text), vec!["/uploads/a.png".to_string(), "/uploads/b.png".to_string()]);
         let cache = Cache::default();
         cache.lock().unwrap().insert("/uploads/big.png".into(), Entry::TooLarge);
-        // Nothing read yet: said so, inside a sentence; alone on its line, left to the drawer.
-        assert_eq!(preview(text, &cache, false), "see *(image unavailable)* here\n![shot](/uploads/b.png)");
-        // For a view that draws nothing itself, the lone image too.
-        assert_eq!(preview(text, &cache, true), "see *(image unavailable)* here\n*(image unavailable)*");
+        // Nothing read yet: said so, in a table; on a line, left to the drawer.
+        assert_eq!(preview(text, &cache, false), "| *(image unavailable)* |\n![shot](/uploads/b.png)");
+        // For a view that draws nothing itself, that image too.
+        assert_eq!(preview(text, &cache, true), "| *(image unavailable)* |\n*(image unavailable)*");
         assert_eq!(preview("![x](/uploads/big.png)", &cache, true), "*(image too large to show here)*");
     }
 }

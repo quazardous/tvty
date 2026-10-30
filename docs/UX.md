@@ -552,16 +552,16 @@ comes as a notification. The countdowns move every second.
 
 ## Images in a thread
 
-An image alone on its line, or ending it (`Here: ![shot](…)`) — a pasted
-capture — is drawn by tvty: a
+An image of aiball's uploads, wherever it stands on its line — a pasted
+capture — is drawn by tvty under the line's words: a
 thumbnail in the compact panel (about 160 × 100, its proportions kept, ⤢ in
 a corner), large full screen. A click opens the **viewer**, over the whole
 window: the image fitted first; the wheel zooms about the pointer, + and −
 too, 1 shows the real size, 0 or a double click fits again, a drag moves
 it, ← → go through the thread's images, Esc closes. Its bar names it (the
 text's alt, else its file), gives its size and zoom, and opens it in the
-default application when aiball keeps it on this machine. An image inside
-a sentence stays in the text.
+default application when aiball keeps it on this machine. Only an image in
+a table's row or a code span stays in the text.
 
 ## The terminal comes to you
 
