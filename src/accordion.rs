@@ -44,28 +44,38 @@ fn placed() -> &'static Mutex<HashMap<String, Placed>> {
 
 /// What a drag does for the pointer's height `wanted`: the height of the
 /// section `above` (its least at least), and the heights set by hand it
-/// takes room from. Dragged down, it pushes: first into the room left under
-/// the last section (`empty`), then each section below gives way down to
-/// its least, the nearest first — one sized by the list as the layout
-/// shrinks it, one set by hand by a new height. It stops only once the
-/// whole stack is down to its least. `below`: top first, with its key and
-/// whether its height is set by hand. Dragged up, the section just below
+/// takes room from. Dragged down, as few sections move as can be: those
+/// below give way down to their least, the nearest first, then the last is
+/// pushed into the room left under it (`empty`), then it gives way. It
+/// stops only once the whole stack is down to its least. `below`: top
+/// first, with its key and whether its height is set by hand. Dragged up, the section just below
 /// grows by as much: nothing else moves.
 fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty: f32) -> (f32, Vec<(String, f32)>) {
     let from = above.height.max(above.least);
     let mut owed = (wanted - from).max(0.);
     let pushed = owed;
-    owed -= owed.min(empty.max(0.));
     let mut taken = Vec::new();
-    for (key, b, set) in below {
+    // As few sections move as can be: those between give way first, the
+    // nearest first (each given a height, sized by the list or not) …
+    let (last, between) = match below.split_last() {
+        Some((last, between)) => (Some(last), between),
+        None => (None, below),
+    };
+    for (key, b, _) in between {
         if owed <= 0. {
             break;
         }
         let give = (b.height - b.least).max(0.).min(owed);
-        owed -= give;
-        if *set && give > 0. {
+        if give > 0. {
+            owed -= give;
             taken.push((key.clone(), (b.height - give).round()));
         }
+    }
+    // … then the last is pushed into the room left under it, then it gives
+    // way itself (sized by what the list leaves it).
+    owed -= owed.min(empty.max(0.));
+    if let Some((_, b, _)) = last {
+        owed -= (b.height - b.least).max(0.).min(owed);
     }
     if wanted > from {
         return ((from + pushed - owed).round(), taken);
@@ -457,8 +467,13 @@ mod tests {
         // Then the next (100 more), and no further: all at their least.
         assert_eq!(plan_drag(520., above, &below, 0.), (520., vec![("l/b".to_string(), 56.)]));
         assert_eq!(plan_drag(900., above, &below, 0.), (544., vec![("l/b".to_string(), 56.)]));
-        // Room under the last section first: nothing gives.
-        assert_eq!(plan_drag(400., above, &below, 150.), (400., vec![]));
+        // The one just below gives before the last is pushed into the room
+        // under it: only then is that room taken.
+        assert_eq!(plan_drag(400., above, &below, 150.), (400., vec![("l/b".to_string(), 100.)]));
+        assert_eq!(plan_drag(600., above, &below, 150.), (600., vec![("l/b".to_string(), 56.)]));
+        // Sized by the list or not, the one between gets a height as it gives.
+        let auto = vec![("l/b".to_string(), at(300., 56., 200.), false), ("l/c".to_string(), at(500., 28., 128.), false)];
+        assert_eq!(plan_drag(400., above, &auto, 150.), (400., vec![("l/b".to_string(), 100.)]));
         // Up: down to its own least, the one just below growing by as much.
         assert_eq!(plan_drag(250., above, &below, 0.), (250., vec![("l/b".to_string(), 250.)]));
         assert_eq!(plan_drag(10., above, &below, 0.), (56., vec![("l/b".to_string(), 444.)]));
