@@ -229,7 +229,7 @@ impl Shell {
             groups.push(("on hub", on_hub.len()));
         }
         let sections = groups.len();
-        let mut list = crate::accordion::list("sessions").pb_1();
+        let mut list = crate::accordion::list("sessions", "sessions");
         for (i, &(word, count)) in groups.iter().enumerate() {
             // A folded section with something the filter found opens while
             // it is typed.
@@ -269,7 +269,7 @@ impl Shell {
                 cx.notify();
             })));
         }
-        list.into_any_element()
+        crate::accordion::framed(list, "sessions").into_any_element()
     }
 
     /// The idle and shut sections' lists; the live one is the projects'

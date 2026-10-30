@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Dragging a section's title down pushes the sections below, each giving way down to its least, and stops only when the whole stack is down to it; a section at its least can be dragged down again.
 - At start, a terminal that is not Claude's, offered for reopening, no longer shows the hold mark of a loop.
 - The terminals that are not Claude's opened before this came, or elsewhere, are kept too: they come back like the others when aiball or the machine restarted.
 - Quitting with the sessions stopped stops the terminals that are not Claude's too (switched on in the dialog, as the loops), so that the next start offers them again.

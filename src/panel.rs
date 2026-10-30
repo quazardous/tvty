@@ -1114,7 +1114,7 @@ impl TicketPanel {
         // pushes the others out of sight.
         // When even the bands' minimums do not fit, the list scrolls as a
         // whole rather than letting them overlap.
-        let mut list = crate::accordion::list("ticket-list").pb_1();
+        let mut list = crate::accordion::list("ticket-list", "tickets");
         if self.tickets.is_empty() {
             return list.child(hint(crate::t!("tickets-none-open"))).into_any_element();
         }
@@ -1155,7 +1155,7 @@ impl TicketPanel {
             })));
             at = end;
         }
-        list.into_any_element()
+        crate::accordion::framed(list, "tickets").into_any_element()
     }
 
     /// Keeps a scroll per band across renders.

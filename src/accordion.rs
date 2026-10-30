@@ -43,30 +43,31 @@ fn placed() -> &'static Mutex<HashMap<String, Placed>> {
 }
 
 /// What a drag does for the pointer's height `wanted`: the height of the
-/// section `above` (its least at least), and the hand-set heights of the
-/// sections `below` (top first: their key, where they lie, their height
-/// set by hand if any) it takes room from. Room comes first from the
-/// sections sized by the list (down to their least), then from those set
-/// by hand, the nearest first: the list never overflows, so no section
-/// gives way in proportion and the border stays under the pointer.
-fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, Option<f32>)]) -> (f32, Vec<(String, f32)>) {
-    let slack = |b: &Placed| (b.height - b.least).max(0.);
-    let free: f32 = below.iter().filter(|(_, _, set)| set.is_none()).map(|(_, b, _)| slack(b)).sum();
-    let held: f32 = below.iter().filter(|(_, _, set)| set.is_some()).map(|(_, b, _)| slack(b)).sum();
-    let height = wanted.min(above.height + free + held).max(above.least).round();
-    let mut owed = (height - above.height - free).max(0.);
+/// section `above` (its least at least), and the heights set by hand it
+/// takes room from. Dragged down, it pushes: first into the room left under
+/// the last section (`empty`), then each section below gives way down to
+/// its least, the nearest first — one sized by the list as the layout
+/// shrinks it, one set by hand by a new height. It stops only once the
+/// whole stack is down to its least. `below`: top first, with its key and
+/// whether its height is set by hand.
+fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty: f32) -> (f32, Vec<(String, f32)>) {
+    let from = above.height.max(above.least);
+    let mut owed = (wanted - from).max(0.);
+    let pushed = owed;
+    owed -= owed.min(empty.max(0.));
     let mut taken = Vec::new();
     for (key, b, set) in below {
         if owed <= 0. {
             break;
         }
-        if set.is_some() {
-            let give = slack(b).min(owed);
-            owed -= give;
+        let give = (b.height - b.least).max(0.).min(owed);
+        owed -= give;
+        if *set && give > 0. {
             taken.push((key.clone(), (b.height - give).round()));
         }
     }
-    (height, taken)
+    let height = if wanted > from { from + pushed - owed } else { wanted.max(above.least) };
+    (height.round(), taken)
 }
 
 fn key(list: &str, section: &str) -> String {
@@ -127,14 +128,14 @@ pub fn drag_to(drag: &SectionDrag, y: Pixels) -> bool {
             *stored = stored.min(shown);
         }
     }
-    let mut below: Vec<(String, Placed, Option<f32>)> = placed
-        .iter()
-        .filter(|(k, p)| k.starts_with(&prefix) && p.top > above.top)
-        .map(|(k, p)| (k.clone(), *p, heights.get(k).copied()))
-        .collect();
+    let mut below: Vec<(String, Placed, bool)> =
+        placed.iter().filter(|(k, p)| k.starts_with(&prefix) && p.top > above.top).map(|(k, p)| (k.clone(), *p, heights.contains_key(k))).collect();
     below.sort_by(|a, b| a.1.top.total_cmp(&b.1.top));
+    // The room left under the last section, in a list its sections do not fill.
+    let end = placed.iter().filter(|(k, _)| k.starts_with(&prefix)).map(|(_, p)| p.top + p.height).fold(above.top + above.height, f32::max);
+    let empty = list_bottoms().lock().ok().and_then(|b| b.get(drag.list.as_ref()).copied()).map_or(0., |bottom| bottom - end);
     // The pointer holds the title about its middle.
-    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2., above, &below);
+    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2., above, &below, empty);
     let mut changed = heights.insert(key, height) != Some(height);
     for (k, h) in taken {
         changed |= heights.insert(k, h) != Some(h);
@@ -157,9 +158,54 @@ const SIZED_BY_LIST_GIVES: f32 = 10_000.;
 /// A section's title line, in pixels.
 pub const TITLE_HEIGHT: f32 = 28.;
 
-/// The column that holds the sections.
-pub fn list(id: impl Into<ElementId>) -> Stateful<Div> {
-    div().named(id).flex().flex_col().flex_1().min_h_0().overflow_y_scroll()
+/// Where each list's box ends, as last laid out: the room left under its
+/// last section, which a drag may take.
+fn list_bottoms() -> &'static Mutex<HashMap<String, f32>> {
+    static BOTTOMS: OnceLock<Mutex<HashMap<String, f32>>> = OnceLock::new();
+    BOTTOMS.get_or_init(Default::default)
+}
+
+thread_local! {
+    /// Each list's scroll, kept across frames: its scrollbar follows it.
+    static LIST_SCROLLS: std::cell::RefCell<HashMap<String, ScrollHandle>> = Default::default();
+}
+
+fn list_scroll(list: &str) -> ScrollHandle {
+    LIST_SCROLLS.with(|s| s.borrow_mut().entry(list.to_string()).or_default().clone())
+}
+
+/// The list, its sections in, framed with its scrollbar: the sections that
+/// do not all fit (heights set by hand, a short window) scroll as a whole,
+/// and say so.
+pub fn framed(list: Stateful<Div>, key: &str) -> Div {
+    let scroll = list_scroll(key);
+    div()
+        .relative()
+        .flex()
+        .flex_col()
+        .flex_1()
+        .min_h_0()
+        .child(list)
+        .child(div().absolute().inset_0().child(Scrollbar::new(&scroll).axis(ScrollbarAxis::Vertical).viewport_from_layout()))
+}
+
+/// The column that holds the sections of `list` (the sections' `list`);
+/// [`framed`] gives it its scrollbar once filled.
+pub fn list(id: impl Into<ElementId>, list: &str) -> Stateful<Div> {
+    let key = list.to_string();
+    let scroll = list_scroll(list);
+    div().named(id).relative().flex().flex_col().flex_1().min_h_0().track_scroll(&scroll).overflow_y_scroll().child(
+        canvas(
+            move |bounds, _, _| {
+                if let Ok(mut bottoms) = list_bottoms().lock() {
+                    bottoms.insert(key, f32::from(bounds.bottom()));
+                }
+            },
+            |_, _, _, _| {},
+        )
+        .absolute()
+        .inset_0(),
+    )
 }
 
 /// One section.
@@ -339,9 +385,12 @@ impl Section {
                 // smaller window): the sections below keep their least
                 // height in view, and their scroll, rather than going under
                 // the bottom.
+                // Set by hand, it keeps its height while the list holds it;
+                // in a shorter one (a smaller window) it gives way too, once
+                // the sections sized by the list are down to their least —
+                // the last section stays in view. A drag never overflows
+                // (it stops at the bottom), so nothing gives way under it.
                 Some(height) => d.flex_grow(0.).flex_shrink(1.).h(px(height)),
-                // Sized by the list, it gives way first: the ones set by
-                // hand only once it is down to its least.
                 None => d.flex_initial().flex_shrink(SIZED_BY_LIST_GIVES),
             })
             .min_h(px(TITLE_HEIGHT + keep))
@@ -390,16 +439,17 @@ mod tests {
     }
 
     #[test]
-    fn a_drag_takes_room_from_the_list_sized_sections_first() {
+    fn a_drag_down_pushes_and_the_sections_below_give_way_nearest_first() {
         let above = at(0., 56., 300.);
-        // A section set by hand in the middle, the last sized by the list.
-        let below = vec![("l/b".to_string(), at(300., 56., 200.), Some(200.)), ("l/c".to_string(), at(500., 28., 128.), None)];
-        // 100 from the last: the middle one keeps its height.
-        assert_eq!(plan_drag(400., above, &below), (400., vec![]));
-        // Past it, the middle one gives the rest, down to its least.
-        assert_eq!(plan_drag(450., above, &below), (450., vec![("l/b".to_string(), 150.)]));
-        assert_eq!(plan_drag(900., above, &below), (544., vec![("l/b".to_string(), 56.)]));
+        let below = vec![("l/b".to_string(), at(300., 56., 200.), true), ("l/c".to_string(), at(500., 28., 128.), false)];
+        // The one just below gives first, down to its least (144 to give).
+        assert_eq!(plan_drag(400., above, &below, 0.), (400., vec![("l/b".to_string(), 100.)]));
+        // Then the next (100 more), and no further: all at their least.
+        assert_eq!(plan_drag(520., above, &below, 0.), (520., vec![("l/b".to_string(), 56.)]));
+        assert_eq!(plan_drag(900., above, &below, 0.), (544., vec![("l/b".to_string(), 56.)]));
+        // Room under the last section first: nothing gives.
+        assert_eq!(plan_drag(400., above, &below, 150.), (400., vec![]));
         // Up: down to its own least, nothing taken.
-        assert_eq!(plan_drag(10., above, &below), (56., vec![]));
+        assert_eq!(plan_drag(10., above, &below, 0.), (56., vec![]));
     }
 }
