@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.19.3-beta.1] - 2026-10-30
+
 ### Fixed
 
 - The message to every agent closes once sent (Send, Send & hold, Release holds), what each loop did said in a notice; refused, it stays open with the error.
