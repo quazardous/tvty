@@ -81,6 +81,13 @@ pub fn set_cursor(choice: Option<&str>) {
 /// (`terminal.copy_unfreezes`).
 static COPY_UNFREEZES: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
 
+/// A copy puts back together the lines the screen cut (`terminal.copy_joins`).
+static COPY_JOINS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(true);
+
+pub fn set_copy_joins(on: bool) {
+    COPY_JOINS.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
 pub fn set_copy_unfreezes(on: bool) {
     COPY_UNFREEZES.store(on, std::sync::atomic::Ordering::Relaxed);
 }
@@ -721,15 +728,33 @@ impl TerminalView {
     /// The terminal's copy (`terminal.copy`, ctrl+shift+c): the selection
     /// to the clipboard — ctrl+c stays the program's ^C.
     fn copy(&mut self, _: &keymap::TerminalCopy, _: &mut Window, cx: &mut Context<Self>) {
+        let joined = COPY_JOINS.load(std::sync::atomic::Ordering::Relaxed);
+        self.copy_selection(joined, cx);
+    }
+
+    /// `terminal.copy-raw`, ctrl+shift+alt+c: as on screen.
+    fn copy_raw(&mut self, _: &keymap::TerminalCopyRaw, _: &mut Window, cx: &mut Context<Self>) {
+        self.copy_selection(false, cx);
+    }
+
+    fn copy_selection(&mut self, joined: bool, cx: &mut Context<Self>) {
         // The selection, or, when the program drew over it, what it held.
         let text = self.shown().lock().selection_to_string().filter(|t| !t.is_empty()).or_else(|| self.selected_text.clone());
         if let Some(text) = text {
+            let text = if joined { self.joined(&text) } else { text };
             cx.write_to_clipboard(ClipboardItem::new_string(text));
             crate::bus::emit(cx, crate::bus::Signal::Copied);
             if COPY_UNFREEZES.load(std::sync::atomic::Ordering::Relaxed) {
                 self.clear_selection(cx);
             }
         }
+    }
+
+    /// `text`, selected here, the lines the screen cut put back together.
+    fn joined(&self, text: &str) -> String {
+        let term = self.shown().lock();
+        let first = term.selection.as_ref().and_then(|s| s.to_range(&term)).map_or(0, |range| range.start.column.0);
+        crate::copyjoin::join_screen_lines(text, term.columns(), first)
     }
 
     /// The terminal's paste (`terminal.paste`, ctrl+shift+v, the menu's
@@ -1138,6 +1163,7 @@ impl TerminalView {
         drop(term);
         #[cfg(any(target_os = "linux", target_os = "freebsd"))]
         if let Some(text) = self.selected_text.clone() {
+            let text = if COPY_JOINS.load(std::sync::atomic::Ordering::Relaxed) { self.joined(&text) } else { text };
             cx.write_to_primary(ClipboardItem::new_string(text));
         }
         // Nothing selected (a plain click): the live screen again.
@@ -1492,6 +1518,7 @@ impl Render for TerminalView {
             .on_action(cx.listener(Self::send_tab))
             .on_action(cx.listener(Self::send_back_tab))
             .on_action(cx.listener(Self::copy))
+            .on_action(cx.listener(Self::copy_raw))
             .on_action(cx.listener(Self::paste_clipboard))
             .on_key_down(cx.listener(Self::on_key_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll))

@@ -46,6 +46,8 @@ pub struct Terminal {
     pub cursor: Option<String>,
     /// A copy lets go of the screen held still under a selection.
     pub copy_unfreezes: bool,
+    /// A copy puts back together the lines the screen cut.
+    pub copy_joins: bool,
     /// A paste lets go of the screen held still under a selection.
     pub paste_unfreezes: bool,
     /// A paste brings the terminal scrolled back to its bottom.
@@ -54,7 +56,7 @@ pub struct Terminal {
 
 impl Default for Terminal {
     fn default() -> Self {
-        Self { scrollback: None, cursor: None, copy_unfreezes: true, paste_unfreezes: true, paste_scrolls_down: true }
+        Self { scrollback: None, cursor: None, copy_unfreezes: true, copy_joins: true, paste_unfreezes: true, paste_scrolls_down: true }
     }
 }
 
@@ -390,6 +392,14 @@ pub const SCHEMA: Schema = Schema(&[
         label: "Copy",
         about: "A selection holds the terminal's screen still; a copy (Ctrl+Shift+C, the menu's Copy) lets it go and shows the live screen again. Off, the screen stays held until a paste, Esc or a key typed.",
         kind: Kind::Toggle { default: true, on: "lets the screen go", off: "keeps it held" },
+    },
+    Setting {
+        key: "terminal.copy_joins",
+        page: "Layout",
+        group: "Terminal",
+        label: "Copy lines the screen cut",
+        about: "Claude Code cuts its long lines itself, to the terminal's width. A copy (Ctrl+Shift+C, the middle click's selection) puts them back together: a line goes on the next when the next one's first word would not have fit, with the same indentation. It is a guess: Ctrl+Shift+Alt+C copies exactly what the screen shows.",
+        kind: Kind::Toggle { default: true, on: "joined", off: "as on screen" },
     },
     Setting {
         key: "terminal.paste_unfreezes",

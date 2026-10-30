@@ -61,6 +61,7 @@ actions!(
         NextTheme,
         ToggleInspector,
         TerminalCopy,
+        TerminalCopyRaw,
         TerminalPaste,
         SendTab,
         SendBackTab,
@@ -126,7 +127,8 @@ commands! {
     "list.full", WINDOW, ["ctrl-shift-l"], "The ticket list, full screen", FullList;
     "theme.next", WINDOW, ["ctrl-shift-k"], "Next colour theme", NextTheme;
     "debug.inspector", WINDOW, ["ctrl-alt-shift-i"], "GPUI's inspector: pick an element, see its id and where it is made (debug builds)", ToggleInspector;
-    "terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection", TerminalCopy;
+    "terminal.copy", TERMINAL, ["ctrl-shift-c"], "Copy the selection, the lines the screen cut joined", TerminalCopy;
+    "terminal.copy-raw", TERMINAL, ["ctrl-shift-alt-c"], "Copy the selection exactly as on screen", TerminalCopyRaw;
     "terminal.paste", TERMINAL, ["ctrl-shift-v", "shift-insert"], "Paste the clipboard", TerminalPaste;
     "terminal.tab", TERMINAL, ["tab"], "Tab, to the program (not the focus to the next element)", SendTab;
     "terminal.back_tab", TERMINAL, ["shift-tab"], "Shift+Tab, to the program", SendBackTab;

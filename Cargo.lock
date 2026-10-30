@@ -7715,6 +7715,7 @@ dependencies = [
  "tvty-keys",
  "tvty-updater",
  "unic-langid",
+ "unicode-width 0.2.2",
  "windows-sys 0.61.2",
 ]
 

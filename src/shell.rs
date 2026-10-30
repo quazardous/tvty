@@ -4174,6 +4174,7 @@ impl Shell {
             self.usage_display = None;
         }
         crate::terminal::set_copy_unfreezes(new.terminal.copy_unfreezes);
+        crate::terminal::set_copy_joins(new.terminal.copy_joins);
         crate::terminal::set_paste_unfreezes(new.terminal.paste_unfreezes);
         crate::terminal::set_paste_scrolls_down(new.terminal.paste_scrolls_down);
         if old.terminal.scrollback != new.terminal.scrollback {

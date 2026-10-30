@@ -19,6 +19,7 @@ mod fonts;
 mod i18n;
 mod composer;
 mod config;
+mod copyjoin;
 mod control;
 mod fulllist;
 mod icons;
@@ -145,6 +146,7 @@ fn main() {
         terminal::set_scrollback(prefs.terminal.scrollback());
         terminal::set_cursor(prefs.terminal.cursor.as_deref());
         terminal::set_copy_unfreezes(prefs.terminal.copy_unfreezes);
+        terminal::set_copy_joins(prefs.terminal.copy_joins);
         terminal::set_paste_unfreezes(prefs.terminal.paste_unfreezes);
         terminal::set_paste_scrolls_down(prefs.terminal.paste_scrolls_down);
         theme::init(prefs.appearance.theme.as_deref(), prefs.appearance.terminal_theme.as_deref(), cx);

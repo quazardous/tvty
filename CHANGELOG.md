@@ -26,6 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A copy from a terminal puts back together the lines Claude Code cut to the screen's width; Ctrl+Shift+Alt+C copies as on screen, and a setting turns it off.
 - A plan with options offers them as radio buttons, the recommended chosen to begin with; Accept takes the choice, and the decided comment says which.
 - The ▾ of Reply sends a reply while keeping the hand (Ctrl+Shift+Enter): no agent is woken and the comment says so.
 - The usage arrow's setting has an Auto mode, now the default: each start shows the display last clicked to.
