@@ -593,6 +593,11 @@ impl Live {
 
     /// Every session the host knows without an agent, running or not: the
     /// names a new one must not take.
+    /// The folder a session the host holds runs in, as aiball lists it.
+    pub fn session_cwd(&self, name: &str) -> Option<String> {
+        self.sessions.get(name)?.get("cwd")?.as_str().map(str::to_string)
+    }
+
     pub fn session_names(&self) -> Vec<String> {
         self.sessions.keys().cloned().collect()
     }

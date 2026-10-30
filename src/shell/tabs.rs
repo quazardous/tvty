@@ -268,6 +268,21 @@ impl Shell {
                 open.push(session.clone());
             }
         }
+        // A shell open that is not kept yet (opened before tvty kept them,
+        // or elsewhere) is kept now, in its folder as aiball lists it.
+        let shell_program = std::env::var("SHELL").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| if cfg!(windows) { "powershell.exe".into() } else { "bash".into() });
+        let mut adopted = false;
+        for session in &open {
+            let Some(name) = session.strip_prefix(crate::sessions::HOSTED_PREFIX) else { continue };
+            let Some((project, terminal)) = self.terminal_of(session) else { continue };
+            if terminal.agent.is_some() || self.settings.workspace.kept_shells.iter().any(|k| k.name == name) {
+                continue;
+            }
+            let Some(cwd) = self.live.session_cwd(name) else { continue };
+            let project = (project != crate::sessions::HOSTED_GROUP).then(|| project.to_string());
+            self.settings.workspace.kept_shells.push(crate::settings::KeptShell { name: name.to_string(), cwd, argv: vec![shell_program.clone()], project });
+            adopted = true;
+        }
         // A shell closed while it runs is let go; one gone (aiball or the
         // machine restarted) stays kept, to be offered at start.
         let kept_before = self.settings.workspace.kept_shells.len();
@@ -280,7 +295,7 @@ impl Shell {
         if pruned {
             log::info!("workspace: shells no longer open let go, {} kept, open {open:?}", self.settings.workspace.kept_shells.len());
         }
-        if pruned || open != self.settings.workspace.open_terminals || self.selected != self.settings.workspace.shown_terminal {
+        if pruned || adopted || open != self.settings.workspace.open_terminals || self.selected != self.settings.workspace.shown_terminal {
             self.settings.workspace.open_terminals = open;
             self.settings.workspace.shown_terminal = self.selected.clone();
             self.settings.save(cx);
