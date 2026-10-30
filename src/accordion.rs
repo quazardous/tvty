@@ -202,6 +202,24 @@ pub fn drag_to(drag: &SectionDrag, y: Pixels, pull: bool) -> bool {
     changed
 }
 
+/// Keeps the sections above `section` at their shown height: left to the
+/// list, they would take the room it frees, and push its title away.
+fn hold_above(list: &str, section: &str) {
+    let prefix = format!("{list}/");
+    let Ok(placed) = placed().lock().map(|p| p.clone()) else { return };
+    let Ok(mut heights) = heights_store().lock() else { return };
+    let sections: Vec<(String, Placed)> = placed.into_iter().filter(|(k, _)| k.starts_with(&prefix)).collect();
+    for (key, height) in held_above(&key(list, section), &sections) {
+        heights.entry(key).or_insert(height);
+    }
+}
+
+/// The open sections above `key`, with their shown heights.
+fn held_above(key: &str, sections: &[(String, Placed)]) -> Vec<(String, f32)> {
+    let Some(top) = sections.iter().find(|(k, _)| k == key).map(|(_, p)| p.top) else { return Vec::new() };
+    sections.iter().filter(|(_, p)| p.top < top && p.height > TITLE_HEIGHT + 0.5).map(|(k, p)| (k.clone(), p.height.round())).collect()
+}
+
 /// Gives a list's sections their shares back.
 fn reset(list: &str) {
     let prefix = format!("{list}/");
@@ -415,13 +433,16 @@ impl Section {
                     .child(count.to_string()),
             )
             .on_click({
-                let list = list.clone();
+                let (list, section) = (list.clone(), id.clone());
                 move |event, window, cx| {
-                    // A double click: the list's shares back.
+                    // A double click: the list's shares back. A click folds
+                    // or unfolds it, its title staying where it is.
                     if event.click_count() == 2 {
                         reset(&list);
-                        commit(cx);
+                    } else {
+                        hold_above(&list, &section);
                     }
+                    commit(cx);
                     on_toggle(event, window, cx)
                 }
             });
@@ -506,10 +527,22 @@ impl Section {
 
 #[cfg(test)]
 mod tests {
-    use super::{Placed, overlaps_view, plan_drag, resized_above};
+    use super::{Placed, held_above, overlaps_view, plan_drag, resized_above};
 
     fn at(top: f32, least: f32, height: f32) -> Placed {
         Placed { top, least, height }
+    }
+
+    #[test]
+    fn folding_a_section_holds_the_open_ones_above_it() {
+        let sections = [("a", 0., 200.), ("b", 200., 28.), ("c", 228., 100.4), ("d", 328., 100.), ("e", 428., 100.)]
+            .map(|(k, top, h)| (k.to_string(), at(top, 28., h)));
+        // Those above, open; the folded one has no height to hold, those below move.
+        let mut held = held_above("d", &sections);
+        held.sort_by(|x, y| x.0.cmp(&y.0));
+        assert_eq!(held, [("a".to_string(), 200.), ("c".to_string(), 100.)]);
+        assert!(held_above("a", &sections).is_empty());
+        assert!(held_above("unknown", &sections).is_empty());
     }
 
     #[test]
