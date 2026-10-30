@@ -322,6 +322,21 @@ pub fn window(count: usize, row: f32, scroll: &ScrollHandle) -> std::ops::Range<
     first..last
 }
 
+const NEAR_VIEW: f32 = 100.;
+
+/// Whether a block of a section's list, `height` tall at `y` in it, is near
+/// enough to the view to be worth laying out: a scroll draws again before it
+/// shows, so a small margin leaves no blank.
+pub fn near_view(y: f32, height: f32, scroll: &ScrollHandle) -> bool {
+    let top = (-f32::from(scroll.offset().y)).clamp(0., f32::from(scroll.max_offset().y).max(0.));
+    overlaps_view(y, height, top, f32::from(scroll.bounds().size.height))
+}
+
+fn overlaps_view(y: f32, height: f32, top: f32, view: f32) -> bool {
+    // Not laid out yet: no view to tell.
+    view <= 0. || (y + height >= top - NEAR_VIEW && y <= top + view + NEAR_VIEW)
+}
+
 impl Section {
     /// The section, its title folding it through `on_toggle`.
     pub fn render(self, on_toggle: impl Fn(&ClickEvent, &mut Window, &mut App) + 'static) -> Div {
@@ -491,10 +506,22 @@ impl Section {
 
 #[cfg(test)]
 mod tests {
-    use super::{Placed, plan_drag, resized_above};
+    use super::{Placed, overlaps_view, plan_drag, resized_above};
 
     fn at(top: f32, least: f32, height: f32) -> Placed {
         Placed { top, least, height }
+    }
+
+    #[test]
+    fn a_block_is_near_the_view_within_a_margin_of_it() {
+        // A view of 100 at 500, 100 around it: from 400 to 700.
+        assert!(overlaps_view(550., 50., 500., 100.));
+        assert!(overlaps_view(380., 20., 500., 100.));
+        assert!(!overlaps_view(350., 20., 500., 100.));
+        assert!(overlaps_view(700., 20., 500., 100.));
+        assert!(!overlaps_view(701., 20., 500., 100.));
+        // Not laid out yet: all of them.
+        assert!(overlaps_view(5000., 20., 0., 0.));
     }
 
     #[test]

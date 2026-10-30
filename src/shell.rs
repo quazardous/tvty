@@ -137,6 +137,9 @@ pub struct Shell {
     dragging_project: Rc<RefCell<Option<String>>>,
     /// A project's block's width in the list, for the copy dragged.
     block_width: Rc<Cell<Pixels>>,
+    /// Each project's block as last laid out: one far from the view keeps
+    /// its place at that height, without its rows.
+    block_heights: Rc<RefCell<HashMap<String, f32>>>,
     /// When tvty started: a work left with terminals gone for good never
     /// ends its restoring, and the list's order is taken a moment after.
     began: std::time::Instant,
@@ -828,6 +831,7 @@ impl Shell {
             sidebar_order: None,
             dragging_project: Rc::default(),
             block_width: Rc::new(Cell::new(px(SIDEBAR_WIDTH - 60.))),
+            block_heights: Default::default(),
             began: std::time::Instant::now(),
             panel,
             settings: Settings::current(cx),
@@ -5033,9 +5037,17 @@ impl Shell {
                 );
             }
         }
+        let mut y = 0.;
         for (project, shown) in found {
-            let block = self.project_block(project, shown, &words, target.as_deref(), cx);
             let name = project.name.clone();
+            let measured = name.clone();
+            let known = self.block_heights.borrow().get(&name).copied();
+            let near = known.is_none_or(|height| crate::accordion::near_view(y, height, &self.session_scrolls[0]));
+            y += known.unwrap_or_default();
+            let block = match known.filter(|_| !near) {
+                Some(height) => div().h(px(height)).into_any_element(),
+                None => self.project_block(project, shown, &words, target.as_deref(), cx).into_any_element(),
+            };
             let dragged = cx.has_active_drag() && self.dragging_project.borrow().as_deref() == Some(name.as_str());
             let dragging = self.dragging_project.clone();
             let (shell, width) = (cx.entity().downgrade(), self.block_width.clone());
@@ -5063,10 +5075,19 @@ impl Shell {
                             shell.move_project(&drag.name, &name, cx)
                         }))
                     })
-                    // Its width, for the copy that follows the pointer.
+                    // Its width, for the copy that follows the pointer; its
+                    // height, for when it is far from the view.
                     .child({
-                        let width = self.block_width.clone();
-                        canvas(move |bounds, _, _| width.set(bounds.size.width), |_, _, _, _| {}).absolute().inset_0()
+                        let (width, heights) = (self.block_width.clone(), self.block_heights.clone());
+                        canvas(
+                            move |bounds, _, _| {
+                                width.set(bounds.size.width);
+                                heights.borrow_mut().insert(measured, f32::from(bounds.size.height));
+                            },
+                            |_, _, _, _| {},
+                        )
+                        .absolute()
+                        .inset_0()
                     })
                     .child(block),
             );
