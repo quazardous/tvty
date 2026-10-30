@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- A project's ▶ shows its start under way on that project only, not on every project with no session.
+
 ## [0.19.0-beta.1] - 2026-10-30
 
 ### Added

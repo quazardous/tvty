@@ -4785,12 +4785,19 @@ impl Shell {
                         loopstabs::Play::Again(l) => crate::t!("sessions-play-again", agent = l.agent().unwrap_or(&l.name).to_string()),
                         loopstabs::Play::New { cwd, .. } => crate::t!("sessions-play-new", cwd = loopstabs::home_short(cwd)),
                     };
-                    let busy = self.starting.is_some();
+                    // "…" on the project starting only; another start under
+                    // way leaves this one as it is, its click waiting.
+                    let cwd = match &play {
+                        loopstabs::Play::Again(l) => l.cwd.clone(),
+                        loopstabs::Play::New { cwd, .. } => cwd.clone(),
+                    };
+                    let starting = self.starting.as_deref() == Some(cwd.as_str());
+                    let free = self.starting.is_none();
                     d.child(
-                        buttons::link(SharedString::from(format!("play-{name}")), if busy { "…" } else { "▶" })
+                        buttons::link(SharedString::from(format!("play-{name}")), if starting { "…" } else { "▶" })
                             .text_xs()
                             .tip(tip)
-                            .when(!busy, |b| b.on_click(cx.listener(move |shell, _, _, cx| shell.play_project(&name, cx)))),
+                            .when(free, |b| b.on_click(cx.listener(move |shell, _, _, cx| shell.play_project(&name, cx)))),
                     )
                 })
                 // A plain shell in the project's folder, listed with it.
