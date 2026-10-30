@@ -76,6 +76,8 @@ pub enum Glyph {
     Wontfix,
     StalledStep,
     Step,
+    /// The last word hands the ticket back: a question waits on an answer.
+    Question,
     Rejected,
     ClosedResolved,
     Closed,
@@ -91,6 +93,7 @@ impl Glyph {
             "wontfix" => Glyph::Wontfix,
             "step_stalled" => Glyph::StalledStep,
             "step" => Glyph::Step,
+            "question" => Glyph::Question,
             "rejected" => Glyph::Rejected,
             "closed_resolved" => Glyph::ClosedResolved,
             "closed" => Glyph::Closed,
@@ -118,6 +121,7 @@ impl Glyph {
             Glyph::Wontfix => "tickets-glyph-wontfix",
             Glyph::StalledStep => "tickets-glyph-stalled",
             Glyph::Step => "tickets-glyph-step",
+            Glyph::Question => "tickets-glyph-question",
             Glyph::Rejected => "tickets-glyph-rejected",
             Glyph::ClosedResolved => "tickets-glyph-closed-resolved",
             Glyph::Closed => "tickets-glyph-closed",
@@ -232,6 +236,20 @@ mod tests {
         r.state_glyph = Some("rejected".into());
         let state = of(&r, "david");
         assert_eq!((state.band, state.glyph), (Band::AgentOnIt, Some(Glyph::Rejected)));
+    }
+
+    #[test]
+    fn a_question_has_its_glyph_for_whoever_reads_it() {
+        let mut r = row();
+        r.band_name = Some("open".into());
+        r.state_glyph = Some("question".into());
+        // Waiting on the reader…
+        r.turn = Some("you".into());
+        let state = of(&r, "david");
+        assert_eq!((state.band, state.turn, state.glyph), (Band::Open, Turn::You, Some(Glyph::Question)));
+        // … and the same glyph for the agent who asked, its turn the others'.
+        r.turn = Some("them".into());
+        assert_eq!(of(&r, "demo-crew").glyph, Some(Glyph::Question));
     }
 
     #[test]

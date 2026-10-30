@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A ticket whose last word is an agent's question, handing it back, shows a question mark in the lists: amber when the answer is yours, its tip saying whose.
+
 ## [0.19.3-beta.1] - 2026-10-30
 
 ### Fixed

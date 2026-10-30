@@ -73,6 +73,8 @@ icons! {
     Unpinned => "keep.svg",
     // A loop's Claude Code config dir (its account), in the agent bar.
     ConfigDir => "manage_accounts.svg",
+    // A question waits on an answer (a ticket's state glyph).
+    Question => "help.svg",
 }
 
 impl AssetSource for Assets {
@@ -148,6 +150,7 @@ pub fn of_glyph(glyph: Glyph) -> Icon {
         Glyph::Wontfix => Icon::Wontfix,
         Glyph::Escalation => Icon::Escalation,
         Glyph::Step => Icon::Step,
+        Glyph::Question => Icon::Question,
         Glyph::StalledStep => Icon::StalledStep,
         Glyph::Rejected => Icon::Rejected,
         Glyph::ClosedResolved => Icon::ClosedResolved,

@@ -64,6 +64,8 @@ tickets-to-moderate = to moderate
 
 tickets-glyph-escalation = an agent escalates: it needs you to act
 tickets-glyph-plan = a plan is proposed
+tickets-glyph-question = a question waits for an answer
+tickets-glyph-question-yours = a question waits for your answer
 tickets-glyph-resolution = a resolution is proposed
 tickets-glyph-wontfix = closing without a fix is proposed
 tickets-glyph-stalled = an agent's step went quiet

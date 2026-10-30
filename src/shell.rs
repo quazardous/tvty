@@ -6170,6 +6170,7 @@ fn options_ticket_list() -> impl IntoElement {
         .child(line(glyph(Glyph::Wontfix, p().muted), Glyph::Wontfix.meaning().into()))
         .child(line(glyph(Glyph::Escalation, p().danger), Glyph::Escalation.meaning().into()))
         .child(line(glyph(Glyph::Step, p().accent), crate::t!("settings-legend-always-blue", what = Glyph::Step.meaning())))
+        .child(line(glyph(Glyph::Question, p().warning), Glyph::Question.meaning().into()))
         .child(line(glyph(Glyph::StalledStep, p().warning), crate::t!("settings-legend-always-amber", what = Glyph::StalledStep.meaning())))
         .child(line(glyph(Glyph::Rejected, p().danger), crate::t!("settings-legend-always-red", what = Glyph::Rejected.meaning())))
         .child(line(glyph(Glyph::ClosedResolved, p().muted), Glyph::ClosedResolved.meaning().into()))

@@ -64,6 +64,8 @@ tickets-to-moderate = à modérer
 
 tickets-glyph-escalation = un agent escalade : il a besoin que tu agisses
 tickets-glyph-plan = un plan est proposé
+tickets-glyph-question = une question attend une réponse
+tickets-glyph-question-yours = une question attend ta réponse
 tickets-glyph-resolution = une résolution est proposée
 tickets-glyph-wontfix = une fermeture sans correction est proposée
 tickets-glyph-stalled = l'étape d'un agent s'est tue

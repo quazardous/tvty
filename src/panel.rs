@@ -2694,7 +2694,7 @@ pub(crate) fn glyph_colour(glyph: Glyph, yours: bool) -> Hsla {
     }
     match glyph {
         Glyph::Escalation | Glyph::Rejected => p().danger,
-        Glyph::Plan | Glyph::StalledStep => p().warning,
+        Glyph::Plan | Glyph::StalledStep | Glyph::Question => p().warning,
         Glyph::Resolution => p().success,
         Glyph::Step => p().accent,
         Glyph::Wontfix | Glyph::ClosedResolved | Glyph::Closed => p().muted,
@@ -2957,6 +2957,8 @@ pub(crate) fn glyph_chip(glyph: Glyph, colour: Hsla, size: f32, ticket: &TicketR
         .and_then(crate::status::resume_full);
     let tip = match resume {
         Some(at) => crate::t!("tickets-step-resumes", at = at),
+        // The same question for all: the reader's to answer, or someone else's.
+        None if glyph == Glyph::Question && ticket.turn.as_deref() == Some("you") => crate::t!("tickets-glyph-question-yours"),
         None => glyph.meaning(),
     };
     div().child(icons::icon(icons::of_glyph(glyph), colour, size)).named("glyph").tip(tip)
