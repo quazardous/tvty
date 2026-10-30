@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - A project's ▶ shows its start under way on that project only, not on every project with no session.
+- A Claude session that starts, or starts again, takes its tab before the project's shells, not after them.
 
 ## [0.19.0-beta.1] - 2026-10-30
 

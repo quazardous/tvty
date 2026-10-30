@@ -185,7 +185,8 @@ pub const HOSTED_GROUP: &str = "terminals";
 pub const HOSTED_PREFIX: &str = "host:";
 
 /// A project's terminals in the order they came: those already listed keep
-/// their place, a new one goes last. `order` is the order kept (updated);
+/// their place, a new one goes last — a new Claude session before the
+/// shells. `order` is the order kept (updated);
 /// `prune` drops from it the sessions no longer there (not while the work
 /// is still coming back at start: they are coming). Answers whether `order`
 /// changed.
@@ -196,7 +197,13 @@ pub fn stack(terminals: &mut [Terminal], order: &mut Vec<String>, prune: bool) -
     }
     for t in terminals.iter() {
         if !order.contains(&t.session) {
-            order.push(t.session.clone());
+            // A Claude session comes before the project's shells: its tab
+            // first when it starts (or starts again), the shells after.
+            let shell = |s: &String| terminals.iter().any(|o| o.session == *s && o.agent.is_none());
+            match order.iter().position(shell).filter(|_| t.agent.is_some()) {
+                Some(at) => order.insert(at, t.session.clone()),
+                None => order.push(t.session.clone()),
+            }
         }
     }
     terminals.sort_by_key(|t| order.iter().position(|s| *s == t.session).unwrap_or(usize::MAX));
@@ -725,6 +732,25 @@ mod tests {
         let mut terminals = vec![t("y")];
         assert!(!super::stack(&mut terminals, &mut order, false));
         assert_eq!(order, ["x", "y"]);
+    }
+
+    #[test]
+    fn a_claude_session_back_comes_before_the_shells() {
+        let shell = |s: &str| super::Terminal { session: s.into(), label: s.into(), attach: None, agent: None, status: None };
+        let claude = |s: &str| super::Terminal { agent: Some(s.into()), ..shell(s) };
+        // Its loop stopped: only the shell is left in the order.
+        let mut order = vec!["host:alpha-1".to_string()];
+        let mut terminals = vec![shell("host:alpha-1"), claude("host:alpha-claude")];
+        assert!(super::stack(&mut terminals, &mut order, true));
+        assert_eq!(order, ["host:alpha-claude", "host:alpha-1"]);
+        // A second Claude session goes after the first, still before the shells.
+        let mut terminals = vec![shell("host:alpha-1"), claude("host:alpha-claude"), claude("host:alpha-crew")];
+        super::stack(&mut terminals, &mut order, true);
+        assert_eq!(order, ["host:alpha-claude", "host:alpha-crew", "host:alpha-1"]);
+        // A new shell still goes last.
+        let mut terminals = vec![shell("host:alpha-1"), claude("host:alpha-claude"), claude("host:alpha-crew"), shell("host:alpha-2")];
+        super::stack(&mut terminals, &mut order, true);
+        assert_eq!(order.last().map(String::as_str), Some("host:alpha-2"));
     }
 
     #[test]
