@@ -55,7 +55,7 @@ import re, sys
 name, log, ticks = sys.argv[1], sys.argv[2], int(sys.argv[3])
 frames = total = worst = 0.0
 for line in open(log):
-    m = re.match(r"window (\d+) frames, max ([\d.]+) ms, total ([\d.]+) ms", line)
+    m = re.match(r"window (\d+) frames, p50 [\d.]+ ms, p95 [\d.]+ ms, max ([\d.]+) ms, total ([\d.]+) ms", line)
     if m:
         frames += int(m[1]); worst = max(worst, float(m[2])); total += float(m[3])
 mean = total / frames if frames else 0
