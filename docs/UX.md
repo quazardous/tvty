@@ -436,6 +436,8 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   default), or newest first, the reply box at the top; it is remembered.
   The panel and the full screen have an order each: ⇅ sets the one of the
   view it is in (Settings > Ticket list > Thread has both).
+- **A plan with options** is accepted on one of them: a button each, the
+  recommended first and the only one coloured; the decided comment says which.
 - **Folding or unfolding a section leaves its title in place**: the open
   sections above keep their height, the ones below move; a double click on a
   title gives the list its default shares back.

@@ -841,6 +841,19 @@ pub struct Decision {
     /// `pending`, `accepted`, `rejected`.
     pub status: String,
     pub decided_by: Option<String>,
+    /// What a plan offers to accept it on; none: accepted as a whole.
+    pub options: Vec<PlanOption>,
+    /// The option it was accepted on.
+    pub option: Option<String>,
+}
+
+/// One of the ways a plan can be accepted.
+#[derive(Clone, Debug, PartialEq, Deserialize)]
+pub struct PlanOption {
+    pub key: String,
+    pub label: String,
+    #[serde(default)]
+    pub recommended: bool,
 }
 
 fn meta_of(meta: Option<&str>) -> Option<Value> {
@@ -854,7 +867,17 @@ fn decision_of(meta: Option<&str>) -> Option<Decision> {
         kind: decision.get("kind")?.as_str()?.to_string(),
         status: decision.get("status")?.as_str()?.to_string(),
         decided_by: decision.get("decided_by").and_then(Value::as_str).map(str::to_string),
+        options: decision.get("options").and_then(|o| serde_json::from_value(o.clone()).ok()).unwrap_or_default(),
+        option: decision.get("option").and_then(Value::as_str).map(str::to_string),
     })
+}
+
+fn decide_params(comment: u64, accept: bool, option: Option<&str>) -> Value {
+    let mut params = json!({ "id": comment, "status": if accept { "accepted" } else { "rejected" } });
+    if let Some(option) = option {
+        params["option"] = json!(option);
+    }
+    params
 }
 
 impl TicketHeader {
@@ -1517,9 +1540,8 @@ impl Aiball {
     }
 
     /// Accept or reject the decision a comment carries.
-    pub fn decide(&self, comment: u64, accept: bool) -> anyhow::Result<()> {
-        let status = if accept { "accepted" } else { "rejected" };
-        self.rpc_do("message.decide", json!({ "id": comment, "status": status }))
+    pub fn decide(&self, comment: u64, accept: bool, option: Option<&str>) -> anyhow::Result<()> {
+        self.rpc_do("message.decide", decide_params(comment, accept, option))
     }
 
     /// An upload's bytes, through the socket (`/api/uploads/<sha>`).
@@ -2119,6 +2141,26 @@ mod said_tests {
 #[cfg(test)]
 mod critical_tests {
     use super::Critical;
+
+    #[test]
+    fn an_accept_says_its_option_and_a_decision_reads_its_options() {
+        use super::{PlanOption, decide_params, decision_of};
+        use serde_json::json;
+        assert_eq!(decide_params(7, true, None), json!({ "id": 7, "status": "accepted" }));
+        assert_eq!(decide_params(7, true, Some("B")), json!({ "id": 7, "status": "accepted", "option": "B" }));
+        assert_eq!(decide_params(7, false, None), json!({ "id": 7, "status": "rejected" }));
+        let meta = json!({ "decision": { "kind": "plan", "status": "accepted", "option": "B", "options": [
+            { "key": "A", "label": "One" },
+            { "key": "B", "label": "Other", "recommended": true },
+        ] } })
+        .to_string();
+        let decision = decision_of(Some(&meta)).unwrap();
+        assert_eq!(decision.option.as_deref(), Some("B"));
+        assert_eq!(decision.options[1], PlanOption { key: "B".into(), label: "Other".into(), recommended: true });
+        // A plan with none: accepted as a whole.
+        let plain = json!({ "decision": { "kind": "plan", "status": "pending" } }).to_string();
+        assert!(decision_of(Some(&plain)).unwrap().options.is_empty());
+    }
 
     #[test]
     fn a_plain_reply_says_nothing_of_the_hand_and_a_kept_one_does() {

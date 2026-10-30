@@ -17,6 +17,7 @@ use gpui_kit::*;
 use crate::kernel::catalog::{self as catalogs, Catalog};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
 use crate::aiball::{Aiball, Comment, ReplyWay, Thread, TicketHeader, TicketRow};
+use crate::thread;
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::fields;
 use crate::ui::ticketref;
@@ -1063,8 +1064,9 @@ impl TicketPanel {
         true
     }
 
-    fn decide(&mut self, message: u64, accept: bool, window: &mut Window, cx: &mut Context<Self>) {
-        self.act(&crate::t!(if accept { "tickets-did-accepted" } else { "tickets-did-rejected" }), move |aiball, _, _| aiball.decide(message, accept), window, cx);
+    /// `option`: the one accepted, of a plan that offers some.
+    fn decide(&mut self, message: u64, accept: bool, option: Option<String>, window: &mut Window, cx: &mut Context<Self>) {
+        self.act(&crate::t!(if accept { "tickets-did-accepted" } else { "tickets-did-rejected" }), move |aiball, _, _| aiball.decide(message, accept, option.as_deref()), window, cx);
     }
 
     fn moderate(&mut self, message: u64, approve: bool, window: &mut Window, cx: &mut Context<Self>) {
@@ -1531,6 +1533,7 @@ impl TicketPanel {
                 &ticket.by_agent,
                 &ticket.created_at,
                 read.ticket_decision.clone(),
+                ticket.decision().and_then(|d| d.option),
                 None,
                 false,
                 false,
@@ -1597,15 +1600,27 @@ impl TicketPanel {
                             buttons::answer("reject", crate::t!("tickets-reject"))
                                 .danger()
                                 .disabled(detail.busy || !typed)
-                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, window, cx))),
+                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, false, None, window, cx))),
                         )
-                        .child(
-                            buttons::answer("accept", accept)
-                                .success()
-                                .disabled(detail.busy)
-                                .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, window, cx))),
-                        )),
+                        .when(active.options.is_empty(), |d| {
+                            d.child(
+                                buttons::answer("accept", accept)
+                                    .success()
+                                    .disabled(detail.busy)
+                                    .on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, None, window, cx))),
+                            )
+                        })),
                 )
+                // A plan with options: accepted on one of them, the
+                // recommended first and the only one coloured.
+                .when(!unmoderated && !active.options.is_empty(), |d| {
+                    d.child(div().flex().flex_wrap().justify_end().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
+                        let key = option.key.clone();
+                        let button = buttons::answer(SharedString::from(format!("accept-{key}")), format!("{}: {}", option.key, option.label)).disabled(detail.busy);
+                        let button = if option.recommended { button.success() } else { button.outline() };
+                        button.on_click(cx.listener(move |panel, _, window, cx| panel.decide(message, true, Some(key.clone()), window, cx)))
+                    })))
+                })
                 .when(!typed && !unmoderated, |d| {
                     d.child(div().text_xs().text_color(p().muted).child(crate::t!("tickets-reject-say-why")))
                 })
@@ -2311,6 +2326,7 @@ impl TicketPanel {
                         &comment.by_agent,
                         &comment.created_at,
                         entry.decision.clone(),
+                        comment.decision().and_then(|d| d.option),
                         entry.step.map(|latest| (latest, comment.step_resume())),
                         comment.keeps_the_hand() && comment.by_agent == user,
                         entry.pending,
@@ -2477,6 +2493,7 @@ impl TicketPanel {
         by: &str,
         when: &str,
         decision: Option<(String, DecisionState)>,
+        chosen: Option<String>,
         step: Option<(bool, (Option<String>, Option<u64>))>,
         keeps: bool,
         pending: bool,
@@ -2496,6 +2513,7 @@ impl TicketPanel {
             .child(who(by, user))
             .when_some(ago(when), |d, when| d.child(when))
             .when_some(decision, |d, (kind, state)| d.child(decision_chip(&kind, state)))
+            .when_some(chosen, |d, chosen| d.child(div().text_color(p().text).child(chosen)))
             .when_some(step, |d, (latest, (at, on_ticket))| {
                 let colour = if latest { p().accent } else { p().muted };
                 // When its agent resumes, as it said: a time still to come,

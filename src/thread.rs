@@ -3,7 +3,7 @@
 //! which comments to show in full. The reading follows aiball's `brief`
 //! mode — an agent and the user read a thread from the same place.
 
-use crate::aiball::{Comment, Decision, Thread};
+use crate::aiball::{Comment, Decision, PlanOption, Thread};
 use crate::rowstate::{Glyph, RowState, Turn};
 
 /// The decision a thread waits on: the latest one, while still pending.
@@ -13,6 +13,15 @@ pub struct Active {
     pub message: u64,
     pub kind: String,
     pub by: String,
+    /// What it offers to accept it on; none: accepted as a whole.
+    pub options: Vec<PlanOption>,
+}
+
+/// A plan's options as offered: the recommended one first.
+pub fn offered(options: &[PlanOption]) -> Vec<PlanOption> {
+    let mut offered = options.to_vec();
+    offered.sort_by_key(|o| !o.recommended);
+    offered
 }
 
 /// A decision chip, as a comment shows it.
@@ -95,7 +104,7 @@ pub fn read(thread: &Thread) -> Reading {
     let latest_id = latest.as_ref().map(|(id, _, _)| *id);
     let active = latest
         .filter(|(_, _, d)| d.status == "pending")
-        .map(|(message, by, d)| Active { message, kind: d.kind, by });
+        .map(|(message, by, d)| Active { message, kind: d.kind, by, options: d.options });
     let ticket_decision = thread
         .ticket
         .decision()
@@ -394,6 +403,17 @@ mod tests {
         assert_eq!(sentence(&t, &r, None, false, "david", 0), "Yours: accept or reject demo-claude's plan");
         // Your own proposal is not yours to take.
         assert_eq!(sentence(&t, &r, None, false, "demo-claude", 0), "Your plan waits for a decision");
+    }
+
+    #[test]
+    fn a_plan_offers_its_recommended_option_first() {
+        let plan = serde_json::json!({"decision": {"kind": "plan", "status": "pending", "options": [
+            {"key": "A", "label": "One"}, {"key": "B", "label": "Other", "recommended": true}, {"key": "C", "label": "Third"},
+        ]}});
+        let t = thread(serde_json::json!([comment(2, "demo-claude", plan)]));
+        let active = read(&t).active.unwrap();
+        let keys: Vec<_> = super::offered(&active.options).into_iter().map(|o| o.key).collect();
+        assert_eq!(keys, ["B", "A", "C"]);
     }
 
     #[test]
