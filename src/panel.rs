@@ -1648,9 +1648,20 @@ impl TicketPanel {
                                     .flex_1()
                                     .min_w_0()
                                     .text_sm()
-                                    .child(option.label.clone())
-                                    .when(option.recommended, |d| d.child(div().text_xs().text_color(p().success).child(crate::t!("tickets-option-recommended")))),
+                                    .when(option.recommended, |d| d.text_color(p().success))
+                                    .child(option.label.clone()),
                             )
+                            .when(option.recommended, |d| {
+                                d.child(
+                                    div()
+                                        .named(SharedString::from(format!("recommended-{}", option.key)))
+                                        .flex_none()
+                                        .text_sm()
+                                        .text_color(p().success)
+                                        .tip(crate::t!("tickets-option-recommended"))
+                                        .child("★"),
+                                )
+                            })
                             .on_click(cx.listener(move |panel, _, _, cx| {
                                 if let Some(detail) = panel.detail.as_mut() {
                                     detail.picked = Some((message, key.clone()));
