@@ -50,7 +50,7 @@ fn placed() -> &'static Mutex<HashMap<String, Placed>> {
 /// stops only once the whole stack is down to its least. `below`: top
 /// first, with its key and whether its height is set by hand. Dragged up, the section just below
 /// grows by as much: nothing else moves.
-fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty: f32) -> (f32, Vec<(String, f32)>) {
+fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], upper: &[(String, Placed)], empty: f32) -> (f32, Vec<(String, f32)>) {
     let from = above.height.max(above.least);
     let mut owed = (wanted - from).max(0.);
     let pushed = owed;
@@ -80,10 +80,23 @@ fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty
     if wanted > from {
         return ((from + pushed - owed).round(), taken);
     }
-    // Up: as few sections move as can be — the one just below (the first
-    // not folded) grows by what this one gives, the others stay put.
+    // Up: as few sections move as can be — this one gives down to its
+    // least, then those above it, the nearest first; the one just below
+    // (the first not folded) grows by all they give, the others stay put.
     let height = wanted.max(above.least).round();
-    let given = from - height;
+    let mut short = above.least - wanted;
+    let mut given = from - height;
+    for (key, u) in upper {
+        if short <= 0. {
+            break;
+        }
+        let give = (u.height - u.least).max(0.).min(short);
+        if give > 0. {
+            short -= give;
+            given += give;
+            taken.push((key.clone(), (u.height - give).round()));
+        }
+    }
     if let Some((key, b, _)) = below.iter().find(|(_, b, _)| b.height > TITLE_HEIGHT + 0.5).filter(|_| given > 0.) {
         taken.push((key.clone(), (b.height + given).round()));
     }
@@ -155,7 +168,11 @@ pub fn drag_to(drag: &SectionDrag, y: Pixels) -> bool {
     let end = placed.iter().filter(|(k, _)| k.starts_with(&prefix)).map(|(_, p)| p.top + p.height).fold(above.top + above.height, f32::max);
     let empty = list_bottoms().lock().ok().and_then(|b| b.get(drag.list.as_ref()).copied()).map_or(0., |bottom| bottom - end);
     // The pointer holds the title about its middle.
-    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2., above, &below, empty);
+    // The sections above it, the nearest first: a drag up goes on through them.
+    let mut upper: Vec<(String, Placed)> =
+        placed.iter().filter(|(k, p)| k.starts_with(&prefix) && p.top < above.top).map(|(k, p)| (k.clone(), *p)).collect();
+    upper.sort_by(|a, b| b.1.top.total_cmp(&a.1.top));
+    let (height, taken) = plan_drag(f32::from(y) - above.top - TITLE_HEIGHT / 2., above, &below, &upper, empty);
     let mut changed = heights.insert(key, height) != Some(height);
     for (k, h) in taken {
         changed |= heights.insert(k, h) != Some(h);
@@ -463,22 +480,29 @@ mod tests {
         let above = at(0., 56., 300.);
         let below = vec![("l/b".to_string(), at(300., 56., 200.), true), ("l/c".to_string(), at(500., 28., 128.), false)];
         // The one just below gives first, down to its least (144 to give).
-        assert_eq!(plan_drag(400., above, &below, 0.), (400., vec![("l/b".to_string(), 100.)]));
+        assert_eq!(plan_drag(400., above, &below, &[], 0.), (400., vec![("l/b".to_string(), 100.)]));
         // Then the next (100 more), and no further: all at their least.
-        assert_eq!(plan_drag(520., above, &below, 0.), (520., vec![("l/b".to_string(), 56.)]));
-        assert_eq!(plan_drag(900., above, &below, 0.), (544., vec![("l/b".to_string(), 56.)]));
+        assert_eq!(plan_drag(520., above, &below, &[], 0.), (520., vec![("l/b".to_string(), 56.)]));
+        assert_eq!(plan_drag(900., above, &below, &[], 0.), (544., vec![("l/b".to_string(), 56.)]));
         // The one just below gives before the last is pushed into the room
         // under it: only then is that room taken.
-        assert_eq!(plan_drag(400., above, &below, 150.), (400., vec![("l/b".to_string(), 100.)]));
-        assert_eq!(plan_drag(600., above, &below, 150.), (600., vec![("l/b".to_string(), 56.)]));
+        assert_eq!(plan_drag(400., above, &below, &[], 150.), (400., vec![("l/b".to_string(), 100.)]));
+        assert_eq!(plan_drag(600., above, &below, &[], 150.), (600., vec![("l/b".to_string(), 56.)]));
         // Sized by the list or not, the one between gets a height as it gives.
         let auto = vec![("l/b".to_string(), at(300., 56., 200.), false), ("l/c".to_string(), at(500., 28., 128.), false)];
-        assert_eq!(plan_drag(400., above, &auto, 150.), (400., vec![("l/b".to_string(), 100.)]));
+        assert_eq!(plan_drag(400., above, &auto, &[], 150.), (400., vec![("l/b".to_string(), 100.)]));
         // Up: down to its own least, the one just below growing by as much.
-        assert_eq!(plan_drag(250., above, &below, 0.), (250., vec![("l/b".to_string(), 250.)]));
-        assert_eq!(plan_drag(10., above, &below, 0.), (56., vec![("l/b".to_string(), 444.)]));
+        assert_eq!(plan_drag(250., above, &below, &[], 0.), (250., vec![("l/b".to_string(), 250.)]));
+        assert_eq!(plan_drag(10., above, &below, &[], 0.), (56., vec![("l/b".to_string(), 444.)]));
+        // Past its least, the sections above give, the nearest first.
+        let upper = vec![("l/u2".to_string(), at(-100., 56., 100.)), ("l/u1".to_string(), at(-300., 56., 200.))];
+        let small = at(0., 56., 56.);
+        assert_eq!(
+            plan_drag(-100., small, &below, &upper, 0.),
+            (56., vec![("l/u2".to_string(), 56.), ("l/u1".to_string(), 88.), ("l/b".to_string(), 356.)])
+        );
         // A folded one just below is passed over: the next grows.
         let folded = vec![("l/f".to_string(), at(300., 28., 28.), false), ("l/c".to_string(), at(328., 28., 128.), false)];
-        assert_eq!(plan_drag(250., above, &folded, 0.), (250., vec![("l/c".to_string(), 178.)]));
+        assert_eq!(plan_drag(250., above, &folded, &[], 0.), (250., vec![("l/c".to_string(), 178.)]));
     }
 }
