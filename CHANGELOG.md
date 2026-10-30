@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Dragging a section's title up moves as few sections as it can: the one above shrinks, the one just below grows by as much, the others stay put.
+
 ## [0.19.1-beta.1] - 2026-10-30
 
 ### Fixed

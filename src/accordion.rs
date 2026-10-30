@@ -49,7 +49,8 @@ fn placed() -> &'static Mutex<HashMap<String, Placed>> {
 /// its least, the nearest first — one sized by the list as the layout
 /// shrinks it, one set by hand by a new height. It stops only once the
 /// whole stack is down to its least. `below`: top first, with its key and
-/// whether its height is set by hand.
+/// whether its height is set by hand. Dragged up, the section just below
+/// grows by as much: nothing else moves.
 fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty: f32) -> (f32, Vec<(String, f32)>) {
     let from = above.height.max(above.least);
     let mut owed = (wanted - from).max(0.);
@@ -66,8 +67,17 @@ fn plan_drag(wanted: f32, above: Placed, below: &[(String, Placed, bool)], empty
             taken.push((key.clone(), (b.height - give).round()));
         }
     }
-    let height = if wanted > from { from + pushed - owed } else { wanted.max(above.least) };
-    (height.round(), taken)
+    if wanted > from {
+        return ((from + pushed - owed).round(), taken);
+    }
+    // Up: as few sections move as can be — the one just below (the first
+    // not folded) grows by what this one gives, the others stay put.
+    let height = wanted.max(above.least).round();
+    let given = from - height;
+    if let Some((key, b, _)) = below.iter().find(|(_, b, _)| b.height > TITLE_HEIGHT + 0.5).filter(|_| given > 0.) {
+        taken.push((key.clone(), (b.height + given).round()));
+    }
+    (height, taken)
 }
 
 fn key(list: &str, section: &str) -> String {
@@ -449,7 +459,11 @@ mod tests {
         assert_eq!(plan_drag(900., above, &below, 0.), (544., vec![("l/b".to_string(), 56.)]));
         // Room under the last section first: nothing gives.
         assert_eq!(plan_drag(400., above, &below, 150.), (400., vec![]));
-        // Up: down to its own least, nothing taken.
-        assert_eq!(plan_drag(10., above, &below, 0.), (56., vec![]));
+        // Up: down to its own least, the one just below growing by as much.
+        assert_eq!(plan_drag(250., above, &below, 0.), (250., vec![("l/b".to_string(), 250.)]));
+        assert_eq!(plan_drag(10., above, &below, 0.), (56., vec![("l/b".to_string(), 444.)]));
+        // A folded one just below is passed over: the next grows.
+        let folded = vec![("l/f".to_string(), at(300., 28., 28.), false), ("l/c".to_string(), at(328., 28., 128.), false)];
+        assert_eq!(plan_drag(250., above, &folded, 0.), (250., vec![("l/c".to_string(), 178.)]));
     }
 }
