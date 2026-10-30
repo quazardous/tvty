@@ -778,8 +778,9 @@ on black beside it shows the same:
 - the last 15 minutes' speed against the pace (speed ×1.8): its trace,
   the older the fainter, the line at 1 being the pace.
 
-A click goes to the next, figure and drawing, until tvty restarts; the
-settings (Appearance › Usage) choose the first. The tip draws the three
+A click goes to the next, figure and drawing, and the next start shows the
+same again (Auto); the settings (Appearance › Usage) can fix the one each
+start begins with. The tip draws the three
 that run in time one above the other, on the window's clock, and gives
 both windows with their reset, the recent speed and the reading's age.
 The five-hour window, else the week. The usage is Claude Code's own (its

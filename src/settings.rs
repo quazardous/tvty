@@ -79,16 +79,17 @@ pub struct Mouse {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Usage {
-    /// How the top bar's usage arrow says the gap to the pace: `points`,
-    /// `wall`, `trend`; none: the ratio. A click on it goes to the next until tvty
-    /// restarts.
+    /// How the top bar's usage arrow starts saying the gap to the pace:
+    /// `ratio`, `points`, `wall`, `trend`; none: as it was last clicked to.
+    /// A click on it goes to the next.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub display: Option<String>,
 }
 
 impl Usage {
-    pub fn display(&self) -> crate::usage::Display {
-        self.display.as_deref().and_then(crate::usage::Display::from_key).unwrap_or_default()
+    /// `last`: what a click last chose, kept in the layout.
+    pub fn display(&self, last: Option<&str>) -> crate::usage::Display {
+        self.display.as_deref().or(last).and_then(crate::usage::Display::from_key).unwrap_or_default()
     }
 }
 
@@ -459,7 +460,7 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Appearance",
         group: "Usage",
         label: "Usage arrow",
-        about: "In the top bar, the subscription against the pace that would use it up right at the window's end: an arrow, red and up above the pace, green and down below, its figure, then a small drawing of it: used against expected (×1.3, a bar and the pace's tick), the gap in points of the quota (+12 pts, the gap since the window's start), when the quota runs out at the last hour's speed (wall 1h40, the quota left going down to the wall), or the last 15 minutes' speed against the pace (speed ×1.8, its trace). A click on it goes to the next until tvty restarts; its tip draws the three that run in time, one above the other. Shown once a loop reads the usage from Claude Code (Pro and Max plans).",
+        about: "In the top bar, the subscription against the pace that would use it up right at the window's end: an arrow, red and up above the pace, green and down below, its figure, then a small drawing of it: used against expected (×1.3, a bar and the pace's tick), the gap in points of the quota (+12 pts, the gap since the window's start), when the quota runs out at the last hour's speed (wall 1h40, the quota left going down to the wall), or the last 15 minutes' speed against the pace (speed ×1.8, its trace). A click on it goes to the next, the one shown again at the next start unless a choice is set here; its tip draws the three that run in time, one above the other. Shown once a loop reads the usage from Claude Code (Pro and Max plans).",
         kind: Kind::Choice,
     },
     Setting {
@@ -622,6 +623,9 @@ pub struct Layout {
     pub workspaces_folded: Vec<String>,
     /// The accordions' sections given a height by hand (`list/section`).
     pub section_heights: HashMap<String, f32>,
+    /// What a click last made the usage arrow say.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub usage_display: Option<String>,
     /// A full-screen ticket's fields column, in pixels; none until the user
     /// drags its border.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -651,6 +655,7 @@ impl Default for Layout {
             sidebar_tab: String::new(),
             workspaces_folded: Vec::new(),
             section_heights: HashMap::new(),
+            usage_display: None,
             fields_width: None,
             window: None,
         }
@@ -673,6 +678,7 @@ impl Stored for Layout {
             sidebar_tab: String::new(),
             workspaces_folded: Vec::new(),
             section_heights: old.get("section_heights").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default(),
+            usage_display: None,
             fields_width: None,
             window: None,
         })
@@ -830,8 +836,18 @@ pub fn init(cx: &mut gpui_kit::App) {
 
 #[cfg(test)]
 mod tests {
-    use super::Preferences;
+    use super::{Preferences, Usage};
     use tvty_config::{parse, render};
+
+    #[test]
+    fn the_usage_arrow_starts_as_last_clicked_unless_a_choice_is_set() {
+        use crate::usage::Display;
+        let auto = Usage::default();
+        assert_eq!(auto.display(None), Display::Ratio);
+        assert_eq!(auto.display(Some("wall")), Display::Wall);
+        let set = Usage { display: Some("points".into()) };
+        assert_eq!(set.display(Some("wall")), Display::Points);
+    }
 
     #[test]
     fn every_setting_reaches_its_field() {

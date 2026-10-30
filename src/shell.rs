@@ -337,7 +337,7 @@ pub struct Shell {
     /// The title bar's language list, open.
     language_menu: bool,
     /// How the usage arrow says its gap, clicked to another than the
-    /// settings' until tvty restarts.
+    /// settings' since tvty started.
     usage_display: Option<crate::usage::Display>,
     /// The title bar's ? menu is open.
     help_menu: bool,
@@ -3557,7 +3557,7 @@ impl Shell {
             "mouse.focus" => Some(&[("click", "settings-focus-click"), ("hover", "settings-focus-hover")]),
             "sessions.order" => Some(&[("alpha", "settings-order-alpha"), ("yours", "settings-order-yours")]),
             "terminal.cursor" => Some(&[("steady", "settings-cursor-steady"), ("program", "settings-cursor-program")]),
-            "usage.display" => Some(&[("points", "settings-usage-points"), ("wall", "settings-usage-wall"), ("trend", "settings-usage-trend")]),
+            "usage.display" => Some(&[("ratio", "settings-usage-ratio"), ("points", "settings-usage-points"), ("wall", "settings-usage-wall"), ("trend", "settings-usage-trend")]),
             "appearance.language" => Some(crate::i18n::LANGS),
             _ => None,
         };
@@ -3568,7 +3568,7 @@ impl Shell {
             "sessions.shells_on_start" => (self.applied.sessions.shells_on_start.clone().map(SharedString::from), Some(crate::t!("settings-ask").into())),
             "sessions.order" => (self.applied.sessions.order.clone().map(SharedString::from), Some(crate::t!("settings-order-recent").into())),
             "terminal.cursor" => (self.applied.terminal.cursor.clone().map(SharedString::from), Some(crate::t!("settings-cursor-blink").into())),
-            "usage.display" => (self.applied.usage.display.clone().map(SharedString::from), Some(crate::t!("settings-usage-ratio").into())),
+            "usage.display" => (self.applied.usage.display.clone().map(SharedString::from), Some(crate::t!("settings-usage-auto").into())),
             // As the system: what it was read to do.
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.

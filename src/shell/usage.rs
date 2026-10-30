@@ -3,8 +3,8 @@
 //! right at the window's end, green and down when slower, deeper as the gap
 //! grows; its figure; then a small drawing of what the figure says (the
 //! quota left going down to the wall, the gap in points, the recent
-//! speed…). A click says the gap another way, figure and drawing, until
-//! tvty restarts; the tip draws the three that run in time, on one clock.
+//! speed…). A click says the gap another way, figure and drawing, kept for
+//! the next start; the tip draws the three that run in time, on one clock.
 
 use gpui_kit::component::tooltip::Tooltip;
 use gpui_kit::*;
@@ -59,7 +59,7 @@ impl Shell {
         let usage = self.shown_usage()?;
         let pace = crate::usage::pace(usage, now)?;
         let chart = crate::usage::chart(crate::config::get::<History>(cx), usage, now);
-        let display = self.usage_display.unwrap_or_else(|| self.applied.usage.display());
+        let display = self.usage_display.unwrap_or_else(|| self.applied.usage.display(self.settings.layout.usage_display.as_deref()));
         let (arrow, colour) = if pace.above() { ("↑", p().danger) } else { ("↓", p().success) };
         let depth = FAINTEST + (1. - FAINTEST) * pace.heat().abs() as f32;
         let label = format!("{arrow} {}", crate::usage::said(&pace, chart.as_ref(), display, now));
@@ -89,6 +89,8 @@ impl Shell {
                 .on_click(cx.listener(move |shell, _, _, cx| {
                     cx.stop_propagation();
                     shell.usage_display = Some(display.next());
+                    shell.settings.layout.usage_display = Some(display.next().key().to_string());
+                    shell.settings.save(cx);
                     cx.notify();
                 })),
         )
