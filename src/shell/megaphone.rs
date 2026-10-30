@@ -219,7 +219,9 @@ impl Shell {
 
     /// The message to every running loop (`hold`: held too), or `None`:
     /// their holds released.
-    fn message_loops(&mut self, hold: Option<bool>, cx: &mut Context<Self>) {
+    /// Sent: the popover closes and a notice says what each loop did;
+    /// refused, it stays open with the error.
+    fn message_loops(&mut self, hold: Option<bool>, window: &mut Window, cx: &mut Context<Self>) {
         let Some(m) = self.megaphone.as_mut() else { return };
         let typed = m.message.read(cx).value().trim().to_string();
         let message = if typed.is_empty() { DEFAULT_MESSAGE.to_string() } else { typed };
@@ -227,7 +229,7 @@ impl Shell {
         m.error = None;
         cx.notify();
         let aiball = self.aiball.clone();
-        cx.spawn(async move |this, cx| {
+        cx.spawn_in(window, async move |this, cx| {
             let done = cx
                 .background_executor()
                 .spawn(async move {
@@ -237,11 +239,14 @@ impl Shell {
                     }
                 })
                 .await;
-            let _ = this.update(cx, |shell, cx| {
+            let _ = this.update_in(cx, |shell, window, cx| {
                 let Some(m) = shell.megaphone.as_mut() else { return };
                 m.busy = false;
                 match done {
-                    Ok(results) => m.said = Some(results_said(&results)),
+                    Ok(results) => {
+                        shell.close_megaphone(window, cx);
+                        activity::publish(cx, Activity::done(None, results_said(&results)));
+                    }
                     Err(error) => m.error = Some(format!("{error:#}")),
                 }
                 cx.notify();
@@ -348,9 +353,9 @@ impl Shell {
                     .flex()
                     .justify_end()
                     .gap_2()
-                    .child(buttons::secondary("loops-release", crate::t!("megaphone-release")).on_click(cx.listener(|shell, _, _, cx| shell.message_loops(None, cx))))
-                    .child(buttons::secondary("loops-send", crate::t!("megaphone-send")).on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(false), cx))))
-                    .child(buttons::answer("loops-hold", crate::t!("megaphone-send-hold")).danger().on_click(cx.listener(|shell, _, _, cx| shell.message_loops(Some(true), cx)))),
+                    .child(buttons::secondary("loops-release", crate::t!("megaphone-release")).on_click(cx.listener(|shell, _, window, cx| shell.message_loops(None, window, cx))))
+                    .child(buttons::secondary("loops-send", crate::t!("megaphone-send")).on_click(cx.listener(|shell, _, window, cx| shell.message_loops(Some(false), window, cx))))
+                    .child(buttons::answer("loops-hold", crate::t!("megaphone-send-hold")).danger().on_click(cx.listener(|shell, _, window, cx| shell.message_loops(Some(true), window, cx)))),
             )
             .children(m.said.clone().map(|said| div().text_xs().text_color(p().success).child(said)))
     }
