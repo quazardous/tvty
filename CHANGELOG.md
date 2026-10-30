@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Under a folded section, dragging a title resizes the first open section above, as dragging the folded title does, instead of moving the sections below.
 - Folding or unfolding a section leaves its title where it is.
+- Dragging a section's title no longer redraws the whole window at each move.
 - "Restart tvty" asks nothing at its start, and a shell found gone is offered once instead of at each start.
 - A proposal its author withdrew no longer offers Accept and Reject.
 - After the machine crashed or went down, the loops that were running are offered at start, as those stopped at quit, instead of being lost.

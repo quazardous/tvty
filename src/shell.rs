@@ -1151,6 +1151,32 @@ impl Shell {
         self.advance_config_switches(cx);
     }
 
+    /// The pointer moved, maybe a section's title held. Only the list dragged
+    /// draws again: the tickets' is the panel's, the sessions' the shell's.
+    fn section_held(&mut self, event: &MouseMoveEvent, cx: &mut Context<Self>) {
+        let Some(drag) = crate::accordion::held_moved(event.position.y) else { return };
+        if !crate::accordion::drag_to(&drag, event.position.y, event.modifiers.control) {
+            return;
+        }
+        if drag.list.as_ref() == "tickets" {
+            self.panel.update(cx, |_, cx| cx.notify());
+        } else {
+            cx.notify();
+        }
+        // Kept once the drag rests, wherever it is let go.
+        self.heights_moved += 1;
+        let moved = self.heights_moved;
+        cx.spawn(async move |this, cx| {
+            cx.background_executor().timer(Duration::from_millis(400)).await;
+            let _ = this.update(cx, |shell, cx| {
+                if shell.heights_moved == moved {
+                    crate::accordion::commit(cx);
+                }
+            });
+        })
+        .detach();
+    }
+
     /// The board moved on the bus: built again shortly, once for a burst.
     fn board_moved(&mut self, cx: &mut Context<Self>) {
         if self.rebuild_pending {
@@ -5392,9 +5418,16 @@ impl Render for Shell {
                 .h_full()
                 .child(self.edge(Side::Right, cx))
                 // Drawn with the shell, not cached: a cached view's text
-                // selection is not painted on the frames that reuse it,
-                // and it blinks (the panel costs under a millisecond).
-                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
+                // selection is not painted on the frames that reuse it, and
+                // it blinks. While the sessions' sections are dragged, its
+                // layout is the time to save.
+                .child(div().flex_1().min_w_0().h_full().map(|d| {
+                    if crate::accordion::dragged_list().is_some_and(|list| list != "tickets") {
+                        d.child(self.panel.clone().cached(StyleRefinement::default().size_full()))
+                    } else {
+                        d.child(self.panel.clone())
+                    }
+                }))
                 .into_any_element()
         } else {
             let alerts = self
@@ -5510,31 +5543,29 @@ impl Render for Shell {
         let body = div()
             .named("shell")
             .on_drag_move(cx.listener(Self::on_drag_move))
-            // A section's title dragged, in the sessions list or the panel.
-            .on_drag_move(cx.listener(|shell, event: &DragMoveEvent<crate::accordion::SectionDrag>, _, cx| {
-                if crate::accordion::drag_to(event.drag(cx), event.event.position.y, event.event.modifiers.control) {
-                    // Only the list dragged draws again: the tickets' is the
-                    // panel's, the sessions' the shell's.
-                    if event.drag(cx).list.as_ref() == "tickets" {
-                        shell.panel.update(cx, |_, cx| cx.notify());
-                    } else {
-                        cx.notify();
-                    }
-                    // Kept once the drag rests, wherever it is let go.
-                    shell.heights_moved += 1;
-                    let moved = shell.heights_moved;
-                    cx.spawn(async move |this, cx| {
-                        cx.background_executor().timer(Duration::from_millis(400)).await;
-                        let _ = this.update(cx, |shell, cx| {
-                            if shell.heights_moved == moved {
-                                crate::accordion::commit(cx);
+            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+            // A section's title held, in the sessions list or the panel.
+            .child({
+                let shell = cx.entity().downgrade();
+                canvas(
+                    |_, _, _| {},
+                    move |_, _, window, _| {
+                        let moving = shell.clone();
+                        window.on_mouse_event(move |event: &MouseMoveEvent, phase, _, cx| {
+                            if phase == DispatchPhase::Capture {
+                                let _ = moving.update(cx, |shell, cx| shell.section_held(event, cx));
                             }
                         });
-                    })
-                    .detach();
-                }
-            }))
-            .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
+                        window.on_mouse_event(|_: &MouseUpEvent, phase, _, _| {
+                            if phase == DispatchPhase::Capture {
+                                crate::accordion::held_released();
+                            }
+                        });
+                    },
+                )
+                .absolute()
+                .size_0()
+            })
             .relative()
             .flex()
             .w_full()

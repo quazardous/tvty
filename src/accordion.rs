@@ -8,6 +8,7 @@
 
 use crate::ui::Named as _;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use gpui_kit::component::scroll::{Scrollbar, ScrollbarAxis};
@@ -156,12 +157,44 @@ pub struct SectionDrag {
     pub above: SharedString,
 }
 
-/// A drag shows nothing under the pointer.
-struct NoPreview;
+/// A title held, from its press to its release. Not one of GPUI's drags: those
+/// redraw the whole window at each move, what is cached included.
+struct Held {
+    drag: SectionDrag,
+    from: f32,
+    moved: bool,
+}
 
-impl Render for NoPreview {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
+/// How far a title goes before it is a drag rather than a click.
+const DRAG_FROM: f32 = 3.;
+
+fn held() -> &'static Mutex<Option<Held>> {
+    static HELD: OnceLock<Mutex<Option<Held>>> = OnceLock::new();
+    HELD.get_or_init(Default::default)
+}
+
+/// The press that ended in a drag, whose click is not one.
+static DRAGGED: AtomicBool = AtomicBool::new(false);
+
+/// The list whose title is being dragged.
+pub fn dragged_list() -> Option<SharedString> {
+    held().lock().ok()?.as_ref().filter(|h| h.moved).map(|h| h.drag.list.clone())
+}
+
+/// The pointer moved, a title held: where it is now, once it is a drag.
+pub fn held_moved(y: Pixels) -> Option<SectionDrag> {
+    let mut held = held().lock().ok()?;
+    let held = held.as_mut()?;
+    held.moved |= (f32::from(y) - held.from).abs() >= DRAG_FROM;
+    held.moved.then(|| held.drag.clone())
+}
+
+/// The title let go.
+pub fn held_released() {
+    if let Ok(mut held) = held().lock()
+        && let Some(held) = held.take()
+    {
+        DRAGGED.store(held.moved, Ordering::Relaxed);
     }
 }
 
@@ -418,8 +451,13 @@ impl Section {
             .hover(|d| d.bg(p().hover))
             // Dragged, it moves the border with the section above.
             .when_some(above, |d, above| {
-                d.cursor(CursorStyle::ResizeUpDown)
-                    .on_drag(SectionDrag { list: list.clone(), above }, |_, _, _, cx| cx.new(|_| NoPreview))
+                let drag = SectionDrag { list: list.clone(), above };
+                d.cursor(CursorStyle::ResizeUpDown).on_mouse_down(MouseButton::Left, move |event, _, _| {
+                    DRAGGED.store(false, Ordering::Relaxed);
+                    if let Ok(mut held) = held().lock() {
+                        *held = Some(Held { drag: drag.clone(), from: f32::from(event.position.y), moved: false });
+                    }
+                })
             })
             .child(div().w(px(10.)).text_color(p().accent).child(if folded { "▸" } else { "▾" }))
             .child(title.to_uppercase())
@@ -435,6 +473,9 @@ impl Section {
             .on_click({
                 let (list, section) = (list.clone(), id.clone());
                 move |event, window, cx| {
+                    if DRAGGED.swap(false, Ordering::Relaxed) {
+                        return;
+                    }
                     // A double click: the list's shares back. A click folds
                     // or unfolds it, its title staying where it is.
                     if event.click_count() == 2 {
