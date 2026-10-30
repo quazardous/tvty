@@ -90,6 +90,7 @@ tickets-proposes-escalation = {$who} proposes an escalation
 tickets-decision-pending = {$noun} · pending
 tickets-decision-accepted = {$noun} accepted
 tickets-decision-rejected = {$noun} rejected
+tickets-decision-withdrawn = {$noun} · withdrawn
 tickets-decision-superseded = {$noun} · superseded
 tickets-accept-close = Accept → close
 tickets-accept-wontfix = Accept → close, no fix

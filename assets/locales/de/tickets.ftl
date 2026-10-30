@@ -90,6 +90,7 @@ tickets-proposes-escalation = {$who} eskaliert
 tickets-decision-pending = {$noun} · ausstehend
 tickets-decision-accepted = {$noun} angenommen
 tickets-decision-rejected = {$noun} abgelehnt
+tickets-decision-withdrawn = {$noun} · zurückgezogen
 tickets-decision-superseded = {$noun} · ersetzt
 tickets-accept-close = Annehmen → schließen
 tickets-accept-wontfix = Annehmen → schließen, ohne Fix

@@ -6,7 +6,7 @@
 use crate::ui::Named as _;
 use std::collections::{HashMap, HashSet};
 
-use gpui_kit::component::button::{ButtonGroup, ButtonVariants as _};
+use gpui_kit::component::button::ButtonVariants as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState, Paste, Textarea, TextareaState};
 use serde_json::json;
 use gpui_kit::component::text::TextView;
@@ -1820,17 +1820,19 @@ impl TicketPanel {
                             .child(
                                 crate::tips::target(
                                     "panel.reply",
-                                    ButtonGroup::new("send")
-                                        .primary()
-                                        .child(buttons::answer("send-reply", crate::t!("tickets-reply")).loading(detail.busy))
-                                        .child(buttons::answer("send-ways", "▾").disabled(detail.busy).tooltip(crate::t!("tickets-reply-ways-tip")))
-                                        .on_click(cx.listener(|panel, clicked: &Vec<usize>, window, cx| {
-                                            if clicked.contains(&0) {
-                                                panel.send_reply(false, window, cx);
-                                            } else {
+                                    buttons::split(
+                                        "send",
+                                        crate::t!("tickets-reply"),
+                                        crate::t!("tickets-reply-ways-tip"),
+                                        detail.busy,
+                                        cx.listener(|panel, ways: &bool, window, cx| {
+                                            if *ways {
                                                 panel.toggle_menu(Menu::Reply, cx);
+                                            } else {
+                                                panel.send_reply(false, window, cx);
                                             }
-                                        })),
+                                        }),
+                                    ),
                                 )
                                 .flex_none(),
                             ),
@@ -2985,6 +2987,16 @@ fn decision_chip(kind: &str, state: DecisionState) -> AnyElement {
             .border_color(p().border)
             .text_color(p().muted)
             .child(crate::t!("tickets-decision-superseded", noun = noun.clone(), kind = reading::kind_key(kind)))
+            .into_any_element(),
+        DecisionState::Withdrawn => div()
+            .flex_none()
+            .px_1p5()
+            .rounded_sm()
+            .text_xs()
+            .border_1()
+            .border_color(p().border)
+            .text_color(p().muted)
+            .child(crate::t!("tickets-decision-withdrawn", noun = noun.clone(), kind = reading::kind_key(kind)))
             .into_any_element(),
     }
 }

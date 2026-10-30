@@ -24,6 +24,8 @@ pub enum DecisionState {
     /// Still pending, but a newer decision replaced it: it can no longer
     /// be taken.
     Superseded,
+    /// Its author took it back (a step of theirs): nothing to take.
+    Withdrawn,
 }
 
 impl DecisionState {
@@ -31,6 +33,7 @@ impl DecisionState {
         match decision.status.as_str() {
             "accepted" => Self::Accepted,
             "rejected" => Self::Rejected,
+            "withdrawn" => Self::Withdrawn,
             _ if latest => Self::Pending,
             _ => Self::Superseded,
         }
@@ -391,6 +394,17 @@ mod tests {
         assert_eq!(sentence(&t, &r, None, false, "david", 0), "Yours: accept or reject demo-claude's plan");
         // Your own proposal is not yours to take.
         assert_eq!(sentence(&t, &r, None, false, "demo-claude", 0), "Your plan waits for a decision");
+    }
+
+    #[test]
+    fn a_withdrawn_latest_leaves_nothing_to_take() {
+        let t = thread(serde_json::json!([
+            comment(2, "demo-claude", serde_json::json!({"decision": {"kind": "resolution", "status": "withdrawn"}})),
+            comment(3, "demo-claude", serde_json::json!({"step": true})),
+        ]));
+        let r = read(&t);
+        assert_eq!(r.active, None);
+        assert_eq!(r.entries[0].decision.as_ref().map(|d| d.1), Some(DecisionState::Withdrawn));
     }
 
     #[test]

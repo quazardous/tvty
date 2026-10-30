@@ -96,6 +96,11 @@ tickets-decision-rejected = { $kind ->
     [escalation] {$noun} rechazada
    *[other] {$noun} rechazado
 }
+tickets-decision-withdrawn = { $kind ->
+    [resolution] {$noun} · retirada
+    [escalation] {$noun} · retirada
+   *[other] {$noun} · retirado
+}
 tickets-decision-superseded = { $kind ->
     [resolution] {$noun} · reemplazada
     [escalation] {$noun} · reemplazada

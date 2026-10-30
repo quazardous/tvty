@@ -27,7 +27,8 @@
 use crate::ui::Named as _;
 use crate::ui::Said;
 use gpui_kit::component::Sizable as _;
-use gpui_kit::component::button::{Button, ButtonVariants as _};
+use gpui_kit::component::Disableable as _;
+use gpui_kit::component::button::{Button, ButtonGroup, ButtonVariants as _};
 use gpui_kit::*;
 
 use gpui_kit::prelude::FluentBuilder as _;
@@ -161,6 +162,17 @@ pub fn primary(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Butt
 /// Another answer beside it: Cancel, Not now, Back…
 pub fn secondary(id: impl Into<ElementId>, label: impl Into<SharedString>) -> Button {
     answer(id, label).outline()
+}
+
+/// A main answer and its ▾, one button: `on_click` says which part was
+/// clicked (`true`: the ▾, the other ways, in a menu of the caller's).
+pub fn split(id: impl Into<SharedString>, label: impl Into<SharedString>, ways_tip: impl Into<SharedString>, busy: bool, on_click: impl Fn(&bool, &mut Window, &mut App) + 'static) -> ButtonGroup {
+    let id: SharedString = id.into();
+    ButtonGroup::new(id.clone())
+        .primary()
+        .child(answer(SharedString::from(format!("{id}-main")), label).loading(busy))
+        .child(answer(SharedString::from(format!("{id}-ways")), "▾").disabled(busy).tooltip(ways_tip))
+        .on_click(move |clicked: &Vec<usize>, window, cx| on_click(&!clicked.contains(&0), window, cx))
 }
 
 /// Sets groups of actions apart, in a bar.

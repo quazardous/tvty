@@ -94,6 +94,10 @@ tickets-decision-rejected = { $kind ->
     [plan] {$noun} rejeté
    *[other] {$noun} rejetée
 }
+tickets-decision-withdrawn = { $kind ->
+    [plan] {$noun} · retiré
+   *[other] {$noun} · retirée
+}
 tickets-decision-superseded = { $kind ->
     [plan] {$noun} · remplacé
    *[other] {$noun} · remplacée
