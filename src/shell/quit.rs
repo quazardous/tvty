@@ -7,7 +7,8 @@
 //! own) — asked or not.
 
 use crate::ui::Named as _;
-use std::time::Duration;
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use gpui_kit::*;
 
@@ -16,6 +17,36 @@ use crate::theme::p;
 
 /// The longest tvty waits for the loops to stop before it quits anyway.
 const STOP_WAIT: Duration = Duration::from_secs(15);
+
+/// How long a loop seen stopped stays kept as running: the machine going
+/// down may stop them before it stops tvty, and those were not stopped by
+/// choice.
+const GONE_AFTER: Duration = Duration::from_secs(10);
+
+/// The loops to keep as running: those that run, and those stopped for less
+/// than [`GONE_AFTER`]. `gone_since` follows those.
+fn still_remembered(kept: &[String], running: &[String], gone_since: &mut HashMap<String, Instant>, now: Instant) -> Vec<String> {
+    gone_since.retain(|name, _| kept.contains(name) && !running.contains(name));
+    let mut remembered: Vec<String> = kept
+        .iter()
+        .filter(|name| running.contains(name) || now.duration_since(*gone_since.entry((*name).clone()).or_insert(now)) < GONE_AFTER)
+        .cloned()
+        .collect();
+    remembered.extend(running.iter().filter(|name| !kept.contains(name)).cloned());
+    remembered
+}
+
+/// To offer at start: the loops stopped at quit, then those kept as running
+/// that aiball still knows and that no longer run.
+fn to_offer(stopped: Vec<String>, kept: &[String], known: impl Fn(&String) -> bool, running: &[String]) -> Vec<String> {
+    let mut names: Vec<String> = stopped.into_iter().filter(|n| known(n) && !running.contains(n)).collect();
+    for name in kept {
+        if known(name) && !running.contains(name) && !names.contains(name) {
+            names.push(name.clone());
+        }
+    }
+    names
+}
 
 impl Shell {
     /// This machine's loops that run now: known here, their session live.
@@ -26,6 +57,21 @@ impl Shell {
             .filter(|l| self.terminal_of(&l.session()).is_some())
             .map(|l| l.name.clone())
             .collect()
+    }
+
+    /// Keeps the loops running up to date, once the start's offer read them
+    /// (before it, none is listed yet). Nothing changes while the bus is
+    /// down, or while tvty quits: those loops are not stopped by choice.
+    pub(super) fn remember_running(&mut self, cx: &mut Context<Self>) {
+        if !self.restart_offered || !self.live.ready() || self.bus_state.down() || self.stopping_all || self.quitting {
+            return;
+        }
+        let running = self.running_loops();
+        let kept = still_remembered(&self.settings.workspace.running_loops, &running, &mut self.loops_gone_since, Instant::now());
+        if kept != self.settings.workspace.running_loops {
+            self.settings.workspace.running_loops = kept;
+            self.settings.save(cx);
+        }
     }
 
     /// The shells tvty keeps whose session runs now: those a quit stops.
@@ -204,11 +250,13 @@ impl Shell {
         // (A loop aiball no longer lists as stopped is said, not dropped.)
         let (still_stopped, still_running): (Vec<String>, Vec<String>) =
             std::mem::take(&mut self.settings.workspace.still_on_quit).into_iter().partition(|n| known(n) && !running.contains(n));
-        let mut names: Vec<String> = std::mem::take(&mut self.settings.workspace.stopped_on_quit)
-            .into_iter()
-            .filter(|n| known(n) && !running.contains(n))
-            .collect();
-        names.extend(still_stopped);
+        let stopped = std::mem::take(&mut self.settings.workspace.stopped_on_quit);
+        let mut names = to_offer(stopped, &self.settings.workspace.running_loops, known, &running);
+        for name in still_stopped {
+            if !names.contains(&name) {
+                names.push(name);
+            }
+        }
         // The shells kept whose session is gone (aiball or the machine
         // restarted): started again, offered, or let go, as set.
         let listed = self.live.session_names();
@@ -365,4 +413,46 @@ pub(super) fn dialog(body: impl IntoElement) -> Stateful<Div> {
                 .text_color(p().text)
                 .child(body),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GONE_AFTER, still_remembered, to_offer};
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|n| n.to_string()).collect()
+    }
+
+    #[test]
+    fn a_loop_seen_stopped_is_forgotten_only_after_a_while() {
+        let (mut gone, start) = (HashMap::new(), Instant::now());
+        let kept = still_remembered(&names(&["a"]), &names(&["a", "b"]), &mut gone, start);
+        assert_eq!(kept, names(&["a", "b"]));
+        // b stops: kept for now (the machine may be going down)...
+        let kept = still_remembered(&kept, &names(&["a"]), &mut gone, start + Duration::from_secs(1));
+        assert_eq!(kept, names(&["a", "b"]));
+        // ... back in time: its wait starts over...
+        let kept = still_remembered(&kept, &names(&["a", "b"]), &mut gone, start + Duration::from_secs(2));
+        assert!(gone.is_empty());
+        let _ = still_remembered(&kept, &names(&["a"]), &mut gone, start + Duration::from_secs(3));
+        // ... and stopped for long enough, it was stopped by choice.
+        let kept = still_remembered(&kept, &names(&["a"]), &mut gone, start + Duration::from_secs(3) + GONE_AFTER);
+        assert_eq!(kept, names(&["a"]));
+        // Its wait goes at the next look.
+        let _ = still_remembered(&kept, &names(&["a"]), &mut gone, start + Duration::from_secs(4) + GONE_AFTER);
+        assert!(gone.is_empty());
+    }
+
+    #[test]
+    fn at_start_those_kept_as_running_that_no_longer_run_are_offered_once() {
+        let known = |n: &String| n != "forgotten";
+        // A crash: nothing stopped at quit, the kept ones are gone.
+        assert_eq!(to_offer(Vec::new(), &names(&["a", "b", "forgotten"]), known, &[]), names(&["a", "b"]));
+        // tvty alone crashed, its loops run on: nothing to offer.
+        assert!(to_offer(Vec::new(), &names(&["a", "b"]), known, &names(&["a", "b"])).is_empty());
+        // A clean quit that stopped a: offered once, with b, which went down after.
+        assert_eq!(to_offer(names(&["a"]), &names(&["a", "b"]), known, &[]), names(&["a", "b"]));
+    }
 }

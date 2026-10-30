@@ -177,7 +177,10 @@ all, or cancel; "Remember this choice" keeps the answer for them all
 10m, 30m, 1h, 2h, 6h — the dialog stays open and counts down ("stopping
 and quitting in 29:58"), and at zero the sessions switched on stop and
 tvty quits; closing the dialog, or quitting another way, drops it, and a
-tvty closed meanwhile stops nothing. The terminals that are not Claude's
+tvty closed meanwhile stops nothing. tvty keeps which loops run as they
+come and go: after a crash, of tvty or of the machine, those that no longer
+run at start are offered the same way as those stopped at quit (a loop stopped
+by hand is forgotten after 10 seconds). The terminals that are not Claude's
 (shells opened with >_, in a project or among the terminals) are listed
 there too, switched on as the loops are: stopped with them (and with
 "stop" remembered), offered again at the next start; one switched off runs

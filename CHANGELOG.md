@@ -34,6 +34,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Under a folded section, dragging a title resizes the first open section above, as dragging the folded title does, instead of moving the sections below.
+- After the machine crashed or went down, the loops that were running are offered at start, as those stopped at quit, instead of being lost.
 
 ## [0.19.3-beta.1] - 2026-10-30
 

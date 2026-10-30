@@ -257,9 +257,10 @@ impl Shell {
     /// The workspace, kept for the next start: the terminals open, the one
     /// used last first, and the one shown.
     pub(super) fn save_workspace(&mut self, cx: &mut App) {
-        // Restoring, or quitting (its loops stopping end their sessions):
-        // the workspace kept is not overwritten meanwhile.
-        if self.restoring.is_some() || self.stopping_all {
+        // Restoring, or quitting (its loops stopping end their sessions), or
+        // asked what to restart (its terminals reopen with them): the
+        // workspace kept is not overwritten meanwhile.
+        if self.restoring.is_some() || self.stopping_all || self.picker.as_ref().is_some_and(|p| p.restarting()) {
             return;
         }
         let mut open: Vec<String> = self.recent.iter().filter(|s| self.terminals.contains_key(*s)).cloned().collect();

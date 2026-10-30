@@ -253,6 +253,8 @@ pub struct Shell {
     quitting: bool,
     /// The loops stopped at the last quit were offered (once, at start).
     restart_offered: bool,
+    /// Since when each loop kept as running is seen stopped.
+    loops_gone_since: HashMap<String, std::time::Instant>,
     /// The terminal shown when tvty was left: shown again once its session
     /// is back, however long its loop takes to restart.
     pub(super) shown_at_start: Option<String>,
@@ -887,6 +889,7 @@ impl Shell {
             stopping_all: false,
             quitting: false,
             restart_offered: false,
+            loops_gone_since: HashMap::new(),
             shown_at_start: None,
             copied: None,
             copies_made: 0,
@@ -1140,6 +1143,7 @@ impl Shell {
         self.sync_panel(cx);
         self.sync_full_list(cx);
         self.offer_restart(cx);
+        self.remember_running(cx);
         self.advance_config_switches(cx);
     }
 

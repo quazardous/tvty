@@ -717,6 +717,10 @@ pub struct Workspace {
     /// The standing instructions given last (the 📢), newest first.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standing_history: Vec<String>,
+    /// The loops seen running last, kept up to date while tvty runs: those
+    /// that no longer run at start ended with the machine, and are offered.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub running_loops: Vec<String>,
     /// The shells tvty started on aiball's host and keeps open: started
     /// again where they were when found gone at start.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -748,6 +752,7 @@ impl Stored for Workspace {
             last_ticket_project: old.get("last_ticket_project").and_then(Value::as_str).map(String::from),
             pings_seen: None,
             stopped_on_quit: Vec::new(),
+            running_loops: Vec::new(),
             still_on_quit: Vec::new(),
             terminal_order: HashMap::new(),
             project_order: Vec::new(),
