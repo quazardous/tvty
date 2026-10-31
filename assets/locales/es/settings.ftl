@@ -52,9 +52,11 @@ setting-appearance-theme = Ventana
 setting-appearance-terminal_theme = Terminal
     .about = El propio de los terminales, o el de la ventana — un terminal oscuro en una ventana clara.
 setting-appearance-terminal_opacity = Opacidad de los terminales
-    .about = Por debajo del 100 %, el escritorio se ve a través del fondo de los terminales, en directo. Las listas, los tickets y los colores que fija un programa siguen opacos.
+    .about = Por debajo del 100 %, el escritorio se ve a través del fondo de los terminales, en directo. Los colores que fija un programa siguen opacos.
+setting-appearance-panel_opacity = Opacidad de los paneles
+    .about = Por debajo del 100 %, el escritorio se ve a través de la barra de título, las pestañas, los lados plegados y el panel de tickets junto al terminal, en directo. Lo que se abre sobre un terminal (la lista de sesiones, los menús, los diálogos) sigue opaco, para que su texto siga legible.
 setting-appearance-terminal_blur = Desenfoque detrás
-    .about = Detrás de un terminal transparente, el escritorio desenfocado. Solo donde el compositor lo ofrece (KDE); en otros sitios se ve nítido.
+    .about = Detrás de lo transparente, el escritorio desenfocado. Solo donde el compositor lo permite (KDE); en otros casos se ve nítido.
     .on = desenfocado
     .off = nítido
 setting-updates-check = Buscar actualizaciones
@@ -179,6 +181,7 @@ settings-theme-light = CLAROS
 settings-theme-window = Ventana
 settings-theme-terminal = Terminal
 settings-theme-opacity = Opacidad de los terminales
+settings-theme-panel-opacity = Opacidad de los paneles
 
 ## Los lados
 

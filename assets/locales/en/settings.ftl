@@ -54,9 +54,11 @@ setting-appearance-theme = Window
 setting-appearance-terminal_theme = Terminal
     .about = The terminals' own, or the window's — a dark terminal in a light window.
 setting-appearance-terminal_opacity = Terminal opacity
-    .about = Below 100 %, the desktop shows through the terminals' background, live. The lists, the tickets and the colours a program sets stay opaque.
+    .about = Below 100 %, the desktop shows through the terminals' background, live. The colours a program sets stay opaque.
+setting-appearance-panel_opacity = Panel opacity
+    .about = Below 100 %, the desktop shows through the title bar, the tabs, the folded sides and the tickets panel beside the terminal, live. What opens over a terminal (the sessions' list, menus, dialogs) stays opaque, so its text stays readable.
 setting-appearance-terminal_blur = Blur behind
-    .about = Behind a see-through terminal, the desktop blurred. Only where the compositor offers it (KDE); elsewhere it shows sharp.
+    .about = Behind what is see-through, the desktop blurred. Only where the compositor offers it (KDE); elsewhere it shows sharp.
     .on = blurred
     .off = sharp
 setting-updates-check = Check for updates
@@ -181,6 +183,7 @@ settings-theme-light = LIGHT
 settings-theme-window = Window
 settings-theme-terminal = Terminal
 settings-theme-opacity = Terminal opacity
+settings-theme-panel-opacity = Panel opacity
 
 ## Sides
 

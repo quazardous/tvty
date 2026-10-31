@@ -369,7 +369,7 @@ impl Shell {
             .pl_2()
             .gap_0p5()
             .overflow_x_scroll()
-            .bg(p().surface)
+            .bg(crate::theme::panel_bg(p().surface))
             .border_b_1()
             .border_color(p().border);
         for terminal in self.tabs() {

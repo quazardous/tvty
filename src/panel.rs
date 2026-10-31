@@ -2704,7 +2704,8 @@ impl Render for TicketPanel {
             .flex()
             .flex_col()
             .size_full()
-            .bg(if full { p().bg } else { p().surface })
+            // Its background is the shell's: beside the terminal it may be
+            // see-through, over it never.
             .text_sm()
             .when(!full, |d| d.child(header))
             .child(content)

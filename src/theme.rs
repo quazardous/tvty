@@ -86,6 +86,32 @@ pub fn p() -> Palette {
     *PALETTE.read().unwrap()
 }
 
+/// The docked panels' background opacity, 0 to 1 (1: opaque), as bits.
+static PANEL_OPACITY: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0x3f80_0000);
+
+/// Sets the docked panels' background opacity from a percentage (none:
+/// opaque); gives it back, 0 to 1.
+pub fn set_panel_opacity(percent: Option<f32>) -> f32 {
+    let opacity = (percent.unwrap_or(100.) / 100.).clamp(0.05, 1.);
+    PANEL_OPACITY.store(opacity.to_bits(), std::sync::atomic::Ordering::Relaxed);
+    opacity
+}
+
+pub fn panel_opacity() -> f32 {
+    f32::from_bits(PANEL_OPACITY.load(std::sync::atomic::Ordering::Relaxed))
+}
+
+/// A docked panel's background: `colour`, as see-through as the setting says.
+/// Never for what opens over a terminal: its text would show through.
+pub fn panel_bg(colour: Hsla) -> Hsla {
+    colour.opacity(panel_opacity())
+}
+
+/// Nothing in the window lets the desktop through.
+pub fn window_opaque() -> bool {
+    crate::terminal::opacity() >= 1. && panel_opacity() >= 1.
+}
+
 pub fn terminal() -> TerminalColours {
     *TERMINAL.read().unwrap()
 }

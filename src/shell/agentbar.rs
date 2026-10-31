@@ -483,7 +483,7 @@ impl Shell {
                 .gap_2()
                 .h(px(BAR_HEIGHT))
                 .px_2()
-                .bg(p().surface)
+                .bg(crate::theme::panel_bg(p().surface))
                 // Yellow while its loop boots, as claude-loop's bar.
                 .when(booting, |d| d.bg(p().warning).text_color(crate::theme::on(p().warning)))
                 .border_t_1()

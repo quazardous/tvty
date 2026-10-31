@@ -638,9 +638,15 @@ unfolds it. Both states are remembered.
 Settings > Appearance > Colours; 100 % by default):
 below 100 %, the desktop shows through the terminals' background, live —
 the compositor blends it at every frame, on Wayland and X11. What a program
-colours itself, the lists, the tickets and the full pages stay opaque; the
-window turns see-through only then. "Blur behind" blurs it where the
-compositor can (KDE); elsewhere it shows sharp.
+colours itself and the full pages stay opaque; the window turns see-through
+only then. "Blur behind" blurs it where the compositor can (KDE); elsewhere it
+shows sharp.
+
+**Panel opacity** (the same two places, its own slider; 100 % by default):
+below 100 %, the desktop shows through the title bar, the tabs, the terminal's
+bar, the folded sides and the tickets panel pinned beside the terminal. What
+opens over a terminal stays opaque, or its text would mix with theirs: the
+sessions' list, the tickets panel when it lies over, menus, dialogs.
 
 Everything takes its colours from one theme — the window, the panels, the
 alerts, the terminals' palette (the theme's ANSI colours, text, background,

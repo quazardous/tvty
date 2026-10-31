@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Panel opacity (the title bar's theme menu, and Options > Appearance > Colours),
+  apart from the terminals': the desktop shows through the title bar, the tabs,
+  the folded sides and the tickets panel pinned beside the terminal. What opens
+  over a terminal stays opaque.
+
 ## [0.20.0-beta.1] - 2026-10-30
 
 ### Added

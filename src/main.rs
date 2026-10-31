@@ -154,6 +154,7 @@ fn main() {
         keymap::init(cx);
         terminal::set_font_size(prefs.appearance.terminal_font_size.unwrap_or(terminal::FONT_SIZE_DEFAULT));
         terminal::set_opacity(prefs.appearance.terminal_opacity);
+        theme::set_panel_opacity(prefs.appearance.panel_opacity);
         // The window as it was left: maximized, full screen, or windowed at
         // its size (a compositor places it).
         let bounds = config::get::<settings::Layout>(cx).window.clone().map(|w| {

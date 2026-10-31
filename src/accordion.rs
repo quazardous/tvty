@@ -440,7 +440,8 @@ impl Section {
             .gap_1p5()
             .h(px(TITLE_HEIGHT))
             .px_3()
-            .bg(p().surface)
+            // On the panel's own background: see-through panels show no band.
+            .when(crate::theme::panel_opacity() >= 1., |d| d.bg(p().surface))
             .border_t_1()
             .border_b_1()
             .border_color(p().border)

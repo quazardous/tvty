@@ -4141,8 +4141,7 @@ impl Shell {
         if was.terminal_theme != now.terminal_theme {
             theme::apply_terminal(now.terminal_theme.as_deref(), cx);
         }
-        if (was.terminal_opacity, was.terminal_blur) != (now.terminal_opacity, now.terminal_blur) {
-            crate::terminal::set_opacity(now.terminal_opacity);
+        if (was.terminal_opacity, was.panel_opacity, was.terminal_blur) != (now.terminal_opacity, now.panel_opacity, now.terminal_blur) {
             see_through(now, window);
         }
         if was.terminal_font_size != now.terminal_font_size {
@@ -4337,14 +4336,15 @@ impl Shell {
             .overflow_hidden()
             .child(tabs)
             .child(div().flex_1().min_h_0().child(list.overflow_y_scrollbar()))
-            .children(self.theme_menu_opacity())
+            .children(self.theme_menu_opacity("appearance.terminal_opacity", "settings-theme-opacity", self.applied.appearance.terminal_opacity))
+            .children(self.theme_menu_opacity("appearance.panel_opacity", "settings-theme-panel-opacity", self.applied.appearance.panel_opacity))
     }
 
-    /// Under the themes, the terminals' opacity: the slider of Options >
-    /// Appearance > Colours, the same one.
-    fn theme_menu_opacity(&self) -> Option<Div> {
-        let slider = self.sliders.get("appearance.terminal_opacity")?;
-        let percent = self.applied.appearance.terminal_opacity.unwrap_or(100.);
+    /// Under the themes, an opacity: the slider of Options > Appearance >
+    /// Colours, the same one.
+    fn theme_menu_opacity(&self, key: &'static str, label: &'static str, percent: Option<f32>) -> Option<Div> {
+        let slider = self.sliders.get(key)?;
+        let percent = percent.unwrap_or(100.);
         Some(
             div()
                 .flex_none()
@@ -4360,7 +4360,7 @@ impl Shell {
                     div()
                         .flex()
                         .justify_between()
-                        .child(crate::t!("settings-theme-opacity"))
+                        .child(crate::t!(label))
                         .child(div().text_color(p().muted).child(format!("{percent:.0} %"))),
                 )
                 .child(Slider::new(slider)),
@@ -4461,7 +4461,8 @@ impl Shell {
             .w(px(EDGE_WIDTH))
             .flex_none()
             .h_full()
-            .bg(p().bg)
+            // Beside the terminal it may be see-through, over it never.
+            .bg(if side == Side::Right && !self.applied.tickets.panel_overlay { crate::theme::panel_bg(p().bg) } else { p().bg })
             .cursor(CursorStyle::ResizeColumn)
             // Lit the theme's way, but opaque: the theme's colour may be
             // see-through, and see-through terminals leave nothing under.
@@ -4548,7 +4549,7 @@ impl Shell {
             .w(px(FOLDED_WIDTH))
             .flex_none()
             .h_full()
-            .bg(p().surface)
+            .bg(crate::theme::panel_bg(p().surface))
             .map(|d| match side {
                 Side::Left => d.border_r_1(),
                 Side::Right => d.border_l_1(),
@@ -5173,7 +5174,7 @@ impl Shell {
                     .children(counts.map(|c| c.badges(format!("card-{}", terminal.session)))),
             )
             .when_some(terminal.status.as_ref(), |d, status| {
-                d.child(div().px_2().pb_1().bg(p().surface).child(status.line(self.armed_of(terminal).as_deref())))
+                d.child(div().px_2().pb_1().bg(crate::theme::panel_bg(p().surface)).child(status.line(self.armed_of(terminal).as_deref())))
             })
             .child(
                 div()
@@ -5409,7 +5410,7 @@ impl Render for Shell {
                 .shadow_lg()
                 .bg(p().bg)
                 .child(self.edge(Side::Right, cx))
-                .child(div().flex_1().min_w_0().h_full().child(self.panel.clone()))
+                .child(div().flex_1().min_w_0().h_full().bg(p().surface).child(self.panel.clone()))
         });
         let right = if panel_shown && !panel_over {
             div()
@@ -5422,7 +5423,7 @@ impl Render for Shell {
                 // selection is not painted on the frames that reuse it, and
                 // it blinks. While the sessions' sections are dragged, its
                 // layout is the time to save.
-                .child(div().flex_1().min_w_0().h_full().map(|d| {
+                .child(div().flex_1().min_w_0().h_full().bg(crate::theme::panel_bg(p().surface)).map(|d| {
                     if crate::accordion::dragged_list().is_some_and(|list| list != "tickets") {
                         d.child(self.panel.clone().cached(StyleRefinement::default().size_full()))
                     } else {
@@ -5572,8 +5573,8 @@ impl Render for Shell {
             .w_full()
             .flex_1()
             .min_h_0()
-            // Nothing under see-through terminals (see the window's root).
-            .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
+            // Nothing under what is see-through (see the window's root).
+            .when(crate::theme::window_opaque(), |d| d.bg(p().bg))
             .text_color(p().text)
             .when(self.resizing.is_some(), |d| d.cursor(CursorStyle::ResizeColumn))
             // Under a page that covers it all, the workspace is left out:
@@ -5678,9 +5679,9 @@ impl Render for Shell {
             .flex()
             .flex_col()
             .size_full()
-            // See-through terminals: nothing under them, the desktop shows
-            // as their opacity says; every other view paints its own.
-            .when(crate::terminal::opacity() >= 1., |d| d.bg(p().bg))
+            // See-through terminals or panels: nothing under them, the desktop
+            // shows as their opacity says; every other view paints its own.
+            .when(crate::theme::window_opaque(), |d| d.bg(p().bg))
             // A click leaves the field being typed in, wherever it lands —
             // a button, a menu, a list: only a field takes the focus on a
             // click, the rest never did. A click on a field (the same or
@@ -5728,6 +5729,9 @@ impl Render for Shell {
                 // A fifth taller than the kit's (34 px): easier to grab.
                 TitleBar::new()
                     .h(px(TITLE_BAR_HEIGHT))
+                    // See-through: the theme's colour, flat (the kit's own
+                    // background is an opaque gradient).
+                    .when(crate::theme::panel_opacity() < 1., |d| d.bg(crate::theme::panel_bg(gpui_kit::component::Theme::global(cx).title_bar)))
                     .on_close_window(cx.listener(|shell, _, window, cx| shell.ask_quit(window, cx)))
                     // The app's icon, first: its menu (about, help, restart),
                     // as a desktop's application menu.
@@ -6315,10 +6319,12 @@ fn options_ticket_list() -> impl IntoElement {
 /// What the "#…" names, as `ticket.get` takes it: a ticket's number
 /// (`42`, `#42`), or a comment's hashid (its `#C.` link, or `C.` and the hashid).
 /// The window lets the desktop through (blurred, where the compositor can)
-/// while the terminals are not opaque; opaque otherwise, as it costs the
-/// compositor nothing then.
+/// while the terminals or the docked panels are not opaque; opaque otherwise,
+/// as it costs the compositor nothing then.
 fn see_through(appearance: &crate::settings::Appearance, window: &mut Window) {
-    let look = match (crate::terminal::set_opacity(appearance.terminal_opacity) < 1., appearance.terminal_blur) {
+    crate::terminal::set_opacity(appearance.terminal_opacity);
+    crate::theme::set_panel_opacity(appearance.panel_opacity);
+    let look = match (!crate::theme::window_opaque(), appearance.terminal_blur) {
         (false, _) => WindowBackgroundAppearance::Opaque,
         (true, false) => WindowBackgroundAppearance::Transparent,
         (true, true) => WindowBackgroundAppearance::Blurred,

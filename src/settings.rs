@@ -219,7 +219,10 @@ pub struct Appearance {
     /// through); none: opaque.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub terminal_opacity: Option<f32>,
-    /// Behind a see-through terminal, the desktop blurred (where the
+    /// The docked panels' background, in percent; none: opaque.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub panel_opacity: Option<f32>,
+    /// Behind what is see-through, the desktop blurred (where the
     /// compositor can: KDE).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub terminal_blur: bool,
@@ -454,15 +457,23 @@ pub const SCHEMA: Schema = Schema(&[
         page: "Appearance",
         group: "Colours",
         label: "Terminal opacity",
-        about: "Below 100 %, the desktop shows through the terminals' background, live. The lists, the tickets and the colours a program sets stay opaque.",
+        about: "Below 100 %, the desktop shows through the terminals' background, live. The colours a program sets stay opaque.",
         kind: Kind::Number { min: 50., max: 100., step: 5., default: 100., unit: "%", integer: true, slider: true },
+    },
+    Setting {
+        key: "appearance.panel_opacity",
+        page: "Appearance",
+        group: "Colours",
+        label: "Panel opacity",
+        about: "Below 100 %, the desktop shows through the title bar, the tabs, the folded sides and the tickets panel beside the terminal, live. What opens over a terminal (the sessions' list, menus, dialogs) stays opaque, so its text stays readable.",
+        kind: Kind::Number { min: 30., max: 100., step: 5., default: 100., unit: "%", integer: true, slider: true },
     },
     Setting {
         key: "appearance.terminal_blur",
         page: "Appearance",
         group: "Colours",
         label: "Blur behind",
-        about: "Behind a see-through terminal, the desktop blurred. Only where the compositor offers it (KDE); elsewhere it shows sharp.",
+        about: "Behind what is see-through, the desktop blurred. Only where the compositor offers it (KDE); elsewhere it shows sharp.",
         kind: Kind::Toggle { default: false, on: "blurred", off: "sharp" },
     },
     Setting {
@@ -590,6 +601,7 @@ impl Stored for Preferences {
                 terminal_font_size: f32_of("terminal_font_size"),
                 window_font_size: f32_of("window_font_size"),
                 terminal_opacity: None,
+                panel_opacity: None,
                 terminal_blur: false,
                 language: None,
             },

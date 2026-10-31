@@ -54,9 +54,11 @@ setting-appearance-theme = Fenster
 setting-appearance-terminal_theme = Terminal
     .about = Das eigene der Terminals, oder das des Fensters — ein dunkles Terminal in einem hellen Fenster.
 setting-appearance-terminal_opacity = Terminal-Deckkraft
-    .about = Unter 100 % scheint der Desktop live durch den Hintergrund der Terminals. Die Listen, die Tickets und die Farben, die ein Programm setzt, bleiben deckend.
+    .about = Unter 100 % scheint der Desktop live durch den Hintergrund der Terminals. Farben, die ein Programm setzt, bleiben deckend.
+setting-appearance-panel_opacity = Panel-Deckkraft
+    .about = Unter 100 % scheint der Desktop live durch die Titelleiste, die Tabs, die eingeklappten Seiten und das Ticket-Panel neben dem Terminal. Was sich über einem Terminal öffnet (die Sitzungsliste, Menüs, Dialoge), bleibt deckend, damit sein Text lesbar bleibt.
 setting-appearance-terminal_blur = Unschärfe dahinter
-    .about = Hinter einem durchscheinenden Terminal der Desktop unscharf. Nur wo der Compositor es anbietet (KDE); anderswo bleibt er scharf.
+    .about = Hinter dem, was durchscheint, der Desktop unscharf. Nur wo der Compositor es anbietet (KDE); sonst bleibt er scharf.
     .on = unscharf
     .off = scharf
 setting-updates-check = Nach Updates suchen
@@ -181,6 +183,7 @@ settings-theme-light = HELL
 settings-theme-window = Fenster
 settings-theme-terminal = Terminal
 settings-theme-opacity = Terminal-Deckkraft
+settings-theme-panel-opacity = Panel-Deckkraft
 
 ## Seiten
 
