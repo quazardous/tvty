@@ -172,7 +172,7 @@ impl TicketText {
             col = match segment {
                 Segment::Text(md) => col.child(TextView::markdown(SharedString::from(format!("{}-preview-{i}", self.id)), md).selectable(true)),
                 Segment::Note(why) => col.child(div().text_xs().italic().text_color(p().muted).child(format!("({why})"))),
-                Segment::Pictures(pictures) => col.children(pictures.into_iter().map(|picture| {
+                Segment::Pictures(pictures) => col.children(pictures.into_iter().enumerate().map(|(j, picture)| {
                     let (width, height) = (picture.width.max(1) as f32, picture.height.max(1) as f32);
                     div()
                         .w_full()
@@ -182,7 +182,8 @@ impl TicketText {
                         .overflow_hidden()
                         .border_1()
                         .border_color(p().border)
-                        .child(img(ImageSource::Image(picture.image.clone())).size_full())
+                        // An id: GPUI keeps an animation's frame by it.
+                        .child(img(ImageSource::Image(picture.image.clone())).id(SharedString::from(format!("{}-preview-picture-{i}-{j}", self.id))).size_full())
                 })),
             };
         }

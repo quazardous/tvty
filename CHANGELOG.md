@@ -31,6 +31,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the folded sides and the tickets panel pinned beside the terminal. What opens
   over a terminal stays opaque.
 
+### Fixed
+
+- An animated GIF in a ticket plays, in the thread and in the viewer, instead of
+  staying on its first frame.
+
 ## [0.20.0-beta.1] - 2026-10-30
 
 ### Added

@@ -188,7 +188,9 @@ impl Shell {
                     }
                 }))
                 .child(
+                    // An id: GPUI keeps an animation's frame by it.
                     img(ImageSource::Image(picture.image.clone()))
+                        .id(SharedString::from(picture.reference.clone()))
                         .absolute()
                         .left(px(left))
                         .top(px(top))

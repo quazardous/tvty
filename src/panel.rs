@@ -2906,11 +2906,12 @@ impl TicketPanel {
                                 .w_full()
                                 .max_w(px(max_w))
                                 .aspect_ratio(width / height)
-                                .child(img(ImageSource::Image(picture.image.clone())).size_full())
+                                // An id: GPUI keeps an animation's frame by it.
+                                .child(img(ImageSource::Image(picture.image.clone())).id("picture").size_full())
                         } else {
                             // A thumbnail keeps the image's proportions.
                             let scale = (160. / width).min(100. / height).min(1.);
-                            frame.child(img(ImageSource::Image(picture.image.clone())).w(px(width * scale)).h(px(height * scale)))
+                            frame.child(img(ImageSource::Image(picture.image.clone())).id("picture").w(px(width * scale)).h(px(height * scale)))
                         };
                         row = row.child(
                             frame
