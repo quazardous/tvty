@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.21.0-beta.1] - 2026-11-01
+
 ### Added
 
 - Panel opacity (the title bar's theme menu, and Options > Appearance > Colours),
