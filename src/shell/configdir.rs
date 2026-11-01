@@ -40,6 +40,9 @@ fn projects_said(projects: &[String]) -> String {
 /// The longest a switch waits for the folder's loops to stop.
 const STOP_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
 
+/// How often a switch asks again while a Claude is leaving the folder.
+const CLAUDE_LEFT_POLL: std::time::Duration = std::time::Duration::from_millis(400);
+
 /// A folder's Claude config dir, as aiball resolved it when last read.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(super) struct FolderDir {
@@ -402,7 +405,9 @@ fn switch_folder(aiball: &crate::aiball::Aiball, cwd: &str, value: Option<String
     };
     let stopped = stop_all(aiball, loops);
     let written = stopped.and_then(|()| {
-        aiball.project_settings_set(cwd, serde_json::json!({ "key": "claude.config_dir", "value": value, "move_sessions": true }))
+        once_claude_left(STOP_WAIT, || {
+            aiball.project_settings_set(cwd, serde_json::json!({ "key": "claude.config_dir", "value": value.clone(), "move_sessions": true }))
+        })
     });
     let (restarted, failed) = restart();
     let settings = written?;
@@ -410,6 +415,24 @@ fn switch_folder(aiball: &crate::aiball::Aiball, cwd: &str, value: Option<String
         anyhow::bail!(failed.join("; "));
     }
     Ok(Done { restarted, moved: settings.sessions.map_or(0, |s| s.moved) })
+}
+
+/// Writes, trying again for `wait` while aiball still sees a Claude in the
+/// folder. A loop reads as stopped when its session closes, and its Claude
+/// can take a few seconds more to exit; one that stays, opened by hand there,
+/// gets aiball's refusal in the end, which names it.
+fn once_claude_left<T>(wait: std::time::Duration, mut write: impl FnMut() -> anyhow::Result<T>) -> anyhow::Result<T> {
+    let began = std::time::Instant::now();
+    loop {
+        match write() {
+            Err(error) if claude_in_folder(&error) && began.elapsed() < wait => std::thread::sleep(CLAUDE_LEFT_POLL),
+            written => return written,
+        }
+    }
+}
+
+fn claude_in_folder(error: &anyhow::Error) -> bool {
+    error.downcast_ref::<crate::wire::Refused>().is_some_and(|refused| refused.code == "CLAUDE_RUNS_IN_FOLDER")
 }
 
 /// Stops the loops and waits, [`STOP_WAIT`] at most, until none runs: the
@@ -434,8 +457,41 @@ fn stop_all(aiball: &crate::aiball::Aiball, loops: &[KnownLoop]) -> anyhow::Resu
 
 #[cfg(test)]
 mod tests {
-    use super::{Choice, FolderDir, choices};
+    use super::{Choice, FolderDir, choices, once_claude_left};
     use crate::aiball::{ConfigDirState, Setting};
+
+    fn refused(code: &str) -> anyhow::Error {
+        crate::wire::Refused { message: "no".into(), code: code.into(), details: serde_json::Value::Null }.into()
+    }
+
+    #[test]
+    fn a_switch_waits_for_a_claude_still_leaving_the_folder() {
+        let mut tries = 0;
+        let written = once_claude_left(std::time::Duration::from_secs(5), || {
+            tries += 1;
+            if tries < 3 { Err(refused("CLAUDE_RUNS_IN_FOLDER")) } else { Ok(tries) }
+        });
+        assert_eq!(written.unwrap(), 3);
+    }
+
+    #[test]
+    fn a_claude_that_stays_gets_the_refusal_in_the_end_and_another_refusal_at_once() {
+        let mut tries = 0;
+        let stays = once_claude_left(std::time::Duration::from_millis(1), || -> anyhow::Result<()> {
+            tries += 1;
+            Err(refused("CLAUDE_RUNS_IN_FOLDER"))
+        });
+        assert!(stays.unwrap_err().to_string().contains("CLAUDE_RUNS_IN_FOLDER"));
+        assert!(tries >= 1);
+
+        let mut tries = 0;
+        let other = once_claude_left(std::time::Duration::from_secs(5), || -> anyhow::Result<()> {
+            tries += 1;
+            Err(refused("NOT_FOUND"))
+        });
+        assert!(other.is_err());
+        assert_eq!(tries, 1);
+    }
 
     fn folder(dir: &str, from: &str, ready: bool) -> FolderDir {
         FolderDir {

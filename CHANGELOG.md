@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Switching a project's Claude Code config dir no longer fails when its Claude takes a few seconds to exit after its loop stopped.
+
 ## [0.21.0-beta.1] - 2026-11-01
 
 ### Added
