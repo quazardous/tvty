@@ -444,7 +444,7 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
   sections above keep their height, the ones below move; a double click on a
   title gives the list its default shares back.
 - **The frequent gestures stay at hand** in the panel — a dev's round is
-  read, decide or answer, next: a click on the priority chip changes it;
+  read, decide or answer, next: a priority that is not normal is shown, and changes full screen, by a click on its chip;
   Snooze gives an hour, a day, three days, a week or a month (Wake when snoozed); "without
   notifying", off by default, sends the next reply to nobody; the ▾ of Reply
   sends it keeping the hand (no agent's turn, no agent woken but one it

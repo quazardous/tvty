@@ -1363,7 +1363,7 @@ impl TicketPanel {
                 div().child(text).into_any_element()
             });
         }
-        {
+        if self.full {
             // The priority, a click away from changing.
             let priority = ticket.priority.clone().unwrap_or_else(|| "normal".into());
             let said = format!("{} ▾", fields::value_said("priority", &priority));
@@ -1377,6 +1377,9 @@ impl TicketPanel {
                     .on_click(cx.listener(|panel, _, _, cx| panel.toggle_menu(Menu::Priority, cx)))
                     .into_any_element(),
             );
+        } else if let Some((priority, icon)) = ticket.priority.as_deref().and_then(|p| Some((p, icons::priority(p)?))) {
+            // In the panel it is only said, when it is not normal.
+            chips.push(icons::labelled(icon, icons::priority_colour(priority), 14., fields::value_said("priority", priority)).into_any_element());
         }
         if let Some(until) = ticket.postponed_until.as_deref() {
             chips.push(div().child(crate::t!("tickets-snoozed-until", until = until.get(..16).unwrap_or(until).replace('T', " "))).into_any_element());
@@ -1518,7 +1521,6 @@ impl TicketPanel {
                 .child(title)
                 .children(turn)
                 .when(!chips.is_empty(), |d| d.child(chips_row(chips)))
-                .children(priority_menu)
                 .children(summary);
             (Some(head), None)
         };

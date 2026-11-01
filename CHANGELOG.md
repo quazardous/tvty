@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A ticket opened in the panel no longer offers to change its priority, it only shows one that is not normal; full screen keeps the choice.
+
 ### Fixed
 
 - Switching a project's Claude Code config dir no longer fails when its Claude takes a few seconds to exit after its loop stopped.
