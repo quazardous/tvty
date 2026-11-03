@@ -1860,6 +1860,34 @@ pub struct FolderSetting {
     /// Changed through its wizard, which aiball runs (`crate::wizard`).
     #[serde(default)]
     pub wizard: Option<SettingWizard>,
+    /// What kind of value it takes, for the input to pick.
+    #[serde(default)]
+    pub shape: Option<ValueShape>,
+}
+
+/// A value's shape, as aiball describes it (`shape`): its type, and for a
+/// path whether it is a folder or a file, and must be there.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct ValueShape {
+    #[serde(rename = "type", default)]
+    pub kind: String,
+    /// `dir` or `file`, for a `path`.
+    #[serde(rename = "kind", default)]
+    pub path_kind: Option<String>,
+    #[serde(default)]
+    pub must_exist: bool,
+}
+
+impl FolderSetting {
+    /// A path's picker: a folder or a file, from its shape (a folder when
+    /// aiball says no more than `path`). None for a value that is no path.
+    pub fn path_kind(&self) -> Option<crate::ui::filepicker::Kind> {
+        let is_path = self.shape.as_ref().map_or(self.kind == "path", |s| s.kind == "path");
+        is_path.then(|| match self.shape.as_ref().and_then(|s| s.path_kind.as_deref()) {
+            Some("file") => crate::ui::filepicker::Kind::File,
+            _ => crate::ui::filepicker::Kind::Folder,
+        })
+    }
 }
 
 /// A setting's wizard, as `project.settings` names it.

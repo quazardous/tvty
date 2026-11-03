@@ -30,7 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Switching a project's Claude Code config dir, from the agent bar or the options page (its value shown there, with a wand to change it), goes through a wizard aiball runs, in tvty's wizard sheet (its steps, a page that scrolls, a Browse… for a folder): it shows what will happen and asks first (start a new dir from the current one, move the conversations or not), then follows each step until the loops are back. It can be stopped before the setting is written.
+- Switching a project's Claude Code config dir, from the agent bar or the options page (its value shown there, with a wand to change it), goes through a wizard aiball runs, in tvty's wizard sheet (its steps, a page that scrolls, a folder chosen in tvty's own picker or the system's dialog): it shows what will happen and asks first (start a new dir from the current one, move the conversations or not), then follows each step until the loops are back. It can be stopped before the setting is written.
 
 ## [0.22.0-beta.1] - 2026-11-03
 

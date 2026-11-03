@@ -18,6 +18,7 @@ use serde_json::Value;
 use super::Shell;
 use crate::activity::{self, Activity};
 use crate::theme::p;
+use crate::ui::Named as _;
 use crate::ui::buttons::{self, Look as _};
 use crate::wizard::{self, Preview, Run};
 
@@ -47,6 +48,9 @@ pub(super) struct Choosing {
     options: Vec<String>,
     current: String,
     input: Option<Entity<InputState>>,
+    /// A `path` value: the folders, browsed in tvty (the field filters
+    /// them or takes a path).
+    picker: Option<crate::ui::filepicker::FilePicker>,
     suggestions: Vec<(Value, String)>,
 }
 
@@ -85,20 +89,40 @@ impl Shell {
             Some(text) => crate::shell::home_short(text),
             None => setting.value.to_string(),
         };
-        let input = (setting.kind == "path").then(|| {
+        let path_kind = setting.path_kind();
+        let input = path_kind.is_some().then(|| {
             let input = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("wizard-type-path")));
-            cx.subscribe_in(&input, window, |shell: &mut Self, input, event: &InputEvent, _, cx| {
-                if matches!(event, InputEvent::PressEnter { .. }) {
-                    let typed = input.read(cx).value().trim().to_string();
-                    if !typed.is_empty() {
-                        shell.ask_wizard_preview(Value::String(typed), cx);
+            cx.subscribe_in(&input, window, |shell: &mut Self, input, event: &InputEvent, window, cx| {
+                let typed = input.read(cx).value().to_string();
+                let Some(picker) = shell.wizard.as_mut().and_then(|w| w.choosing.as_mut()).and_then(|c| c.picker.as_mut()) else { return };
+                match event {
+                    InputEvent::Change => {
+                        picker.text = typed;
+                        picker.error = None;
                     }
+                    // Enter: into the folder typed or the first one shown.
+                    InputEvent::PressEnter { .. } => {
+                        picker.text = typed;
+                        picker.activate();
+                        let left = picker.text.clone();
+                        input.update(cx, |input, cx| input.set_value(left, window, cx));
+                    }
+                    _ => return,
                 }
+                cx.notify();
             })
             .detach();
             input
         });
         let suggestions = if setting.key == "claude.config_dir" { self.config_dir_suggestions(&cwd) } else { Vec::new() };
+        // Browsed from the current value's parent: dirs of config are
+        // hidden ones, shown here.
+        let picker = path_kind.map(|kind| {
+            let from = setting.value.as_str().map(std::path::PathBuf::from).and_then(|p| p.parent().map(|d| d.to_path_buf()));
+            let mut picker = crate::ui::filepicker::FilePicker::new(kind, from);
+            picker.show_hidden = true;
+            picker
+        });
         let title = wizard::title_said(&setting.key, setting.wizard.as_ref().map_or(setting.key.as_str(), |w| w.title.as_str()));
         self.wizard = Some(WizardCard {
             cwd,
@@ -110,7 +134,7 @@ impl Shell {
             starting: false,
             run: None,
             error: None,
-            choosing: Some(Choosing { title, kind: setting.kind.clone(), options: setting.options.clone(), current, input, suggestions }),
+            choosing: Some(Choosing { title, kind: setting.kind.clone(), options: setting.options.clone(), current, input, picker, suggestions }),
         });
         cx.notify();
     }
@@ -390,20 +414,13 @@ impl Shell {
             body = body.child(row);
         }
         let mut next = None;
-        if let Some(input) = choosing.input.as_ref() {
-            body = body.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap_2()
-                    .child(div().flex_1().child(Input::new(input).small()))
-                    .child(buttons::secondary("wizard-browse", crate::t!("wizard-browse")).on_click(cx.listener(|shell, _, window, cx| shell.browse_wizard_folder(window, cx)))),
-            );
-            let typed = input.clone();
-            next = Some(buttons::primary("wizard-next", crate::t!("wizard-next")).on_click(cx.listener(move |shell, _, _, cx| {
-                let text = typed.read(cx).value().trim().to_string();
-                if !text.is_empty() {
-                    shell.ask_wizard_preview(Value::String(text), cx);
+        if let (Some(input), Some(picker)) = (choosing.input.as_ref(), choosing.picker.as_ref()) {
+            body = body.child(self.picker_view(input, picker, cx));
+            let label = if picker.kind == crate::ui::filepicker::Kind::File { crate::t!("wizard-choose-file") } else { crate::t!("wizard-choose-folder") };
+            next = Some(buttons::primary("wizard-next", label).on_click(cx.listener(|shell, _, _, cx| {
+                let chosen = shell.wizard.as_mut().and_then(|w| w.choosing.as_mut()).and_then(|c| c.picker.as_mut()).and_then(|p| p.accept());
+                if let Some(dir) = chosen {
+                    shell.ask_wizard_preview(Value::String(dir.display().to_string()), cx);
                 }
             })));
         }
@@ -425,10 +442,11 @@ impl Shell {
         (body, next)
     }
 
-    /// The system's folder dialog, for a `path` value: the folder chosen
-    /// goes in the box, to be checked before Next.
+    /// The system's dialog, for who prefers it to the picker: the folder
+    /// chosen is shown in the picker, a file chosen is the value.
     fn browse_wizard_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let chosen = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some(crate::t!("wizard-browse").into()) });
+        let file = self.wizard.as_ref().and_then(|w| w.choosing.as_ref()).and_then(|c| c.picker.as_ref()).is_some_and(|p| p.kind == crate::ui::filepicker::Kind::File);
+        let chosen = cx.prompt_for_paths(PathPromptOptions { files: file, directories: !file, multiple: false, prompt: Some(crate::t!("wizard-browse").into()) });
         let handle = window.window_handle();
         cx.spawn(async move |this, cx| {
             let Ok(Ok(Some(paths))) = chosen.await else { return };
@@ -436,13 +454,103 @@ impl Shell {
             let _ = handle.update(cx, |_, window, cx| {
                 let _ = this.update(cx, |shell, cx| {
                     let input = shell.wizard.as_ref().and_then(|w| w.choosing.as_ref()).and_then(|c| c.input.clone());
+                    if path.is_file() {
+                        shell.ask_wizard_preview(Value::String(path.display().to_string()), cx);
+                        return;
+                    }
+                    if let Some(picker) = shell.wizard.as_mut().and_then(|w| w.choosing.as_mut()).and_then(|c| c.picker.as_mut()) {
+                        picker.go(path.clone());
+                    }
                     if let Some(input) = input {
-                        input.update(cx, |input, cx| input.set_value(path.display().to_string(), window, cx));
+                        input.update(cx, |input, cx| input.set_value(String::new(), window, cx));
                     }
                     cx.notify();
                 });
             });
         })
         .detach();
+    }
+}
+
+impl Shell {
+    /// The in-app folder picker: the folder shown and the way up, the field
+    /// (a filter, or a path; Enter goes in), its sub-folders, and the
+    /// system's dialog for who prefers it.
+    fn picker_view(&self, input: &Entity<InputState>, picker: &crate::ui::filepicker::FilePicker, cx: &mut Context<Self>) -> Div {
+        let mut picker = picker.clone();
+        let shown = picker.visible();
+        let mut col = div().flex().flex_col().gap_2();
+        // Where it is, the way up, home.
+        let places = div()
+            .flex()
+            .items_center()
+            .gap_2()
+            .child(buttons::secondary("wizard-picker-up", "↑").tooltip(crate::t!("wizard-picker-up")).on_click(cx.listener(|shell, _, window, cx| {
+                shell.wizard_picker(window, cx, |p| p.up());
+            })))
+            .child(buttons::secondary("wizard-picker-home", "~").tooltip(crate::t!("wizard-picker-home")).on_click(cx.listener(|shell, _, window, cx| {
+                shell.wizard_picker(window, cx, |p| {
+                    if let Some(home) = crate::ui::filepicker::home() {
+                        p.go(home);
+                    }
+                });
+            })))
+            .child(div().flex_1().min_w_0().truncate().font_weight(FontWeight::BOLD).child(crate::ui::filepicker::shown(&picker.dir)))
+            .child(buttons::secondary("wizard-browse", crate::t!("wizard-browse-system")).on_click(cx.listener(|shell, _, window, cx| shell.browse_wizard_folder(window, cx))));
+        col = col.child(places).child(Input::new(input).small());
+        // A path typed: what it may complete to, a click away.
+        let completions = picker.completions();
+        if !completions.is_empty() {
+            let mut row = div().flex().flex_wrap().gap_1();
+            for (i, done) in completions.into_iter().take(8).enumerate() {
+                let label = done.rsplit(['/', std::path::MAIN_SEPARATOR]).find(|p| !p.is_empty()).unwrap_or(&done).to_string();
+                row = row.child(buttons::chip(format!("wizard-complete-{i}"), format!("{label}/")).py_0p5().text_xs().on_click(cx.listener(move |shell, _, window, cx| {
+                    let done = done.clone();
+                    shell.wizard_picker(window, cx, move |p| p.text = done);
+                })));
+            }
+            col = col.child(row);
+        }
+        col = col.children(picker.error.clone().map(|e| div().text_xs().text_color(p().danger).child(crate::t!("wizard-picker-missing", path = e))));
+        let mut list = div().flex().flex_col().border_1().border_color(p().border).rounded_md().py_1();
+        if shown.is_empty() {
+            list = list.child(div().px_2().text_xs().text_color(p().muted).child(crate::t!("wizard-picker-empty")));
+        }
+        for (i, entry) in shown.into_iter().take(200).enumerate() {
+            let path = entry.path.clone();
+            let entry = entry.clone();
+            list = list.child(
+                div()
+                    .named(SharedString::from(format!("wizard-picker-{i}")))
+                    .px_2()
+                    .py_0p5()
+                    .text_sm()
+                    .cursor_pointer()
+                    .hover(|d| d.bg(p().hover))
+                    .child(if entry.is_dir { format!("{}/", entry.name) } else { entry.name.clone() })
+                    .on_click(cx.listener(move |shell, _, window, cx| {
+                        // A folder: into it; a file: chosen.
+                        if entry.is_dir {
+                            let path = path.clone();
+                            shell.wizard_picker(window, cx, move |p| p.go(path));
+                        } else {
+                            shell.ask_wizard_preview(Value::String(path.display().to_string()), cx);
+                        }
+                    })),
+            );
+        }
+        col.child(list)
+    }
+
+    /// A gesture on the picker: done, its field emptied as the folder changes.
+    fn wizard_picker(&mut self, window: &mut Window, cx: &mut Context<Self>, gesture: impl FnOnce(&mut crate::ui::filepicker::FilePicker)) {
+        let Some(choosing) = self.wizard.as_mut().and_then(|w| w.choosing.as_mut()) else { return };
+        let Some(picker) = choosing.picker.as_mut() else { return };
+        gesture(picker);
+        let text = picker.text.clone();
+        if let Some(input) = choosing.input.clone() {
+            input.update(cx, |input, cx| input.set_value(text, window, cx));
+        }
+        cx.notify();
     }
 }
