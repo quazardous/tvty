@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.22.0-beta.1] - 2026-11-03
+
 ### Added
 
 - A project with no session running shows, over its stopped sessions, what its tickets ask and its tools: "+ session", its options, a shell in its folder.
