@@ -525,6 +525,21 @@ pub fn roots_refused(error: &anyhow::Error) -> Option<Vec<String>> {
     })
 }
 
+/// The ticket a step waits on: its band and state glyph as the reader
+/// sees them.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct WaitsOn {
+    pub id: u64,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub band_name: Option<String>,
+    #[serde(default)]
+    pub state_glyph: Option<String>,
+    #[serde(default)]
+    pub closed: bool,
+}
+
 /// A row of the ticket list, as `/api/inbox` builds it for [`Aiball::user`]
 /// — the same row aiball's web UI shows.
 #[derive(Clone, Debug, PartialEq, Deserialize)]
@@ -581,6 +596,10 @@ pub struct TicketRow {
     /// When the step's agent said it resumes.
     #[serde(default)]
     pub step_resume_at: Option<String>,
+    /// The ticket that step waits on (its `resume_on`), as the reader
+    /// sees it, while it has not moved since.
+    #[serde(default)]
+    pub waits_on: Option<WaitsOn>,
     #[serde(default)]
     pub latest_plan_rejected: bool,
     #[serde(default)]

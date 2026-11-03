@@ -1207,6 +1207,7 @@ impl TicketPanel {
             .when_some(speaker, |d, who| d.child(who))
             .children(comment_count(ticket, &self.aiball.user))
             .children(holder_chip(ticket))
+            .children(waits_on_chip(ticket))
             .children(critical_chip(ticket))
             .children(priority_chip(ticket, 14.))
             .child(div().flex_1())
@@ -3000,6 +3001,20 @@ pub(crate) fn holder_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
         icons::labelled(Icon::Hot, p().warning, 12., holder).named("holder").tip(tip)
     } else {
         div().child(holder).named("holder").tip(tip)
+    })
+}
+
+/// The ticket an agent's step waits on: its number, and its own state's
+/// glyph (an escalation to decide, a plan…).
+pub(crate) fn waits_on_chip(ticket: &TicketRow) -> Option<Stateful<Div>> {
+    let waits = ticket.waits_on.as_ref().filter(|w| !w.closed)?;
+    let glyph = waits.state_glyph.as_deref().and_then(crate::rowstate::Glyph::from_server);
+    let state = glyph.map(|g| format!(" ({})", g.meaning())).unwrap_or_default();
+    let tip = crate::t!("tickets-waits-on-tip", id = waits.id, title = waits.title.clone(), state = state);
+    let text = crate::t!("tickets-waits-on", id = waits.id);
+    Some(match glyph {
+        Some(glyph) => icons::labelled(icons::of_glyph(glyph), glyph_colour(glyph, waits.band_name.as_deref() == Some("decision")), 12., text).named("waits-on").tip(tip),
+        None => div().child(text).named("waits-on").tip(tip),
     })
 }
 

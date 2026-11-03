@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A ticket whose agent's step waits on another ticket says so in the list ("waits on #N"), with that ticket's own state.
+
 ### Changed
 
 - Switching a project's Claude Code config dir, from the agent bar or the options page, goes through a wizard aiball runs: it shows what will happen and asks first (start a new dir from the current one, move the conversations or not), then follows each step until the loops are back. It can be stopped before the setting is written.

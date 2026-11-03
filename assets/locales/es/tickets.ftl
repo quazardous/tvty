@@ -347,3 +347,5 @@ tickets-event-dependency-closed = una dependencia se cerró{$source}
 tickets-event-dependency-rejected = una dependencia fue rechazada{$source}
 tickets-event-related-closed = un ticket relacionado se cerró{$source}
 tickets-event-linked = enlazó{$source}
+tickets-waits-on = espera #{$id}
+tickets-waits-on-tip = El paso del agente espera #{$id}: {$title}{$state}

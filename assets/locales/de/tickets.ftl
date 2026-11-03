@@ -333,3 +333,5 @@ tickets-event-dependency-closed = eine Abhängigkeit wurde geschlossen{$source}
 tickets-event-dependency-rejected = eine Abhängigkeit wurde abgelehnt{$source}
 tickets-event-related-closed = ein verknüpftes Ticket wurde geschlossen{$source}
 tickets-event-linked = verknüpft{$source}
+tickets-waits-on = wartet auf #{$id}
+tickets-waits-on-tip = Der Schritt des Agenten wartet auf #{$id}: {$title}{$state}

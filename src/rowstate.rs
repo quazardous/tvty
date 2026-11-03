@@ -85,7 +85,7 @@ pub enum Glyph {
 
 impl Glyph {
     /// aiball's `state_glyph` name.
-    fn from_server(name: &str) -> Option<Glyph> {
+    pub(crate) fn from_server(name: &str) -> Option<Glyph> {
         Some(match name {
             "escalation" => Glyph::Escalation,
             "plan" => Glyph::Plan,

@@ -716,6 +716,7 @@ impl FullList {
             .gap_x_2()
             .text_xs()
             .text_color(p().muted)
+            .children(crate::panel::waits_on_chip(ticket))
             .children(crate::panel::critical_chip(ticket))
             .when(ticket.hot, |d| {
                 d.child(div().child(icons::icon(Icon::Hot, p().warning, 12.)).named("hot").tip(crate::t!("fulllist-hot")))
