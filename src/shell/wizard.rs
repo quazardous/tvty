@@ -123,7 +123,7 @@ impl Shell {
         cx.notify();
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
-            let read = cx.background_executor().spawn(async move { wizard::preview(&aiball, &cwd, &key, &value).map_err(|e| format!("{e:#}")) }).await;
+            let read = cx.background_executor().spawn(async move { wizard::preview(&aiball, &cwd, &key, &value).map_err(|e| wizard::refusal_said(&e)) }).await;
             let _ = this.update(cx, |shell, cx| {
                 if let Some(card) = shell.wizard.as_mut().filter(|c| c.run.is_none()) {
                     card.preview = Some(read);
@@ -149,7 +149,7 @@ impl Shell {
                     card.starting = false;
                     match started {
                         Ok(run) => card.run = Some(run),
-                        Err(error) => card.error = Some(format!("{error:#}")),
+                        Err(error) => card.error = Some(wizard::refusal_said(&error)),
                     }
                 }
                 cx.notify();
@@ -281,12 +281,13 @@ impl Shell {
                 }
                 _ => {
                     let current = card.chosen.get(&q.id).cloned().or_else(|| q.default.clone());
-                    let mut row = div().flex().flex_wrap().gap_1();
+                    let mut row = div().flex().flex_col().items_start().w_full().gap_1();
                     for a in &q.options {
                         let (qid, key) = (q.id.clone(), a.key.clone());
                         let on = current.as_deref() == Some(a.key.as_str());
                         row = row.child(
-                            buttons::chip(format!("wizard-q-{}-{}", q.id, a.key), wizard::answer_said(q, a))
+                            buttons::chip(format!("wizard-q-{}-{}", q.id, a.key), div().min_w_0().whitespace_normal().child(wizard::answer_said(q, a)))
+                                .max_w_full()
                                 .py_0p5()
                                 .text_sm()
                                 .chosen(on)

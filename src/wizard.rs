@@ -128,6 +128,18 @@ impl Run {
     }
 }
 
+/// What refused a preview or a start, said: a dir a loop would refuse in
+/// tvty's words, anything else as aiball said it.
+pub fn refusal_said(error: &anyhow::Error) -> String {
+    match error.downcast_ref::<crate::wire::Refused>() {
+        Some(refused) if refused.code == "CONFIG_DIR_NOT_READY" => {
+            let dir = refused.details.get("config_dir").map(path).filter(|d| !d.is_empty());
+            crate::t!("wizard-not-ready", dir = dir.unwrap_or_default())
+        }
+        _ => format!("{error:#}"),
+    }
+}
+
 pub fn preview(aiball: &Aiball, cwd: &str, key: &str, value: &Value) -> anyhow::Result<Preview> {
     aiball.call("project.setting_wizard_preview", json!({ "cwd": cwd, "key": key, "value": value }))
 }
@@ -219,8 +231,8 @@ pub fn question_said(q: &Question, loops: &[PreviewLoop]) -> String {
 pub fn answer_said(q: &Question, a: &Answer) -> String {
     let f = &q.facts;
     match (q.id.as_str(), a.key.as_str()) {
-        ("fork", "fork") => crate::t!("wizard-a-fork", current = path(&f["current"])),
-        ("fork", "empty") => crate::t!("wizard-a-empty"),
+        ("fork", "fork") => crate::t!("wizard-a-fork"),
+        ("fork", "keep") => crate::t!("wizard-a-keep", target = path(&f["target"])),
         ("move_sessions", "yes") => crate::t!("wizard-a-move-yes"),
         ("move_sessions", "no") => crate::t!("wizard-a-move-no"),
         _ => a.label.clone(),
@@ -233,6 +245,7 @@ pub fn step_said(s: &Step) -> String {
         "idle" => crate::t!("wizard-step-idle"),
         "stop" => crate::t!("wizard-step-stop"),
         "free" => crate::t!("wizard-step-free"),
+        "ready" => crate::t!("wizard-step-ready"),
         "write" => crate::t!("wizard-step-write"),
         "start" => crate::t!("wizard-step-start"),
         _ => s.label.clone(),
@@ -254,6 +267,8 @@ pub fn step_news(s: &Step) -> Option<String> {
         "folder_free" => crate::t!("wizard-said-folder-free"),
         "not_checked" => crate::t!("wizard-said-not-checked"),
         "claude_still_in_folder" => crate::t!("wizard-said-claude-still", pids = list(&d["pids"])),
+        "target_ready" => crate::t!("wizard-said-target-ready", dir = path(&d["dir"])),
+        "target_not_ready" => crate::t!("wizard-said-target-not-ready"),
         "written" => crate::t!("wizard-said-written", dir = path(&d["dir"])),
         "starting" => crate::t!("wizard-said-starting", names = list(&d["loop"])),
         "started" => crate::t!("wizard-said-started", names = list(&d["started"])),
