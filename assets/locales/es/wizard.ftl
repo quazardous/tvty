@@ -58,3 +58,7 @@ wizard-step-ready = Volver a comprobar la nueva carpeta
 wizard-said-target-ready = {$dir} está lista
 wizard-said-target-not-ready = la nueva carpeta ya no está lista: no se escribió nada
 wizard-not-ready = {$dir} nunca ha pasado por el primer arranque de Claude (tema, inicio de sesión): un loop no puede arrancar en ella. Ejecuta claude en ella una vez a mano primero.
+wizard-phase-choose = Lo elegido
+wizard-phase-what = Lo que hará aiball
+wizard-phase-run = En curso
+wizard-browse = Examinar…

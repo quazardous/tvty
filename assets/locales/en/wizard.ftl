@@ -58,3 +58,7 @@ wizard-step-ready = Check the new dir again
 wizard-said-target-ready = {$dir} is ready
 wizard-said-target-not-ready = the new dir is no longer ready: nothing written
 wizard-not-ready = {$dir} has not been through Claude's first run (theme, login): a loop cannot start on it. Run claude on it once by hand first.
+wizard-phase-choose = What is chosen
+wizard-phase-what = What aiball will do
+wizard-phase-run = Under way
+wizard-browse = Browse…

@@ -9,6 +9,8 @@ use std::collections::HashMap;
 use gpui_kit::component::Disableable as _;
 use gpui_kit::component::Sizable as _;
 use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::stepper::{Stepper, StepperItem};
+use gpui_kit::component::button::Button;
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::Value;
@@ -219,28 +221,20 @@ impl Shell {
     pub(super) fn wizard_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let card = self.wizard.as_ref()?;
         let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
-        if let Some(choosing) = card.choosing.as_ref() {
-            return Some(super::quit::dialog(self.choosing_view(&card.cwd, choosing, cx)).into_any_element());
-        }
-        let title = match card.preview.as_ref() {
-            Some(Ok(preview)) => wizard::title_said(&preview.key, &preview.title),
+        let title = match (card.choosing.as_ref(), card.preview.as_ref()) {
+            (Some(choosing), _) => choosing.title.clone(),
+            (None, Some(Ok(preview))) => wizard::title_said(&preview.key, &preview.title),
             _ => wizard::title_said(&card.key, &card.key),
         };
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_lg().font_weight(FontWeight::BOLD).child(title))
-            .child(muted(crate::shell::home_short(&card.cwd)));
         // Closed: the options page, open on a project, reads its folders again.
-        let close = buttons::secondary("wizard-close", crate::t!("wizard-close")).on_click(cx.listener(|shell, _, window, cx| {
-            shell.wizard = None;
-            shell.load_project_settings(window, cx);
-            cx.notify();
-        }));
-        if let Some(run) = self.shown_run(card) {
-            body = body.child(div().font_weight(FontWeight::BOLD).child(wizard::status_said(&run.status)));
-            body = body.child(steps_view(&run.steps));
+        let close = |id: &'static str, label: String, cx: &mut Context<Self>| {
+            buttons::secondary(id, label).on_click(cx.listener(|shell, _, window, cx| shell.close_wizard(window, cx)))
+        };
+        let (phase, body, answers): (usize, Div, Div) = if let Some(choosing) = card.choosing.as_ref() {
+            let (body, next) = self.choosing_view(choosing, cx);
+            (0, body, div().flex().gap_2().child(close("wizard-cancel", crate::t!("wizard-cancel"), cx)).children(next))
+        } else if let Some(run) = self.shown_run(card) {
+            let mut body = div().flex().flex_col().gap_3().child(div().font_weight(FontWeight::BOLD).child(wizard::status_said(&run.status))).child(steps_view(&run.steps));
             if let Some(fallback) = run.fallback.as_ref().filter(|f| f.ran) {
                 body = body.children(wizard::fallback_said(fallback.code.as_deref(), &fallback.details, fallback.said.as_deref()).map(|t| div().text_color(p().warning).child(t)));
             }
@@ -249,17 +243,46 @@ impl Shell {
                 let id = run.run.clone();
                 buttons::secondary("wizard-stop", crate::t!("wizard-stop")).on_click(cx.listener(move |shell, _, _, cx| shell.cancel_wizard_run(id.clone(), cx)))
             });
-            body = body.child(div().flex().justify_end().gap_2().children(stop).child(close));
-            return Some(super::quit::dialog(body).into_any_element());
-        }
-        let preview = match card.preview.as_ref() {
-            None => return Some(super::quit::dialog(body.child(muted(crate::t!("wizard-loading"))).child(div().flex().justify_end().child(close))).into_any_element()),
-            Some(Err(error)) => {
-                return Some(super::quit::dialog(body.child(div().text_color(p().danger).child(error.clone())).child(div().flex().justify_end().child(close))).into_any_element());
+            (2, body, div().flex().gap_2().children(stop).child(close("wizard-close", crate::t!("wizard-close"), cx)))
+        } else {
+            match card.preview.as_ref() {
+                None => (1, div().child(muted(crate::t!("wizard-loading"))), div().child(close("wizard-close", crate::t!("wizard-close"), cx))),
+                Some(Err(error)) => (1, div().text_color(p().danger).child(error.clone()), div().child(close("wizard-close", crate::t!("wizard-close"), cx))),
+                Some(Ok(preview)) => {
+                    let body = self.questions_view(card, preview, cx);
+                    let ready = wizard::answers(&preview.questions, &card.chosen, card.confirmed).is_some() && !card.starting;
+                    let start = buttons::primary("wizard-start", if card.starting { "…".to_string() } else { crate::t!("wizard-start") })
+                        .disabled(!ready)
+                        .on_click(cx.listener(|shell, _, _, cx| shell.start_wizard(cx)));
+                    (1, body, div().flex().gap_2().child(close("wizard-cancel", crate::t!("wizard-cancel"), cx)).child(start))
+                }
             }
-            Some(Ok(preview)) => preview,
         };
-        // The questions, all before the start.
+        let phases = [crate::t!("wizard-phase-choose"), crate::t!("wizard-phase-what"), crate::t!("wizard-phase-run")];
+        let steps = Stepper::new("wizard-steps").selected_index(phase).items(phases.into_iter().map(|t| StepperItem::new().child(t)));
+        Some(
+            crate::ui::sheet::Sheet::new("wizard", title)
+                .summary(crate::shell::home_short(&card.cwd))
+                .steps(steps)
+                .body(body)
+                .answers(answers)
+                .on_close(cx.listener(|shell, _, window, cx| shell.close_wizard(window, cx)))
+                .render(),
+        )
+    }
+
+    /// ✕ Esc: the card goes, the run (if any) goes on in aiball.
+    pub(super) fn close_wizard(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        self.wizard = None;
+        self.load_project_settings(window, cx);
+        cx.notify();
+    }
+
+    /// The questions, all before the start, then what runs and what happens
+    /// if it stops early.
+    fn questions_view(&self, card: &WizardCard, preview: &Preview, cx: &mut Context<Self>) -> Div {
+        let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
+        let mut body = div().flex().flex_col().gap_3();
         for q in &preview.questions {
             let id = q.id.clone();
             match q.kind.as_str() {
@@ -303,24 +326,13 @@ impl Shell {
                 }
             }
         }
-        // What runs then, and what happens if it stops early.
         let busy: Vec<String> = preview.loops.iter().filter(|l| l.busy).map(|l| l.agent.clone().unwrap_or_else(|| l.name.clone())).collect();
         body = body.child(muted(crate::t!("wizard-steps"))).child(steps_view(&preview.steps));
         if !busy.is_empty() {
             body = body.child(muted(format!("{}: {}", crate::t!("wizard-busy-mark"), busy.join(", "))));
         }
         body = body.children(wizard::fallback_said(preview.fallback_code.as_deref(), &preview.fallback_facts, preview.fallback.as_deref()).map(muted));
-        body = body.children(card.error.clone().map(|e| div().text_color(p().danger).child(e)));
-        let ready = wizard::answers(&preview.questions, &card.chosen, card.confirmed).is_some() && !card.starting;
-        let start = buttons::primary("wizard-start", if card.starting { "…".to_string() } else { crate::t!("wizard-start") })
-            .disabled(!ready)
-            .on_click(cx.listener(|shell, _, _, cx| shell.start_wizard(cx)));
-        let cancel = buttons::secondary("wizard-cancel", crate::t!("wizard-cancel")).on_click(cx.listener(|shell, _, _, cx| {
-            shell.wizard = None;
-            cx.notify();
-        }));
-        body = body.child(div().flex().justify_end().gap_2().child(cancel).child(start));
-        Some(super::quit::dialog(body).into_any_element())
+        body.children(card.error.clone().map(|e| div().text_color(p().danger).child(e)))
     }
 }
 
@@ -359,16 +371,11 @@ fn steps_view(steps: &[wizard::Step]) -> Div {
 
 impl Shell {
     /// The value to choose: the current one, the setting's options, a path
-    /// typed (Enter), the dirs other folders use.
-    fn choosing_view(&self, cwd: &str, choosing: &Choosing, cx: &mut Context<Self>) -> Div {
+    /// typed (Enter) or picked in the system's folder dialog, the dirs other
+    /// folders use. Answers the page and its Next.
+    fn choosing_view(&self, choosing: &Choosing, cx: &mut Context<Self>) -> (Div, Option<Button>) {
         let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
-        let mut body = div()
-            .flex()
-            .flex_col()
-            .gap_3()
-            .child(div().text_lg().font_weight(FontWeight::BOLD).child(choosing.title.clone()))
-            .child(muted(crate::shell::home_short(cwd)))
-            .child(div().child(crate::t!("wizard-now", value = choosing.current.clone())));
+        let mut body = div().flex().flex_col().gap_3().child(div().child(crate::t!("wizard-now", value = choosing.current.clone())));
         if choosing.kind == "enum" {
             let mut row = div().flex().flex_wrap().gap_1();
             for option in &choosing.options {
@@ -382,21 +389,23 @@ impl Shell {
             }
             body = body.child(row);
         }
+        let mut next = None;
         if let Some(input) = choosing.input.as_ref() {
-            let typed = input.clone();
             body = body.child(
                 div()
                     .flex()
                     .items_center()
                     .gap_2()
                     .child(div().flex_1().child(Input::new(input).small()))
-                    .child(buttons::secondary("wizard-next", crate::t!("wizard-next")).on_click(cx.listener(move |shell, _, _, cx| {
-                        let text = typed.read(cx).value().trim().to_string();
-                        if !text.is_empty() {
-                            shell.ask_wizard_preview(Value::String(text), cx);
-                        }
-                    }))),
+                    .child(buttons::secondary("wizard-browse", crate::t!("wizard-browse")).on_click(cx.listener(|shell, _, window, cx| shell.browse_wizard_folder(window, cx)))),
             );
+            let typed = input.clone();
+            next = Some(buttons::primary("wizard-next", crate::t!("wizard-next")).on_click(cx.listener(move |shell, _, _, cx| {
+                let text = typed.read(cx).value().trim().to_string();
+                if !text.is_empty() {
+                    shell.ask_wizard_preview(Value::String(text), cx);
+                }
+            })));
         }
         if !choosing.suggestions.is_empty() {
             body = body.child(muted(crate::t!("wizard-others")));
@@ -413,11 +422,27 @@ impl Shell {
             }
             body = body.child(list);
         }
-        body.child(div().flex().justify_end().child(buttons::secondary("wizard-cancel", crate::t!("wizard-cancel")).on_click(cx.listener(
-            |shell, _, _, cx| {
-                shell.wizard = None;
-                cx.notify();
-            },
-        ))))
+        (body, next)
+    }
+
+    /// The system's folder dialog, for a `path` value: the folder chosen
+    /// goes in the box, to be checked before Next.
+    fn browse_wizard_folder(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let chosen = cx.prompt_for_paths(PathPromptOptions { files: false, directories: true, multiple: false, prompt: Some(crate::t!("wizard-browse").into()) });
+        let handle = window.window_handle();
+        cx.spawn(async move |this, cx| {
+            let Ok(Ok(Some(paths))) = chosen.await else { return };
+            let Some(path) = paths.into_iter().next() else { return };
+            let _ = handle.update(cx, |_, window, cx| {
+                let _ = this.update(cx, |shell, cx| {
+                    let input = shell.wizard.as_ref().and_then(|w| w.choosing.as_ref()).and_then(|c| c.input.clone());
+                    if let Some(input) = input {
+                        input.update(cx, |input, cx| input.set_value(path.display().to_string(), window, cx));
+                    }
+                    cx.notify();
+                });
+            });
+        })
+        .detach();
     }
 }

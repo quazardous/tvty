@@ -58,3 +58,7 @@ wizard-step-ready = Den neuen Ordner erneut prüfen
 wizard-said-target-ready = {$dir} ist bereit
 wizard-said-target-not-ready = der neue Ordner ist nicht mehr bereit: nichts geschrieben
 wizard-not-ready = {$dir} hat Claudes ersten Start (Thema, Anmeldung) nicht durchlaufen: ein Loop kann dort nicht starten. Starte claude dort zuerst einmal von Hand.
+wizard-phase-choose = Was gewählt wird
+wizard-phase-what = Was aiball tun wird
+wizard-phase-run = Ablauf
+wizard-browse = Durchsuchen…

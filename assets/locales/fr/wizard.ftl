@@ -58,3 +58,7 @@ wizard-step-ready = Revérifier le nouveau dossier
 wizard-said-target-ready = {$dir} est prêt
 wizard-said-target-not-ready = le nouveau dossier n'est plus prêt : rien n'a été écrit
 wizard-not-ready = {$dir} n'a jamais servi à Claude (thème, connexion) : une loop ne peut pas y démarrer. Lance d'abord claude dessus une fois à la main.
+wizard-phase-choose = Ce qui est choisi
+wizard-phase-what = Ce que fera aiball
+wizard-phase-run = Déroulé
+wizard-browse = Parcourir…

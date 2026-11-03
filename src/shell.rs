@@ -2668,6 +2668,8 @@ impl Shell {
             self.close_megaphone(window, cx);
             cx.stop_propagation();
             return;
+        } else if key == "escape" && self.wizard.is_some() {
+            self.close_wizard(window, cx);
         } else if key == "escape" && self.new_project.is_some() {
             self.close_new_project(window, cx);
         } else if key == "escape" && self.help_menu {
