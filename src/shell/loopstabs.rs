@@ -280,7 +280,20 @@ impl Shell {
     fn other_list(&self, which: Other, cx: &mut Context<Self>) -> AnyElement {
         let mut list = div().flex().flex_col();
         let words = self.filter_words(cx);
-        let heading = |text: String, cx: &mut Context<Self>| div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx));
+        // A project of aiball's has its heading's tools here too; its "+
+        // session" form opens here when the live list does not show it.
+        let live: Vec<&str> = self.board.projects.iter().map(|p| p.name.as_str()).collect();
+        let heading = |text: String, project: bool, form: bool, cx: &mut Context<Self>| -> AnyElement {
+            if !project {
+                return div().flex().px_3().pt_2().pb_1().child(self.project_heading(&text, text.to_uppercase(), cx)).into_any_element();
+            }
+            div()
+                .flex()
+                .flex_col()
+                .child(self.project_row(&text, text.to_uppercase(), true, false, cx))
+                .when(form && !live.contains(&text.as_str()), |d| d.children(self.new_session_form(&text, cx)))
+                .into_any_element()
+        };
         let row = |id: String, name: String, cwd: &str, astray: Option<&str>, cx: &mut Context<Self>, start: Start, forget: Forget| {
             // Its hold, kept by aiball while it does not run: greyed, a
             // click turns it for its next start.
@@ -394,7 +407,7 @@ impl Shell {
                     let known = self.loop_project(l);
                     let project = known.clone().unwrap_or_else(|| crate::t!("sessions-no-project"));
                     if last.as_deref() != Some(project.as_str()) {
-                        list = list.child(heading(project.clone(), cx));
+                        list = list.child(heading(project.clone(), known.is_some(), true, cx));
                         last = Some(project);
                     }
                     let agent = l.agent().map(str::to_string);
@@ -417,6 +430,7 @@ impl Shell {
             }
             Other::Shut => {
                 let homes = self.closed(&words);
+                let idle_projects: Vec<String> = self.inactive(&words).into_iter().filter_map(|l| self.loop_project(l)).collect();
                 if homes.is_empty() {
                     list = list.child(div().px_3().text_color(p().muted).child(crate::t!(if words.is_empty() { "sessions-none-shut" } else { "sessions-none-shut-found" })));
                 }
@@ -426,7 +440,9 @@ impl Shell {
                 for (agent, project, cwd) in homes {
                     let heading_of = project.clone().unwrap_or_else(|| crate::t!("sessions-no-project"));
                     if last.as_deref() != Some(heading_of.as_str()) {
-                        list = list.child(heading(heading_of.clone(), cx));
+                        // Its form once: under its stopped loops' heading when it has some.
+                        let form = !idle_projects.contains(&heading_of);
+                        list = list.child(heading(heading_of.clone(), project.is_some(), form, cx));
                         last = Some(heading_of);
                     }
                     let start = Start { cwd: cwd.clone(), project: project.clone(), agent: Some(agent.clone()), crew: false, again: None, mode: None, resume: crate::loops::Resume::Ask };

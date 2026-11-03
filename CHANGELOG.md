@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A project with no session running shows, over its stopped sessions, what its tickets ask and its tools: "+ session", its options, a shell in its folder.
+
 ### Changed
 
 - A ticket opened in the panel no longer offers to change its priority, it only shows one that is not normal; full screen keeps the choice.

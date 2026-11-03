@@ -4774,88 +4774,95 @@ impl Shell {
             )
     }
 
+    /// A project's heading: its name, what its tickets ask, and its tools
+    /// ("+ session", its options, ▶ when `play`, a shell in its folder) —
+    /// in the live list and over its stopped sessions alike.
+    pub(super) fn project_row(&self, name: &str, label: impl IntoElement, on_board: bool, play: bool, cx: &mut Context<Self>) -> Stateful<Div> {
+        // A project with no session open is not on the board: its tickets
+        // as aiball pushes them.
+        let tickets = self.board.tickets.get(name).or_else(|| self.live.tickets().get(name));
+        let critical = self.board.critical.get(name).copied().or_else(|| tickets.into_iter().flatten().find(|t| t.critical.is_some()).map(|t| t.id));
+        // A project shows the sum of what it asks, collapsed or not.
+        let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
+        div()
+            .named(SharedString::from(format!("project-row-{}", name)))
+            .h(px(SESSION_HEADING))
+            .flex_none()
+            .overflow_hidden()
+            .flex()
+            .items_center()
+            .gap_1()
+            .px_3()
+            .pt_2()
+            .pb_1()
+            .child(self.project_heading(name, label, cx))
+            .child(alerts.badges(format!("project-{}", name)))
+            // Something steers its agents (the 📢).
+            .children(self.steered_mark(name, cx))
+            .when(on_board, |d| {
+                let name = name.to_string();
+                d.child(
+                    buttons::link(SharedString::from(format!("new-session-{name}")), crate::t!("sessions-new-session"))
+                        .text_xs()
+                        .on_click(cx.listener(move |shell, _, window, cx| {
+                            shell.ask_new_session(name.clone(), window, cx)
+                        })),
+                )
+            })
+            // Its options: its folders' settings, its layer of the board's config.
+            .when(on_board, |d| {
+                let name = name.to_string();
+                d.child(
+                    buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", crate::t!("sessions-project-options"))
+                        .text_xs()
+                        .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
+                )
+            })
+            // No loop of it runs here: ▶ starts one (its stopped one
+            // again, or a new one as "+ session" would).
+            .when_some((on_board && play).then(|| self.project_play(name)).flatten(), |d, play| {
+                let name = name.to_string();
+                let tip = match &play {
+                    loopstabs::Play::Again(l) => crate::t!("sessions-play-again", agent = l.agent().unwrap_or(&l.name).to_string()),
+                    loopstabs::Play::New { cwd, .. } => crate::t!("sessions-play-new", cwd = loopstabs::home_short(cwd)),
+                };
+                // "…" on the project starting only; another start under
+                // way leaves this one as it is, its click waiting.
+                let cwd = match &play {
+                    loopstabs::Play::Again(l) => l.cwd.clone(),
+                    loopstabs::Play::New { cwd, .. } => cwd.clone(),
+                };
+                let starting = self.starting.as_deref() == Some(cwd.as_str());
+                let free = self.starting.is_none();
+                d.child(
+                    buttons::link(SharedString::from(format!("play-{name}")), if starting { "…" } else { "▶" })
+                        .text_xs()
+                        .tip(tip)
+                        .when(free, |b| b.on_click(cx.listener(move |shell, _, _, cx| shell.play_project(&name, cx)))),
+                )
+            })
+            // A plain shell in the project's folder, listed with it.
+            .when(on_board, |d| {
+                let name = name.to_string();
+                d.child(
+                    buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
+                        .text_xs()
+                        .tip(crate::t!("sessions-project-terminal"))
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
+                )
+            })
+    }
+
     /// The sessions that run, by project; "+ session" opens one.
     /// A project's block in the list: its heading, its form for a new
     /// session when open, its sessions. The list's, and the copy dragged.
     fn project_block(&self, project: &sessions::Project, shown: Vec<&Terminal>, words: &[String], target: Option<&str>, cx: &mut Context<Self>) -> Div {
-        let tickets = self.board.tickets.get(&project.name);
-        let critical = self.board.critical.get(&project.name).copied();
-        // A project shows the sum of what it asks, collapsed or not.
-        let alerts = Alerts::of(tickets.into_iter().flatten(), critical);
         // Fixed heights: the list is laid out on every frame of the
         // shell, and rows the layout must measure cost dearly.
         // The project's block, its heading and its sessions: dragged
         // onto another project, it takes its place.
         let mut block = div().flex().flex_col();
-        block = block.child(
-            div()
-                .named(SharedString::from(format!("project-row-{}", project.name)))
-                .h(px(SESSION_HEADING))
-                .flex_none()
-                .overflow_hidden()
-                .flex()
-                .items_center()
-                .gap_1()
-                .px_3()
-                .pt_2()
-                .pb_1()
-                .child(self.project_heading(&project.name, marked(&project.name.to_uppercase(), &words), cx))
-                .child(alerts.badges(format!("project-{}", project.name)))
-                // Something steers its agents (the 📢).
-                .children(self.steered_mark(&project.name, cx))
-                .when(project.on_board, |d| {
-                    let name = project.name.clone();
-                    d.child(
-                        buttons::link(SharedString::from(format!("new-session-{name}")), crate::t!("sessions-new-session"))
-                            .text_xs()
-                            .on_click(cx.listener(move |shell, _, window, cx| {
-                                shell.ask_new_session(name.clone(), window, cx)
-                            })),
-                    )
-                })
-                // Its options: its folders' settings, its layer of the board's config.
-                .when(project.on_board, |d| {
-                    let name = project.name.clone();
-                    d.child(
-                        buttons::icon(SharedString::from(format!("project-options-{name}")), "⚙", crate::t!("sessions-project-options"))
-                            .text_xs()
-                            .on_click(cx.listener(move |shell, _, window, cx| shell.open_project_options(name.clone(), window, cx))),
-                    )
-                })
-                // No loop of it runs here: ▶ starts one (its stopped one
-                // again, or a new one as "+ session" would).
-                .when_some(project.on_board.then(|| self.project_play(&project.name)).flatten(), |d, play| {
-                    let name = project.name.clone();
-                    let tip = match &play {
-                        loopstabs::Play::Again(l) => crate::t!("sessions-play-again", agent = l.agent().unwrap_or(&l.name).to_string()),
-                        loopstabs::Play::New { cwd, .. } => crate::t!("sessions-play-new", cwd = loopstabs::home_short(cwd)),
-                    };
-                    // "…" on the project starting only; another start under
-                    // way leaves this one as it is, its click waiting.
-                    let cwd = match &play {
-                        loopstabs::Play::Again(l) => l.cwd.clone(),
-                        loopstabs::Play::New { cwd, .. } => cwd.clone(),
-                    };
-                    let starting = self.starting.as_deref() == Some(cwd.as_str());
-                    let free = self.starting.is_none();
-                    d.child(
-                        buttons::link(SharedString::from(format!("play-{name}")), if starting { "…" } else { "▶" })
-                            .text_xs()
-                            .tip(tip)
-                            .when(free, |b| b.on_click(cx.listener(move |shell, _, _, cx| shell.play_project(&name, cx)))),
-                    )
-                })
-                // A plain shell in the project's folder, listed with it.
-                .when(project.on_board, |d| {
-                    let name = project.name.clone();
-                    d.child(
-                        buttons::link(SharedString::from(format!("new-shell-{name}")), ">_")
-                            .text_xs()
-                            .tip(crate::t!("sessions-project-terminal"))
-                            .on_click(cx.listener(move |shell, _, _, cx| shell.new_project_terminal(&name, cx))),
-                    )
-                }),
-        )
+        block = block.child(self.project_row(&project.name, marked(&project.name.to_uppercase(), &words), project.on_board, true, cx))
         .children(self.new_session_form(&project.name, cx));
         for terminal in shown {
             let session = terminal.session.clone();
