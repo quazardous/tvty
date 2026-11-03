@@ -17,6 +17,7 @@ use crate::aiball::{FolderSetting, ProjectSettings, Setting};
 use crate::activity::{self, Activity};
 use crate::options::Section;
 use crate::theme::p;
+use crate::tip::Tip as _;
 use crate::ui::Named as _;
 use crate::ui::buttons::{self, Look as _};
 use crate::ui::combo::{self, Choice, ComboEvent, ComboState};
@@ -415,7 +416,26 @@ impl Shell {
             );
         };
         let mut field = None;
+        // A setting with a wizard: its value said, the wand to change it.
+        let wizard = setting.wizard.is_some().then(|| {
+            let cwd = self.project_opts.as_ref().and_then(|o| o.folders.get(o.chosen)).map(|(f, _)| f.clone()).unwrap_or_default();
+            let shown = setting.value.as_str().map(home_tilde).unwrap_or_else(|| value_said(&setting.value));
+            let wanted = setting.clone();
+            div()
+                .named(SharedString::from(format!("options-folder-{}", setting.key)))
+                .flex()
+                .items_center()
+                .gap_2()
+                .child(div().max_w(px(260.)).truncate().text_sm().child(shown))
+                .child(
+                    buttons::chip(SharedString::from(format!("options-wizard-{}", setting.key)), crate::icons::labelled(crate::icons::Icon::Wizard, p().accent, 14., crate::t!("wizard-change")))
+                        .py_0p5()
+                        .tip(crate::t!("wizard-change-tip"))
+                        .on_click(cx.listener(move |shell, _, window, cx| shell.open_wizard_choosing(cwd.clone(), wanted.clone(), window, cx))),
+                )
+        });
         match setting.kind.as_str() {
+            _ if wizard.is_some() => field = wizard,
             "path" => {
                 let at = (self.project_opts.as_ref().and_then(|o| o.folders.get(o.chosen)).map(|(f, _)| f.clone()).unwrap_or_default(), setting.key.clone());
                 field = self.project_opts.as_ref().and_then(|o| o.paths.get(&at)).map(|(input, _)| {

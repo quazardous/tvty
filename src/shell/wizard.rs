@@ -7,6 +7,8 @@
 use std::collections::HashMap;
 
 use gpui_kit::component::Disableable as _;
+use gpui_kit::component::Sizable as _;
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::prelude::FluentBuilder as _;
 use gpui_kit::*;
 use serde_json::Value;
@@ -31,6 +33,19 @@ pub(super) struct WizardCard {
     run: Option<Run>,
     /// What refused the start or the cancel.
     error: Option<String>,
+    /// The value still to choose: the card opens on it.
+    choosing: Option<Choosing>,
+}
+
+/// A value to choose before aiball is asked: the setting's options, a path
+/// typed, or a dir another folder uses.
+pub(super) struct Choosing {
+    title: String,
+    kind: String,
+    options: Vec<String>,
+    current: String,
+    input: Option<Entity<InputState>>,
+    suggestions: Vec<(Value, String)>,
 }
 
 impl Shell {
@@ -48,11 +63,64 @@ impl Shell {
             starting: false,
             run: running,
             error: None,
+            choosing: None,
         });
         cx.notify();
         if self.wizard.as_ref().is_some_and(|w| w.run.is_some()) {
             return;
         }
+        self.ask_wizard_preview(value, cx);
+    }
+
+    /// Opens a setting's wizard on the choice of its value: the options
+    /// page's wand.
+    pub(super) fn open_wizard_choosing(&mut self, cwd: String, setting: crate::aiball::FolderSetting, window: &mut Window, cx: &mut Context<Self>) {
+        if self.wizard_running(&cwd).is_some() {
+            self.open_wizard(cwd, setting.key, Value::Null, cx);
+            return;
+        }
+        let current = match setting.value.as_str() {
+            Some(text) => crate::shell::home_short(text),
+            None => setting.value.to_string(),
+        };
+        let input = (setting.kind == "path").then(|| {
+            let input = cx.new(|cx| InputState::new(window, cx).placeholder(crate::t!("wizard-type-path")));
+            cx.subscribe_in(&input, window, |shell: &mut Self, input, event: &InputEvent, _, cx| {
+                if matches!(event, InputEvent::PressEnter { .. }) {
+                    let typed = input.read(cx).value().trim().to_string();
+                    if !typed.is_empty() {
+                        shell.ask_wizard_preview(Value::String(typed), cx);
+                    }
+                }
+            })
+            .detach();
+            input
+        });
+        let suggestions = if setting.key == "claude.config_dir" { self.config_dir_suggestions(&cwd) } else { Vec::new() };
+        let title = wizard::title_said(&setting.key, setting.wizard.as_ref().map_or(setting.key.as_str(), |w| w.title.as_str()));
+        self.wizard = Some(WizardCard {
+            cwd,
+            key: setting.key.clone(),
+            value: Value::Null,
+            preview: None,
+            chosen: HashMap::new(),
+            confirmed: false,
+            starting: false,
+            run: None,
+            error: None,
+            choosing: Some(Choosing { title, kind: setting.kind.clone(), options: setting.options.clone(), current, input, suggestions }),
+        });
+        cx.notify();
+    }
+
+    /// The value chosen: aiball is asked what it would do for it.
+    fn ask_wizard_preview(&mut self, value: Value, cx: &mut Context<Self>) {
+        let Some(card) = self.wizard.as_mut() else { return };
+        card.value = value.clone();
+        card.choosing = None;
+        card.preview = None;
+        let (cwd, key) = (card.cwd.clone(), card.key.clone());
+        cx.notify();
         let aiball = self.aiball.clone();
         cx.spawn(async move |this, cx| {
             let read = cx.background_executor().spawn(async move { wizard::preview(&aiball, &cwd, &key, &value).map_err(|e| format!("{e:#}")) }).await;
@@ -151,6 +219,9 @@ impl Shell {
     pub(super) fn wizard_view(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let card = self.wizard.as_ref()?;
         let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
+        if let Some(choosing) = card.choosing.as_ref() {
+            return Some(super::quit::dialog(self.choosing_view(&card.cwd, choosing, cx)).into_any_element());
+        }
         let title = match card.preview.as_ref() {
             Some(Ok(preview)) => wizard::title_said(&preview.key, &preview.title),
             _ => wizard::title_said(&card.key, &card.key),
@@ -283,4 +354,69 @@ fn steps_view(steps: &[wizard::Step]) -> Div {
         );
     }
     list
+}
+
+impl Shell {
+    /// The value to choose: the current one, the setting's options, a path
+    /// typed (Enter), the dirs other folders use.
+    fn choosing_view(&self, cwd: &str, choosing: &Choosing, cx: &mut Context<Self>) -> Div {
+        let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
+        let mut body = div()
+            .flex()
+            .flex_col()
+            .gap_3()
+            .child(div().text_lg().font_weight(FontWeight::BOLD).child(choosing.title.clone()))
+            .child(muted(crate::shell::home_short(cwd)))
+            .child(div().child(crate::t!("wizard-now", value = choosing.current.clone())));
+        if choosing.kind == "enum" {
+            let mut row = div().flex().flex_wrap().gap_1();
+            for option in &choosing.options {
+                let value = Value::String(option.clone());
+                row = row.child(
+                    buttons::chip(format!("wizard-choose-{option}"), option.clone())
+                        .py_0p5()
+                        .text_sm()
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.ask_wizard_preview(value.clone(), cx))),
+                );
+            }
+            body = body.child(row);
+        }
+        if let Some(input) = choosing.input.as_ref() {
+            let typed = input.clone();
+            body = body.child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap_2()
+                    .child(div().flex_1().child(Input::new(input).small()))
+                    .child(buttons::secondary("wizard-next", crate::t!("wizard-next")).on_click(cx.listener(move |shell, _, _, cx| {
+                        let text = typed.read(cx).value().trim().to_string();
+                        if !text.is_empty() {
+                            shell.ask_wizard_preview(Value::String(text), cx);
+                        }
+                    }))),
+            );
+        }
+        if !choosing.suggestions.is_empty() {
+            body = body.child(muted(crate::t!("wizard-others")));
+            let mut list = div().flex().flex_col().items_start().w_full().gap_1();
+            for (i, (value, label)) in choosing.suggestions.iter().enumerate() {
+                let value = value.clone();
+                list = list.child(
+                    buttons::chip(format!("wizard-suggest-{i}"), div().min_w_0().truncate().child(label.clone()))
+                        .max_w_full()
+                        .py_0p5()
+                        .text_sm()
+                        .on_click(cx.listener(move |shell, _, _, cx| shell.ask_wizard_preview(value.clone(), cx))),
+                );
+            }
+            body = body.child(list);
+        }
+        body.child(div().flex().justify_end().child(buttons::secondary("wizard-cancel", crate::t!("wizard-cancel")).on_click(cx.listener(
+            |shell, _, _, cx| {
+                shell.wizard = None;
+                cx.notify();
+            },
+        ))))
+    }
 }

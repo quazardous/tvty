@@ -717,10 +717,12 @@ it is. *Folder*: what the folder's `.aiball.yaml` sets, as
 aiball resolves and writes it (tvty never opens that file) — where the
 loops started there run (session host or tmux), its Claude's Remote
 Control, and the Claude Code config dir its loops start Claude with
-(`CLAUDE_CONFIG_DIR`: its own account, settings and sessions; typed, Enter
-goes through the same wizard as the agent bar's, empty shows the default), each saying where its value comes
+(`CLAUDE_CONFIG_DIR`: its own account, settings and sessions), each saying where its value comes
 from (the file, the machine's global config, the default), ↺ removing it
-from the file. A value that the running loops take only once restarted
+from the file. A setting aiball changes through a wizard
+shows its value, not a field, and a wand (**Change…**): its wizard opens on
+the choice of the value (a path typed, or a dir other folders use), then
+says what it will do for that value; ↺ goes through it too. A value that the running loops take only once restarted
 says so under the settings, with **Restart** (on a new conversation: the
 sessions live in the config dir); a project with
 several folders (a lead's, a crew's) shows one at a time, and says which

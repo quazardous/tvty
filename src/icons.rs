@@ -73,6 +73,8 @@ icons! {
     Unpinned => "keep.svg",
     // A loop's Claude Code config dir (its account), in the agent bar.
     ConfigDir => "manage_accounts.svg",
+    // A setting changed through its wizard, which aiball runs.
+    Wizard => "auto_fix_high.svg",
     // A question waits on an answer (a ticket's state glyph).
     Question => "help.svg",
 }

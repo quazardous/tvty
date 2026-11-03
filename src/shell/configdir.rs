@@ -56,7 +56,7 @@ pub(super) struct Choice {
 
 impl Choice {
     /// What `claude.config_dir` is set to: none for the layer below.
-    fn value(&self) -> serde_json::Value {
+    pub(super) fn value(&self) -> serde_json::Value {
         if self.default { serde_json::Value::Null } else { serde_json::Value::String(self.dir.clone()) }
     }
 }
@@ -92,6 +92,29 @@ pub(super) fn choices(folders: &[(String, FolderDir)], current: &str) -> Vec<Cho
 }
 
 impl Shell {
+    /// The dirs other folders use, as the wizard offers them: their value
+    /// and how they are said.
+    pub(super) fn config_dir_suggestions(&self, cwd: &str) -> Vec<(serde_json::Value, String)> {
+        let current = self.config_dirs.get(cwd).map(|f| f.dir.value.clone()).unwrap_or_default();
+        let folders: Vec<(String, FolderDir)> = self
+            .known_folders()
+            .into_iter()
+            .filter_map(|(project, cwd)| Some((project, self.config_dirs.get(&cwd)?.clone())))
+            .collect();
+        // A dir never run is not offered: a loop would refuse it.
+        choices(&folders, &current)
+            .into_iter()
+            .filter(|c| c.ready)
+            .map(|c| {
+                let mut said = format!("{} · {}", home_short(&c.dir), projects_said(&c.projects));
+                if c.default {
+                    said = format!("{said} · {}", crate::t!("agentbar-config-default"));
+                }
+                (c.value(), said)
+            })
+            .collect()
+    }
+
     /// The folders aiball knows, each with its project: its agents' homes
     /// and this machine's loops.
     fn known_folders(&self) -> Vec<(String, String)> {
