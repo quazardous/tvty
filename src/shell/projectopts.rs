@@ -197,8 +197,14 @@ impl Shell {
     /// that take it only once restarted are kept, to offer their restart.
     fn write_project_setting(&mut self, key: String, value: Json, window: &mut Window, cx: &mut Context<Self>) {
         let Some(opts) = self.project_opts.as_ref() else { return };
-        let Some((cwd, _)) = opts.folders.get(opts.chosen) else { return };
+        let Some((cwd, read)) = opts.folders.get(opts.chosen) else { return };
         let cwd = cwd.clone();
+        // A setting with a wizard is changed through it: aiball runs it.
+        let wizard = matches!(read, Some(Ok(settings)) if settings.settings.iter().any(|s| s.key == key && s.wizard.is_some()));
+        if wizard {
+            self.open_wizard(cwd, key, value, cx);
+            return;
+        }
         let aiball = self.aiball.clone();
         cx.spawn_in(window, async move |this, cx| {
             let done = {

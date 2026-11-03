@@ -94,6 +94,12 @@ impl Shell {
         self.restarts_asked.retain(|_, at| at.elapsed() < std::time::Duration::from_secs(60));
         let asked = |a: &String| self.restarts_pending.contains(a) || self.restarts_asked.contains_key(a);
         let expected = agent.as_ref().is_some_and(asked) || self.restart_sessions.remove(session).is_some_and(|a| asked(&a));
+        // Its folder's wizard stops and starts it again: expected too.
+        let in_wizard = || {
+            let cwd = self.board.known.iter().find(|l| l.session() == session || (agent.is_some() && l.agent() == agent.as_deref())).map(|l| l.cwd.clone());
+            cwd.is_some_and(|cwd| self.wizard_running(&cwd).is_some())
+        };
+        let expected = expected || in_wizard();
         log::info!("session {session} ended (agent {agent:?}): {}", if expected { "a restart asked, opened again once back" } else { "its end shown" });
         if expected {
             self.open_when_running = Some(session.to_string());

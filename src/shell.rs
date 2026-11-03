@@ -41,7 +41,9 @@ mod newproject;
 mod projectopts;
 mod rename;
 mod loopstabs;
+pub(crate) use loopstabs::home_short;
 mod quit;
+mod wizard;
 mod workspaces;
 mod stacks;
 mod tabs;
@@ -200,14 +202,15 @@ pub struct Shell {
     restarting: Option<String>,
     /// Each project's folder as the ▶ read it: found on disk, once per board.
     play_folders: std::cell::RefCell<HashMap<String, Option<String>>>,
-    /// The agent whose config dir popup is open, the dir asked for there
-    /// (said before done), each folder's dir as last read, and the
-    /// switches held until their loops are idle, by agent.
+    /// The agent whose config dir popup is open, and each folder's dir as
+    /// last read.
     config_menu: Option<String>,
-    config_asked: Option<(String, configdir::Choice)>,
     config_dirs: HashMap<String, configdir::FolderDir>,
-    config_switches: HashMap<String, configdir::Switch>,
     config_reading: bool,
+    /// A setting's wizard over the window, and each run's status as last
+    /// seen (its end is said once).
+    wizard: Option<wizard::WizardCard>,
+    wizard_seen: HashMap<String, String>,
     /// The loop whose kernel is being respawned.
     reloading: Option<String>,
     backlog_view: Option<agentbar::BacklogView>,
@@ -862,10 +865,10 @@ impl Shell {
             restarting: None,
             play_folders: Default::default(),
             config_menu: None,
-            config_asked: None,
             config_dirs: HashMap::new(),
-            config_switches: HashMap::new(),
             config_reading: false,
+            wizard: None,
+            wizard_seen: HashMap::new(),
             reloading: None,
             backlog_view: None,
             session_scrolls: Default::default(),
@@ -1148,7 +1151,7 @@ impl Shell {
         self.sync_full_list(cx);
         self.offer_restart(cx);
         self.remember_running(cx);
-        self.advance_config_switches(cx);
+        self.wizards_ended(cx);
     }
 
     /// The pointer moved, maybe a section's title held. Only the list dragged
@@ -2637,7 +2640,6 @@ impl Shell {
             self.move_asked = None;
             self.restart_asked = None;
             self.config_menu = None;
-            self.config_asked = None;
             cx.notify();
         } else if key == "escape" && (self.backlog_view.is_some() || self.afk_menu) {
             self.backlog_view = None;
@@ -5878,6 +5880,7 @@ impl Render for Shell {
             .children(self.quit_dialog())
             .children(self.picker_dialog(cx))
             .children(self.resume_dialog(cx))
+            .children(self.wizard_view(cx))
             // Above even the notices: the window's edges resize it.
             .children(frame::resize_band(window))
     }

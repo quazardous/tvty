@@ -1838,6 +1838,16 @@ pub struct FolderSetting {
     pub label: String,
     #[serde(default)]
     pub description: String,
+    /// Changed through its wizard, which aiball runs (`crate::wizard`).
+    #[serde(default)]
+    pub wizard: Option<SettingWizard>,
+}
+
+/// A setting's wizard, as `project.settings` names it.
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+pub struct SettingWizard {
+    #[serde(default)]
+    pub title: String,
 }
 
 /// The identity a loop started in the folder takes.

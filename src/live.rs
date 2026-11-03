@@ -35,6 +35,8 @@ enum Kind {
     Board,
     /// The loops of this machine, running or not, as `loop.list` has them.
     Loops,
+    /// The settings' wizards under way, and those ended in the last hour.
+    Wizards,
 }
 
 impl Kind {
@@ -48,6 +50,7 @@ impl Kind {
             Kind::Config => "config.changed".into(),
             Kind::Board => "board.events".into(),
             Kind::Loops => "loop.*.state".into(),
+            Kind::Wizards => "wizard.*.state".into(),
         }
     }
 }
@@ -112,6 +115,8 @@ pub struct Live {
     sessions: BTreeMap<String, Value>,
     /// The machine's loops, by name, as `loop.*.state` has them.
     loops: BTreeMap<String, Value>,
+    /// The settings' wizards, by run, as `wizard.*.state` has them.
+    wizards: BTreeMap<String, Value>,
     /// Subscriptions by id.
     subscriptions: HashMap<String, Kind>,
     /// Events whose subscription's answer is not in yet.
@@ -153,6 +158,7 @@ impl Live {
             kinds.push(Kind::Board);
             // A human's on this machine, as `loop.list`.
             kinds.push(Kind::Loops);
+            kinds.push(Kind::Wizards);
         }
         self.calls(kinds)
     }
@@ -329,6 +335,10 @@ impl Live {
             }
             // A feed: no state of its own.
             Kind::Board => Vec::new(),
+            Kind::Wizards => {
+                self.wizards = value.as_object().map(|m| m.clone().into_iter().collect()).unwrap_or_default();
+                vec![Update::Board]
+            }
         }
     }
 
@@ -442,6 +452,17 @@ impl Live {
                 vec![Update::Board]
             }
             Kind::Config => vec![Update::Config],
+            Kind::Wizards => {
+                // The run, whole; `null` once it is gone.
+                let run = middle(subject).or_else(|| data.get("run").and_then(Value::as_str).map(str::to_string));
+                let Some(run) = run else { return Vec::new() };
+                if data.is_null() {
+                    self.wizards.remove(&run);
+                } else {
+                    self.wizards.insert(run, data.clone());
+                }
+                vec![Update::Board]
+            }
             Kind::Loops => {
                 // The loop's whole view; `null` once it is forgotten.
                 let name = middle(subject).or_else(|| data.get("name").and_then(Value::as_str).map(str::to_string));
@@ -614,6 +635,20 @@ impl Live {
     pub fn tickets(&self) -> &BTreeMap<String, Vec<TicketRow>> {
         &self.tickets
     }
+
+    /// The settings' wizards aiball runs, or ran in the last hour.
+    pub fn wizard_runs(&self) -> Vec<crate::wizard::Run> {
+        self.wizards
+            .values()
+            .filter_map(|v| match serde_json::from_value(v.clone()) {
+                Ok(run) => Some(run),
+                Err(error) => {
+                    log::warn!("aiball bus: a wizard's run tvty does not read: {error}");
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
 /// A subscription id, a string or a number.
@@ -680,7 +715,7 @@ static FAULTS: std::sync::Mutex<Vec<Kind>> = std::sync::Mutex::new(Vec::new());
 /// The next subscribing to the kind named so fails once; `false` for a
 /// name that is no kind.
 pub fn fail_next(name: &str) -> bool {
-    let kinds = [Kind::Tickets, Kind::State, Kind::Bar, Kind::Pings, Kind::Sessions, Kind::Config, Kind::Board, Kind::Loops];
+    let kinds = [Kind::Tickets, Kind::State, Kind::Bar, Kind::Pings, Kind::Sessions, Kind::Config, Kind::Board, Kind::Loops, Kind::Wizards];
     let Some(kind) = kinds.into_iter().find(|k| format!("{k:?}").eq_ignore_ascii_case(name)) else { return false };
     if let Ok(mut faults) = FAULTS.lock() {
         faults.push(kind);

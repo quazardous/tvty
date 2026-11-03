@@ -861,7 +861,7 @@ pub(super) fn play(project: &str, known: &[crate::loops::KnownLoop], homes: &[(S
 }
 
 /// A path with the home directory as `~`.
-pub(super) fn home_short(path: &str) -> String {
+pub(crate) fn home_short(path: &str) -> String {
     match tvty_config::home() {
         Some(home) => shorten(path, &home),
         None => path.to_string(),

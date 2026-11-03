@@ -542,12 +542,17 @@ sessions): an icon, muted on the default dir, lit when the folder has its
 own, whose tip names it; a click opens what it runs on (where the setting
 comes from) and the other dirs aiball's folders run on, each with its
 projects — one never run (no first run, no account) is said, not chosen. A
-dir chosen asks first ("Restart the folder's loops on … now?", or once they
-are idle), then, once every loop of the folder is idle ("⟳ to … once its
-loops are idle" meanwhile, which can be taken back), the loops stop, the
-folder's Claude sessions move to the new dir as its setting changes
-(`project.settings_set` with `move_sessions`), and the loops start again on
-their conversations; a notice says how many files moved. A gesture aiball refuses
+dir chosen opens **the setting's wizard**, which aiball describes and runs:
+a card over the window says what it would do — the loops it stops and starts
+again, named by their agent, its questions (confirm; start a never-run dir
+from the current one or leave it empty; move the folder's conversations or
+not), its steps with the point of no return marked, and what happens if it
+stops before. Once started it follows each step as aiball says it (wait
+until the loops are idle, stop them, wait until no Claude runs in the
+folder, write, start them again); it can be stopped before the write, and
+closed without stopping it: the icon shows ⟳ while it runs, and its end
+comes as a notice. The folder's terminals open again on their own as
+their loops come back. A gesture aiball refuses
 comes as a notification. The countdowns move every second.
 
 ## Images in a thread
@@ -713,7 +718,7 @@ aiball resolves and writes it (tvty never opens that file) — where the
 loops started there run (session host or tmux), its Claude's Remote
 Control, and the Claude Code config dir its loops start Claude with
 (`CLAUDE_CONFIG_DIR`: its own account, settings and sessions; typed, Enter
-writes it, empty shows the default), each saying where its value comes
+goes through the same wizard as the agent bar's, empty shows the default), each saying where its value comes
 from (the file, the machine's global config, the default), ↺ removing it
 from the file. A value that the running loops take only once restarted
 says so under the settings, with **Restart** (on a new conversation: the

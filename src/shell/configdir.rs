@@ -1,9 +1,9 @@
 //! The agent bar's Claude config dir: an icon after the folder, whose
 //! popup names the dir the agent's folder runs on (its account, settings
 //! and sessions) and offers the other dirs aiball's folders use. A switch
-//! restarts the folder's loops on the new dir as a restart for an update
-//! does: held until they are idle, their conversations carried along
-//! (`project.settings_set` with `move_sessions`) and resumed.
+//! goes through the setting's wizard, which aiball runs: it waits for the
+//! loops to be idle, stops them, moves their conversations and starts them
+//! again (`super::wizard`).
 //!
 //! tvty reads no Claude file: the dirs are what `project.settings` says of
 //! each folder aiball knows.
@@ -17,7 +17,6 @@ use super::Shell;
 use super::loopstabs::home_short;
 use crate::aiball::{ConfigDirState, Setting};
 use crate::icons::{self, Icon};
-use crate::loops::KnownLoop;
 use crate::theme::p;
 use crate::tip::Tip as _;
 use crate::ui::buttons;
@@ -36,12 +35,6 @@ fn projects_said(projects: &[String]) -> String {
         n => format!("{} +{}", projects[..PROJECTS_SHOWN].join(", "), n - PROJECTS_SHOWN),
     }
 }
-
-/// The longest a switch waits for the folder's loops to stop.
-const STOP_WAIT: std::time::Duration = std::time::Duration::from_secs(15);
-
-/// How often a switch asks again while a Claude is leaving the folder.
-const CLAUDE_LEFT_POLL: std::time::Duration = std::time::Duration::from_millis(400);
 
 /// A folder's Claude config dir, as aiball resolved it when last read.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -63,24 +56,9 @@ pub(super) struct Choice {
 
 impl Choice {
     /// What `claude.config_dir` is set to: none for the layer below.
-    fn value(&self) -> Option<String> {
-        (!self.default).then(|| self.dir.clone())
+    fn value(&self) -> serde_json::Value {
+        if self.default { serde_json::Value::Null } else { serde_json::Value::String(self.dir.clone()) }
     }
-}
-
-/// A switch asked: the folder moves to `to` once its loops are idle.
-#[derive(Clone, Debug)]
-pub(super) struct Switch {
-    pub cwd: String,
-    pub to: Choice,
-    /// Under way: its loops stopped, the sessions moving.
-    pub running: bool,
-}
-
-/// What a switch did: the loops restarted, the session files moved.
-struct Done {
-    restarted: usize,
-    moved: u64,
 }
 
 /// The dirs to offer, `current` left out: one per dir, with the projects
@@ -169,7 +147,7 @@ impl Shell {
     pub(super) fn config_chip(&self, agent: &str, cwd: &str, cx: &mut Context<Self>) -> AnyElement {
         let folder = self.config_dirs.get(cwd);
         let open = self.config_menu.as_deref() == Some(agent);
-        let switch = self.config_switches.values().find(|s| s.cwd == cwd);
+        let switch = self.wizard_running(cwd);
         let own = folder.is_some_and(|f| f.dir.set());
         let colour = if switch.is_some() {
             p().warning
@@ -178,8 +156,8 @@ impl Shell {
         } else {
             p().muted
         };
-        let tip = match (switch, folder) {
-            (Some(s), _) => crate::t!("agentbar-config-pending-tip", dir = home_short(&s.to.dir)),
+        let tip = match (&switch, folder) {
+            (Some(run), _) => crate::t!("wizard-running-tip", title = crate::wizard::title_said(&run.key, &run.key)),
             (None, Some(f)) => crate::t!("agentbar-config-tip", dir = home_short(&f.dir.value), from = f.dir.said()),
             (None, None) => crate::t!("agentbar-config-tip-unread"),
         };
@@ -194,27 +172,25 @@ impl Shell {
             .on_click(cx.listener(move |shell, _, _, cx| {
                 let opening = shell.config_menu.as_deref() != Some(toggle.as_str());
                 shell.config_menu = opening.then(|| toggle.clone());
-                shell.config_asked = None;
                 if opening {
                     shell.read_config_dirs(cx);
                 }
                 cx.notify();
             }));
-        let popup = open.then(|| self.config_popup(agent, cwd, folder, switch, cx));
+        let popup = open.then(|| self.config_popup(cwd, folder, switch.is_some(), cx));
         chipbar::anchored(
             chip,
             popup,
             Edge::Right,
             cx.listener(|shell, _: &MouseDownEvent, _, cx| {
                 shell.config_menu = None;
-                shell.config_asked = None;
                 cx.notify();
             }),
         )
         .into_any_element()
     }
 
-    fn config_popup(&self, agent: &str, cwd: &str, folder: Option<&FolderDir>, switch: Option<&Switch>, cx: &mut Context<Self>) -> Stateful<Div> {
+    fn config_popup(&self, cwd: &str, folder: Option<&FolderDir>, running: bool, cx: &mut Context<Self>) -> Stateful<Div> {
         let muted = |text: String| div().text_xs().text_color(p().muted).child(text);
         // A column inside the line: the line itself is laid out as a row
         // that wraps (`chipbar::anchored`).
@@ -230,23 +206,13 @@ impl Shell {
                 .child(muted(f.dir.said())),
             None => div().child("…"),
         });
-        // A switch held until the loops are idle: said, and taken back.
-        if let Some(s) = switch {
-            let cancel = cwd.to_string();
-            return line(col
-                .child(div().text_color(p().warning).child(crate::t!(
-                    if s.running { "agentbar-config-switching" } else { "agentbar-config-pending" },
-                    dir = home_short(&s.to.dir)
-                )))
-                .when(!s.running, |d| {
-                    d.child(buttons::secondary("agent-config-takeback", crate::t!("agentbar-config-takeback")).on_click(cx.listener(
-                        move |shell, _, _, cx| {
-                            shell.config_switches.retain(|_, s| s.cwd != cancel);
-                            shell.config_menu = None;
-                            cx.notify();
-                        },
-                    )))
-                }));
+        // A switch under way: its wizard, followed.
+        if running {
+            let cwd = cwd.to_string();
+            return line(col.child(buttons::secondary("agent-config-follow", crate::t!("wizard-status-running")).on_click(cx.listener(move |shell, _, _, cx| {
+                shell.config_menu = None;
+                shell.open_wizard(cwd.clone(), "claude.config_dir".into(), serde_json::Value::Null, cx);
+            }))));
         }
         let current = folder.map(|f| f.dir.value.clone()).unwrap_or_default();
         let folders: Vec<(String, FolderDir)> = self
@@ -255,32 +221,6 @@ impl Shell {
             .filter_map(|(project, cwd)| Some((project, self.config_dirs.get(&cwd)?.clone())))
             .collect();
         let offered = if folder.is_some() { choices(&folders, &current) } else { Vec::new() };
-        // A choice asked: said before done.
-        if let Some((_, choice)) = self.config_asked.as_ref().filter(|(a, _)| a == agent) {
-            let loops = self.folder_loops(cwd);
-            let busy = loops.iter().any(|l| self.loop_busy(l));
-            let (agent, cwd, choice) = (agent.to_string(), cwd.to_string(), choice.clone());
-            return line(col
-                .child(div().text_color(p().warning).child(crate::t!(
-                    if busy { "agentbar-config-ask-busy" } else { "agentbar-config-ask" },
-                    dir = home_short(&choice.dir),
-                    loops = loops.len()
-                )))
-                .child(
-                    div()
-                        .flex()
-                        .gap_2()
-                        .child(
-                            buttons::answer("agent-config-go", crate::t!("agentbar-config-go"))
-                                .tooltip(crate::t!("agentbar-config-go-tip"))
-                                .on_click(cx.listener(move |shell, _, _, cx| shell.ask_config_switch(agent.clone(), cwd.clone(), choice.clone(), cx))),
-                        )
-                        .child(buttons::secondary("agent-config-cancel", crate::t!("agentbar-cancel")).on_click(cx.listener(|shell, _, _, cx| {
-                            shell.config_asked = None;
-                            cx.notify();
-                        }))),
-                ));
-        }
         col = col.child(muted(crate::t!("agentbar-config-others")));
         if folder.is_some() && offered.is_empty() {
             col = col.child(muted(crate::t!("agentbar-config-none")));
@@ -297,10 +237,10 @@ impl Shell {
             let (all, choice_ready) = (choice.projects.clone(), choice.ready);
             let chip = buttons::chip_if(SharedString::from(format!("agent-config-to-{i}")), label, choice.ready);
             let chip = if choice.ready {
-                let agent = agent.to_string();
+                let cwd = cwd.to_string();
                 chip.on_click(cx.listener(move |shell, _, _, cx| {
-                    shell.config_asked = Some((agent.clone(), choice.clone()));
-                    cx.notify();
+                    shell.config_menu = None;
+                    shell.open_wizard(cwd.clone(), "claude.config_dir".into(), choice.value(), cx);
                 }))
             } else {
                 chip.tip(crate::t!("agentbar-config-not-ready-tip"))
@@ -312,186 +252,12 @@ impl Shell {
         line(col)
     }
 
-    /// This machine's loops running in `cwd`: those a switch restarts.
-    fn folder_loops(&self, cwd: &str) -> Vec<KnownLoop> {
-        self.board.known.iter().filter(|l| l.running && l.cwd == cwd).cloned().collect()
-    }
-
-    /// Whether a loop's Claude is at work (or starting): a switch waits.
-    fn loop_busy(&self, known: &KnownLoop) -> bool {
-        known.agent().and_then(|a| self.board.bars.get(a)).is_some_and(|read| !read.stale && read.bar.phase != "idle")
-    }
-
-    /// A switch confirmed: held until the folder's loops are idle.
-    fn ask_config_switch(&mut self, agent: String, cwd: String, to: Choice, cx: &mut Context<Self>) {
-        self.config_asked = None;
-        self.config_menu = None;
-        self.config_switches.insert(agent, Switch { cwd, to, running: false });
-        self.advance_config_switches(cx);
-        cx.notify();
-    }
-
-    /// The switches whose loops are all idle now start: called at each new
-    /// board, which carries the bars.
-    pub(super) fn advance_config_switches(&mut self, cx: &mut Context<Self>) {
-        if self.config_dirs.is_empty() {
-            self.read_config_dirs(cx);
-        }
-        let ready: Vec<String> = self
-            .config_switches
-            .iter()
-            .filter(|(_, s)| !s.running && !self.folder_loops(&s.cwd).iter().any(|l| self.loop_busy(l)))
-            .map(|(agent, _)| agent.clone())
-            .collect();
-        for agent in ready {
-            self.run_config_switch(agent, cx);
-        }
-    }
-
-    /// Stops the folder's loops, moves its sessions to the new dir as its
-    /// setting changes, and starts them again on their conversations.
-    fn run_config_switch(&mut self, agent: String, cx: &mut Context<Self>) {
-        let Some(switch) = self.config_switches.get_mut(&agent) else { return };
-        switch.running = true;
-        let (cwd, to) = (switch.cwd.clone(), switch.to.clone());
-        let loops = self.folder_loops(&cwd);
-        // Their sessions end and come back: opened again, no end screen.
-        for known in &loops {
-            if let Some(a) = known.agent() {
-                self.restarts_asked.insert(a.to_string(), std::time::Instant::now());
-            }
-        }
-        cx.notify();
-        let aiball = self.aiball.clone();
-        let value = to.value();
-        cx.spawn(async move |this, cx| {
-            let done = cx.background_executor().spawn(async move { switch_folder(&aiball, &cwd, value, &loops) }).await;
-            let _ = this.update(cx, |shell, cx| {
-                shell.config_switches.remove(&agent);
-                let dir = home_short(&to.dir);
-                let activity = match done {
-                    Ok(done) => crate::activity::Activity::done(
-                        None,
-                        crate::t!("agentbar-config-done", dir = dir, loops = done.restarted, moved = done.moved),
-                    ),
-                    Err(error) => crate::activity::Activity::failed(None, &crate::t!("agentbar-config-failed", dir = dir), format!("{error:#}")),
-                };
-                crate::activity::publish(cx, activity);
-                let _ = shell.refresh_now.unbounded_send(());
-                shell.read_config_dirs(cx);
-                cx.notify();
-            });
-        })
-        .detach();
-    }
-}
-
-/// The switch itself, off the UI thread: the loops stopped (each waited
-/// for, [`STOP_WAIT`] at most), the setting written with the sessions moved,
-/// the loops started again — on the old dir when the write was refused.
-fn switch_folder(aiball: &crate::aiball::Aiball, cwd: &str, value: Option<String>, loops: &[KnownLoop]) -> anyhow::Result<Done> {
-    // Every loop started again, whatever happened before: on the new dir
-    // when the write went through, on the old one otherwise.
-    let restart = || -> (usize, Vec<String>) {
-        let mut restarted = 0;
-        let mut failed = Vec::new();
-        for known in loops {
-            match crate::loops::restart(aiball, &known.name, None) {
-                Ok(_) => restarted += 1,
-                Err(error) => failed.push(format!("{}: {error:#}", known.name)),
-            }
-        }
-        (restarted, failed)
-    };
-    let stopped = stop_all(aiball, loops);
-    let written = stopped.and_then(|()| {
-        once_claude_left(STOP_WAIT, || {
-            aiball.project_settings_set(cwd, serde_json::json!({ "key": "claude.config_dir", "value": value.clone(), "move_sessions": true }))
-        })
-    });
-    let (restarted, failed) = restart();
-    let settings = written?;
-    if !failed.is_empty() {
-        anyhow::bail!(failed.join("; "));
-    }
-    Ok(Done { restarted, moved: settings.sessions.map_or(0, |s| s.moved) })
-}
-
-/// Writes, trying again for `wait` while aiball still sees a Claude in the
-/// folder. A loop reads as stopped when its session closes, and its Claude
-/// can take a few seconds more to exit; one that stays, opened by hand there,
-/// gets aiball's refusal in the end, which names it.
-fn once_claude_left<T>(wait: std::time::Duration, mut write: impl FnMut() -> anyhow::Result<T>) -> anyhow::Result<T> {
-    let began = std::time::Instant::now();
-    loop {
-        match write() {
-            Err(error) if claude_in_folder(&error) && began.elapsed() < wait => std::thread::sleep(CLAUDE_LEFT_POLL),
-            written => return written,
-        }
-    }
-}
-
-fn claude_in_folder(error: &anyhow::Error) -> bool {
-    error.downcast_ref::<crate::wire::Refused>().is_some_and(|refused| refused.code == "CLAUDE_RUNS_IN_FOLDER")
-}
-
-/// Stops the loops and waits, [`STOP_WAIT`] at most, until none runs: the
-/// sessions move only once no Claude writes to them.
-fn stop_all(aiball: &crate::aiball::Aiball, loops: &[KnownLoop]) -> anyhow::Result<()> {
-    for known in loops {
-        crate::loops::stop(aiball, known)?;
-    }
-    let began = std::time::Instant::now();
-    let agents: Vec<&str> = loops.iter().filter_map(KnownLoop::agent).collect();
-    loop {
-        let running = aiball.running_agents()?;
-        if !agents.iter().any(|a| running.iter().any(|r| r == a)) {
-            return Ok(());
-        }
-        if began.elapsed() > STOP_WAIT {
-            anyhow::bail!(crate::t!("agentbar-config-still-running"));
-        }
-        std::thread::sleep(std::time::Duration::from_millis(400));
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{Choice, FolderDir, choices, once_claude_left};
+    use super::{Choice, FolderDir, choices};
     use crate::aiball::{ConfigDirState, Setting};
-
-    fn refused(code: &str) -> anyhow::Error {
-        crate::wire::Refused { message: "no".into(), code: code.into(), details: serde_json::Value::Null }.into()
-    }
-
-    #[test]
-    fn a_switch_waits_for_a_claude_still_leaving_the_folder() {
-        let mut tries = 0;
-        let written = once_claude_left(std::time::Duration::from_secs(5), || {
-            tries += 1;
-            if tries < 3 { Err(refused("CLAUDE_RUNS_IN_FOLDER")) } else { Ok(tries) }
-        });
-        assert_eq!(written.unwrap(), 3);
-    }
-
-    #[test]
-    fn a_claude_that_stays_gets_the_refusal_in_the_end_and_another_refusal_at_once() {
-        let mut tries = 0;
-        let stays = once_claude_left(std::time::Duration::from_millis(1), || -> anyhow::Result<()> {
-            tries += 1;
-            Err(refused("CLAUDE_RUNS_IN_FOLDER"))
-        });
-        assert!(stays.unwrap_err().to_string().contains("CLAUDE_RUNS_IN_FOLDER"));
-        assert!(tries >= 1);
-
-        let mut tries = 0;
-        let other = once_claude_left(std::time::Duration::from_secs(5), || -> anyhow::Result<()> {
-            tries += 1;
-            Err(refused("NOT_FOUND"))
-        });
-        assert!(other.is_err());
-        assert_eq!(tries, 1);
-    }
 
     fn folder(dir: &str, from: &str, ready: bool) -> FolderDir {
         FolderDir {
@@ -518,8 +284,8 @@ mod tests {
             ]
         );
         // The layer below is set back by removing the folder's own dir.
-        assert_eq!(offered[0].value(), None);
-        assert_eq!(offered[1].value().as_deref(), Some("/h/.claude-new"));
+        assert_eq!(offered[0].value(), serde_json::Value::Null);
+        assert_eq!(offered[1].value().as_str(), Some("/h/.claude-new"));
     }
 
     #[test]

@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Switching a project's Claude Code config dir, from the agent bar or the options page, goes through a wizard aiball runs: it shows what will happen and asks first (start a new dir from the current one, move the conversations or not), then follows each step until the loops are back. It can be stopped before the setting is written.
+
 ## [0.22.0-beta.1] - 2026-11-03
 
 ### Added
