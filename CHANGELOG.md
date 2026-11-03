@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.23.0-beta.1] - 2026-11-03
+
 ### Added
 
 - A ticket whose agent's step waits on another ticket says so in the list ("waits on #N"), with that ticket's own state.
