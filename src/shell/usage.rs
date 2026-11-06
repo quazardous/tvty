@@ -296,7 +296,10 @@ impl Pen<'_, '_> {
         if let Some(wall) = self.chart.wall {
             let x = self.x(wall);
             let (top, bottom) = (self.bounds.top(), self.bounds.bottom());
-            self.line(&[point(x, top), point(x, bottom)], p().danger, false, self.width * 2.);
+            // Amber, the theme's yellow toward its red: red would read as the
+            // overspend drawn beside it.
+            let amber = p().warning.blend(p().danger.opacity(0.35));
+            self.line(&[point(x, top), point(x, bottom)], amber, false, self.width * 2.);
         }
         self.now_line();
     }

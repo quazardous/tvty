@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- The usage drawing marks the wall in amber rather than red, so it no longer reads as the overspend.
+
 ## [0.23.0-beta.1] - 2026-11-03
 
 ### Added

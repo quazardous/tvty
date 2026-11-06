@@ -801,7 +801,8 @@ on black beside it shows the same:
   start, around 0;
 - when the quota runs out at the last hour's speed (wall 1h40; "no wall"
   when the window resets first): the quota left going down against the
-  pace's diagonal, dashed on to the wall, a thick red line;
+  pace's diagonal, dashed on to the wall, a thick amber line (red would
+  read as the overspend);
 - the last 15 minutes' speed against the pace (speed ×1.8): its trace,
   the older the fainter, the line at 1 being the pace.
 
