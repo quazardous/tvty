@@ -35,7 +35,7 @@ mkdir -p "$(dirname "$SETTINGS")"
 touch "$SETTINGS"
 
 ctl down >/dev/null 2>&1
-ctl up >/dev/null || { say FAIL "wbox did not start"; exit 1; }
+up=$(ctl up 2>&1) || { say FAIL "wbox did not start"; printf '%s\n' "$up"; exit 1; }
 for _ in $(seq 1 30); do grep -q "window: decorations" "$LOG" 2>/dev/null && break; sleep 0.5; done
 
 active() { ctl windows | python3 -c 'import json,sys; w=[w for w in json.load(sys.stdin)["windows"] if w["app_id"]=="tvty"]; sys.exit(0 if w and w[0].get("activated") else 1)'; }

@@ -59,7 +59,10 @@ jobs:
             pkg-config libxkbcommon-dev libxkbcommon-x11-dev libxcb1-dev \
             libwayland-dev libvulkan-dev libfontconfig-dev libfreetype-dev \
             libasound2-dev mesa-vulkan-drivers labwc xwayland grim wlrctl \
-            tmux xterm xdotool python3-venv
+            tmux xterm xdotool python3-venv \
+            pipewire pipewire-pulse wireplumber
+        # wbox gives a headless session its own audio server (its sound stays
+        # in the box) and refuses to start without it.
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: wbox
