@@ -24,6 +24,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.24.0-beta.1] - 2026-11-06
+
 ### Added
 
 - A plan's options say how sure their author is: a green, yellow or red dot before each, a recommended one in that colour.
