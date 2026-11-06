@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- A plan's options say how sure their author is: a green, yellow or red dot before each, a recommended one in that colour.
+
 ### Changed
 
 - The usage drawing marks the wall in amber rather than red, so it no longer reads as the overspend.

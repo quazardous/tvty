@@ -1625,6 +1625,7 @@ impl TicketPanel {
                     d.child(div().text_xs().text_color(p().muted).child(crate::t!(if multiple { "tickets-option-choose-several" } else { "tickets-option-choose-one" }))).child(div().flex().flex_col().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
                         let on = picked.contains(&option.key);
                         let next = thread::clicked(&picked, multiple, &option.key);
+                        let suggested = option.confidence.map_or(p().success, confidence_colour);
                         div()
                             .named(SharedString::from(format!("option-{}", option.key)))
                             .flex()
@@ -1648,12 +1649,25 @@ impl TicketPanel {
                                     .when(on && multiple, |d| d.text_xs().line_height(px(12.)).text_color(p().accent).child("✓"))
                                     .when(on && !multiple, |d| d.child(div().size(px(6.)).rounded_full().bg(p().accent))),
                             )
+                            // How sure its author is: a dot, green to red.
+                            .when_some(option.confidence, |d, confidence| {
+                                d.child(
+                                    div()
+                                        .named(SharedString::from(format!("confidence-{}", option.key)))
+                                        .flex_none()
+                                        .mt(px(5.))
+                                        .size(px(8.))
+                                        .rounded_full()
+                                        .bg(confidence_colour(confidence))
+                                        .tip(confidence_said(confidence)),
+                                )
+                            })
                             .child(
                                 div()
                                     .flex_1()
                                     .min_w_0()
                                     .text_sm()
-                                    .when(option.recommended, |d| d.text_color(p().success))
+                                    .when(option.recommended, |d| d.text_color(suggested))
                                     .child(option.label.clone()),
                             )
                             .when(option.recommended, |d| {
@@ -1662,7 +1676,7 @@ impl TicketPanel {
                                         .named(SharedString::from(format!("recommended-{}", option.key)))
                                         .flex_none()
                                         .text_sm()
-                                        .text_color(p().success)
+                                        .text_color(suggested)
                                         .tip(crate::t!("tickets-option-recommended"))
                                         .child("★"),
                                 )
@@ -3175,4 +3189,24 @@ mod sunk_tests {
         let sunk = sunk_of(&backlog, now);
         assert_eq!(sunk.keys().copied().collect::<Vec<_>>(), vec![1]);
     }
+}
+
+/// How sure a plan's author is, in colour: sure green, unsure red.
+fn confidence_colour(confidence: crate::aiball::Confidence) -> Hsla {
+    use crate::aiball::Confidence;
+    match confidence {
+        Confidence::High => p().success,
+        Confidence::Medium => p().warning,
+        Confidence::Low => p().danger,
+    }
+}
+
+/// How sure a plan's author is, in words.
+fn confidence_said(confidence: crate::aiball::Confidence) -> String {
+    use crate::aiball::Confidence;
+    crate::t!(match confidence {
+        Confidence::High => "tickets-option-confidence-high",
+        Confidence::Medium => "tickets-option-confidence-medium",
+        Confidence::Low => "tickets-option-confidence-low",
+    })
 }

@@ -884,6 +884,23 @@ pub struct PlanOption {
     pub label: String,
     #[serde(default)]
     pub recommended: bool,
+    /// How sure its author is; none when not said (or in a word not known:
+    /// the option still counts).
+    #[serde(default, deserialize_with = "confidence_of")]
+    pub confidence: Option<Confidence>,
+}
+
+/// How sure a plan's author is of an option.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Confidence {
+    High,
+    Medium,
+    Low,
+}
+
+fn confidence_of<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<Confidence>, D::Error> {
+    Ok(Option::<Value>::deserialize(d)?.and_then(|v| serde_json::from_value(v).ok()))
 }
 
 fn meta_of(meta: Option<&str>) -> Option<Value> {
@@ -2236,7 +2253,15 @@ mod critical_tests {
         assert_eq!(decision.option.as_deref(), Some("B"));
         assert_eq!(decision.accepted_on().as_deref(), Some("B"));
         assert!(!decision.multiple);
-        assert_eq!(decision.options[1], PlanOption { key: "B".into(), label: "Other".into(), recommended: true });
+        assert_eq!(decision.options[1], PlanOption { key: "B".into(), label: "Other".into(), recommended: true, confidence: None });
+        // How sure its author is; a word not known reads as unsaid.
+        let sure = json!({ "decision": { "kind": "plan", "status": "pending", "options": [
+            { "key": "A", "label": "One", "confidence": "low", "recommended": true },
+            { "key": "B", "label": "Other", "confidence": "certain" },
+        ] } })
+        .to_string();
+        let sure = decision_of(Some(&sure)).unwrap();
+        assert_eq!(sure.options.iter().map(|o| o.confidence).collect::<Vec<_>>(), [Some(super::Confidence::Low), None]);
         // A plan with none: accepted as a whole.
         let plain = json!({ "decision": { "kind": "plan", "status": "pending" } }).to_string();
         assert!(decision_of(Some(&plain)).unwrap().options.is_empty());

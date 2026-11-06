@@ -439,7 +439,11 @@ gestures (`src/thread.rs` reads the thread, the panel draws it):
 - **A plan with options** offers them as radio buttons, the recommended first,
   in colour with a ★ at the end of its line, and chosen to begin with; Accept takes the choice (none recommended: Accept
   waits for one); the decided comment says which. A plan that takes several
-  offers check boxes instead, and Accept takes all those ticked, at least one.
+  offers check boxes instead, the recommended ones (its author may suggest
+  several) ticked to begin with, and Accept takes all those ticked, at least
+  one. An option whose author says how sure they are has a dot before it,
+  green (sure), yellow (fairly sure) or red (unsure), its tip in words; a
+  recommended one takes that colour.
 - **Folding or unfolding a section leaves its title in place**: the open
   sections above keep their height, the ones below move; a double click on a
   title gives the list its default shares back.
