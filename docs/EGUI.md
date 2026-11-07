@@ -137,3 +137,5 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | open |
 | A section's count is always at the band's end | egui-pop#253 | open |
 | A section's scroll bar keeps the kit's default colours | egui-pop#254 | open |
+| Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | open |
+| Shell panels: no least or largest width set by the application | egui-pop#258 | open |
