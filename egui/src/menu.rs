@@ -29,8 +29,15 @@ const ENTRIES: [(&str, &str, &str, Option<&str>); 15] = [
     ("tvty.quit", "Quit tvty", "3", Some("Ctrl+Q")),
 ];
 
-/// Declares the commands and the menu holding them.
+/// Declares the commands and the menu holding them; F1 opens it.
 pub fn declare(ctx: &mut Ctx<'_>) -> Result<(), PluginError> {
+    let open_menu = CommandId::new("tvty.menu").expect("a command id");
+    ctx.command(CommandSpec::new(open_menu.clone(), "Menu", "tvty"), |call| {
+        // Under tvty's icon, where a click opens it.
+        open(&call.app, egui::Rect::from_min_size(egui::pos2(12.0, 7.0), egui::vec2(28.0, 28.0)));
+        Ok(json!(null))
+    })?;
+    ctx.keybinding("F1", open_menu, "", egui_pop::model::keymap::Layer::Default)?;
     for (order, (id, title, group, key)) in ENTRIES.into_iter().enumerate() {
         let command = CommandId::new(id).expect("a command id");
         ctx.command(CommandSpec::new(command.clone(), title, "tvty"), move |call| {
