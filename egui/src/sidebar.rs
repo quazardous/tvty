@@ -141,7 +141,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
         crate::row::button(ui, &painter, slot, rect, s)
     };
     // ‹ folds the sessions to their strip.
-    if glyph(&mut end, "‹", 16.0, p.muted, 20.0).clicked() {
+    if glyph(&mut end, "‹", 16.0, p.muted, 20.0).on_hover_text("Fold the sessions' list").clicked() {
         app.fold_area(egui_pop::model::panels::Area::StartSide, true);
     }
     end -= 4.0;
@@ -162,9 +162,20 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
         }
         return;
     }
-    glyph(&mut end, ">_", XS, p.accent, 0.0);
-    glyph(&mut end, "+ project", XS, p.accent, 0.0);
-    glyph(&mut end, "⇅", XS, p.accent, 0.0);
+    // Each where it fits, after the tabs: the first to go when the list is
+    // narrow is the order, then "+ project", as items GPUI's row clips.
+    let tabs_end = x;
+    for s in [">_", "+ project", "⇅"] {
+        if end - (pen.width(s, XS, Weight::REGULAR) + 8.0) < tabs_end + 4.0 {
+            break;
+        }
+        let tip = match s {
+            ">_" => "a terminal of its own, which outlives tvty",
+            "+ project" => "a folder made an aiball project (aiball init), then its first session",
+            _ => "alphabetical; a click: your order (drag a project)",
+        };
+        glyph(&mut end, s, XS, p.accent, 0.0).on_hover_text(tip);
+    }
 
     // ── The filter: a small field, 8 from the sides, 6 above and under.
     let filter = Rect::from_min_size(pos2(rect.left(), header.bottom()), vec2(rect.width(), 6.0 + 24.0 + 6.0 + 1.0));

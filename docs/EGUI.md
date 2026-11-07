@@ -142,5 +142,8 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | A section's scroll bar keeps the kit's default colours | egui-pop#254 | done: section bars in the `scroll-bar` scope |
 | Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | open |
 | Menus: keys and notes at the labels' size; no token for a smaller one | egui-pop#269 | open |
+| After a window move by the title bar, nothing hovers until a click | egui-pop#270 | open |
+| Shell panels: no least width set while running, nor taken from the content | egui-pop#271 | open |
+| Tooltips: no kit component (placement, padding, radius, size) | egui-pop#272 | open |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
 | Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |
