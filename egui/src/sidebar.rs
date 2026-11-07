@@ -26,15 +26,23 @@ pub const WIDTH: f32 = 344.0;
 /// GPUI's heights: the header, a section's title, a project's heading, a
 /// session's row (with its state line).
 const HEADER: f32 = 36.0;
+/// The sections folded at start, as GPUI's settings have them by default.
+const FOLDED: [&str; 2] = ["idle", "shut"];
 const TITLE: f32 = 28.0;
 const HEADING: f32 = 30.0;
 const ROW: f32 = 51.0;
+/// A shell's row: one line, no state under it.
+const SHELL: f32 = 32.0;
 
 /// A session of the live list.
 struct Session<'a> {
+    /// The terminal's name as the order keeps it (`cl-…`, `host:…`).
+    key: String,
     label: String,
     agent: Option<&'a Consumer>,
     open: bool,
+    /// A shell (no agent): one line, ">_" at its end.
+    shell: bool,
 }
 
 /// A project of the live list, its sessions in the user's order.
@@ -49,11 +57,14 @@ struct Project<'a> {
 /// project.
 fn live(scene: &Scene) -> Vec<Project<'_>> {
     let mut projects: BTreeMap<String, Project<'_>> = BTreeMap::new();
+    fn add<'a>(projects: &mut BTreeMap<String, Project<'a>>, project: String, on_board: bool, session: Session<'a>) {
+        let entry = projects.entry(project.clone()).or_insert_with(|| Project { name: project, on_board, sessions: Vec::new() });
+        entry.on_board |= on_board;
+        entry.sessions.push(session);
+    }
+    let agent_in = |path: &str| scene.consumers.iter().find(|c| c.kind == "agent" && c.cwd.as_deref() == Some(path));
     for (session, path) in &scene.sessions {
-        let agent = session
-            .starts_with("cl-")
-            .then(|| scene.consumers.iter().find(|c| c.kind == "agent" && c.cwd.as_deref() == Some(path.as_str())))
-            .flatten();
+        let agent = session.starts_with("cl-").then(|| agent_in(path)).flatten();
         let basename = || path.rsplit('/').next().unwrap_or(path).to_string();
         let (project, on_board, label) = match agent {
             Some(c) => match &c.project {
@@ -62,16 +73,21 @@ fn live(scene: &Scene) -> Vec<Project<'_>> {
             },
             None => ("tmux".to_string(), false, session.clone()),
         };
-        let entry = projects.entry(project.clone()).or_insert_with(|| Project { name: project.clone(), on_board, sessions: Vec::new() });
-        entry.on_board |= on_board;
-        entry.sessions.push(Session { label, agent, open: scene.open.contains(session) });
-        // The user's order of a project's terminals, as kept.
-        if let Some(order) = scene.order.get(&project) {
-            let rank = |s: &Session<'_>| {
-                let name = scene.sessions.iter().find(|(_, p)| s.agent.and_then(|a| a.cwd.as_deref()) == Some(p.as_str())).map(|(n, _)| n.clone());
-                name.and_then(|n| order.iter().position(|o| *o == n)).unwrap_or(usize::MAX)
-            };
-            entry.sessions.sort_by_key(rank);
+        add(&mut projects, project, on_board, Session { key: session.clone(), label, agent, open: scene.open.contains(session), shell: false });
+    }
+    // The daemon's shells, with the project of the agent working in their
+    // folder, else under "terminals".
+    for hosted in scene.hosted.iter().filter(|h| h.running && h.agent.is_none()) {
+        let key = format!("host:{}", hosted.name);
+        let project = hosted.cwd.as_deref().and_then(agent_in).and_then(|c| c.project.clone());
+        let on_board = project.is_some();
+        let open = scene.open.contains(&key);
+        add(&mut projects, project.unwrap_or_else(|| "terminals".to_string()), on_board, Session { key, label: hosted.name.clone(), agent: None, open, shell: true });
+    }
+    // The user's order of a project's terminals, as kept.
+    for project in projects.values_mut() {
+        if let Some(order) = scene.order.get(&project.name) {
+            project.sessions.sort_by_key(|s| order.iter().position(|o| *o == s.key).unwrap_or(usize::MAX));
         }
     }
     let mut list: Vec<Project<'_>> = projects.into_values().collect();
@@ -140,28 +156,34 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene) {
         .filter(|c| c.kind == "agent" && c.project.is_some() && !placed.contains(&c.consumer_id.as_str()))
         .collect();
     let mut y = filter.bottom();
-    y = section(&pen, &p, rect, y, "live", running);
-    for project in &projects {
-        y = project_block(ui, &kit, &pen, &cx, &p, rect, y, project, scene);
+    // Folded as GPUI starts: idle and shut (its `sessions_folded`).
+    let folded = |name: &str| FOLDED.contains(&name);
+    y = section(&pen, &p, rect, y, "live", running, folded("live"));
+    if !folded("live") {
+        for project in &projects {
+            y = project_block(ui, &kit, &pen, &cx, &p, rect, y, project, scene);
+        }
     }
-    y = section(&pen, &p, rect, y, "idle", 0);
-    y = empty(&pen, &p, rect, y, "No stopped loop");
-    y = section(&pen, &p, rect, y, "shut", shut.len());
-    if shut.is_empty() {
+    y = section(&pen, &p, rect, y, "idle", 0, folded("idle"));
+    if !folded("idle") {
+        y = empty(&pen, &p, rect, y, "No stopped loop");
+    }
+    y = section(&pen, &p, rect, y, "shut", shut.len(), folded("shut"));
+    if shut.is_empty() && !folded("shut") {
         empty(&pen, &p, rect, y, "No agent without a loop");
     }
 }
 
 /// A section's title: 28 high with a line above and under, its chevron
 /// (10 wide), its name in capitals and its count on a round pill, 6 apart.
-fn section(pen: &Pen<'_>, p: &Palette, rect: Rect, top: f32, title: &str, count: usize) -> f32 {
+fn section(pen: &Pen<'_>, p: &Palette, rect: Rect, top: f32, title: &str, count: usize, folded: bool) -> f32 {
     let band = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), TITLE));
     let stroke = egui::Stroke::new(1.0, p.border);
     pen.painter.hline(band.x_range(), band.top() + 0.5, stroke);
     pen.painter.hline(band.x_range(), band.bottom() - 0.5, stroke);
     let mid = band.center().y;
     let x = band.left() + 12.0;
-    pen.text(x, mid - line(XS) / 2.0, "▾", XS, Weight::REGULAR, p.accent);
+    pen.text(x, mid - line(XS) / 2.0, if folded { "▸" } else { "▾" }, XS, Weight::REGULAR, p.accent);
     let x = x + 10.0 + 6.0;
     let x = x + pen.text(x, mid - line(XS) / 2.0, &title.to_uppercase(), XS, Weight::BOLD, p.text) + 6.0;
     let n = count.to_string();
@@ -197,6 +219,12 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
             *end -= 4.0;
         };
         link(&mut end, ">_", p.accent, 0.0);
+        // ▶ while no loop of the project runs here: none of its agents is
+        // present (the scene's stand-in for GPUI's running loops).
+        let running = project.sessions.iter().any(|s| s.agent.and_then(|a| a.present).unwrap_or(false));
+        if !running {
+            link(&mut end, "▶", p.accent, 0.0);
+        }
         link(&mut end, "⚙", p.muted, 20.0);
         link(&mut end, "+ session", p.accent, 0.0);
     }
@@ -220,7 +248,7 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
 /// under them its state.
 #[allow(clippy::too_many_arguments)]
 fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, session: &Session<'_>, critical: Option<&str>) -> f32 {
-    let row = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), ROW));
+    let row = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), if session.shell { SHELL } else { ROW }));
     let response = ui.interact(row, ui.id().with(("session", &session.label)), Sense::click());
     kit.list_row.paint(cx, &Part { rect: row, room: row, state: State::from_response(&response), label: None });
     let online = session.agent.and_then(|a| a.present).unwrap_or(false);
@@ -241,6 +269,11 @@ fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &
         pen.painter.rect_filled(dot, 3.5, p.success);
     }
     let mut end = row.right() - 12.0;
+    if session.shell {
+        let w = pen.width(">_", XS, Weight::REGULAR);
+        end -= w;
+        pen.text(end, mid - line(XS) / 2.0, ">_", XS, Weight::REGULAR, p.muted);
+    }
     if let Some(agent) = session.agent {
         end = counters(kit, pen, cx, end, mid, agent, critical == Some(agent.consumer_id.as_str()));
         let w = pen.width("⇄", XS, Weight::REGULAR);

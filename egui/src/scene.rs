@@ -17,11 +17,24 @@ pub struct Scene {
     /// The tmux sessions: name and start folder.
     #[serde(default)]
     pub sessions: Vec<(String, String)>,
+    /// The terminals the daemon's host holds (`session.list`).
+    #[serde(default)]
+    pub hosted: Vec<Hosted>,
     /// The terminals tvty keeps open, and each project's order of them.
     #[serde(default)]
     pub open: Vec<String>,
     #[serde(default)]
     pub order: std::collections::HashMap<String, Vec<String>>,
+}
+
+/// A terminal the daemon's host holds: a shell when it has no agent.
+#[derive(Clone, Debug, Default, Deserialize)]
+pub struct Hosted {
+    pub name: String,
+    pub agent: Option<String>,
+    pub cwd: Option<String>,
+    #[serde(default)]
+    pub running: bool,
 }
 
 /// An agent or a human, as aiball lists them.

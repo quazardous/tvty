@@ -72,9 +72,10 @@ of it the rows' ages, taken minutes apart, and a row under the pointer).
 The full list's side column takes GPUI's default width (a third of the
 page, at most 460); its scroll bar is the kit's, set to GPUI's (6 px,
 #4b4b4b, 4 px from the edge): the same pixels across, 4 px longer at each
-end (egui-pop#251). The sessions list is not compared until the scene
-classes the sessions as GPUI does (both agents SHUT in the scene, LIVE in
-GPUI).
+end (egui-pop#251). The sessions list open, 2.2 %: every row on GPUI's, shifted
+10 px right by the strip's icon (egui-pop#249). The scene now holds the
+daemon's shells (`session.list`), and reads the test env's tmux server and
+state when `scripts/test-env` is sourced.
 
 On 2026-10-22 (GNOME, Adwaita Sans): the startup screen 0.6 %, the
 sessions list open 1.3 %, the full ticket list 4.7 %.
