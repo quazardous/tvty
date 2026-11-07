@@ -389,3 +389,35 @@ pill:
       text:
         $type: "color"
         $value: "#141414"
+# The scroll bars, as gpui-component draws GPUI's: shown at rest, a 6 px
+# thumb in #4b4b4b, fully rounded, 4 px from the edge, floating over the
+# content, no track.
+scroll-bar:
+  width:
+    $type: "dimension"
+    $value: {value: 6, unit: "px"}
+  width-rest:
+    $type: "dimension"
+    $value: {value: 6, unit: "px"}
+  opacity-rest:
+    $type: "number"
+    $value: 1
+  room:
+    $type: "dimension"
+    $value: {value: 0, unit: "px"}
+  margin:
+    $type: "dimension"
+    $value: {value: 4, unit: "px"}
+  placement:
+    $type: "string"
+    $value: "over"
+  visibility:
+    $type: "string"
+    $value: "rest"
+  rest:
+    fill:
+      $type: "color"
+      $value: "#4b4b4b"
+    radius:
+      $type: "dimension"
+      $value: {value: 3, unit: "px"}

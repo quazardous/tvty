@@ -9,9 +9,9 @@ tvty's look egui-pop lets an application control, down to the pixel.
   scene; tvty-egui reads it (`TVTY_EGUI_SCENE`). Both windows run in wbox
   at 1280x800 and are compared region by region.
 - **egui-pop's public API only.** tvty-egui does not paint around a gap:
-  what egui-pop cannot express is changed in egui-pop (its tvty branch,
-  checked out next door as `../egui-pop`), with an issue there labelled
-  `tvty`.
+  what egui-pop cannot express is changed in egui-pop, with an issue
+  there labelled `tvty`; `egui/Cargo.toml` pins egui-pop's main at a
+  known commit, moved forward as those land.
 - **The terminal grid is out of scope** for now: the window's chrome is the
   point.
 
@@ -64,11 +64,20 @@ left as it is.
 
 ## Where it stands
 
-On this machine (GNOME, Adwaita Sans), share of pixels that differ by
-more than 24 levels, same data on both sides: the startup screen 0.6 %,
-the sessions list open 1.3 %, the full ticket list 4.7 % (its scroll bar
-and the text's antialiasing). Every item sits on GPUI's pixel or one
-off.
+On egui-pop's main of 2026-11-07, this machine's UI font Noto Sans, share
+of pixels that differ by more than 24 levels, same data on both sides:
+the startup screen 1.4 % (the folded strip's icon, egui-pop#249, and the
+text's vertical offset, egui-pop#250), the full ticket list 11.6 % (most
+of it the rows' ages, taken minutes apart, and a row under the pointer).
+The full list's side column takes GPUI's default width (a third of the
+page, at most 460); its scroll bar is the kit's, set to GPUI's (6 px,
+#4b4b4b, 4 px from the edge): the same pixels across, 4 px longer at each
+end (egui-pop#251). The sessions list is not compared until the scene
+classes the sessions as GPUI does (both agents SHUT in the scene, LIVE in
+GPUI).
+
+On 2026-10-22 (GNOME, Adwaita Sans): the startup screen 0.6 %, the
+sessions list open 1.3 %, the full ticket list 4.7 %.
 
 Earlier, on the capture box:
 
@@ -88,13 +97,16 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | The shell always draws a menu bar | egui-pop#2 | done: `AppBuilder::menu_bar(false)` |
 | Side areas: egui's frame, a 48 px floor, egui's resize handle, no folded strip | egui-pop#3 | done: `area-strip`, `area-grip`, `side-area`, `AppBuilder::shell_panel_size`, `folded` |
 | The dock's tab bar keeps egui_dock's default style | egui-pop#4 | done: `tab`, `tab-bar` kit components |
-| Font families from tokens, weights, a size scale | egui-pop#5 | families and weights done (`egui_pop_core::fonts`), size scale open |
-| A side area lying over the centre, with a shadow | egui-pop#6 | open |
+| Font families from tokens, weights, a size scale | egui-pop#5 | done |
+| A side area lying over the centre, with a shadow | egui-pop#6 | done |
 | The title bar always centres the title | egui-pop#7 | done: `title-bar.align` |
 | An application's own icons (SVG), tinted | egui-pop#8 | done: `icon_set`, crisp at any size |
 | No line around the window; side areas keep egui's 8 px margins | — | done: `window.rest.border-*`, `side-area.padding-*` |
 | A double line under the title bar (egui's panel line and the kit's) | — | done: the kit draws it alone |
 | The window buttons' glyphs are egui-pop's | — | done: glyph roles `window-*`, `indicator-size` |
-| A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | open; the theme leaves Ubuntu out |
-| Scroll bars keep egui's default style: no kit component | egui-pop#60 | open |
-| No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | open; tvty-egui paints the bands |
+| A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | done; the theme still leaves Ubuntu out |
+| Scroll bars keep egui's default style: no kit component | egui-pop#60 | done: `scroll-bar`, the full list uses it |
+| No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | done in egui-pop; tvty-egui still paints the bands |
+| A folded strip always shows an icon per panel: no bare grip | egui-pop#249 | open |
+| No token for a family's vertical metrics (baseline offset, line height) | egui-pop#250 | open |
+| A scroll bar's thumb runs to the ends of its track: no inset along it | egui-pop#251 | open |

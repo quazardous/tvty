@@ -13,6 +13,7 @@ use egui_pop::core::fonts::Weight;
 use egui_pop::core::kit::{Kit, KitCx, Part, State, Tone};
 use egui_pop::egui::{self, Color32, Pos2, Rect, Sense, pos2, vec2};
 use egui_pop::prelude::Tokens;
+use egui_pop::core::ui::UiPop;
 
 use crate::board::{self, Alerts, Band, Glyph, RowState, Stripe, Ticket, Turn};
 use crate::row::font;
@@ -29,8 +30,11 @@ pub(crate) fn line(size: f32) -> f32 {
     (size * 1.618).round()
 }
 
-/// The side column's width: what the test layout keeps (`fields_width`).
-const SIDE: f32 = 279.0;
+/// The side column's width when nobody dragged it: a third of the page,
+/// at most 460, as GPUI's `sidecol` gives it.
+fn side_width(page: f32) -> f32 {
+    (page / 3.0).min(460.0).round()
+}
 
 const OPEN: &str = "tvty.full-list.open";
 
@@ -219,14 +223,14 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
 
     // ── The side column, its 5 wide edge, the list.
     let body = Rect::from_min_max(pos2(rect.left(), header.bottom() + 1.0), rect.max);
-    let side = Rect::from_min_size(body.min, vec2(SIDE, body.height()));
+    let side = Rect::from_min_size(body.min, vec2(side_width(body.width()), body.height()));
     painter.rect_filled(Rect::from_min_size(pos2(side.right(), body.top()), vec2(5.0, body.height())), 0.0, p.border);
     side_column(ui, &kit, &pen, &p, side, &rows, &alerts);
     let list = Rect::from_min_max(pos2(side.right() + 5.0, body.top()), body.max);
-    // The rows scroll; the scroll bar is egui-pop's (egui's own style:
-    // the kit has no scroll bar component yet).
+    // The rows scroll; the scroll bar is the kit's (`scroll-bar`).
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
-    egui::ScrollArea::vertical().id_salt("tvty.full-list.rows").auto_shrink([false, false]).show(&mut child, |ui| {
+    let area = egui::ScrollArea::vertical().id_salt("tvty.full-list.rows").auto_shrink([false, false]);
+    child.scroll_area(area, |ui| {
         let painter = ui.painter().clone();
         let pen = Pen { painter: &painter };
         let area = Rect::from_min_size(ui.cursor().min, vec2(list.width(), 0.0));
