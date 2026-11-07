@@ -18,9 +18,19 @@ use crate::scene::Scene;
 /// GPUI's large text (`text_lg`).
 const LG: f32 = 18.0;
 
-/// The ticket the panel shows, at start: `TVTY_EGUI_TICKET` (to compare).
-pub fn shown() -> Option<u64> {
-    std::env::var("TVTY_EGUI_TICKET").ok()?.parse().ok()
+const SHOWN: &str = "tvty.ticket.shown";
+
+/// The ticket the panel shows: the one clicked, else at start
+/// `TVTY_EGUI_TICKET` (to compare).
+pub fn shown(ctx: &egui::Context) -> Option<u64> {
+    let id = egui::Id::new(SHOWN);
+    ctx.data(|d| d.get_temp::<Option<u64>>(id))
+        .unwrap_or_else(|| std::env::var("TVTY_EGUI_TICKET").ok().and_then(|v| v.parse().ok()))
+}
+
+/// Opens a ticket in the panel, or goes back to the list (`None`).
+pub fn set_shown(ctx: &egui::Context, ticket: Option<u64>) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new(SHOWN), ticket));
 }
 
 /// One entry of the thread: the ticket's body, then each comment.
@@ -61,7 +71,11 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
 
     // ── The way back, and the thread's own buttons on its line.
     let mut y = rect.top() + 8.0;
-    pen.text(left + 4.0, y, "← Tickets", SM, Weight::REGULAR, p.accent);
+    let w = pen.text(left + 4.0, y, "← Tickets", SM, Weight::REGULAR, p.accent);
+    let back = Rect::from_min_size(pos2(left, y), vec2(w + 8.0, line(SM)));
+    if ui.interact(back, ui.id().with("back"), Sense::click()).clicked() {
+        set_shown(ui.ctx(), None);
+    }
     let more = "⤢ more";
     let w = pen.width(more, XS, Weight::REGULAR);
     pen.text(right - w, y + 2.0, more, XS, Weight::REGULAR, p.accent);
@@ -89,8 +103,8 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
     y += title_h + 6.0;
 
     // ── Where it stands, said once: a bar in the turn's colour.
-    if let Some(state) = &state {
-        let said = sentence(thread, user);
+    let said = sentence(thread, user);
+    if let Some(state) = state.as_ref().filter(|_| !said.is_empty()) {
         let bar = Rect::from_min_size(pos2(left, y), vec2(3.0, line(SM)));
         painter.rect_filled(bar, 0.0, p.stripe(state));
         pen.text(left + 3.0 + 8.0, y, &said, SM, Weight::REGULAR, p.text);
@@ -234,7 +248,6 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
     button(accept, "Accept → go", State::REST.toned(Tone::Success));
     let reject = Rect::from_min_max(pos2(accept.left() - 8.0 - 59.0, bar_mid - 12.0), pos2(accept.left() - 8.0, bar_mid + 12.0));
     button(reject, "Reject", State::DISABLED);
-    let _ = Sense::hover();
 }
 
 /// The entries: the body as the reporter's, then each comment.

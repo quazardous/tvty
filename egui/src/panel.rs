@@ -72,6 +72,9 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, name: &str) {
 /// of it and how long ago, 8 from the start and 12 from the end.
 fn row(ui: &mut egui::Ui, kit: &Kit, p: &Palette, ticket: &Ticket, state: RowState, user: &str) {
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), ROW), Sense::click());
+    if response.clicked() {
+        crate::detail::set_shown(ui.ctx(), Some(ticket.id));
+    }
     let painter = ui.painter().clone();
     let pen = Pen { painter: &painter };
     let cx = KitCx { painter: &painter, ppp: ui.ctx().pixels_per_point() };

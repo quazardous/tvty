@@ -72,7 +72,7 @@ impl Plugin for Shell {
                 let project = crate::panel::project(&panel_scene);
                 tickets_header(ui, &panel_scene, project.as_deref());
                 if let Some(name) = &project {
-                    match crate::detail::shown() {
+                    match crate::detail::shown(ui.ctx()) {
                         Some(id) => crate::detail::show(ui, &panel_scene, name, id),
                         None => crate::panel::show(ui, &panel_scene, name),
                     }
