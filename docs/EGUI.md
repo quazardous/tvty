@@ -72,8 +72,12 @@ of it the rows' ages, taken minutes apart, and a row under the pointer).
 The full list's side column takes GPUI's default width (a third of the
 page, at most 460); its scroll bar is the kit's, set to GPUI's (6 px,
 #4b4b4b, 4 px from the edge): the same pixels across, 4 px longer at each
-end (egui-pop#251). The sessions list open, 2.2 %: every row on GPUI's, shifted
-10 px right by the strip's icon (egui-pop#249). The scene now holds the
+end (egui-pop#251). The sessions list open: its sections are egui-pop's
+(`sections`, the kit's `section-*` components set to GPUI's), every row
+on GPUI's, shifted 10 px right by the strip's icon (egui-pop#249); the
+count sits at the band's end (egui-pop#253) and the folded IDLE and
+SHUT at the panel's bottom (egui-pop#252), where GPUI has them after
+LIVE. The scene now holds the
 daemon's shells (`session.list`), and reads the test env's tmux server and
 state when `scripts/test-env` is sourced.
 
@@ -107,7 +111,9 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | The window buttons' glyphs are egui-pop's | — | done: glyph roles `window-*`, `indicator-size` |
 | A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | done; the theme still leaves Ubuntu out |
 | Scroll bars keep egui's default style: no kit component | egui-pop#60 | done: `scroll-bar`, the full list uses it |
-| No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | done in egui-pop; tvty-egui still paints the bands |
+| No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | done: `sections`, the sessions list uses it |
 | A folded strip always shows an icon per panel: no bare grip | egui-pop#249 | open |
 | No token for a family's vertical metrics (baseline offset, line height) | egui-pop#250 | open |
 | A scroll bar's thumb runs to the ends of its track: no inset along it | egui-pop#251 | open |
+| Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | open |
+| A section's count is always at the band's end | egui-pop#253 | open |

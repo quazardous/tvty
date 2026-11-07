@@ -1,16 +1,23 @@
 #!/bin/sh
-# "tvty-egui Dev" in the desktop's launcher: ~/.local/bin/tvty-egui runs
-# this checkout's debug build. tvty's own icon (make install-desktop).
+# "tvty-egui Dev" in the desktop's launcher: ~/.local/bin/tvty-egui runs a
+# copy of this checkout's debug build, on a copy of the comparison's scene
+# (run it again to update both: rebuilding never touches what it runs).
+# tvty's own icon (make install-desktop).
 set -eu
 here="$(cd "$(dirname "$0")/.." && pwd)"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
 bin="$HOME/.local/bin"
-mkdir -p "$data/applications" "$bin"
-sed -e "s|@BIN@|${CARGO_TARGET_DIR:-$here/target}/debug/tvty-egui|" \
-    -e "s|@SCENE@|$here/../dev/scene.json|" \
+keep="$data/tvty-egui"
+build="${CARGO_TARGET_DIR:-$here/target}/debug/tvty-egui"
+[ -x "$build" ] || { echo "no build at $build: cargo build first" >&2; exit 1; }
+mkdir -p "$data/applications" "$bin" "$keep"
+install -m755 "$build" "$keep/.tvty-egui.new" && mv -f "$keep/.tvty-egui.new" "$keep/tvty-egui"
+[ ! -f "$here/../dev/scene.json" ] || cp "$here/../dev/scene.json" "$keep/scene.json"
+sed -e "s|@BIN@|$keep/tvty-egui|" \
+    -e "s|@SCENE@|$keep/scene.json|" \
     "$here/packaging/tvty-egui-launch" >"$bin/tvty-egui"
 chmod 755 "$bin/tvty-egui"
 sed "s|@EXEC@|$bin/tvty-egui|" "$here/packaging/tvty-egui.desktop" \
     >"$data/applications/tvty-egui.desktop"
 update-desktop-database -q "$data/applications" 2>/dev/null || true
-echo "tvty-egui Dev installed: $bin/tvty-egui"
+echo "tvty-egui Dev installed: $bin/tvty-egui ($(git -C "$here" rev-parse --short HEAD))"

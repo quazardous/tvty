@@ -421,3 +421,55 @@ scroll-bar:
     radius:
       $type: "dimension"
       $value: {value: 3, unit: "px"}
+# The sessions list's sections (LIVE, IDLE, SHUT), as GPUI draws their
+# bands: 28 high, a line above and under, 12 from the sides; the mark in
+# the accent, 10 wide; the title in capitals, 12 px, at the weight GPUI
+# draws (its bold is the variable face's default instance, see row.rs);
+# the count on a fully rounded pill of the border's grey, 6 px padding.
+text-role:
+  section:
+    size: {$type: "dimension", $value: {value: 12, unit: "px"}}
+    color: {$type: "color", $value: "{text.default}"}
+    weight: {$type: "number", $value: 400}
+section-band:
+  height:
+    $type: "dimension"
+    $value: {value: 28, unit: "px"}
+  padding-x:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  font-size:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  rest:
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    text:
+      $type: "color"
+      $value: "{text.default}"
+section-disclosure:
+  width:
+    $type: "dimension"
+    $value: {value: 10, unit: "px"}
+  rest:
+    text:
+      $type: "color"
+      $value: "{accent.default}"
+section-count:
+  padding-x:
+    $type: "dimension"
+    $value: {value: 6, unit: "px"}
+  rest:
+    fill:
+      $type: "color"
+      $value: "{border.default}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 99, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"

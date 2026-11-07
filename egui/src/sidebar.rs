@@ -11,6 +11,7 @@
 
 use std::collections::BTreeMap;
 
+use egui_pop::core::sections::{Section, Sections};
 use egui_pop::core::fonts::Weight;
 use egui_pop::core::kit::{Kit, KitCx, Part, State, Tone};
 use egui_pop::egui::{self, Color32, Rect, Sense, pos2, vec2};
@@ -155,43 +156,41 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene) {
         .iter()
         .filter(|c| c.kind == "agent" && c.project.is_some() && !placed.contains(&c.consumer_id.as_str()))
         .collect();
-    let mut y = filter.bottom();
-    // Folded as GPUI starts: idle and shut (its `sessions_folded`).
-    let folded = |name: &str| FOLDED.contains(&name);
-    y = section(&pen, &p, rect, y, "live", running, folded("live"));
-    if !folded("live") {
-        for project in &projects {
-            y = project_block(ui, &kit, &pen, &cx, &p, rect, y, project, scene);
-        }
-    }
-    y = section(&pen, &p, rect, y, "idle", 0, folded("idle"));
-    if !folded("idle") {
-        y = empty(&pen, &p, rect, y, "No stopped loop");
-    }
-    y = section(&pen, &p, rect, y, "shut", shut.len(), folded("shut"));
-    if shut.is_empty() && !folded("shut") {
-        empty(&pen, &p, rect, y, "No agent without a loop");
-    }
-}
-
-/// A section's title: 28 high with a line above and under, its chevron
-/// (10 wide), its name in capitals and its count on a round pill, 6 apart.
-fn section(pen: &Pen<'_>, p: &Palette, rect: Rect, top: f32, title: &str, count: usize, folded: bool) -> f32 {
-    let band = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), TITLE));
-    let stroke = egui::Stroke::new(1.0, p.border);
-    pen.painter.hline(band.x_range(), band.top() + 0.5, stroke);
-    pen.painter.hline(band.x_range(), band.bottom() - 0.5, stroke);
-    let mid = band.center().y;
-    let x = band.left() + 12.0;
-    pen.text(x, mid - line(XS) / 2.0, if folded { "▸" } else { "▾" }, XS, Weight::REGULAR, p.accent);
-    let x = x + 10.0 + 6.0;
-    let x = x + pen.text(x, mid - line(XS) / 2.0, &title.to_uppercase(), XS, Weight::BOLD, p.text) + 6.0;
-    let n = count.to_string();
-    let w = pen.width(&n, XS, Weight::REGULAR) + 12.0;
-    let pill = Rect::from_min_size(pos2(x, mid - line(XS) / 2.0), vec2(w, line(XS)));
-    pen.painter.rect_filled(pill, line(XS) / 2.0, p.border);
-    pen.text(x + 6.0, pill.top(), &n, XS, Weight::REGULAR, p.text);
-    band.bottom()
+    // The kit's sections (egui-pop's `sections`), under the filter; idle
+    // and shut folded to begin with, as GPUI starts (its `sessions_folded`).
+    let body = Rect::from_min_max(pos2(rect.left(), filter.bottom()), rect.max);
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
+    let (kit, p) = (&kit, &p);
+    let projects = &projects;
+    Sections::new("tvty.sessions").show(&mut child, |stack| {
+        stack.bare(Section::new("live", "Live").count(running as u64).open(!FOLDED.contains(&"live")), move |ui| {
+            let painter = ui.painter().clone();
+            let pen = Pen { painter: &painter };
+            let cx = KitCx { painter: &painter, ppp: ui.ctx().pixels_per_point() };
+            let rect = ui.max_rect();
+            let mut y = rect.top();
+            for project in projects {
+                y = project_block(ui, kit, &pen, &cx, p, rect, y, project, scene);
+            }
+            ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
+        });
+        stack.bare(Section::new("idle", "Idle").count(0).open(!FOLDED.contains(&"idle")), move |ui| {
+            let painter = ui.painter().clone();
+            let rect = ui.max_rect();
+            let y = empty(&Pen { painter: &painter }, p, rect, rect.top(), "No stopped loop");
+            ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
+        });
+        let none = shut.is_empty();
+        stack.bare(Section::new("shut", "Shut").count(shut.len() as u64).open(!FOLDED.contains(&"shut")), move |ui| {
+            let painter = ui.painter().clone();
+            let rect = ui.max_rect();
+            let mut y = rect.top();
+            if none {
+                y = empty(&Pen { painter: &painter }, p, rect, y, "No agent without a loop");
+            }
+            ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
+        });
+    });
 }
 
 /// A section's line saying it has nothing: muted, 12 from the side, at
