@@ -10,23 +10,25 @@ use serde_json::json;
 
 pub const MENU: MenuId = MenuId::from_static("tvty.menu");
 
-/// Its entries: the command, its title, the group it is in, its key.
-const ENTRIES: [(&str, &str, &str, Option<&str>); 15] = [
-    ("tvty.about", "About Terminal Velocity", "1", None),
-    ("tvty.settings", "Settings…", "1", Some("Ctrl+,")),
-    ("tvty.new-project", "New project…", "1", None),
-    ("tvty.message-all", "Message every agent…", "1", None),
-    ("tvty.full-screen", "Full screen", "1", Some("F11")),
-    ("tvty.documentation", "Documentation", "1", None),
-    ("tvty.shortcuts", "Keyboard shortcuts", "1", None),
-    ("tvty.tips", "Tips…", "1", None),
-    ("tvty.whats-new", "What's new", "1", None),
-    ("tvty.github", "GitHub", "2", None),
-    ("tvty.issue", "Report an issue", "2", None),
-    ("tvty.aiball", "aiball", "2", None),
-    ("tvty.updates", "Updates…", "2", None),
-    ("tvty.restart", "Restart tvty", "3", None),
-    ("tvty.quit", "Quit tvty", "3", Some("Ctrl+Q")),
+/// Its entries: the command, its title, the group it is in, its key, the
+/// note at its end, whether it opens a page in the browser (a ↗).
+type Entry = (&'static str, &'static str, &'static str, Option<&'static str>, Option<&'static str>, bool);
+const ENTRIES: [Entry; 15] = [
+    ("tvty.about", "About Terminal Velocity", "1", None, Some(concat!("v", env!("CARGO_PKG_VERSION"))), false),
+    ("tvty.settings", "Settings…", "1", Some("Ctrl+,"), None, false),
+    ("tvty.new-project", "New project…", "1", None, None, false),
+    ("tvty.message-all", "Message every agent…", "1", None, None, false),
+    ("tvty.full-screen", "Full screen", "1", Some("F11"), None, false),
+    ("tvty.documentation", "Documentation", "1", None, None, true),
+    ("tvty.shortcuts", "Keyboard shortcuts", "1", None, None, false),
+    ("tvty.tips", "Tips…", "1", None, None, false),
+    ("tvty.whats-new", "What's new", "1", None, None, true),
+    ("tvty.github", "GitHub", "2", None, None, true),
+    ("tvty.issue", "Report an issue", "2", None, None, true),
+    ("tvty.aiball", "aiball", "2", None, Some("the board"), true),
+    ("tvty.updates", "Updates…", "2", None, None, false),
+    ("tvty.restart", "Restart tvty", "3", None, Some("sessions kept"), false),
+    ("tvty.quit", "Quit tvty", "3", Some("Ctrl+Q"), None, false),
 ];
 
 /// Declares the commands and the menu holding them; F1 opens it.
@@ -34,13 +36,17 @@ pub fn declare(ctx: &mut Ctx<'_>) -> Result<(), PluginError> {
     let open_menu = CommandId::new("tvty.menu").expect("a command id");
     ctx.command(CommandSpec::new(open_menu.clone(), "Menu", "tvty"), |call| {
         // Under tvty's icon, where a click opens it.
-        open(&call.app, egui::Rect::from_min_size(egui::pos2(12.0, 7.0), egui::vec2(28.0, 28.0)));
+        open(&call.app);
         Ok(json!(null))
     })?;
     ctx.keybinding("F1", open_menu, "", egui_pop::model::keymap::Layer::Default)?;
-    for (order, (id, title, group, key)) in ENTRIES.into_iter().enumerate() {
+    for (order, (id, title, group, key, note, link)) in ENTRIES.into_iter().enumerate() {
         let command = CommandId::new(id).expect("a command id");
-        ctx.command(CommandSpec::new(command.clone(), title, "tvty"), move |call| {
+        let mut spec = CommandSpec::new(command.clone(), title, "tvty").opens_link(link);
+        if let Some(note) = note {
+            spec = spec.menu_note(note);
+        }
+        ctx.command(spec, move |call| {
             let egui = call.app.egui();
             match id {
                 "tvty.message-all" => crate::message::toggle(&egui),
@@ -63,25 +69,9 @@ pub fn declare(ctx: &mut Ctx<'_>) -> Result<(), PluginError> {
     Ok(())
 }
 
-/// GPUI's menus have no icons, nor the column egui-pop keeps for them:
-/// the `menus.icons` setting off, as on GNOME. Written once, at start.
-pub fn no_icons(app: &AppHandle) {
-    use egui_pop::model::commands::Origin;
-    use egui_pop::model::ids::OwnerId;
-    use egui_pop::model::values::{Change, Set, Value};
-    let path = format!("settings/{}", egui_pop::api::menus::SETTING_ICONS);
-    let shared = app.store();
-    let mut store = egui_pop::core::lock(&shared);
-    static DONE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-    if !DONE.swap(true, std::sync::atomic::Ordering::Relaxed) {
-        let set = Set::new(&path, Change::To(Value::Choice("off".into())), Origin::User).by(&OwnerId::FRAMEWORK).untracked();
-        if let Err(e) = store.set(set) {
-            eprintln!("menus.icons: {e}");
-        }
-    }
-}
-
-/// Opens the menu under `anchor` (tvty's icon).
-pub fn open(app: &AppHandle, anchor: egui::Rect) {
+/// Opens the menu under tvty's icon, where GPUI puts it: its edge 8 inside
+/// the window, its top on 38.
+pub fn open(app: &AppHandle) {
+    let anchor = egui::Rect::from_min_max(egui::pos2(8.0, 10.0), egui::pos2(37.0, 38.0));
     egui_pop::api::menus::popup_at(app, &MENU, anchor);
 }

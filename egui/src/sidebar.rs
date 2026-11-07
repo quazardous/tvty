@@ -189,7 +189,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
     let (kit, p) = (&kit, &p);
     let projects = &projects;
-    Sections::new("tvty.sessions").grab_titles(true).show(&mut child, |stack| {
+    Sections::new("tvty.sessions").grab_titles(true).fill(false).show(&mut child, |stack| {
         stack.bare(Section::new("live", "Live").count(running as u64).open(!FOLDED.contains(&"live")), move |ui| {
             let painter = ui.painter().clone();
             let pen = Pen { painter: &painter };

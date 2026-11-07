@@ -107,12 +107,11 @@ impl Plugin for Shell {
                 |ui, app| {
                     // GPUI's: 20 points, from 16 inside the window; a
                     // click opens tvty's menu under it.
-                    crate::menu::no_icons(app);
                     ui.add_space(8.0);
                     let (rect, response) =
                         ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
                     if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                        crate::menu::open(app, rect.expand(4.0));
+                        crate::menu::open(app);
                     }
                     if let Some(icon) = crate::icons::app() {
                         icon.paint(ui.painter(), rect, egui::Color32::WHITE);

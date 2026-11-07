@@ -50,7 +50,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, name: &str) {
     let user = scene.user.as_str();
     let rows: Vec<(RowState, &Ticket)> = tickets(scene, name).into_iter().map(|t| (board::state_of(t, user), t)).collect();
     let (kit, p) = (&kit, &p);
-    Sections::new("tvty.tickets").grab_titles(true).show(ui, |stack| {
+    Sections::new("tvty.tickets").grab_titles(true).fill(false).show(ui, |stack| {
         for band in Band::ALL.into_iter().filter(|b| *b != Band::Closed) {
             let mine: Vec<(RowState, &Ticket)> = rows.iter().filter(|(s, _)| s.band == band).cloned().collect();
             if mine.is_empty() {

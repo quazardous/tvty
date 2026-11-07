@@ -57,6 +57,14 @@ fn main() -> eframe::Result {
         // open; the tickets panel at its width.
         .folded(if std::env::var_os("TVTY_EGUI_SIDEBAR").is_some() { &[] } else { &[egui_pop::model::panels::Area::StartSide] })
         .over(&[egui_pop::model::panels::Area::StartSide])
+        // Folded, the sessions keep only their grip, as GPUI's strip.
+        .bare_strips(&[egui_pop::model::panels::Area::StartSide, egui_pop::model::panels::Area::EndSide])
+        // GPUI's bounds: the sessions 230 to 60 % of the window, the
+        // tickets at least 260, the centre at least 320.
+        .shell_panel_min_size(egui_pop::api::workbench::PANEL_SIDE_BAR, 230.0)
+        .shell_panel_max_size(egui_pop::api::workbench::PANEL_SIDE_BAR, egui_pop::api::workbench::ShellSize::Share(0.6))
+        .shell_panel_min_size(egui_pop::api::workbench::PANEL_INSPECTOR, 260.0)
+        .centre_min_size(320.0)
         .shell_panel_size(egui_pop::api::workbench::PANEL_SIDE_BAR, sidebar::WIDTH)
         // GPUI's 428 count the window's outline, inside which egui-pop lays out.
         .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 427.0)

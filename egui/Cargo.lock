@@ -883,7 +883,7 @@ dependencies = [
 [[package]]
 name = "egui-pop"
 version = "0.7.0"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "egui",
  "egui-pop-api",
@@ -895,7 +895,7 @@ dependencies = [
 [[package]]
 name = "egui-pop-api"
 version = "0.7.0"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "eframe",
  "egui",
@@ -915,7 +915,7 @@ dependencies = [
 [[package]]
 name = "egui-pop-core"
 version = "0.7.0"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "egui",
  "egui-pop-model",
@@ -933,7 +933,7 @@ dependencies = [
 [[package]]
 name = "egui-pop-model"
 version = "0.5.0"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "idna",
  "log",
@@ -954,7 +954,7 @@ dependencies = [
 [[package]]
 name = "egui-pop-tokens"
 version = "0.2.3"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "flate2",
  "serde-saphyr",
@@ -965,7 +965,7 @@ dependencies = [
 [[package]]
 name = "egui-pop-win32"
 version = "0.2.1"
-source = "git+https://github.com/quazardous/egui-pop?rev=e41ae386f4b8#e41ae386f4b8ed049ec2697b3ae237c39fd07800"
+source = "git+https://github.com/quazardous/egui-pop?rev=7fdc4680f531#7fdc4680f531cac3b633ad0ff2826459fd5e8853"
 dependencies = [
  "windows-sys 0.61.2",
 ]
@@ -1031,9 +1031,9 @@ dependencies = [
 
 [[package]]
 name = "egui_stack"
-version = "0.25.1"
+version = "0.25.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c551a5c9ee5c30fe7598c03295a80776c702c246b1fb9efaca9968d6ac5a0b9e"
+checksum = "c90f0f33db75b84a1bf2e7fe8074e4f6f9831cb6467d6365c5b4dc572be2185e"
 dependencies = [
  "duplicate",
  "egui",

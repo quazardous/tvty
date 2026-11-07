@@ -13,7 +13,7 @@ publish = false
 [dependencies]
 # egui-pop's main at a known commit: moved forward as the gaps the
 # experiment finds are closed there.
-egui-pop = { git = "https://github.com/quazardous/egui-pop", rev = "e41ae386f4b8", features = ["system-fonts", "svg"] }
+egui-pop = { git = "https://github.com/quazardous/egui-pop", rev = "7fdc4680f531", features = ["system-fonts", "svg"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 log = "0.4"

@@ -66,32 +66,35 @@ left as it is.
 
 ## Where it stands
 
-On egui-pop's main of 2026-11-07, this machine's UI font Noto Sans, share
-of pixels that differ by more than 24 levels, same data on both sides:
-the startup screen 1.4 % (the folded strip's icon, egui-pop#249, and the
-text's vertical offset, egui-pop#250), the full ticket list 11.6 % (most
-of it the rows' ages, taken minutes apart, and a row under the pointer).
-The full list's side column takes GPUI's default width (a third of the
-page, at most 460); its scroll bar is the kit's, set to GPUI's (6 px,
-#4b4b4b, 4 px from the edge): the same pixels across, 4 px longer at each
-end (egui-pop#251). The sessions list open: its sections are egui-pop's
-(`sections`, the kit's `section-*` components set to GPUI's), every row
-on GPUI's, shifted 10 px right by the strip's icon (egui-pop#249); the
-count sits at the band's end (egui-pop#253) and the folded IDLE and
-SHUT at the panel's bottom (egui-pop#252), where GPUI has them after
-LIVE. The scene now holds the
-daemon's shells (`session.list`), and reads the test env's tmux server and
-state when `scripts/test-env` is sourced.
+On egui-pop's main of 2026-11-07 evening (after the fixes for
+egui-pop#249 to egui-pop#260), this machine's UI font Noto Sans, share of pixels that differ by
+more than 24 levels, same data on both sides: the startup screen 1.3 %
+(the text's vertical offset; egui-pop#250's tokens are not set yet), the
+full ticket list 11.6 % (most of it the rows' ages, taken minutes apart,
+and a row under the pointer). The full list's side column takes GPUI's
+default width (a third of the page, at most 460); its scroll bar is the
+kit's, set to GPUI's (6 px, #4b4b4b, 4 px from the edge and from both
+ends). The sessions list open: its sections are egui-pop's (`sections`,
+the kit's `section-*` components set to GPUI's), sized by their content,
+the count after the title, every row and band on GPUI's. The folded
+strips are bare, as GPUI's. The scene holds the daemon's shells
+(`session.list`), and reads the test env's tmux server and state when
+`scripts/test-env` is sourced.
 
 The tickets panel on a project (a terminal open): its header with the
 project's name and alerts, then the tickets by band in egui-pop's
-`sections`, rows 56 high (`stack.rows`), 14.3 % of the panel's pixels:
-every band and row where GPUI has them in the first section, then the
-sections' heights differ (egui-pop#252: GPUI sizes a section to its rows
-and shrinks it only when the stack does not fit), the count at the band's
-end (egui-pop#253), and the sections' scroll bars in the kit's default
-white (egui-pop#254). `section-band.height` is 27 for GPUI's 28: the band
-takes a pixel more than its token.
+`sections`, rows 56 high (`stack.rows`), 13.8 % of the panel's pixels:
+the bands' counts, heights and scroll bars as GPUI's; what differs is
+GPUI's open band holding fewer rows before it scrolls, the rows' ages,
+and a tooltip on GPUI's capture. `section-band.height` is 27 for GPUI's
+28: the band takes a pixel more than its token.
+
+tvty's menu (its icon, F1): egui-pop's menus, one command per entry, set
+by the theme to GPUI's rows (31 apart, 12 from the edge), width (336),
+separators (edge to edge) and no icon gutter; the notes ("sessions
+kept", "the board") and the ↗ of links are egui-pop's. 11.1 % of the
+menu's pixels: the keys and notes are in the labels' size (14) where
+GPUI draws them at 12 (egui-pop#269).
 
 A ticket opened in the panel (a pending plan with options, the reply
 box), 11.1 % of the panel's pixels: drawn with the kit's `button`,
@@ -131,12 +134,13 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | A family name resolves to egui's bundled face (Ubuntu-Light) before the system's | egui-pop#59 | done; the theme still leaves Ubuntu out |
 | Scroll bars keep egui's default style: no kit component | egui-pop#60 | done: `scroll-bar`, the full list uses it |
 | No collapsible sections (the sessions list's LIVE, IDLE, SHUT): no kit component nor widget | egui-pop#61 | done: `sections`, the sessions list uses it |
-| A folded strip always shows an icon per panel: no bare grip | egui-pop#249 | open |
-| No token for a family's vertical metrics (baseline offset, line height) | egui-pop#250 | open |
-| A scroll bar's thumb runs to the ends of its track: no inset along it | egui-pop#251 | open |
-| Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | open |
-| A section's count is always at the band's end | egui-pop#253 | open |
-| A section's scroll bar keeps the kit's default colours | egui-pop#254 | open |
+| A folded strip always shows an icon per panel: no bare grip | egui-pop#249 | done: `AppBuilder::bare_strips` |
+| No token for a family's vertical metrics (baseline offset, line height) | egui-pop#250 | done: `font.baseline-offset.*`; not set here yet |
+| A scroll bar's thumb runs to the ends of its track: no inset along it | egui-pop#251 | done: `scroll-bar.margin-track` |
+| Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | done: `Sections::fill(false)` |
+| A section's count is always at the band's end | egui-pop#253 | done: `section-count.placement: after-title` |
+| A section's scroll bar keeps the kit's default colours | egui-pop#254 | done: section bars in the `scroll-bar` scope |
 | Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | open |
-| Shell panels: no least or largest width set by the application | egui-pop#258 | open |
-| Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | open |
+| Menus: keys and notes at the labels' size; no token for a smaller one | egui-pop#269 | open |
+| Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
+| Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |

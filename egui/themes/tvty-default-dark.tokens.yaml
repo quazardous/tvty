@@ -120,6 +120,12 @@ font:
       $value: {value: 14, unit: "px"}
     heading:
       $value: {value: 16, unit: "px"}
+  # gpui-component's text (the title, menus' entries): 14 px. egui-pop's
+  # menus lay their labels, keys and notes in egui's Body style.
+  text-style:
+    $type: "dimension"
+    body:
+      $value: {value: 14, unit: "px"}
 # The tip card: the window's surface, a line in the tips' violet at 60 %.
 tip-card:
   padding-x:
@@ -421,6 +427,10 @@ scroll-bar:
   margin:
     $type: "dimension"
     $value: {value: 4, unit: "px"}
+  # gpui-component keeps 4 px at both ends of the track too.
+  margin-track:
+    $type: "dimension"
+    $value: {value: 4, unit: "px"}
   placement:
     $type: "string"
     $value: "over"
@@ -470,6 +480,10 @@ section-disclosure:
       $type: "color"
       $value: "{accent.default}"
 section-count:
+  # Beside the title, 6 apart (space.inline), not at the band's end.
+  placement:
+    $type: "string"
+    $value: "after-title"
   padding-x:
     $type: "dimension"
     $value: {value: 6, unit: "px"}
@@ -641,3 +655,14 @@ popover:
     radius:
       $type: "dimension"
       $value: {value: 6, unit: "px"}
+# tvty's menu (its icon, F1), as GPUI draws it: rows 31 apart, labels 12
+# from the edge, 336 wide, separators edge to edge, no icon gutter. The
+# menu's frame keeps 8 inside its edge and 4 between rows: the numbers
+# below are what is left of GPUI's.
+menu-item:
+  height: {$type: "dimension", $value: {value: 27, unit: "px"}}
+  padding-x: {$type: "dimension", $value: {value: 4, unit: "px"}}
+  width: {$type: "dimension", $value: {value: 320, unit: "px"}}
+  separator-inset: {$type: "dimension", $value: {value: 0, unit: "px"}}
+menu-item-gutter:
+  width: {$type: "dimension", $value: {value: 0, unit: "px"}}
