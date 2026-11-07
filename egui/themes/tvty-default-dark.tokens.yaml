@@ -434,7 +434,7 @@ text-role:
 section-band:
   height:
     $type: "dimension"
-    $value: {value: 28, unit: "px"}
+    $value: {value: 27, unit: "px"}
   padding-x:
     $type: "dimension"
     $value: {value: 12, unit: "px"}

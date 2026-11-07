@@ -45,6 +45,11 @@ impl<'a> Row<'a> {
         }
     }
 
+    /// Where the next item from the start goes.
+    pub fn start(&self) -> f32 {
+        self.start
+    }
+
     pub fn mid(&self) -> f32 {
         self.mid
     }

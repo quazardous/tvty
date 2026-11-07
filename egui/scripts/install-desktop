@@ -2,7 +2,8 @@
 # "tvty-egui Dev" in the desktop's launcher: ~/.local/bin/tvty-egui runs a
 # copy of this checkout's debug build, on a copy of the comparison's scene
 # (run it again to update both: rebuilding never touches what it runs).
-# tvty's own icon (make install-desktop).
+# The scene: the first argument, else dev/scene.json. tvty's own icon
+# (make install-desktop).
 set -eu
 here="$(cd "$(dirname "$0")/.." && pwd)"
 data="${XDG_DATA_HOME:-$HOME/.local/share}"
@@ -12,7 +13,8 @@ build="${CARGO_TARGET_DIR:-$here/target}/debug/tvty-egui"
 [ -x "$build" ] || { echo "no build at $build: cargo build first" >&2; exit 1; }
 mkdir -p "$data/applications" "$bin" "$keep"
 install -m755 "$build" "$keep/.tvty-egui.new" && mv -f "$keep/.tvty-egui.new" "$keep/tvty-egui"
-[ ! -f "$here/../dev/scene.json" ] || cp "$here/../dev/scene.json" "$keep/scene.json"
+scene="${1:-$here/../dev/scene.json}"
+[ ! -f "$scene" ] || cp "$scene" "$keep/scene.json"
 sed -e "s|@BIN@|$keep/tvty-egui|" \
     -e "s|@SCENE@|$keep/scene.json|" \
     "$here/packaging/tvty-egui-launch" >"$bin/tvty-egui"

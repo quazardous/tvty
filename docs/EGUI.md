@@ -81,6 +81,16 @@ LIVE. The scene now holds the
 daemon's shells (`session.list`), and reads the test env's tmux server and
 state when `scripts/test-env` is sourced.
 
+The tickets panel on a project (a terminal open): its header with the
+project's name and alerts, then the tickets by band in egui-pop's
+`sections`, rows 56 high (`stack.rows`), 14.3 % of the panel's pixels:
+every band and row where GPUI has them in the first section, then the
+sections' heights differ (egui-pop#252: GPUI sizes a section to its rows
+and shrinks it only when the stack does not fit), the count at the band's
+end (egui-pop#253), and the sections' scroll bars in the kit's default
+white (egui-pop#254). `section-band.height` is 27 for GPUI's 28: the band
+takes a pixel more than its token.
+
 On 2026-10-22 (GNOME, Adwaita Sans): the startup screen 0.6 %, the
 sessions list open 1.3 %, the full ticket list 4.7 %.
 
@@ -117,3 +127,4 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | A scroll bar's thumb runs to the ends of its track: no inset along it | egui-pop#251 | open |
 | Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | open |
 | A section's count is always at the band's end | egui-pop#253 | open |
+| A section's scroll bar keeps the kit's default colours | egui-pop#254 | open |

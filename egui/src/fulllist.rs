@@ -79,7 +79,7 @@ impl Palette {
 
     /// A glyph's colour: a rejection for everyone, a step the agent's own
     /// marker; the rest coloured only when it is the reader's turn.
-    fn glyph(&self, glyph: Glyph, yours: bool) -> Color32 {
+    pub(crate) fn glyph(&self, glyph: Glyph, yours: bool) -> Color32 {
         match glyph {
             // A rejection is news for everyone.
             Glyph::Rejected => return self.danger,
@@ -106,7 +106,7 @@ impl Palette {
             .map_or(self.border, |g| self.glyph(g, state.turn == Turn::You))
     }
 
-    fn priority(&self, priority: &str) -> Color32 {
+    pub(crate) fn priority(&self, priority: &str) -> Color32 {
         match priority {
             "urgent" => self.danger,
             "high" => self.warning,
@@ -450,7 +450,7 @@ fn row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, list: Rect, top
 
 /// The row's left edge: the construction tape of a ticket to moderate,
 /// else whose turn it is.
-fn edge(painter: &egui::Painter, p: &Palette, state: &RowState, x: f32, top: f32, bottom: f32) {
+pub(crate) fn edge(painter: &egui::Painter, p: &Palette, state: &RowState, x: f32, top: f32, bottom: f32) {
     let rect = Rect::from_min_max(pos2(x, top), pos2(x + 3.0, bottom));
     if state.band == Band::Moderate {
         hazard(painter, Rect::from_min_max(rect.min, pos2(x + 5.0, bottom)));
@@ -499,7 +499,7 @@ fn hazard(painter: &egui::Painter, rect: Rect) {
 
 /// The comment count: its icon, colour and number; none when nobody
 /// spoke yet.
-fn comments(p: &Palette, ticket: &Ticket, user: &str) -> Option<(Option<egui_pop::core::icon::Icon>, Color32, String)> {
+pub(crate) fn comments(p: &Palette, ticket: &Ticket, user: &str) -> Option<(Option<egui_pop::core::icon::Icon>, Color32, String)> {
     if ticket.pending_comment_count > 0 {
         return Some((crate::icons::pending_comments(), p.warning, ticket.pending_comment_count.to_string()));
     }

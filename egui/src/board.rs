@@ -108,6 +108,17 @@ impl Band {
         })
     }
 
+    /// Its key, as a section of the panel.
+    pub fn key(self) -> &'static str {
+        match self {
+            Band::Moderate => "moderate",
+            Band::Decide => "decide",
+            Band::AgentOnIt => "agents",
+            Band::Open => "open",
+            Band::Closed => "closed",
+        }
+    }
+
     pub fn title(self) -> &'static str {
         match self {
             Band::Moderate => "To moderate",

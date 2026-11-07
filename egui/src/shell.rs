@@ -65,11 +65,17 @@ impl Plugin for Shell {
                 );
             }),
         );
+        let panel_scene = scene.clone();
         ctx.block(
             zones::INSPECTOR,
-            Block::add(BlockId::from_static("tvty.tickets"), 0, |ui, _| {
-                tickets_header(ui);
-                // No terminal is picked at start: no project to show.
+            Block::add(BlockId::from_static("tvty.tickets"), 0, move |ui, _| {
+                let project = crate::panel::project(&panel_scene);
+                tickets_header(ui, &panel_scene, project.as_deref());
+                if let Some(name) = &project {
+                    crate::panel::show(ui, &panel_scene, name);
+                    return;
+                }
+                // No terminal is picked: no project to show.
                 let muted = Tokens::of(ui.ctx()).text.muted;
                 egui::Frame::new().inner_margin(12).show(ui, |ui| {
                     ui.label(
@@ -119,8 +125,9 @@ impl Plugin for Shell {
 /// a line under it, 12 from the sides, 8 between items; the fold chevron,
 /// the pin, the title, then at the end the megaphone, "+ New", a separator
 /// and the full list.
-fn tickets_header(ui: &mut egui::Ui) {
+fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Option<&str>) {
     let t = Tokens::of(ui.ctx());
+    ui.spacing_mut().item_spacing.y = 0.0;
     let (rect, _) = ui.allocate_exact_size(
         egui::vec2(ui.available_width(), 36.0),
         egui::Sense::hover(),
@@ -133,7 +140,12 @@ fn tickets_header(ui: &mut egui::Ui) {
     let muted = t.text.muted;
     row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
     row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
-    row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
+    match project {
+        Some(name) => crate::panel::header_title(ui, scene, name, row.start(), row.mid()),
+        None => {
+            row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
+        }
+    }
     let full = row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
     if ui.interact(full, ui.id().with("full-list"), egui::Sense::click()).clicked() {
         crate::fulllist::set_open(ui.ctx(), true);
