@@ -11,6 +11,7 @@ use egui_pop::prelude::*;
 const THEME: &str = "tvty-default-dark";
 
 mod board;
+mod detail;
 mod fulllist;
 mod panel;
 mod icons;

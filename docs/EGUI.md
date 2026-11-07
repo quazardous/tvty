@@ -47,10 +47,12 @@ The theme lists the same stack, without Ubuntu: egui-pop takes that
 name for egui's bundled Ubuntu-Light before any system font, where GPUI
 skips it when Ubuntu is not installed.
 
-GPUI draws a variable face (Adwaita Sans) at its default instance
-whatever the weight asked: its bold is regular there. egui-pop sets the
-face's `wght` axis, so tvty-egui drops the weight to draw what GPUI
-draws; `TVTY_EGUI_WEIGHTS` keeps it, for a box whose UI font is static.
+GPUI draws a variable face (Adwaita Sans) at an instance of its own
+whatever the weight asked: its bold comes out near 500 (regular with the
+GPUI of October 2026). egui-pop sets the face's `wght` axis, so tvty-egui
+caps the weight at 500 to draw what GPUI draws; `TVTY_EGUI_WEIGHTS` sets
+another cap (400 for that older GPUI, `all` for a box whose UI font is
+static).
 
 GPUI rounds a text's line box to whole pixels: `round(1.618 × size)`,
 19, 23, 26 and 29 for 12, 14, 16 and 18. Laid out on fractions, a column
@@ -90,6 +92,13 @@ and shrinks it only when the stack does not fit), the count at the band's
 end (egui-pop#253), and the sections' scroll bars in the kit's default
 white (egui-pop#254). `section-band.height` is 27 for GPUI's 28: the band
 takes a pixel more than its token.
+
+A ticket opened in the panel (a pending plan with options, the reply
+box), 11.1 % of the panel's pixels: drawn with the kit's `button`,
+`radio`, `field`, `card` and `tag-chip`, the theme setting each to
+gpui-component's look (measured on GPUI's capture); every block within
+two pixels of GPUI's. What is left is mostly text antialiasing, and the
+reply button, which GPUI splits ("Reply" and its ▾).
 
 On 2026-10-22 (GNOME, Adwaita Sans): the startup screen 0.6 %, the
 sessions list open 1.3 %, the full ticket list 4.7 %.

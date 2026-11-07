@@ -4,7 +4,8 @@
 Usage: scene.py SOCKET [USER] > scene.json
 
 It asks what tvty asks (consumer.list, inbox.list per project,
-session.list for the terminals the daemon's host holds) and keeps
+session.list for the terminals the daemon's host holds, ticket.get for
+each open ticket's thread) and keeps
 the answers whole: tvty-egui reads the fields it draws. With them, what
 the sessions list shows besides aiball: the tmux sessions of the tests'
 server (dev/tmux) and the terminals the tests' tvty keeps open: those of
@@ -29,7 +30,11 @@ projects = sorted({c["project"] for c in consumers if c.get("project")})
 scene = {"user": user, "consumers": consumers, "projects": []}
 for name in projects:
     inbox = board.call(user, "inbox.list", {"project": name, "view": "turn", "sort": "band", "limit": 200})
-    scene["projects"].append({"name": name, "tickets": inbox["rows"]})
+    threads = {}
+    for row in inbox["rows"]:
+        if not row.get("closed"):
+            threads[str(row["id"])] = board.call(user, "ticket.get", {"id": row["id"], "full": True, "limit": 9999})
+    scene["projects"].append({"name": name, "tickets": inbox["rows"], "threads": threads})
 scene["hosted"] = board.call(user, "session.list", {})
 root = Path(__file__).resolve().parents[2]
 env = {k: v for k, v in os.environ.items() if k != "TMUX"}

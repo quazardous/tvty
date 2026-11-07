@@ -99,7 +99,7 @@ impl Palette {
         }
     }
 
-    fn stripe(&self, state: &RowState) -> Color32 {
+    pub(crate) fn stripe(&self, state: &RowState) -> Color32 {
         state
             .glyph
             .filter(|_| state.stripe != Stripe::Neutral)

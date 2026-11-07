@@ -473,3 +473,126 @@ section-count:
     text:
       $type: "color"
       $value: "{text.default}"
+# A ticket's detail, as gpui-component draws its parts (measured on GPUI's
+# capture): buttons on #151515 with a #2f2f2f line, radius 4; Accept in
+# the success tone (#173422, green ink); Reply the primary one, white;
+# a disabled one (Reject) on #110d0d with dim ink and no line.
+button:
+  rest:
+    fill:
+      $type: "color"
+      $value: "#151515"
+    border-color:
+      $type: "color"
+      $value: "#2f2f2f"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.default}"
+  disabled:
+    fill:
+      $type: "color"
+      $value: "#110d0d"
+    border-color:
+      $type: "color"
+      $value: "#110d0d"
+    text:
+      $type: "color"
+      $value: "#5a5858"
+  tone:
+    success:
+      fill:
+        $type: "color"
+        $value: "#173422"
+      border-color:
+        $type: "color"
+        $value: "#173422"
+      text:
+        $type: "color"
+        $value: "{success}"
+    accent:
+      fill:
+        $type: "color"
+        $value: "#fafafa"
+      border-color:
+        $type: "color"
+        $value: "#fafafa"
+      text:
+        $type: "color"
+        $value: "#0a0a0a"
+# A plan's options: a 14 px ring, its line barely there at rest; chosen,
+# the ring and its dot in the accent.
+radio:
+  width:
+    $type: "dimension"
+    $value: {value: 14, unit: "px"}
+  rest:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    border-color:
+      $type: "color"
+      $value: "#191919"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1.5, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{accent.default}"
+  selected:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    border-color:
+      $type: "color"
+      $value: "#385d8a"
+    text:
+      $type: "color"
+      $value: "{accent.default}"
+# "Where it stands": a block on #1b1b1b, no line, radius 6.
+card:
+  rest:
+    fill:
+      $type: "color"
+      $value: "#1b1b1b"
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}
+# A decision's chip: an outline of the border's grey, radius 4; pending,
+# filled in the warning's yellow with dark ink.
+tag-chip:
+  rest:
+    fill:
+      $type: "color"
+      $value: "{transparent}"
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 4, unit: "px"}
+    text:
+      $type: "color"
+      $value: "{text.muted}"
+  tone:
+    warning:
+      fill:
+        $type: "color"
+        $value: "{warning}"
+      border-color:
+        $type: "color"
+        $value: "{warning}"
+      text:
+        $type: "color"
+        $value: "#0a0a0a"

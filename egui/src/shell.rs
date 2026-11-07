@@ -72,7 +72,10 @@ impl Plugin for Shell {
                 let project = crate::panel::project(&panel_scene);
                 tickets_header(ui, &panel_scene, project.as_deref());
                 if let Some(name) = &project {
-                    crate::panel::show(ui, &panel_scene, name);
+                    match crate::detail::shown() {
+                        Some(id) => crate::detail::show(ui, &panel_scene, name, id),
+                        None => crate::panel::show(ui, &panel_scene, name),
+                    }
                     return;
                 }
                 // No terminal is picked: no project to show.

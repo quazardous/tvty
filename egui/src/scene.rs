@@ -57,6 +57,9 @@ pub struct Project {
     /// Its tickets as the list reads them, closed ones too.
     #[serde(default)]
     pub tickets: Vec<crate::board::Ticket>,
+    /// The open tickets' threads (`ticket.get`), by id.
+    #[serde(default)]
+    pub threads: std::collections::HashMap<String, serde_json::Value>,
 }
 
 impl Scene {

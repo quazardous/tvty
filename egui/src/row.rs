@@ -23,15 +23,19 @@ pub enum From {
 }
 
 /// The font GPUI draws `weight` with. On Linux GPUI draws a variable
-/// face (Adwaita Sans, GNOME's) at its default instance whatever the
-/// weight asked: its bold is regular there. egui-pop sets the face's
-/// `wght` axis, so the weight is dropped here to draw what GPUI draws.
-/// A box whose UI font is static (DejaVu Sans) draws GPUI's bold: set
-/// `TVTY_EGUI_WEIGHTS` there.
+/// face (Adwaita Sans, GNOME's) at an instance of its own whatever the
+/// weight asked: its bold comes out near 500 (it came out regular with
+/// the GPUI of October 2026). egui-pop sets the face's `wght` axis, so the
+/// weight is capped here to draw what GPUI draws: `TVTY_EGUI_WEIGHTS`
+/// sets the cap (400 for that older GPUI), `all` for a static face
+/// (DejaVu Sans) where GPUI's bold is bold.
 pub fn font(size: f32, weight: Weight) -> FontId {
-    static WEIGHTS: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-    let weights = *WEIGHTS.get_or_init(|| std::env::var_os("TVTY_EGUI_WEIGHTS").is_some());
-    fonts::font_id(Role::Ui, if weights { weight } else { Weight::REGULAR }, size)
+    static CAP: std::sync::OnceLock<u16> = std::sync::OnceLock::new();
+    let cap = *CAP.get_or_init(|| match std::env::var("TVTY_EGUI_WEIGHTS") {
+        Ok(v) => v.parse().unwrap_or(900),
+        Err(_) => 500,
+    });
+    fonts::font_id(Role::Ui, Weight(weight.0.min(cap)), size)
 }
 
 impl<'a> Row<'a> {
