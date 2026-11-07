@@ -46,13 +46,6 @@ pub fn clicked(picked: &[String], multiple: bool, key: &str) -> Vec<String> {
     picked.iter().cloned().chain([key.to_string()]).collect()
 }
 
-/// A plan's options as offered: the recommended one first.
-pub fn offered(options: &[PlanOption]) -> Vec<PlanOption> {
-    let mut offered = options.to_vec();
-    offered.sort_by_key(|o| !o.recommended);
-    offered
-}
-
 /// A decision chip, as a comment shows it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DecisionState {
@@ -435,14 +428,15 @@ mod tests {
     }
 
     #[test]
-    fn a_plan_offers_its_recommended_option_first() {
+    fn a_plan_offers_its_options_in_their_posted_order() {
         let plan = serde_json::json!({"decision": {"kind": "plan", "status": "pending", "options": [
             {"key": "A", "label": "One"}, {"key": "B", "label": "Other", "recommended": true}, {"key": "C", "label": "Third"},
         ]}});
         let t = thread(serde_json::json!([comment(2, "demo-claude", plan)]));
         let active = read(&t).active.unwrap();
-        let keys: Vec<_> = super::offered(&active.options).into_iter().map(|o| o.key).collect();
-        assert_eq!(keys, ["B", "A", "C"]);
+        // The order is its author's: the recommended one stays where it was put.
+        let keys: Vec<_> = active.options.iter().map(|o| o.key.as_str()).collect();
+        assert_eq!(keys, ["A", "B", "C"]);
         assert!(!active.multiple);
         // Accept takes the one chosen, else the recommended; one gone from
         // the list no longer counts; with none recommended, nothing yet.

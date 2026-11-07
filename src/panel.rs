@@ -1622,7 +1622,7 @@ impl TicketPanel {
                 // A plan with options: one chosen, or several ticked, the
                 // recommended to begin with; Accept takes them.
                 .when(!unmoderated && !active.options.is_empty(), |d| {
-                    d.child(div().text_xs().text_color(p().muted).child(crate::t!(if multiple { "tickets-option-choose-several" } else { "tickets-option-choose-one" }))).child(div().flex().flex_col().gap_1().children(thread::offered(&active.options).into_iter().map(|option| {
+                    d.child(div().text_xs().text_color(p().muted).child(crate::t!(if multiple { "tickets-option-choose-several" } else { "tickets-option-choose-one" }))).child(div().flex().flex_col().gap_1().children(active.options.iter().cloned().map(|option| {
                         let on = picked.contains(&option.key);
                         let next = thread::clicked(&picked, multiple, &option.key);
                         let suggested = option.confidence.map_or(p().success, confidence_colour);

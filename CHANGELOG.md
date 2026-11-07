@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- A plan's options keep the order their author gave them: the recommended one no longer jumps to the top, so their letters read in order.
+
 ## [0.24.0-beta.1] - 2026-11-06
 
 ### Added
