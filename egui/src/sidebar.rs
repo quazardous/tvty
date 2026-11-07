@@ -96,7 +96,7 @@ fn live(scene: &Scene) -> Vec<Project<'_>> {
     list
 }
 
-pub fn show(ui: &mut egui::Ui, scene: &Scene) {
+pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     let t = Tokens::of(ui.ctx());
     let kit = Kit::of(ui.ctx());
     let p = Palette::of(&t);
@@ -129,9 +129,15 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene) {
         *end -= w;
         let tw = pen.width(s, size, Weight::REGULAR);
         pen.text(*end + (w - tw) / 2.0, mid - line(size) / 2.0, s, size, Weight::REGULAR, color);
+        let rect = Rect::from_min_size(pos2(*end, mid - 10.0), vec2(w, 20.0));
         *end -= 4.0;
+        rect
     };
-    glyph(&mut end, "‹", 16.0, p.muted, 20.0);
+    // ‹ folds the sessions to their strip.
+    let fold = glyph(&mut end, "‹", 16.0, p.muted, 20.0);
+    if ui.interact(fold, ui.id().with("fold"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        app.fold_area(egui_pop::model::panels::Area::StartSide, true);
+    }
     end -= 4.0;
     painter.vline(end - 0.5, egui::Rangef::new(mid - 6.0, mid + 6.0), egui::Stroke::new(1.0, p.border));
     end -= 1.0 + 4.0 + 4.0;

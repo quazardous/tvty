@@ -36,7 +36,7 @@ impl Plugin for Shell {
         let s = scene.clone();
         ctx.block(
             zones::SIDE_BAR,
-            Block::add(BlockId::from_static("tvty.sessions"), 0, move |ui, _| crate::sidebar::show(ui, &s)),
+            Block::add(BlockId::from_static("tvty.sessions"), 0, move |ui, app| crate::sidebar::show(ui, &s, app)),
         );
         ctx.block(
             zones::MAIN,
@@ -68,9 +68,9 @@ impl Plugin for Shell {
         let panel_scene = scene.clone();
         ctx.block(
             zones::INSPECTOR,
-            Block::add(BlockId::from_static("tvty.tickets"), 0, move |ui, _| {
+            Block::add(BlockId::from_static("tvty.tickets"), 0, move |ui, app| {
                 let project = crate::panel::project(&panel_scene);
-                tickets_header(ui, &panel_scene, project.as_deref());
+                tickets_header(ui, &panel_scene, project.as_deref(), app);
                 if let Some(name) = &project {
                     match crate::detail::shown(ui.ctx()) {
                         Some(id) => crate::detail::show(ui, &panel_scene, name, id),
@@ -116,8 +116,8 @@ impl Plugin for Shell {
         );
         ctx.block(
             zones::CAPTION,
-            Block::add(BlockId::from_static("tvty.caption"), 0, move |ui, _| {
-                caption(ui, &user)
+            Block::add(BlockId::from_static("tvty.caption"), 0, move |ui, app| {
+                caption(ui, &user, app)
             }),
         );
         Ok(())
@@ -128,7 +128,7 @@ impl Plugin for Shell {
 /// a line under it, 12 from the sides, 8 between items; the fold chevron,
 /// the pin, the title, then at the end the megaphone, "+ New", a separator
 /// and the full list.
-fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Option<&str>) {
+fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Option<&str>, app: &egui_pop::api::AppHandle) {
     let t = Tokens::of(ui.ctx());
     ui.spacing_mut().item_spacing.y = 0.0;
     let (rect, _) = ui.allocate_exact_size(
@@ -141,7 +141,15 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     let (regular, bold) = (Weight::REGULAR, Weight::BOLD);
     let mut row = Row::new(painter, rect, 12.0, rect.top() + 17.5);
     let muted = t.text.muted;
-    row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
+    // Each button's hover fill goes under it: its place kept now, filled
+    // once the button's rectangle is known.
+    let under = || painter.add(egui::Shape::Noop);
+    // › folds the panel to its strip.
+    let slot = under();
+    let fold = row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
+    if button(ui, painter, slot, fold.expand(4.0), "fold").clicked() {
+        app.fold_area(egui_pop::model::panels::Area::EndSide, true);
+    }
     row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
     match project {
         Some(name) => crate::panel::header_title(ui, scene, name, row.start(), row.mid()),
@@ -149,8 +157,9 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
             row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
         }
     }
+    let slot = under();
     let full = row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
-    if ui.interact(full, ui.id().with("full-list"), egui::Sense::click()).clicked() {
+    if button(ui, painter, slot, full.expand(4.0), "full-list").clicked() {
         crate::fulllist::set_open(ui.ctx(), true);
     }
     // The separator: 1 wide, 4 on each side, 12 high.
@@ -163,24 +172,45 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
         .room(From::End, label.size().x.ceil() + 14.0, 8.0)
         .with_min_y(mid - 10.5)
         .with_max_y(mid + 10.5);
+    let slot = under();
+    button(ui, painter, slot, chip, "new");
     painter.rect_stroke(chip, 4.0, line, egui::StrokeKind::Inside);
     painter.galley(
         egui::pos2(chip.left() + 7.0, mid - label.size().y / 2.0),
         label,
         t.accent.default,
     );
-    row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
+    let slot = under();
+    let megaphone = row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
+    button(ui, painter, slot, megaphone.expand(4.0), "message-all");
+}
+
+/// A header button: a hand over it, and under the pointer the hover's fill
+/// in the place kept for it (`slot`).
+fn button(ui: &egui::Ui, painter: &egui::Painter, slot: egui::layers::ShapeIdx, rect: egui::Rect, name: &str) -> egui::Response {
+    let response = ui.interact(rect, ui.id().with(("header", name)), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+    if response.hovered() {
+        let fill = Tokens::of(ui.ctx()).surface.hover;
+        painter.set(slot, egui::Shape::rect_filled(rect, 4.0, fill));
+    }
+    response
 }
 
 /// The title bar's items before the window buttons, as the GPUI build has
 /// them: the ticket to go to (a field), the theme, the language, a message
 /// to every agent, the settings and who tvty acts as.
-fn caption(ui: &mut egui::Ui, user: &str) {
+fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     let t = Tokens::of(ui.ctx());
     let regular = Weight::REGULAR;
     let muted = t.text.muted;
+    // The theme's name as GPUI says it: tvty's own is "Default Dark".
+    let theme = app.theme();
+    let shown = theme.shown(ui.ctx());
+    let name = if shown == crate::THEME { "Default Dark".to_string() } else { shown.clone() };
+    let label = format!("◐ {name}");
+    let label_width = ui.painter().layout_no_wrap(label.clone(), font(12.0, regular), muted).size().x.ceil();
     // As wide as the GPUI build's items, from the field to the user.
-    let width = 96.0 + 8.0 + 98.0 + 8.0 + 25.0 + 8.0 + 23.0 + 4.0 + 22.0 + 8.0;
+    let width = 96.0 + 8.0 + label_width + 8.0 + 25.0 + 8.0 + 23.0 + 4.0 + 22.0 + 8.0;
     let user_width = ui
         .painter()
         .layout_no_wrap(user.into(), font(14.0, regular), muted)
@@ -190,22 +220,47 @@ fn caption(ui: &mut egui::Ui, user: &str) {
         egui::vec2(width + user_width, ui.available_height()),
         egui::Sense::hover(),
     );
-    let painter = ui.painter();
-    let mut row = Row::new(painter, rect, 0.0, rect.center().y);
+    let painter = ui.painter().clone();
+    let mut row = Row::new(&painter, rect, 0.0, rect.center().y);
     // Its own 8 to the buttons are the title bar's gap before them.
     row.text(From::End, user, font(14.0, regular), muted, 0.0);
     row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
     row.icon(From::End, crate::icons::message_all(), muted, 4.0);
     row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
-    row.glyph(From::End, "◐ Default Dark", font(12.0, regular), muted, 8.0);
-    // The field: 96 wide, 20 high, a light fill even at rest.
+    // The theme: a click lists the themes, egui-pop's own after tvty's.
+    let chip = row.glyph(From::End, &label, font(12.0, regular), muted, 8.0);
+    let response = ui
+        .interact(chip.expand2(egui::vec2(4.0, 4.0)), ui.id().with("theme"), egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    egui::Popup::menu(&response).show(|ui| {
+        let mut names: Vec<String> = theme.themes().names().map(str::to_string).collect();
+        names.sort_by_key(|n| (n != crate::THEME, n.clone()));
+        for n in names {
+            let said = if n == crate::THEME { "Default Dark".to_string() } else { n.clone() };
+            if ui.add(egui_pop::core::widgets::SelectableRow::new(n == shown, said)).clicked() {
+                theme.pick(ui.ctx(), &n);
+                ui.close();
+            }
+        }
+    });
+    // The ticket to go to: 96 wide, 20 high, a light fill even at rest;
+    // a number and Enter open it in the panel.
     let field = row.room(From::End, 96.0, 8.0);
     painter.rect_filled(field, 6.0, t.surface.hover);
-    painter.text(
-        egui::pos2(field.left() + 4.0, row.mid()),
-        egui::Align2::LEFT_CENTER,
-        "#...",
-        font(12.0, regular),
-        muted,
-    );
+    let id = ui.id().with("goto");
+    let mut text = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default();
+    let edit = egui::TextEdit::singleline(&mut text)
+        .frame(egui::Frame::NONE)
+        .hint_text(egui::RichText::new("#...").color(muted))
+        .font(font(12.0, regular))
+        .text_color(t.text.default)
+        .margin(egui::vec2(4.0, 2.0));
+    let output = ui.put(field, edit);
+    if output.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        if let Ok(n) = text.trim().trim_start_matches('#').parse::<u64>() {
+            crate::detail::set_shown(ui.ctx(), Some(n));
+        }
+        text.clear();
+    }
+    ui.data_mut(|d| d.insert_temp(id, text));
 }
