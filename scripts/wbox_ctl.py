@@ -19,6 +19,8 @@ is why the Makefile invokes it through $(WBOX_PYTHON) rather than python3.
     wbox_ctl.py status CONFIG [-s key=value ...]
     wbox_ctl.py shot   CONFIG [-s key=value ...] [--name NAME]
     wbox_ctl.py click  CONFIG [-s key=value ...] X Y [BUTTON]   (1 left, 2 middle, 3 right)
+    wbox_ctl.py move   CONFIG [-s key=value ...] X Y          (the pointer, no button)
+    wbox_ctl.py drag   CONFIG [-s key=value ...] X1 Y1 X2 Y2  (the left button)
     wbox_ctl.py key    CONFIG [-s key=value ...] SHORTCUT [SHORTCUT ...]
     wbox_ctl.py type   CONFIG [-s key=value ...] TEXT
     wbox_ctl.py scroll CONFIG [-s key=value ...] X Y NOTCHES   (negative = up)
@@ -144,6 +146,18 @@ def main():
         button = int(args[2]) if len(args) == 3 else 1
         _warm_up(comp, x, y)
         result = comp.click(x, y, button)
+    elif command == "move":
+        if len(args) != 2:
+            sys.exit("move needs X Y")
+        x, y = int(args[0]), int(args[1])
+        _warm_up(comp, x, y)
+        result = comp.mouse_move(x, y)
+    elif command == "drag":
+        if len(args) != 4:
+            sys.exit("drag needs X1 Y1 X2 Y2")
+        x1, y1, x2, y2 = (int(a) for a in args)
+        _warm_up(comp, x1, y1)
+        result = comp.drag(x1, y1, x2, y2)
     elif command == "key":
         if not args:
             sys.exit("key needs at least one shortcut, e.g. alt+F12")
