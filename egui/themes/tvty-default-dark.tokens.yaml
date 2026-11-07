@@ -303,6 +303,19 @@ toggle-chip:
       $type: "dimension"
       $value: {value: 1, unit: "px"}
 search-field:
+  focus:
+    border-color:
+      $type: "color"
+      $value: "#737373"
+    ring-color:
+      $type: "color"
+      $value: "#3e3e3e"
+    ring-width:
+      $type: "dimension"
+      $value: {value: 2, unit: "px"}
+    ring-offset:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
   rest:
     fill:
       $type: "color"
@@ -505,6 +518,16 @@ button:
       $type: "color"
       $value: "#5a5858"
   tone:
+    danger:
+      fill:
+        $type: "color"
+        $value: "#3a1f1f"
+      border-color:
+        $type: "color"
+        $value: "#3a1f1f"
+      text:
+        $type: "color"
+        $value: "#f87171"
     success:
       fill:
         $type: "color"
@@ -596,3 +619,25 @@ tag-chip:
       text:
         $type: "color"
         $value: "#0a0a0a"
+# A popover (the message to every agent): the window's fill, a line of the
+# border's grey, 12 inside, radius 6.
+popover:
+  padding-x:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  padding-y:
+    $type: "dimension"
+    $value: {value: 12, unit: "px"}
+  rest:
+    fill:
+      $type: "color"
+      $value: "#0a0a0a"
+    border-color:
+      $type: "color"
+      $value: "{border.default}"
+    border-width:
+      $type: "dimension"
+      $value: {value: 1, unit: "px"}
+    radius:
+      $type: "dimension"
+      $value: {value: 6, unit: "px"}

@@ -15,6 +15,7 @@ mod detail;
 mod fulllist;
 mod panel;
 mod icons;
+mod message;
 mod row;
 mod tip;
 mod scene;

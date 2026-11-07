@@ -182,7 +182,9 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     );
     let slot = under();
     let megaphone = row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
-    button(ui, painter, slot, megaphone.expand(4.0), "message-all");
+    if button(ui, painter, slot, megaphone.expand(4.0), "message-all").clicked() {
+        crate::message::toggled(ui.ctx());
+    }
 }
 
 /// A header button: a hand over it, and under the pointer the hover's fill
@@ -225,7 +227,11 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     // Its own 8 to the buttons are the title bar's gap before them.
     row.text(From::End, user, font(14.0, regular), muted, 0.0);
     row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
-    row.icon(From::End, crate::icons::message_all(), muted, 4.0);
+    // The megaphone: the message to every agent, a popover.
+    let megaphone = row.icon(From::End, crate::icons::message_all(), muted, 4.0);
+    if ui.interact(megaphone, ui.id().with("message-all"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+        crate::message::toggled(ui.ctx());
+    }
     row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
     // The theme: a click lists the themes, egui-pop's own after tvty's.
     let chip = row.glyph(From::End, &label, font(12.0, regular), muted, 8.0);
@@ -263,4 +269,5 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
         text.clear();
     }
     ui.data_mut(|d| d.insert_temp(id, text));
+    crate::message::show(ui.ctx());
 }
