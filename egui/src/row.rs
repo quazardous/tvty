@@ -103,3 +103,18 @@ impl<'a> Row<'a> {
         r
     }
 }
+
+/// A button drawn by hand: its hover fill goes in the place kept for it
+/// under its glyph (`slot`, an `egui::Shape::Noop` added before), and a
+/// hand over it. Its response.
+pub fn button(ui: &egui_pop::egui::Ui, painter: &Painter, slot: egui_pop::egui::layers::ShapeIdx, rect: Rect, name: &str) -> egui_pop::egui::Response {
+    use egui_pop::egui;
+    let response = ui
+        .interact(rect, ui.id().with(("tvty.button", name)), egui::Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    if response.hovered() {
+        let fill = egui_pop::prelude::Tokens::of(ui.ctx()).surface.hover;
+        painter.set(slot, egui::Shape::rect_filled(rect, 4.0, fill));
+    }
+    response
+}

@@ -139,3 +139,4 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | A section's scroll bar keeps the kit's default colours | egui-pop#254 | open |
 | Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | open |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | open |
+| Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | open |

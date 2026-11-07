@@ -15,10 +15,12 @@ mod detail;
 mod fulllist;
 mod panel;
 mod icons;
+mod menu;
 mod message;
 mod row;
 mod tip;
 mod scene;
+mod settings;
 mod shell;
 mod sidebar;
 

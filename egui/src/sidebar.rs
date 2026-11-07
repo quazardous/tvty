@@ -111,12 +111,18 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     painter.hline(header.x_range(), header.bottom() - 0.5, egui::Stroke::new(1.0, p.border));
     let mid = header.top() + (HEADER - 1.0) / 2.0;
     let mut x = header.left() + 12.0;
-    for (label, on) in [("Sessions", true), ("Workspaces", false)] {
+    // Sessions or Workspaces: the tab chosen, kept for the session.
+    let tab_id = egui::Id::new("tvty.sidebar.tab");
+    let workspaces = ui.data(|d| d.get_temp::<bool>(tab_id)).unwrap_or(false);
+    for (label, on) in [("Sessions", !workspaces), ("Workspaces", workspaces)] {
         // A tab: 4 from its sides, its text and the 2 of its underline.
         let w = pen.width(label, SM, Weight::REGULAR) + 8.0;
         let h = line(SM) + 2.0;
         let tab = Rect::from_min_size(pos2(x, mid - h / 2.0), vec2(w, h));
-        let response = ui.interact(tab, ui.id().with(("tab", label)), Sense::click());
+        let response = ui.interact(tab, ui.id().with(("tab", label)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        if response.clicked() {
+            ui.data_mut(|d| d.insert_temp(tab_id, label == "Workspaces"));
+        }
         let state = State::from_response(&response).with(State::SELECTED, on);
         kit.tab.paint(&cx, &Part { rect: tab, room: tab, state, label: None });
         pen.text(x + 4.0, tab.top(), label, SM, Weight::BOLD, kit.tab.style(state).text);
@@ -125,22 +131,37 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     // From the end: the fold, a separator, ">_", "+ project", the order.
     let mut end = header.right() - 12.0;
     let glyph = |end: &mut f32, s: &str, size: f32, color: Color32, least: f32| {
+        let slot = painter.add(egui::Shape::Noop);
         let w = (pen.width(s, size, Weight::REGULAR) + 8.0).max(least);
         *end -= w;
         let tw = pen.width(s, size, Weight::REGULAR);
         pen.text(*end + (w - tw) / 2.0, mid - line(size) / 2.0, s, size, Weight::REGULAR, color);
         let rect = Rect::from_min_size(pos2(*end, mid - 10.0), vec2(w, 20.0));
         *end -= 4.0;
-        rect
+        crate::row::button(ui, &painter, slot, rect, s)
     };
     // ‹ folds the sessions to their strip.
-    let fold = glyph(&mut end, "‹", 16.0, p.muted, 20.0);
-    if ui.interact(fold, ui.id().with("fold"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+    if glyph(&mut end, "‹", 16.0, p.muted, 20.0).clicked() {
         app.fold_area(egui_pop::model::panels::Area::StartSide, true);
     }
     end -= 4.0;
     painter.vline(end - 0.5, egui::Rangef::new(mid - 6.0, mid + 6.0), egui::Stroke::new(1.0, p.border));
     end -= 1.0 + 4.0 + 4.0;
+    // Workspaces: "+ workspace", then the list, or what an empty one says.
+    if workspaces {
+        let x = rect.left() + 12.0;
+        let top = header.bottom() + 8.0;
+        let slot = painter.add(egui::Shape::Noop);
+        let w = pen.text(x + 4.0, top, "+ workspace", SM, Weight::REGULAR, p.accent);
+        crate::row::button(ui, &painter, slot, Rect::from_min_size(pos2(x, top), vec2(w + 8.0, line(SM))), "new-workspace");
+        let said = "No workspace yet: a workspace keeps some groups, and how each of their sessions runs.";
+        let galley = painter.layout(said.into(), crate::row::font(SM, Weight::REGULAR), p.muted, rect.width() - 24.0);
+        for (i, row) in galley.rows.iter().enumerate() {
+            let text: String = row.row.glyphs.iter().map(|g| g.chr).collect();
+            pen.text(x, top + line(SM) + 8.0 + i as f32 * line(SM), text.trim_end(), SM, Weight::REGULAR, p.muted);
+        }
+        return;
+    }
     glyph(&mut end, ">_", XS, p.accent, 0.0);
     glyph(&mut end, "+ project", XS, p.accent, 0.0);
     glyph(&mut end, "⇅", XS, p.accent, 0.0);
@@ -217,10 +238,13 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
     let mut end = rect.right() - 12.0;
     if project.on_board {
         let link = |end: &mut f32, s: &str, color: Color32, least: f32| {
+            let slot = pen.painter.add(egui::Shape::Noop);
             let tw = pen.width(s, XS, Weight::REGULAR);
             let w = (tw + 8.0).max(least);
             *end -= w;
             pen.text(*end + (w - tw) / 2.0, mid - line(XS) / 2.0, s, XS, Weight::REGULAR, color);
+            let rect = Rect::from_min_size(pos2(*end, mid - 10.0), vec2(w, 20.0));
+            crate::row::button(ui, pen.painter, slot, rect, &format!("{}-{s}", project.name));
             *end -= 4.0;
         };
         link(&mut end, ">_", p.accent, 0.0);

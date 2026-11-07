@@ -27,6 +27,7 @@ impl Plugin for Shell {
     }
 
     fn connect(&mut self, ctx: &mut Ctx<'_>) -> Result<(), PluginError> {
+        crate::menu::declare(ctx)?;
         let scene = std::rc::Rc::new(self.scene.take().unwrap_or_default());
         let user = if scene.user.is_empty() {
             "you".to_string()
@@ -103,11 +104,16 @@ impl Plugin for Shell {
             Block::replace(
                 egui_pop::api::frame::BLOCK_MENU,
                 BlockId::from_static("tvty.app-icon"),
-                |ui, _| {
-                    // GPUI's: 20 points, from 16 inside the window.
+                |ui, app| {
+                    // GPUI's: 20 points, from 16 inside the window; a
+                    // click opens tvty's menu under it.
+                    crate::menu::no_icons(app);
                     ui.add_space(8.0);
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::hover());
+                    let (rect, response) =
+                        ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+                    if response.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+                        crate::menu::open(app, rect.expand(4.0));
+                    }
                     if let Some(icon) = crate::icons::app() {
                         icon.paint(ui.painter(), rect, egui::Color32::WHITE);
                     }
@@ -147,7 +153,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     // › folds the panel to its strip.
     let slot = under();
     let fold = row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
-    if button(ui, painter, slot, fold.expand(4.0), "fold").clicked() {
+    if crate::row::button(ui, painter, slot, fold.expand(4.0), "fold").clicked() {
         app.fold_area(egui_pop::model::panels::Area::EndSide, true);
     }
     row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
@@ -159,7 +165,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     }
     let slot = under();
     let full = row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
-    if button(ui, painter, slot, full.expand(4.0), "full-list").clicked() {
+    if crate::row::button(ui, painter, slot, full.expand(4.0), "full-list").clicked() {
         crate::fulllist::set_open(ui.ctx(), true);
     }
     // The separator: 1 wide, 4 on each side, 12 high.
@@ -173,7 +179,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
         .with_min_y(mid - 10.5)
         .with_max_y(mid + 10.5);
     let slot = under();
-    button(ui, painter, slot, chip, "new");
+    crate::row::button(ui, painter, slot, chip, "new");
     painter.rect_stroke(chip, 4.0, line, egui::StrokeKind::Inside);
     painter.galley(
         egui::pos2(chip.left() + 7.0, mid - label.size().y / 2.0),
@@ -182,21 +188,11 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     );
     let slot = under();
     let megaphone = row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
-    if button(ui, painter, slot, megaphone.expand(4.0), "message-all").clicked() {
+    if crate::row::button(ui, painter, slot, megaphone.expand(4.0), "message-all").clicked() {
         crate::message::toggled(ui.ctx());
     }
 }
 
-/// A header button: a hand over it, and under the pointer the hover's fill
-/// in the place kept for it (`slot`).
-fn button(ui: &egui::Ui, painter: &egui::Painter, slot: egui::layers::ShapeIdx, rect: egui::Rect, name: &str) -> egui::Response {
-    let response = ui.interact(rect, ui.id().with(("header", name)), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
-    if response.hovered() {
-        let fill = Tokens::of(ui.ctx()).surface.hover;
-        painter.set(slot, egui::Shape::rect_filled(rect, 4.0, fill));
-    }
-    response
-}
 
 /// The title bar's items before the window buttons, as the GPUI build has
 /// them: the ticket to go to (a field), the theme, the language, a message
@@ -226,18 +222,26 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     let mut row = Row::new(&painter, rect, 0.0, rect.center().y);
     // Its own 8 to the buttons are the title bar's gap before them.
     row.text(From::End, user, font(14.0, regular), muted, 0.0);
-    row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
+    let under = || painter.add(egui::Shape::Noop);
+    // ⚙: the settings.
+    let slot = under();
+    let cog = row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
+    if crate::row::button(ui, &painter, slot, cog.expand(4.0), "settings").clicked() {
+        crate::settings::set_open(ui.ctx(), true);
+    }
     // The megaphone: the message to every agent, a popover.
+    let slot = under();
     let megaphone = row.icon(From::End, crate::icons::message_all(), muted, 4.0);
-    if ui.interact(megaphone, ui.id().with("message-all"), egui::Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
+    if crate::row::button(ui, &painter, slot, megaphone.shrink2(egui::vec2(2.0, 0.0)), "message-all").clicked() {
         crate::message::toggled(ui.ctx());
     }
-    row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
+    let slot = under();
+    let language = row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
+    crate::row::button(ui, &painter, slot, language.expand(4.0), "language");
     // The theme: a click lists the themes, egui-pop's own after tvty's.
+    let slot = under();
     let chip = row.glyph(From::End, &label, font(12.0, regular), muted, 8.0);
-    let response = ui
-        .interact(chip.expand2(egui::vec2(4.0, 4.0)), ui.id().with("theme"), egui::Sense::click())
-        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    let response = crate::row::button(ui, &painter, slot, chip.expand2(egui::vec2(4.0, 4.0)), "theme");
     egui::Popup::menu(&response).show(|ui| {
         let mut names: Vec<String> = theme.themes().names().map(str::to_string).collect();
         names.sort_by_key(|n| (n != crate::THEME, n.clone()));
