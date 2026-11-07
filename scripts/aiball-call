@@ -4,8 +4,8 @@
     scripts/aiball-call [--sock PATH] [--as CONSUMER] METHOD [PARAMS_JSON]
 
 The bus is JSON-RPC over a WebSocket on `/bus`, through aiball's local
-socket ($AIBALL_SOCK, else --sock). Only the standard library: a test
-needs nothing installed. Prints the result, or the error and exits 1.
+socket: --sock, else $AIBALL_SOCK, else the fake aiball's. Only the
+standard library: a test needs nothing installed. Prints the result, or the error and exits 1.
 
 Aimed at the fake aiball (scripts/fake-aiball): its gestures act as the
 user. On the user's own board, keep to reads (session.list, consumer.list…).
@@ -22,7 +22,10 @@ from aiballbus import Bus, BusError  # noqa: E402
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sock", default=os.environ.get("AIBALL_SOCK") or os.path.expanduser("~/.local/share/aiball/sock"))
+    # The fake aiball unless told otherwise: a call that forgot its socket
+    # must never land on the user's own board.
+    fake = Path(__file__).resolve().parent.parent / "dev/fake-aiball/home/sock"
+    ap.add_argument("--sock", default=os.environ.get("AIBALL_SOCK") or str(fake))
     ap.add_argument("--as", dest="consumer", default="david")
     ap.add_argument("method")
     ap.add_argument("params", nargs="?", default="{}")
@@ -32,7 +35,7 @@ def main() -> int:
     except BusError as e:
         print(json.dumps(e.error, indent=1), file=sys.stderr)
         return 1
-    except ConnectionError as e:
+    except (ConnectionError, FileNotFoundError) as e:
         print(e, file=sys.stderr)
         return 1
     print(json.dumps(result, indent=1))

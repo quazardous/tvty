@@ -169,7 +169,8 @@ by pid, never by a kill by pattern.
 
 To act on it as aiball's clients do, `scripts/aiball-call METHOD [PARAMS]`
 makes one call on its bus (standard library only), as the user or, with
-`--as`, as an agent. The seeds (`scripts/fake-aiball-seed.py`,
+`--as`, as an agent. It speaks to the fake aiball unless `--sock` or
+`AIBALL_SOCK` names another. The seeds (`scripts/fake-aiball-seed.py`,
 `scripts/fake-aiball-load.py`, `demo/seed.py`) speak the bus too, through
 `scripts/aiballbus.py`: the identity is the connection's, so a seed opens
 one connection per consumer it acts as; only uploads stay HTTP. A loop on the host, running fake-claude, then held ten
