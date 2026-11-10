@@ -12,8 +12,8 @@
 //! how much of the interface asks for its words here rather than writing
 //! them in the code (the CI prints it too).
 //!
-//! `TVTY_LANG` (en, fr, es, de) overrides the setting: the tests pin English with
-//! it, whatever the machine speaks.
+//! `TVTY_LANG` (en, fr, es, de, pt-BR) overrides the setting: the tests pin
+//! English with it, whatever the machine speaks.
 
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -23,7 +23,13 @@ use fluent_bundle::{FluentArgs, FluentResource};
 
 /// The languages tvty speaks: their code (their folder under
 /// `assets/locales/`) and their name in themselves.
-pub const LANGS: &[(&str, &str)] = &[("en", "English"), ("fr", "Français"), ("es", "Español"), ("de", "Deutsch")];
+pub const LANGS: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("fr", "Français"),
+    ("es", "Español"),
+    ("de", "Deutsch"),
+    ("pt-BR", "Português (Brasil)"),
+];
 
 /// The words, built in: `<lang>/<surface>.ftl`.
 #[derive(rust_embed::Embed)]
@@ -72,11 +78,17 @@ fn bundles() -> &'static [FluentBundle<FluentResource>] {
     })
 }
 
-/// The language a locale names ("fr_FR.UTF-8", "fr-FR", "fr": its first two
-/// letters). English when tvty does not speak it.
+/// The language a locale names ("fr_FR.UTF-8", "pt-BR", "pt": the whole
+/// code, then its language alone — "pt-PT" names pt-BR). English when tvty
+/// does not speak it.
 fn spoken(locale: &str) -> usize {
-    let code = locale.get(..2).unwrap_or("").to_ascii_lowercase();
-    LANGS.iter().position(|(c, _)| *c == code).unwrap_or(0)
+    let name = locale.split(['.', '@']).next().unwrap_or("").replace('_', "-").to_ascii_lowercase();
+    let language = name.split('-').next().unwrap_or("");
+    LANGS
+        .iter()
+        .position(|(c, _)| c.to_ascii_lowercase() == name)
+        .or_else(|| LANGS.iter().position(|(c, _)| c.to_ascii_lowercase().split('-').next() == Some(language)))
+        .unwrap_or(0)
 }
 
 /// The language a choice names: the setting's (`None`: the system's), unless
@@ -602,6 +614,8 @@ mod tests {
         assert_eq!(LANGS[spoken("fr_FR.UTF-8")].0, "fr");
         assert_eq!(LANGS[spoken("es-AR")].0, "es");
         assert_eq!(LANGS[spoken("de_AT.UTF-8")].0, "de");
+        assert_eq!(LANGS[spoken("pt_BR.UTF-8")].0, "pt-BR");
+        assert_eq!(LANGS[spoken("pt-PT")].0, "pt-BR");
         assert_eq!(LANGS[spoken("it")].0, "en");
     }
 

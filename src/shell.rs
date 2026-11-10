@@ -5801,7 +5801,7 @@ impl Render for Shell {
                         .flex_none()
                         .mr_2(),
                     )
-                    // The language spoken, by its two letters; a click lists them all.
+                    // The language spoken, by its code; a click lists them all.
                     .child(crate::tips::target(
                         "title.language",
                         press_kept(buttons::icon(
