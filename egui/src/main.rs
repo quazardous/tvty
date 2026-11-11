@@ -24,6 +24,12 @@ mod settings;
 mod shell;
 mod sidebar;
 
+/// Whether section stacks fill their panel (egui-pop's default) rather than
+/// size by their content as GPUI's do: `TVTY_EGUI_FILL=1`, to compare.
+pub(crate) fn sections_fill() -> bool {
+    std::env::var_os("TVTY_EGUI_FILL").is_some_and(|v| v == "1")
+}
+
 fn main() -> eframe::Result {
     let scene = scene::Scene::load();
     let dir = std::env::var_os("TVTY_EGUI_STATE")

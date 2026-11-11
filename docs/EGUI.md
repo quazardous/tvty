@@ -145,5 +145,6 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | After a window move by the title bar, nothing hovers until a click | egui-pop#270 | open |
 | Shell panels: no least width set while running, nor taken from the content | egui-pop#271 | open |
 | Tooltips: no kit component (placement, padding, radius, size) | egui-pop#272 | open |
+| Sections sized by content: title drags stop once the sections above are at their content's height (`TVTY_EGUI_FILL=1` fills, to compare) | egui-pop#332 | open |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
 | Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |
