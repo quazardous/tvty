@@ -23,14 +23,14 @@ const SHOWN: &str = "tvty.ticket.shown";
 /// The ticket the panel shows: the one clicked, else at start
 /// `TVTY_EGUI_TICKET` (to compare).
 pub fn shown(ctx: &egui::Context) -> Option<u64> {
-    let id = egui::Id::new(SHOWN);
+    let id = egui::Id::unique(SHOWN);
     ctx.data(|d| d.get_temp::<Option<u64>>(id))
         .unwrap_or_else(|| std::env::var("TVTY_EGUI_TICKET").ok().and_then(|v| v.parse().ok()))
 }
 
 /// Opens a ticket in the panel, or goes back to the list (`None`).
 pub fn set_shown(ctx: &egui::Context, ticket: Option<u64>) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(SHOWN), ticket));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(SHOWN), ticket));
 }
 
 /// One entry of the thread: the ticket's body, then each comment.
@@ -73,7 +73,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
     let mut y = rect.top() + 8.0;
     let w = pen.text(left + 4.0, y, "← Tickets", SM, Weight::REGULAR, p.accent);
     let back = Rect::from_min_size(pos2(left, y), vec2(w + 8.0, line(SM)));
-    if ui.interact(back, ui.id().with("back"), Sense::click()).clicked() {
+    if ui.interact(back, ui.scope_id().with("back"), Sense::click()).clicked() {
         set_shown(ui.ctx(), None);
     }
     let more = "⤢ more";

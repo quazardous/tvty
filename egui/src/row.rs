@@ -110,7 +110,7 @@ impl<'a> Row<'a> {
 pub fn button(ui: &egui_pop::egui::Ui, painter: &Painter, slot: egui_pop::egui::layers::ShapeIdx, rect: Rect, name: &str) -> egui_pop::egui::Response {
     use egui_pop::egui;
     let response = ui
-        .interact(rect, ui.id().with(("tvty.button", name)), egui::Sense::click())
+        .interact(rect, ui.scope_id().with(("tvty.button", name)), egui::Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand);
     if response.hovered() {
         let fill = egui_pop::prelude::Tokens::of(ui.ctx()).surface.hover;

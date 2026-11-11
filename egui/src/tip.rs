@@ -27,11 +27,11 @@ const TIPS: [(&str, &str); 5] = [
 
 /// The tip shown, or `None` once the card is closed.
 fn current(ctx: &egui::Context) -> Option<usize> {
-    ctx.data(|d| d.get_temp::<Option<usize>>(egui::Id::new("tvty.tip.shown"))).unwrap_or(Some(0))
+    ctx.data(|d| d.get_temp::<Option<usize>>(egui::Id::unique("tvty.tip.shown"))).unwrap_or(Some(0))
 }
 
 fn set_current(ctx: &egui::Context, tip: Option<usize>) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("tvty.tip.shown"), tip));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.tip.shown"), tip));
 }
 
 pub fn show(ctx: &egui::Context) {
@@ -43,7 +43,7 @@ pub fn show(ctx: &egui::Context) {
     let screen = ctx.content_rect();
     // 12 from the window's start edge, 44 from its bottom, inside its outline.
     let corner = pos2(screen.left() + 13.0, screen.bottom() - 45.0);
-    egui::Area::new(egui::Id::new("tvty.tip"))
+    egui::Area::new(egui::Id::unique("tvty.tip"))
         .pivot(Align2::LEFT_BOTTOM)
         .fixed_pos(corner)
         .order(egui::Order::Foreground)
@@ -78,7 +78,7 @@ fn head(ui: &mut egui::Ui, width: f32, violet: Color32, muted: Color32) -> bool 
 
 /// A click on `rect`, the pointer a hand over it.
 fn clicked(ui: &mut egui::Ui, rect: egui::Rect, name: &str) -> bool {
-    ui.interact(rect, ui.id().with(("tvty.tip", name)), egui::Sense::click())
+    ui.interact(rect, ui.scope_id().with(("tvty.tip", name)), egui::Sense::click())
         .on_hover_cursor(egui::CursorIcon::PointingHand)
         .clicked()
 }

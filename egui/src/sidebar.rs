@@ -9,6 +9,7 @@
 //! components (`tab`, `field`, `list-row`, `indicator-badge`, `pill`);
 //! the sections' headers are painted: the kit has no such component.
 
+use egui_pop::core::tooltip::TooltipExt as _;
 use std::collections::BTreeMap;
 
 use egui_pop::core::sections::{Section, Sections};
@@ -112,14 +113,14 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     let mid = header.top() + (HEADER - 1.0) / 2.0;
     let mut x = header.left() + 12.0;
     // Sessions or Workspaces: the tab chosen, kept for the session.
-    let tab_id = egui::Id::new("tvty.sidebar.tab");
+    let tab_id = egui::Id::unique("tvty.sidebar.tab");
     let workspaces = ui.data(|d| d.get_temp::<bool>(tab_id)).unwrap_or(false);
     for (label, on) in [("Sessions", !workspaces), ("Workspaces", workspaces)] {
         // A tab: 4 from its sides, its text and the 2 of its underline.
         let w = pen.width(label, SM, Weight::REGULAR) + 8.0;
         let h = line(SM) + 2.0;
         let tab = Rect::from_min_size(pos2(x, mid - h / 2.0), vec2(w, h));
-        let response = ui.interact(tab, ui.id().with(("tab", label)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        let response = ui.interact(tab, ui.scope_id().with(("tab", label)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         if response.clicked() {
             ui.data_mut(|d| d.insert_temp(tab_id, label == "Workspaces"));
         }
@@ -141,7 +142,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
         crate::row::button(ui, &painter, slot, rect, s)
     };
     // ‹ folds the sessions to their strip.
-    if glyph(&mut end, "‹", 16.0, p.muted, 20.0).on_hover_text("Fold the sessions' list").clicked() {
+    if glyph(&mut end, "‹", 16.0, p.muted, 20.0).tip("Fold the sessions' list").clicked() {
         app.fold_area(egui_pop::model::panels::Area::StartSide, true);
     }
     end -= 4.0;
@@ -174,14 +175,14 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
             "+ project" => "a folder made an aiball project (aiball init), then its first session",
             _ => "alphabetical; a click: your order (drag a project)",
         };
-        glyph(&mut end, s, XS, p.accent, 0.0).on_hover_text(tip);
+        glyph(&mut end, s, XS, p.accent, 0.0).tip(tip);
     }
 
     // ── The filter: a small field, 8 from the sides, 6 above and under.
     let filter = Rect::from_min_size(pos2(rect.left(), header.bottom()), vec2(rect.width(), 6.0 + 24.0 + 6.0 + 1.0));
     painter.hline(filter.x_range(), filter.bottom() - 0.5, egui::Stroke::new(1.0, p.border));
     let field = Rect::from_min_size(pos2(rect.left() + 8.0, filter.top() + 6.0), vec2(rect.width() - 16.0, 24.0));
-    let response = ui.interact(field, ui.id().with("filter"), Sense::click());
+    let response = ui.interact(field, ui.scope_id().with("filter"), Sense::click());
     kit.field.paint(&cx, &Part { rect: field, room: field, state: State::from_response(&response), label: None });
     pen.text(field.left() + 8.0, field.center().y - line(SM) / 2.0, "Filter…  ctrl+shift+f", SM, Weight::REGULAR, p.muted);
 
@@ -289,7 +290,7 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
 #[allow(clippy::too_many_arguments)]
 fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, session: &Session<'_>, critical: Option<&str>) -> f32 {
     let row = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), if session.shell { SHELL } else { ROW }));
-    let response = ui.interact(row, ui.id().with(("session", &session.label)), Sense::click());
+    let response = ui.interact(row, ui.scope_id().with(("session", &session.label)), Sense::click());
     kit.list_row.paint(cx, &Part { rect: row, room: row, state: State::from_response(&response), label: None });
     let online = session.agent.and_then(|a| a.present).unwrap_or(false);
     // The loop's state: working, starting, idle; nothing offline.

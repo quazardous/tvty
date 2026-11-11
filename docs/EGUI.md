@@ -92,9 +92,9 @@ and a tooltip on GPUI's capture. `section-band.height` is 27 for GPUI's
 tvty's menu (its icon, F1): egui-pop's menus, one command per entry, set
 by the theme to GPUI's rows (31 apart, 12 from the edge), width (336),
 separators (edge to edge) and no icon gutter; the notes ("sessions
-kept", "the board") and the ↗ of links are egui-pop's. 11.1 % of the
-menu's pixels: the keys and notes are in the labels' size (14) where
-GPUI draws them at 12 (egui-pop#269).
+kept", "the board") and the ↗ of links are egui-pop's. 9.6 % of the
+menu's pixels: keys and notes at GPUI's 12 (`menu-item.key-font-size`);
+the ↗ stays at the rows' size (egui-pop#351).
 
 A ticket opened in the panel (a pending plan with options, the reply
 box), 11.1 % of the panel's pixels: drawn with the kit's `button`,
@@ -140,11 +140,13 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | Sections always fill the panel: folded bands go to its bottom | egui-pop#252 | done: `Sections::fill(false)` |
 | A section's count is always at the band's end | egui-pop#253 | done: `section-count.placement: after-title` |
 | A section's scroll bar keeps the kit's default colours | egui-pop#254 | done: section bars in the `scroll-bar` scope |
-| Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | open |
-| Menus: keys and notes at the labels' size; no token for a smaller one | egui-pop#269 | open |
-| After a window move by the title bar, nothing hovers until a click | egui-pop#270 | open |
-| Shell panels: no least width set while running, nor taken from the content | egui-pop#271 | open |
-| Tooltips: no kit component (placement, padding, radius, size) | egui-pop#272 | open |
-| Sections sized by content: title drags stop once the sections above are at their content's height (`TVTY_EGUI_FILL=1` fills, to compare) | egui-pop#332 | open |
+| Title bar buttons and section drags respond only sometimes (GNOME, Wayland) | egui-pop#256 | done: the stale press of egui-pop#270, checked on mutter |
+| Menus: keys and notes at the labels' size; no token for a smaller one | egui-pop#269 | done: `menu-item.key-font-size` |
+| After a window move by the title bar, nothing hovers until a click | egui-pop#270 | done: hovers right after a move, checked in labwc |
+| Shell panels: no least width set while running, nor taken from the content | egui-pop#271 | done: `AppHandle::set_shell_panel_min_size`; not used here yet |
+| Tooltips: no kit component (placement, padding, radius, size) | egui-pop#272 | done: `tooltip`, `TooltipExt::tip`; GPUI's frame, padding and text |
+| Sections sized by content: title drags stop once the sections above are at their content's height (`TVTY_EGUI_FILL=1` fills, to compare) | egui-pop#332 | done: egui_stack 0.25.7 |
+| Tooltips at the pointer: no horizontal offset; at the end edge pushed back under the pointer instead of flipping | egui-pop#350 | open |
+| Menus: the link mark ↗ keeps the rows' size when keys are smaller | egui-pop#351 | open |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
 | Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |

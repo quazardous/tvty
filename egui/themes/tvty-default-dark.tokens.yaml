@@ -664,5 +664,21 @@ menu-item:
   padding-x: {$type: "dimension", $value: {value: 4, unit: "px"}}
   width: {$type: "dimension", $value: {value: 320, unit: "px"}}
   separator-inset: {$type: "dimension", $value: {value: 0, unit: "px"}}
+  key-font-size: {$type: "dimension", $value: {value: 12, unit: "px"}}
 menu-item-gutter:
   width: {$type: "dimension", $value: {value: 0, unit: "px"}}
+# tvty's tooltips, as GPUI draws them: under the pointer, 13 right and 13
+# down from it, 29 high with its line, text 8 from the line, the menu's
+# frame (#0a0a0a, a #262626 line, radius 6).
+tooltip:
+  placement: {$type: "string", $value: "pointer"}
+  offset: {$type: "dimension", $value: {value: 12, unit: "px"}}
+  font-size: {$type: "dimension", $value: {value: 14, unit: "px"}}
+  padding-x: {$type: "dimension", $value: {value: 8, unit: "px"}}
+  padding-y: {$type: "dimension", $value: {value: 5, unit: "px"}}
+  rest:
+    fill: {$type: "color", $value: "#0a0a0a"}
+    text: {$type: "color", $value: "{text.default}"}
+    border-color: {$type: "color", $value: "{border.default}"}
+    border-width: {$type: "dimension", $value: {value: 1, unit: "px"}}
+    radius: {$type: "dimension", $value: {value: 6, unit: "px"}}

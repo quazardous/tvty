@@ -18,16 +18,16 @@ const WIDTH: f32 = 482.0;
 const DEFAULT: &str = "I'll be back. Until then, stabilise: finish or park your current step, commit what is done, and wait.";
 
 pub fn is_open(ctx: &egui::Context) -> bool {
-    ctx.data(|d| d.get_temp::<bool>(egui::Id::new(OPEN))).unwrap_or(false)
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::unique(OPEN))).unwrap_or(false)
 }
 
 pub fn toggle(ctx: &egui::Context) {
     let open = is_open(ctx);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(OPEN), !open));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(OPEN), !open));
 }
 
 fn close(ctx: &egui::Context) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(OPEN), false));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(OPEN), false));
 }
 
 /// Shows the popover while it is open; Escape or a click outside closes it.
@@ -41,7 +41,7 @@ pub fn show(ctx: &egui::Context) {
     let screen = ctx.content_rect();
     // 9 from the window's end, its top line 61 down: under the title bar.
     let at = pos2(screen.right() - 9.0, screen.top() + 61.0);
-    let area = egui::Area::new(egui::Id::new("tvty.message"))
+    let area = egui::Area::new(egui::Id::unique("tvty.message"))
         .pivot(Align2::RIGHT_TOP)
         .fixed_pos(at)
         .order(egui::Order::Foreground)
@@ -70,7 +70,7 @@ pub fn show(ctx: &egui::Context) {
                 y += line(XS) + 8.0;
                 // The text: a field 78 high, focused, its first line shown.
                 let field = Rect::from_min_size(pos2(left - 1.0, y), vec2(inner + 2.0, 78.0));
-                let id = ui.id().with("text");
+                let id = ui.scope_id().with("text");
                 let mut text = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default();
                 kit.field.paint(&cx, &Part { rect: field, room: field, state: State::FOCUS, label: None });
                 let edit = egui::TextEdit::multiline(&mut text)
@@ -92,7 +92,7 @@ pub fn show(ctx: &egui::Context) {
                 for (label, tone) in [("Send & hold", Some(Tone::Danger)), ("Send", None), ("Release holds", None)] {
                     let w = pen.width(label, SM, Weight::REGULAR) + 16.0;
                     let r = Rect::from_min_max(pos2(end - w, y), pos2(end, y + 24.0));
-                    let hit = ui.interact(r, ui.id().with(label), egui::Sense::click());
+                    let hit = ui.interact(r, ui.scope_id().with(label), egui::Sense::click());
                     let mut state = State::from_response(&hit);
                     if let Some(tone) = tone {
                         state = state.toned(tone);
@@ -111,16 +111,16 @@ pub fn show(ctx: &egui::Context) {
         });
     // Escape, or a click outside, closes it; not the megaphone's own click,
     // which toggles it.
-    let toggled = ctx.data(|d| d.get_temp::<bool>(egui::Id::new("tvty.message.toggled"))).unwrap_or(false);
+    let toggled = ctx.data(|d| d.get_temp::<bool>(egui::Id::unique("tvty.message.toggled"))).unwrap_or(false);
     if ctx.input(|i| i.key_pressed(egui::Key::Escape)) || (area.response.clicked_elsewhere() && !toggled) {
         close(ctx);
     }
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("tvty.message.toggled"), false));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.message.toggled"), false));
 }
 
 /// The megaphone was clicked this pass: its own press must not close what
 /// it opens.
 pub fn toggled(ctx: &egui::Context) {
     toggle(ctx);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new("tvty.message.toggled"), true));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.message.toggled"), true));
 }

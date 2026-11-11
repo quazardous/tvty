@@ -1,6 +1,7 @@
 //! The shell: the title bar's own part, the sessions on the start side,
 //! the terminal's place in the centre, the tickets on the end side.
 
+use egui_pop::core::tooltip::TooltipExt as _;
 use egui_pop::egui;
 use egui_pop::prelude::*;
 
@@ -110,7 +111,7 @@ impl Plugin for Shell {
                     ui.add_space(8.0);
                     let (rect, response) =
                         ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
-                    if response.on_hover_cursor(egui::CursorIcon::PointingHand).on_hover_text("Menu: about, help, restart, quit · F1").clicked() {
+                    if response.on_hover_cursor(egui::CursorIcon::PointingHand).tip("Menu: about, help, restart, quit · F1").clicked() {
                         crate::menu::open(app);
                     }
                     if let Some(icon) = crate::icons::app() {
@@ -152,7 +153,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     // › folds the panel to its strip.
     let slot = under();
     let fold = row.glyph(From::Start, "›", font(14.0, regular), muted, 8.0);
-    if crate::row::button(ui, painter, slot, fold.expand(4.0), "fold").on_hover_text("Fold the ticket panel").clicked() {
+    if crate::row::button(ui, painter, slot, fold.expand(4.0), "fold").tip("Fold the ticket panel").clicked() {
         app.fold_area(egui_pop::model::panels::Area::EndSide, true);
     }
     row.icon(From::Start, crate::icons::pinned(), t.accent.default, 8.0);
@@ -164,7 +165,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     }
     let slot = under();
     let full = row.glyph(From::End, "⤢", font(14.0, regular), muted, 0.0);
-    if crate::row::button(ui, painter, slot, full.expand(4.0), "full-list").on_hover_text("The ticket list, full screen · ctrl+shift+space").clicked() {
+    if crate::row::button(ui, painter, slot, full.expand(4.0), "full-list").tip("The ticket list, full screen · ctrl+shift+space").clicked() {
         crate::fulllist::set_open(ui.ctx(), true);
     }
     // The separator: 1 wide, 4 on each side, 12 high.
@@ -178,7 +179,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
         .with_min_y(mid - 10.5)
         .with_max_y(mid + 10.5);
     let slot = under();
-    crate::row::button(ui, painter, slot, chip, "new").on_hover_text("A new ticket · Ctrl+Shift+N");
+    crate::row::button(ui, painter, slot, chip, "new").tip("A new ticket · Ctrl+Shift+N");
     painter.rect_stroke(chip, 4.0, line, egui::StrokeKind::Inside);
     painter.galley(
         egui::pos2(chip.left() + 7.0, mid - label.size().y / 2.0),
@@ -187,7 +188,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     );
     let slot = under();
     let megaphone = row.icon(From::End, crate::icons::megaphone(), muted, 8.0);
-    if crate::row::button(ui, painter, slot, megaphone.expand(4.0), "message-all").on_hover_text("The project's standing instruction and wake focus").clicked() {
+    if crate::row::button(ui, painter, slot, megaphone.expand(4.0), "message-all").tip("The project's standing instruction and wake focus").clicked() {
         crate::message::toggled(ui.ctx());
     }
 }
@@ -225,13 +226,13 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     // ⚙: the settings.
     let slot = under();
     let cog = row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
-    if crate::row::button(ui, &painter, slot, cog.expand(4.0), "settings").on_hover_text("Settings · Ctrl+,").clicked() {
+    if crate::row::button(ui, &painter, slot, cog.expand(4.0), "settings").tip("Settings · Ctrl+,").clicked() {
         crate::settings::set_open(ui.ctx(), true);
     }
     // The megaphone: the message to every agent, a popover.
     let slot = under();
     let megaphone = row.icon(From::End, crate::icons::message_all(), muted, 4.0);
-    if crate::row::button(ui, &painter, slot, megaphone.shrink2(egui::vec2(2.0, 0.0)), "message-all").on_hover_text("A message to every running agent: send, send & hold, release holds").clicked() {
+    if crate::row::button(ui, &painter, slot, megaphone.shrink2(egui::vec2(2.0, 0.0)), "message-all").tip("A message to every running agent: send, send & hold, release holds").clicked() {
         crate::message::toggled(ui.ctx());
     }
     let slot = under();
@@ -240,7 +241,7 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     // The theme: a click lists the themes, egui-pop's own after tvty's.
     let slot = under();
     let chip = row.glyph(From::End, &label, font(12.0, regular), muted, 8.0);
-    let response = crate::row::button(ui, &painter, slot, chip.expand2(egui::vec2(4.0, 4.0)), "theme").on_hover_text("The colour themes — the next one");
+    let response = crate::row::button(ui, &painter, slot, chip.expand2(egui::vec2(4.0, 4.0)), "theme").tip("The colour themes — the next one");
     egui::Popup::menu(&response).show(|ui| {
         let mut names: Vec<String> = theme.themes().names().map(str::to_string).collect();
         names.sort_by_key(|n| (n != crate::THEME, n.clone()));
@@ -256,7 +257,7 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     // a number and Enter open it in the panel.
     let field = row.room(From::End, 96.0, 8.0);
     painter.rect_filled(field, 6.0, t.surface.hover);
-    let id = ui.id().with("goto");
+    let id = ui.scope_id().with("goto");
     let mut text = ui.data(|d| d.get_temp::<String>(id)).unwrap_or_default();
     let edit = egui::TextEdit::singleline(&mut text)
         .frame(egui::Frame::NONE)
@@ -264,7 +265,7 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
         .font(font(12.0, regular))
         .text_color(t.text.default)
         .margin(egui::vec2(4.0, 2.0));
-    let output = ui.put(field, edit).on_hover_text("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g");
+    let output = ui.put(field, edit).tip("Go to a ticket: its number or a comment's #C. link, Enter · ctrl+shift+g");
     if output.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
         if let Ok(n) = text.trim().trim_start_matches('#').parse::<u64>() {
             crate::detail::set_shown(ui.ctx(), Some(n));

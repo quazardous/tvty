@@ -40,12 +40,12 @@ const OPEN: &str = "tvty.full-list.open";
 
 /// Open until closed; at start, when `TVTY_EGUI_FULL` is set (to compare).
 pub fn is_open(ctx: &egui::Context) -> bool {
-    ctx.data(|d| d.get_temp::<bool>(egui::Id::new(OPEN)))
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::unique(OPEN)))
         .unwrap_or_else(|| std::env::var_os("TVTY_EGUI_FULL").is_some())
 }
 
 pub fn set_open(ctx: &egui::Context, open: bool) {
-    ctx.data_mut(|d| d.insert_temp(egui::Id::new(OPEN), open));
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(OPEN), open));
 }
 
 /// The colours of the GPUI build's palette the list draws with.
@@ -161,7 +161,7 @@ pub fn show(ctx: &egui::Context, scene: &Scene) {
     let screen = ctx.content_rect();
     // Inside the window's outline, under the title bar and its line.
     let rect = Rect::from_min_max(pos2(screen.left() + 1.0, screen.top() + 41.0), pos2(screen.right() - 1.0, screen.bottom() - 1.0));
-    egui::Area::new(egui::Id::new("tvty.full-list"))
+    egui::Area::new(egui::Id::unique("tvty.full-list"))
         .fixed_pos(rect.min)
         .order(egui::Order::Foreground)
         .show(ctx, |ui| {
@@ -265,7 +265,7 @@ fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: R
     let choice = |ui: &mut egui::Ui, y: &mut f32, label: &str, chosen: bool, trailing: &dyn Fn(f32, f32) -> f32| {
         let h = line(SM) + 8.0;
         let rect = Rect::from_min_size(pos2(inner.left(), *y), vec2(inner.width(), h));
-        let response = ui.interact(rect, ui.id().with(("choice", label)), Sense::click());
+        let response = ui.interact(rect, ui.scope_id().with(("choice", label)), Sense::click());
         let state = State::from_response(&response).with(State::SELECTED, chosen);
         kit.selectable_row.paint(&cx, &Part { rect, room: rect, state, label: None });
         let text = kit.selectable_row.style(state).text;
@@ -317,7 +317,7 @@ fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: R
     for (label, on) in [("Open", true), ("All", false), ("Unread", false)] {
         let w = pen.width(label, XS, Weight::REGULAR) + 12.0 + 2.0;
         let rect = Rect::from_min_size(pos2(x, y), vec2(w, h));
-        let response = ui.interact(rect, ui.id().with(("filter", label)), Sense::click());
+        let response = ui.interact(rect, ui.scope_id().with(("filter", label)), Sense::click());
         let state = State::from_response(&response).with(State::SELECTED, on);
         kit.toggle_chip.paint(&cx, &Part { rect, room: rect, state, label: None });
         let color = if on { kit.toggle_chip.style(state).text } else { p.muted };
@@ -328,7 +328,7 @@ fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: R
     y += h + 2.0 + 4.0;
     // The search field: 32 high, the width of the column.
     let rect = Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), 32.0));
-    let response = ui.interact(rect, ui.id().with("search"), Sense::click());
+    let response = ui.interact(rect, ui.scope_id().with("search"), Sense::click());
     let state = State::from_response(&response);
     kit.search_field.paint(&cx, &Part { rect, room: rect, state, label: None });
     pen.text(rect.left() + 12.0, rect.center().y - line(SM) / 2.0, "Search titles…", SM, Weight::REGULAR, p.muted);
@@ -384,7 +384,7 @@ fn row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, list: Rect, top
     let content = line(BASE) + snippet.as_ref().map_or(0.0, |_| 2.0 + line(XS)) + 2.0 + line(XS);
     let rect = Rect::from_min_size(pos2(list.left(), top), vec2(list.width(), 8.0 + content + 8.0 + 1.0));
     // Its place in the list too: the critical ticket is listed twice.
-    let response = ui.interact(rect, ui.id().with(("row", &ticket.project, ticket.id, top as i32)), Sense::click());
+    let response = ui.interact(rect, ui.scope_id().with(("row", &ticket.project, ticket.id, top as i32)), Sense::click());
     let cx = KitCx { painter: pen.painter, ppp: ui.ctx().pixels_per_point() };
     let body = Rect::from_min_max(rect.min, pos2(rect.right(), rect.bottom() - 1.0));
     kit.list_row.paint(&cx, &Part { rect: body, room: body, state: State::from_response(&response), label: None });
