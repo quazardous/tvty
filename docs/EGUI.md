@@ -148,6 +148,6 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | Sections sized by content: title drags stop once the sections above are at their content's height (`TVTY_EGUI_FILL=1` fills, to compare) | egui-pop#332 | done: egui_stack 0.25.7 |
 | Tooltips at the pointer: no horizontal offset; at the end edge pushed back under the pointer instead of flipping | egui-pop#350 | open |
 | Menus: the link mark ↗ keeps the rows' size when keys are smaller | egui-pop#351 | open |
-| Layers: a side area lying over the centre covers the app's overlays (the tips card); no per-window z-order group | egui-pop#352 | open; the card moves itself to the top |
+| Layers: a side area lying over the centre covers the app's overlays (the tips card); no per-window z-order group | egui-pop#352 | done: `layers::area` with `Rank::Overlay` for the tips card, the full list and the message popover |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
 | Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |

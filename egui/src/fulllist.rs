@@ -161,10 +161,8 @@ pub fn show(ctx: &egui::Context, scene: &Scene) {
     let screen = ctx.content_rect();
     // Inside the window's outline, under the title bar and its line.
     let rect = Rect::from_min_max(pos2(screen.left() + 1.0, screen.top() + 41.0), pos2(screen.right() - 1.0, screen.bottom() - 1.0));
-    egui::Area::new(egui::Id::unique("tvty.full-list"))
-        .fixed_pos(rect.min)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
+    let area = egui::Area::new(egui::Id::unique("tvty.full-list")).fixed_pos(rect.min);
+    egui_pop::layers::area(ctx, area, egui_pop::layers::Rank::Overlay, |ui| {
             ui.set_clip_rect(rect);
             // The list takes the pointer: nothing under it reacts.
             ui.allocate_exact_size(rect.size(), Sense::click());

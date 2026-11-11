@@ -43,9 +43,8 @@ pub fn show(ctx: &egui::Context) {
     let at = pos2(screen.right() - 9.0, screen.top() + 61.0);
     let area = egui::Area::new(egui::Id::unique("tvty.message"))
         .pivot(Align2::RIGHT_TOP)
-        .fixed_pos(at)
-        .order(egui::Order::Foreground)
-        .show(ctx, |ui| {
+        .fixed_pos(at);
+    let area = egui_pop::layers::area(ctx, area, egui_pop::layers::Rank::Overlay, |ui| {
             let pad = kit.popover.data.padding_x;
             let inner = WIDTH - 2.0 * (pad + 1.0);
             kit.popover.show(ui, State::REST, egui::Shadow::NONE, |ui| {
