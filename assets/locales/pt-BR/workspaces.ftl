@@ -14,8 +14,8 @@ workspaces-default-name = Workspace
 workspaces-its-name = seu nome
 workspaces-act-open = Abrir
 workspaces-act-open-tip = inicia o que está parado e põe cada sessão como mantida — pergunta primeiro
-workspaces-act-shut = Desligar
-workspaces-act-shut-tip = para suas sessões — pergunta primeiro, quais; um grupo que outro workspace também tem fica
+workspaces-act-shut = Fechar
+workspaces-act-shut-tip = encerra suas sessões — pergunta primeiro, quais; um grupo que outro workspace também tem fica de fora
 workspaces-act-save = salvar
 workspaces-act-save-tip = guarda-o de novo como as coisas estão, ou acrescenta um grupo — escolhido numa lista
 workspaces-again-tip = o grupo mostrado agora, guardado de novo como roda agora
@@ -50,7 +50,7 @@ workspaces-new-title = Um workspace novo
 workspaces-new-summary = Ligado: guardadas nele, cada uma como roda agora (por conta própria, ou pausada).
 workspaces-save-title = Guardar {$name} como as coisas estão agora
 workspaces-save-summary = Ligado: nele, cada uma como roda agora. Desligado: tiradas dele.
-workspaces-shut-title = Desligar {$name}: parar suas sessões?
+workspaces-shut-title = Fechar {$name}: parar suas sessões?
 workspaces-shut-summary = Ligado: paradas. Desligado: seguem rodando. Um grupo que outro workspace também tem fica desligado.
 workspaces-open-title = Abrir {$name}
 workspaces-open-summary = Ligado: feito. Desligado: fica como está.
@@ -68,15 +68,35 @@ workspaces-some = {$ticked} de {$of}
 workspaces-whole-group = o grupo inteiro
 workspaces-name = Nome
 workspaces-cancel = Cancelar
-workspaces-keep = Manter
+workspaces-keep = Guardar
 workspaces-quit-keep = Sair, mantendo todas rodando
-workspaces-quit-stop = Sair, parando as {$count} ligadas
-workspaces-shut-keep = Desligar, mantendo todas rodando
-workspaces-shut-stop = Desligar, parando as {$count} ligadas
-workspaces-open-do = Abrir, fazendo as {$count}
+workspaces-quit-stop = { $count ->
+    [0] Sair, sem parar nenhuma
+    [one] Sair, parando a ligada
+   *[other] Sair, parando as {$count} ligadas
+}
+workspaces-shut-keep = Fechar, mantendo todas rodando
+workspaces-shut-stop = { $count ->
+    [0] Fechar, sem parar nenhuma
+    [one] Fechar, parando a ligada
+   *[other] Fechar, parando as {$count} ligadas
+}
+workspaces-open-do = { $count ->
+    [0] Abrir, sem mudar nenhuma
+    [one] Abrir, aplicando a ligada
+   *[other] Abrir, aplicando as {$count} ligadas
+}
 workspaces-not-now = Agora não
-workspaces-restart-fresh = Reiniciar as {$count} do zero
-workspaces-restart-as-were = Reiniciar as {$count} como estavam
+workspaces-restart-fresh = { $count ->
+    [0] Reiniciar do zero, nenhuma marcada
+    [one] Reiniciar a sessão do zero
+   *[other] Reiniciar as {$count} do zero
+}
+workspaces-restart-as-were = { $count ->
+    [0] Reiniciar como estavam, nenhuma marcada
+    [one] Reiniciar a sessão como estava
+   *[other] Reiniciar as {$count} como estavam
+}
 workspaces-remember-quit = Lembrar esta escolha (parar todas, ou manter todas)
 workspaces-remember-restart = Lembrar esta escolha (todas as vezes, todas elas)
 workspaces-remember-tip = Configurações > Layout > Sessões muda
@@ -89,12 +109,12 @@ workspaces-kept = { $count ->
     [one] workspace {$name} guardado: {$count} grupo
    *[other] workspace {$name} guardado: {$count} grupos
 }
-workspaces-shut-run-on = {$name} desligado: suas sessões seguem rodando
+workspaces-shut-run-on = {$name} fechado: suas sessões seguem rodando
 workspaces-shut-stopped = { $count ->
-    [one] {$name} desligado: {$count} sessão parada
-   *[other] {$name} desligado: {$count} sessões paradas
+    [one] {$name} fechado: {$count} sessão parada
+   *[other] {$name} fechado: {$count} sessões paradas
 }
-workspaces-shut = desligado
+workspaces-shut = fechado
 workspaces-no-loop = { $count ->
     [one] {$count} sessão em nenhum loop desta máquina: não parada
    *[other] {$count} sessões em nenhum loop desta máquina: não paradas
@@ -110,7 +130,10 @@ workspaces-opening = abrindo {$name}
 workspaces-added = {$project} está em {$name}
 workspaces-shown-tip = o terminal mostrado assim que as sessões voltarem
 workspaces-quit-later = ou depois:
-workspaces-quit-later-tip = Parar as {$count} ligadas e sair em {$delay}: o diálogo conta regressivo enquanto isso; fechá-lo, ou sair por outro caminho, descarta
+workspaces-quit-later-tip = { $count ->
+    [one] Parar a ligada
+   *[other] Parar as {$count} ligadas
+} e sair em {$delay}: o diálogo conta regressivo enquanto isso; fechá-lo, ou sair por outro caminho, descarta
 workspaces-quit-in = parando e saindo em {$left}
 workspaces-shell = terminal · {$cwd}
 workspaces-reopen-shells = Reabrir os terminais também

@@ -37,7 +37,7 @@ sessions-no-project = Sem projeto
 
 ## O cabeçalho de um projeto
 
-sessions-heading-tip = seus tickets no painel, nenhuma sessão aberta; arraste-o sobre outro para movê-lo
+sessions-heading-tip = seus tickets no painel, sem abrir sessão; arraste-o sobre outro para movê-lo
 sessions-new-session = + sessão
 sessions-project-options = suas configurações: onde seus loops rodam, Remote Control, a configuração do board
 sessions-project-terminal = um terminal na pasta do projeto, listado com ele
@@ -57,7 +57,7 @@ sessions-update-pending = seu reinício foi pedido: o Claude dele reinicia assim
 sessions-starting = iniciando…
 sessions-start = ▶ iniciar
 sessions-astray = ⚠ pasta de {$other}
-sessions-astray-tip = {$other} trabalha em {$cwd}: iniciado aqui, este agente retomaria sua conversa. Não iniciado.
+sessions-astray-tip = {$other} trabalha em {$cwd}: iniciado aqui, este agente retomaria a conversa de {$other}. Não iniciado.
 sessions-stop-ask = parar?
 sessions-stop-tip = parar o loop de {$who}: pelo aiball, ele continua reiniciável (sob os parados) — um segundo clique o para
 sessions-stopped = parou {$who}
@@ -105,7 +105,7 @@ sessions-form-on-host = no host do aiball, sem {$mux}
 sessions-form-cancel = Cancelar
 sessions-form-start = Iniciar
 sessions-a-loop = um loop
-sessions-astray-said = {$cwd} é a pasta de {$other}: {$agent} retomaria sua conversa
+sessions-astray-said = {$cwd} é a pasta de {$other}: {$agent} retomaria a conversa de {$other}
 sessions-start-failed = iniciar
 sessions-start-host-failed = iniciar no host
 sessions-started-host = iniciado {$agent} no host do aiball em {$cwd}
@@ -138,7 +138,7 @@ sessions-tab-name = seu nome
 sessions-rename-failed = renomear o terminal
 sessions-stop-failed = parar o terminal
 sessions-rename-tip = renomeá-lo (ou um duplo clique, F2)
-sessions-close-shell = fechar: para este terminal
+sessions-close-shell = fechar: encerra este terminal
 sessions-close-tab = fechar a aba: o Claude dela segue
 sessions-tab-shell-tip = um terminal no host do aiball, sem Claude; um duplo clique (ou F2) o renomeia
 sessions-tab-tip = ctrl+pgup / ctrl+pgdn: a aba anterior, seguinte

@@ -42,8 +42,8 @@ tickets-comments-tip = { $count ->
     [one] {$count} comentário — {$why}
    *[other] {$count} comentários — {$why}
 }
-tickets-held-by = reivindicado por {$holder}
-tickets-held-hot = reivindicado por {$holder}, ativo nele ultimamente
+tickets-held-by = com {$holder}
+tickets-held-hot = com {$holder}, ativo nele ultimamente
 tickets-critical = { $holds ->
     [one] o ticket crítico do projeto: ele segura {$holds} ticket aberto
    *[other] o ticket crítico do projeto: ele segura {$holds} tickets abertos
@@ -259,7 +259,7 @@ tickets-field-scope = escopo
 tickets-field-tags = tags
 tickets-field-milestone = marco
 tickets-field-reporter = autor
-tickets-field-claimed = reivindicado por
+tickets-field-claimed = reivindicado
 tickets-field-assigned = atribuído a
 tickets-field-followers = seguidores
 tickets-field-project = projeto

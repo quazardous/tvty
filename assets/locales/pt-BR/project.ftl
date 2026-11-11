@@ -36,8 +36,8 @@ megaphone-send = Enviar
 megaphone-send-hold = Enviar e pausar
 megaphone-typed-into = digitado em {$names}
 megaphone-queued-for = na fila para {$names}
-megaphone-held = pausados {$names}
-megaphone-released = soltos {$names}
+megaphone-held = pausa aplicada a {$names}
+megaphone-released = pausa retirada de {$names}
 megaphone-hold-not-applied = pausa não aplicada
 
 ## As opções de um projeto
@@ -52,7 +52,7 @@ projectopts-could-not-say = o aiball não pôde dizer: {$error}
 projectopts-no-file = {$folder} não tem .aiball.yaml, nem pasta alguma acima: valem os padrões do aiball. Novo projeto… configura.
 projectopts-written-in = Escrito em {$file}.
 projectopts-also-serves = Ele também serve {$others}: uma mudança aqui também é deles.
-projectopts-on-named = em: {$name}
+projectopts-on-named = ligado: {$name}
 projectopts-none-set = {$project} não define nenhuma configuração do board: ele tem os valores do board.
 projectopts-all-keys = Todas as suas chaves
 projectopts-restart-needed = { $count ->

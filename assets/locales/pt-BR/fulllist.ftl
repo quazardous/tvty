@@ -7,7 +7,11 @@
 
 fulllist-title = Tickets — {$project}
 fulllist-title-all = Tickets — todos os projetos
-fulllist-shown = {$count} mostrados
+fulllist-shown = { $count ->
+    [0] nenhum mostrado
+    [one] {$count} mostrado
+   *[other] {$count} mostrados
+}
 fulllist-new = + Novo ticket
 fulllist-search = Buscar títulos…
 fulllist-projects = Projetos
@@ -45,7 +49,11 @@ fulllist-hot = um agente esteve ativo nele ultimamente
 
 ## Em massa
 
-fulllist-selected = {$count} selecionados
+fulllist-selected = { $count ->
+    [0] nenhum selecionado
+    [one] {$count} selecionado
+   *[other] {$count} selecionados
+}
 fulllist-select-all = Selecionar todos os mostrados
 fulllist-clear = Limpar · Esc
 fulllist-actions = Ações
@@ -57,34 +65,77 @@ fulllist-confirm = { $count ->
    *[other] {$action} {$count} tickets?
 }
 fulllist-cancel = Cancelar
-bulk-refused = , {$count} recusados ({$first})
+bulk-refused = , { $count ->
+    [one] {$count} recusado
+   *[other] {$count} recusados
+} ({$first})
 bulk-approve = Aprovar
     .about = Deixa passar os tickets escolhidos que esperam moderação
-    .done = {$count} aprovados
+    .done = { $count ->
+        [0] nenhum aprovado
+        [one] {$count} aprovado
+       *[other] {$count} aprovados
+    }
 bulk-reject = Rejeitar
     .about = Recusa os tickets escolhidos que esperam moderação
-    .done = {$count} rejeitados
+    .done = { $count ->
+        [0] nenhum rejeitado
+        [one] {$count} rejeitado
+       *[other] {$count} rejeitados
+    }
 bulk-close = Fechar
     .about = Fecha os tickets escolhidos que estão abertos (pergunta primeiro)
-    .done = {$count} fechados
+    .done = { $count ->
+        [0] nenhum fechado
+        [one] {$count} fechado
+       *[other] {$count} fechados
+    }
 bulk-reopen = Reabrir
     .about = Abre de novo os tickets escolhidos que estão fechados
-    .done = {$count} reabertos
+    .done = { $count ->
+        [0] nenhum reaberto
+        [one] {$count} reaberto
+       *[other] {$count} reabertos
+    }
 bulk-mark-read = Marcar como lidos
     .about = Marca como lidos os tickets escolhidos com algo novo
-    .done = {$count} marcados como lidos
+    .done = { $count ->
+        [0] nenhum marcado como lido
+        [one] {$count} marcado como lido
+       *[other] {$count} marcados como lidos
+    }
 bulk-mark-unread = Marcar como não lidos
     .about = Marca como não lidos os tickets escolhidos já lidos
-    .done = {$count} marcados como não lidos
+    .done = { $count ->
+        [0] nenhum marcado como não lido
+        [one] {$count} marcado como não lido
+       *[other] {$count} marcados como não lidos
+    }
 bulk-snooze = Adiar…
     .about = Põe de lado os tickets abertos escolhidos pelo tempo que você escolher: eles voltam então
-    .done = {$count} adiados
+    .done = { $count ->
+        [0] nenhum adiado
+        [one] {$count} adiado
+       *[other] {$count} adiados
+    }
 bulk-unsnooze = Retomar agora
     .about = Traz de volta agora os tickets escolhidos que estão adiados
-    .done = {$count} retomados
+    .done = { $count ->
+        [0] nenhum retomado
+        [one] {$count} retomado
+       *[other] {$count} retomados
+    }
 bulk-step = Marcar como etapa
     .about = Marca a última palavra dos tickets abertos escolhidos como etapa: o agente segue, nada a decidir
-    .done = {$count} marcados como etapa
+    .done = { $count ->
+        [0] nenhum marcado como etapa
+        [one] {$count} marcado como etapa
+       *[other] {$count} marcados como etapa
+    }
 bulk-link = Vincular
     .about = Vincula os tickets escolhidos: o mais novo se relaciona com cada um dos outros
-    .done = {$count} vinculados
+    .done = { $count ->
+        [0] nenhum vinculado
+        [one] {$count} vinculado
+       *[other] {$count} vinculados
+    }

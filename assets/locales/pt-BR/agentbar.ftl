@@ -80,6 +80,7 @@ agentbar-move-failed-into = mudança de {$agent} para {$mux}
 agentbar-move-failed-to-host = mudança de {$agent} para o host do aiball
 agentbar-hold-failed = pausa de {$agent}
 agentbar-closed-others = { $count ->
+    [0] nenhum outro cliente desta sessão para fechar
     [one] fechado o outro cliente desta sessão
    *[other] fechados os {$count} outros clientes desta sessão
 }
@@ -93,7 +94,7 @@ agentbar-close-others-failed = fechar os outros clientes
 
 ## Remote Control, alertas, o prompt
 
-agentbar-rc-on = Remote Control está ligado: este Claude pode ser tomado do claude.ai e do app móvel
+agentbar-rc-on = Remote Control está ligado: este Claude pode ser retomado pelo claude.ai e pelo app móvel
 agentbar-rc-off = Remote Control está desligado. /rc na sessão liga; os loops de uma pasta o recebem das configurações do projeto
 agentbar-trust = confiar nesta pasta?
 agentbar-not-logged-in = sem login
@@ -145,8 +146,8 @@ agentbar-info-error-overloaded = API sobrecarregada
 agentbar-info-error-api = erro de API
 agentbar-info-retry = tentativa {$attempt}
 agentbar-restart-cancel-ask = Cancelar o reinício pendente do Claude dele?
-agentbar-restart-cancel = Cancelar
-agentbar-restart-keep = Manter
+agentbar-restart-cancel = Cancelá-lo
+agentbar-restart-keep = Mantê-lo
 agentbar-restart-cancelled = o reinício do Claude de {$agent} foi cancelado; a atualização continua oferecida
 agentbar-restart-none = nenhum reinício do Claude de {$agent} estava pendente
 agentbar-restart-cancel-failed = cancelar o reinício do Claude de {$agent}

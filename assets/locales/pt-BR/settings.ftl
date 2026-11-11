@@ -154,7 +154,7 @@ settings-own-themes = Seus próprios temas (o formato de tema do gpui-component)
 
 ## Escolhas
 
-setting-language-auto = Automático ({$lang})
+setting-language-auto = Automático: {$lang}
 settings-ask = Perguntar
 settings-order-recent = Mais recente primeiro
 settings-cursor-blink = Piscando
@@ -211,6 +211,7 @@ settings-about-not-connected = não conectado
 settings-about-live = Board ao vivo
 settings-about-not-subscribed = não inscrito
 settings-about-subscriptions = { $count ->
+    [0] nenhuma inscrição no bus
     [one] {$count} inscrição no bus
    *[other] {$count} inscrições no bus
 }
@@ -268,8 +269,8 @@ settings-legend-stripe-none = sem listra: a bola está com o agente
 settings-legend-stripe-tape = fita de obra: o ticket espera moderação, nada segue até você deixar passar
 settings-legend-rest = O resto
 settings-legend-unread = comentários, azul: algo novo nele para você, não lido (seu título em negrito também)
-settings-legend-others-spoke = vivo, seu ponto à esquerda: outra pessoa falou por último
-settings-legend-you-spoke = discreto, seu ponto à direita: você falou por último
+settings-legend-others-spoke = vivo, com a ponta à esquerda: outra pessoa falou por último
+settings-legend-you-spoke = discreto, com a ponta à direita: você falou por último
 settings-legend-pending = comentários esperando moderação
 settings-legend-agent = agente
 settings-legend-holder = o agente que o mantém; a chama quando esteve ativo ultimamente

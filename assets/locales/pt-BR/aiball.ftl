@@ -19,11 +19,11 @@ aiball-group-wait-credit = Crédito de espera
 aiball-config-updates-check = Verificar atualizações
     .about = true (padrão) = ao iniciar o daemon, e quando alguém pede, ele lê o release mais recente do aiball no GitHub para a bandeja, a extensão do GNOME e o `aiball version` poderem dizer que há atualização. false = nenhuma chamada externa.
 aiball-config-tickets-defaults-priority = Prioridade padrão dos tickets
-    .about = Prioridade aplicada a um ticket novo criado sem uma explícita. Defina um padrão global; um projeto pode sobrepujá-lo.
+    .about = Prioridade aplicada a um ticket novo criado sem uma explícita. Defina um padrão global; um projeto pode substituí-lo.
 aiball-config-tickets-defaults-broadcast-new = Broadcast de tickets novos por padrão
     .about = Ligado, um ticket novo sem escopo explícito é marcado broadcast (os seguidores do projeto são notificados). Declarado; a aplicação vem com seu consumidor.
 aiball-config-tickets-rules-summary-max = Orçamento do resumo (caracteres)
-    .about = O resumo_until mais longo que um agente pode escrever num comentário. Um mais longo é recusado com uma explicação e nada é publicado; nunca é truncado. Humanos estão livres. 0 = sem limite.
+    .about = O summary_until mais longo que um agente pode escrever num comentário. Um mais longo é recusado com uma explicação e nada é publicado; nunca é truncado. Humanos estão livres. 0 = sem limite.
 aiball-config-tickets-rules-require-then = Comentários de agente exigem then: ou handback
     .about = Ligado, um comentário de agente sem then: deve definir handback (true: devolve o ticket, false: o mantém), ou é recusado com uma explicação e nada é publicado. Humanos estão livres.
 aiball-config-tickets-rules-require-commits = Comentários de agente exigem commits
@@ -47,7 +47,7 @@ aiball-config-tickets-wait-credit-start = Crédito de espera com que um agente c
 aiball-config-tickets-wait-credit-max = Máximo de crédito de espera que um agente mantém
     .about = Um saldo nunca passa disto: o que o levaria além não é creditado, e um saldo já além é cortado. 0 = sem teto.
 aiball-config-tickets-wait-credit-floor = Espera que uma etapa sempre recebe, mesmo sem crédito
-    .about = Sem crédito, a espera de uma etapa é limitada ao saldo mas nunca abaixo disto, para que um agente sem crédito não volte em loop. Nunca leva o saldo abaixo de zero. Uma etapa pedindo 0 (seguir at once) é sempre concedida.
+    .about = Sem crédito, a espera de uma etapa é limitada ao saldo mas nunca abaixo disto, para que um agente sem crédito não volte em loop. Nunca leva o saldo abaixo de zero. Uma etapa pedindo 0 (seguir de imediato) é sempre concedida.
 aiball-config-tickets-wait-credit-earn-resolved = Crédito de espera ganho por um ticket fechado resolvido, com commit
     .about = Ganho uma vez por ticket pelo agente cuja resolução foi aceita, quando citou um commit naquele ticket (commits: [...]) antes de fechá-lo.
 aiball-config-tickets-wait-credit-earn-resolved-no-commit = Crédito de espera ganho por um ticket fechado resolvido, sem commit

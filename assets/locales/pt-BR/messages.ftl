@@ -43,7 +43,7 @@ messages-copies-failed = tornar os outros terminais cópias
 
 messages-stopping = Parando as sessões do Claude Code, depois saindo…
 messages-quit-stop-failed = parar na saída do tvty
-messages-ran-on = {$agents} seguiram rodando: a parada não pegou
+messages-ran-on = ainda rodando: {$agents} — a parada não pegou
 messages-restarted-as-were = { $count ->
     [one] {$count} sessão reiniciada como estava, retomando sua conversa
    *[other] {$count} sessões reiniciadas como estavam, retomando suas conversas
@@ -85,5 +85,8 @@ messages-next-tip = Próxima dica
 messages-turn-off = Desligar as dicas
 messages-tips-off = As dicas estão desligadas: Configurações > Layout > Dicas liga de novo
 messages-tips-again = Cada dica vai mostrar de novo, uma de cada vez
-messages-shells-reopened = {$count} terminal(is) reaberto(s) onde estavam
+messages-shells-reopened = { $count ->
+    [one] {$count} terminal reaberto onde estava
+   *[other] {$count} terminais reabertos onde estavam
+}
 messages-shells-reopen-failed = reabrir os terminais

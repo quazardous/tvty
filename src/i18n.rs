@@ -78,17 +78,22 @@ fn bundles() -> &'static [FluentBundle<FluentResource>] {
     })
 }
 
-/// The language a locale names ("fr_FR.UTF-8", "pt-BR", "pt": the whole
-/// code, then its language alone — "pt-PT" names pt-BR). English when tvty
-/// does not speak it.
+/// The language a locale names ("fr_FR.UTF-8", "pt-BR", "deutsch"): its
+/// whole code, else its first two letters ("pt-PT" names pt-BR). English
+/// when tvty does not speak it.
 fn spoken(locale: &str) -> usize {
-    let name = locale.split(['.', '@']).next().unwrap_or("").replace('_', "-").to_ascii_lowercase();
-    let language = name.split('-').next().unwrap_or("");
+    let name = locale.trim().split(['.', '@', ':']).next().unwrap_or("").replace('_', "-").to_ascii_lowercase();
     LANGS
         .iter()
-        .position(|(c, _)| c.to_ascii_lowercase() == name)
-        .or_else(|| LANGS.iter().position(|(c, _)| c.to_ascii_lowercase().split('-').next() == Some(language)))
+        .position(|(c, _)| c.eq_ignore_ascii_case(&name))
+        .or_else(|| LANGS.iter().position(|(c, _)| name.get(..2).is_some_and(|two| c[..2].eq_ignore_ascii_case(two))))
         .unwrap_or(0)
+}
+
+/// A choice as `LANGS` spells its code ("pt_BR" is "pt-BR"); `None`, the
+/// system's. What the menus compare, whatever was written in the settings.
+pub fn code(choice: Option<&str>) -> Option<&'static str> {
+    choice.map(str::trim).filter(|c| !c.is_empty()).map(|c| LANGS[spoken(c)].0)
 }
 
 /// The language a choice names: the setting's (`None`: the system's), unless
@@ -607,6 +612,14 @@ mod tests {
         assert_eq!(said(0, "i18n-test-plural", Some(&args)).unwrap(), "0 tickets");
         // French says the singular for none.
         assert_eq!(said(1, "i18n-test-plural", Some(&args)).unwrap(), "0 ticket");
+        // pt-BR finds pt's rules (none of its own); [0] wins over [one].
+        let pt = LANGS.iter().position(|(c, _)| *c == "pt-BR").unwrap();
+        args.set("count", 2);
+        assert_eq!(said(pt, "i18n-test-plural", Some(&args)).unwrap(), "2 tickets");
+        args.set("count", 1);
+        assert_eq!(said(pt, "fulllist-selected", Some(&args)).unwrap(), "1 selecionado");
+        args.set("count", 0);
+        assert_eq!(said(pt, "fulllist-selected", Some(&args)).unwrap(), "nenhum selecionado");
     }
 
     #[test]
@@ -617,6 +630,19 @@ mod tests {
         assert_eq!(LANGS[spoken("pt_BR.UTF-8")].0, "pt-BR");
         assert_eq!(LANGS[spoken("pt-PT")].0, "pt-BR");
         assert_eq!(LANGS[spoken("it")].0, "en");
+        // What the two letters always read: a space, a list, a name.
+        assert_eq!(LANGS[spoken("fr ")].0, "fr");
+        assert_eq!(LANGS[spoken("fr:en")].0, "fr");
+        assert_eq!(LANGS[spoken("deutsch")].0, "de");
+    }
+
+    #[test]
+    fn a_choice_is_read_as_its_code() {
+        assert_eq!(code(Some("pt_BR")), Some("pt-BR"));
+        assert_eq!(code(Some("pt")), Some("pt-BR"));
+        assert_eq!(code(Some("fr")), Some("fr"));
+        assert_eq!(code(Some(" ")), None);
+        assert_eq!(code(None), None);
     }
 
     #[test]

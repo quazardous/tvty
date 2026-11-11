@@ -3611,7 +3611,7 @@ impl Shell {
             "mouse.focus" => (self.applied.mouse.focus.clone().map(SharedString::from), Some(crate::focusmode::system_said(cx).into())),
             // As the system: the language it speaks, if tvty does.
             "appearance.language" => (
-                self.applied.appearance.language.clone().map(SharedString::from),
+                crate::i18n::code(self.applied.appearance.language.as_deref()).map(SharedString::from),
                 Some(crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system())).into()),
             ),
             _ => (theme::current_terminal(), Some(crate::t!("settings-same-as-window").into())),
@@ -4158,8 +4158,8 @@ impl Shell {
         crate::i18n::set(now.language.as_deref());
         // The settings' dropdown follows a choice made elsewhere (the title bar).
         if let Some(state) = self.language_select.clone() {
-            let chosen = now.language.clone().unwrap_or_else(|| "auto".into());
-            state.update(cx, |state, cx| state.set_selected_value(&chosen, window, cx));
+            let chosen = crate::i18n::code(now.language.as_deref()).unwrap_or("auto");
+            state.update(cx, |state, cx| state.set_selected_value(&chosen.to_string(), window, cx));
         }
         let notifications = &new.notifications;
         notify::set_limits(
@@ -4375,7 +4375,7 @@ impl Shell {
     /// each language by its own name, the one spoken ticked. The same choice
     /// as Settings > Appearance > Language.
     fn language_menu_view(&self, cx: &mut Context<Self>) -> impl IntoElement + use<> {
-        let chosen = self.applied.appearance.language.clone();
+        let chosen = crate::i18n::code(self.applied.appearance.language.as_deref());
         let item = |id: &'static str, label: String, on: bool, value: Option<&'static str>, cx: &mut Context<Self>| {
             div()
                 .named(SharedString::from(format!("language-menu-{id}")))
@@ -4397,7 +4397,7 @@ impl Shell {
         let system = crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system()));
         let mut list = div().flex().flex_col().py_1().text_sm().child(item("auto", system, chosen.is_none(), None, cx));
         for (code, name) in crate::i18n::LANGS {
-            list = list.child(item(code, name.to_string(), chosen.as_deref() == Some(*code), Some(*code), cx));
+            list = list.child(item(code, name.to_string(), chosen == Some(*code), Some(*code), cx));
         }
         div()
             .named("language-menu")

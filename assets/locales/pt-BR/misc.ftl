@@ -44,7 +44,7 @@ misc-gallery-hint = digite para filtrar · setas movem · enter abre · esc fech
 ## O modelo do agente, seus limites, suas recusas
 
 misc-price = {$input} / {$output} por M de tokens
-misc-model-out = {$name} saiu de linha
+misc-model-out = {$name} saiu
 misc-prices-from = preços de {$catalog}
 misc-limit = limite de uso atingido
 misc-limit-resets = limite de uso atingido · volta {$resets}
