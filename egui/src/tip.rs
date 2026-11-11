@@ -43,7 +43,19 @@ pub fn show(ctx: &egui::Context) {
     let screen = ctx.content_rect();
     // 12 from the window's start edge, 44 from its bottom, inside its outline.
     let corner = pos2(screen.left() + 13.0, screen.bottom() - 45.0);
-    egui::Area::new(egui::Id::unique("tvty.tip"))
+    let area = egui::Id::unique("tvty.tip");
+    // The sessions lie over the centre in an egui area of the same order
+    // (egui_stack's), drawn above the card once shown or clicked: the
+    // card goes back on top, as GPUI's lies over the whole window, except
+    // under a menu or one of tvty's own overlays.
+    let overlay = egui::Popup::is_any_open(ctx)
+        || crate::fulllist::is_open(ctx)
+        || crate::message::is_open(ctx)
+        || crate::settings::is_open(ctx);
+    if !overlay {
+        ctx.move_to_top(egui::LayerId::new(egui::Order::Foreground, area));
+    }
+    egui::Area::new(area)
         .pivot(Align2::LEFT_BOTTOM)
         .fixed_pos(corner)
         .order(egui::Order::Foreground)
