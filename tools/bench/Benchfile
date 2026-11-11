@@ -14,6 +14,7 @@
 # checked out beside tvty, as egui/Cargo.toml expects).
 #
 #   run egui-test branch=egui-pop
+#   run egui-build branch=egui-pop  tvty-egui's debug binary, fetched back
 # A pushed tree and a branch build in the same place (/tmp/w/tvty), so
 # they share one target directory and cargo does not rebuild everything.
 
@@ -49,7 +50,7 @@ target = { about = "tvty's cargo target directories, one per branch, a new one s
 registry = { about = "the cargo registry, shared by every job", keep = true, max = "3g", tmp = false }
 cargo-git = { about = "the cargo git dependencies, shared by every job", keep = true, max = "1g", tmp = false }
 sccache = { about = "sccache's compile cache, shared by every job and branch", keep = true, max = "6g", tmp = false }
-egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "4g" }
+egui-target = { about = "tvty-egui's cargo target directory, apart from tvty's", lock = true, keep = true, max = "5g" }
 
 [jobs.test]
 about = "the workspace tests"
@@ -95,4 +96,16 @@ command = """rm -rf /tmp/w/tvty /tmp/w/egui-pop && mkdir -p /tmp/w/tvty /tmp/w/e
  && cargo test --locked --offline 2>&1 | tee /out/egui-test.log; exit ${PIPESTATUS[0]}"""
 mounts = { egui-target = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { log = { path = "egui-test.log", kind = "log" } }
+timeout = "1h"
+
+[jobs.egui-build]
+about = "tvty-egui's debug binary, fetched back to run on the development machine"
+cores = 5
+memory = "6g"
+cwd = "/work/${src:-tvty}"
+command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cd /tmp/w/tvty/egui \
+ && cargo build --locked --offline 2>&1 | tee /out/egui-build.log; rc=${PIPESTATUS[0]}; \
+[ $rc = 0 ] && mkdir -p /out/bin && cp /target/debug/tvty-egui /out/bin/tvty-egui; exit $rc"""
+mounts = { egui-target = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
+outputs = { bin = { path = "bin/", kind = "file" }, log = { path = "egui-build.log", kind = "log" } }
 timeout = "1h"

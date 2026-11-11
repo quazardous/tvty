@@ -7,6 +7,9 @@
 #   scripts/bench check branch=<b>     a branch pushed to GitHub, unsent
 #   scripts/bench binary               the working tree built there, its
 #                                      debug binary put in target/debug
+#   scripts/bench egui-binary          tvty-egui's tree (run from its
+#                                      checkout) built there, its binary
+#                                      put in egui/target/debug
 #   scripts/bench up                   whether the box answers (exit 0)
 #   scripts/bench -- <command...>      any box command: box, list,
 #                                      status <id>, fetch <id>, health
@@ -14,15 +17,19 @@
 # Its settings, this machine's own, in .secrets/bench.env (git-ignored):
 #   BENCH_HOST=bench-tvty@<box>   BENCH_KEY=<key> (.secrets/bench.key)
 set -euo pipefail
+caller=$PWD
 cd "$(dirname "$0")/.."
-[ -f .secrets/bench.env ] && . .secrets/bench.env
+# The settings sit in this script's own checkout, where it runs: tvty-egui's
+# jobs go back to the checkout they were called from.
+root=$PWD
+[ -f "$root/.secrets/bench.env" ] && . "$root/.secrets/bench.env"
 : "${BENCH_HOST:?BENCH_HOST unset: put it in .secrets/bench.env}"
-: "${BENCH_KEY:=.secrets/bench.key}"
+: "${BENCH_KEY:=$root/.secrets/bench.key}"
 box() {
     ssh -o BatchMode=yes -o IdentitiesOnly=yes -o ConnectTimeout=5 -i "$BENCH_KEY" "$BENCH_HOST" "$@"
 }
 case "${1:-}" in
-    "" | -h | --help) sed -n '2,15p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    "" | -h | --help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     up) box box > /dev/null 2>&1 < /dev/null; exit ;;
     --) shift; box "$@"; exit ;;
 esac
@@ -39,6 +46,23 @@ if [ "$job" = binary ]; then
     mkdir -p target/debug
     install -m 755 "$bin" target/debug/tvty.new && mv -f target/debug/tvty.new target/debug/tvty
     echo "bench: target/debug/tvty from the box"
+    exit
+fi
+# tvty-egui's binary: the same, from egui/ into egui/target/debug.
+if [ "$job" = egui-binary ] || [ "$job" = egui-build ]; then
+    cd "$caller"
+    [ -f egui/Cargo.toml ] || { echo "bench: no egui/Cargo.toml here ($PWD): run it from tvty-egui's checkout" >&2; exit 1; }
+fi
+if [ "$job" = egui-binary ]; then
+    "$root/scripts/bench" egui-build "$@"
+    got=$(mktemp -d)
+    trap 'rm -rf "$got"' EXIT
+    box fetch latest egui-build src=tvty-local bin < /dev/null | tar -x -C "$got"
+    bin=$(find "$got" -type f -name tvty-egui | head -1)
+    [ -n "$bin" ] || { echo "bench: no binary in the build's output" >&2; exit 1; }
+    mkdir -p egui/target/debug
+    install -m 755 "$bin" egui/target/debug/tvty-egui.new && mv -f egui/target/debug/tvty-egui.new egui/target/debug/tvty-egui
+    echo "bench: egui/target/debug/tvty-egui from the box"
     exit
 fi
 # A branch named: GitHub's. Otherwise this tree, files deleted left out.
