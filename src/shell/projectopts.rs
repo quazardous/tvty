@@ -82,8 +82,8 @@ impl Shell {
     pub(super) fn new_language_select(&mut self, window: &mut Window, cx: &mut Context<Self>) {
         let mut choices = vec![Choice::new("auto", crate::t!("setting-language-auto", lang = crate::i18n::name(crate::i18n::system())))];
         choices.extend(crate::i18n::LANGS.iter().map(|(code, name)| Choice::new(*code, *name)));
-        let chosen = self.applied.appearance.language.clone().unwrap_or_else(|| "auto".into());
-        let state = combo::new(choices, Some(&chosen), window, cx);
+        let chosen = crate::i18n::code(self.applied.appearance.language.as_deref()).unwrap_or("auto");
+        let state = combo::new(choices, Some(chosen), window, cx);
         cx.subscribe_in(&state, window, |shell, _, event: &ComboEvent<combo::Choices>, _, cx| {
             let ComboEvent::Confirm(Some(code)) = event else { return };
             let value = (code != "auto").then(|| code.to_string());

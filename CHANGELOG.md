@@ -24,6 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- tvty speaks Brazilian Portuguese: Settings > Appearance > Language lists "Português (Brasil)", and a pt-PT or pt_BR system picks it on its own.
+
 ### Changed
 
 - A plan's options keep the order their author gave them: the recommended one no longer jumps to the top, so their letters read in order.
