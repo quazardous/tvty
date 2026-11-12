@@ -15,6 +15,7 @@
 #
 #   run egui-test branch=egui-pop
 #   run egui-build branch=egui-pop  tvty-egui's debug binary, fetched back
+#   run egui-build profile=release  an optimised one
 # A pushed tree and a branch build in the same place (/tmp/w/tvty), so
 # they share one target directory and cargo does not rebuild everything.
 
@@ -99,13 +100,14 @@ outputs = { log = { path = "egui-test.log", kind = "log" } }
 timeout = "1h"
 
 [jobs.egui-build]
-about = "tvty-egui's debug binary, fetched back to run on the development machine"
+about = "tvty-egui's binary (profile=release for an optimised one), fetched back to run on the development machine"
 cores = 5
 memory = "6g"
 cwd = "/work/${src:-tvty}"
 command = """rm -rf /tmp/w/tvty && mkdir -p /tmp/w/tvty && cp -r --preserve=mode,timestamps . /tmp/w/tvty/ && cd /tmp/w/tvty/egui \
- && cargo build --locked --offline 2>&1 | tee /out/egui-build.log; rc=${PIPESTATUS[0]}; \
-[ $rc = 0 ] && mkdir -p /out/bin && cp /target/debug/tvty-egui /out/bin/tvty-egui; exit $rc"""
+ && p=${profile:-dev} && d=$p && { [ "$p" != dev ] || d=debug; } \
+ && cargo build --locked --offline --profile "$p" 2>&1 | tee /out/egui-build.log; rc=${PIPESTATUS[0]}; \
+[ $rc = 0 ] && mkdir -p /out/bin && cp "/target/$d/tvty-egui" /out/bin/tvty-egui; exit $rc"""
 mounts = { egui-target = "/target", registry = "/cargo/registry", cargo-git = "/cargo/git", sccache = "/sccache" }
 outputs = { bin = { path = "bin/", kind = "file" }, log = { path = "egui-build.log", kind = "log" } }
 timeout = "1h"

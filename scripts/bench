@@ -9,7 +9,8 @@
 #                                      debug binary put in target/debug
 #   scripts/bench egui-binary          tvty-egui's tree (run from its
 #                                      checkout) built there, its binary
-#                                      put in egui/target/debug
+#                                      put in egui/target/debug (with
+#                                      profile=release: egui/target/release)
 #   scripts/bench up                   whether the box answers (exit 0)
 #   scripts/bench -- <command...>      any box command: box, list,
 #                                      status <id>, fetch <id>, health
@@ -57,12 +58,15 @@ if [ "$job" = egui-binary ]; then
     "$root/scripts/bench" egui-build "$@"
     got=$(mktemp -d)
     trap 'rm -rf "$got"' EXIT
-    box fetch latest egui-build src=tvty-local bin < /dev/null | tar -x -C "$got"
+    box fetch latest egui-build src=tvty-local "$@" bin < /dev/null | tar -x -C "$got"
     bin=$(find "$got" -type f -name tvty-egui | head -1)
     [ -n "$bin" ] || { echo "bench: no binary in the build's output" >&2; exit 1; }
-    mkdir -p egui/target/debug
-    install -m 755 "$bin" egui/target/debug/tvty-egui.new && mv -f egui/target/debug/tvty-egui.new egui/target/debug/tvty-egui
-    echo "bench: egui/target/debug/tvty-egui from the box"
+    # profile=release: an optimised binary, into egui/target/release.
+    dir=debug
+    printf '%s\n' "$@" | grep -qx 'profile=release' && dir=release
+    mkdir -p "egui/target/$dir"
+    install -m 755 "$bin" "egui/target/$dir/tvty-egui.new" && mv -f "egui/target/$dir/tvty-egui.new" "egui/target/$dir/tvty-egui"
+    echo "bench: egui/target/$dir/tvty-egui from the box"
     exit
 fi
 # A branch named: GitHub's. Otherwise this tree, files deleted left out.
