@@ -207,9 +207,16 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
         let w = pen.width(s, size, Weight::REGULAR);
         *end -= w + 4.0;
         pen.text(*end, mid - line(size) / 2.0, s, size, Weight::REGULAR, color);
+        let at = Rect::from_min_size(pos2(*end - 4.0, mid - line(size) / 2.0 - 2.0), vec2(w + 8.0, line(size) + 4.0));
         *end -= 4.0;
+        at
     };
-    link(&mut end, "✕  Esc", SM, p.accent);
+    // Its hover fill goes under the label, painted before it.
+    let slot = painter.add(egui::Shape::Noop);
+    let esc = link(&mut end, "✕  Esc", SM, p.accent);
+    if crate::row::button(ui, &painter, slot, esc, "full-list-esc").clicked() {
+        set_open(ui.ctx(), false);
+    }
     end -= 4.0;
     painter.vline(end - 0.5, egui::Rangef::new(mid - 6.0, mid + 6.0), egui::Stroke::new(1.0, p.border));
     end -= 1.0 + 4.0;
@@ -382,7 +389,14 @@ fn row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, list: Rect, top
     let content = line(BASE) + snippet.as_ref().map_or(0.0, |_| 2.0 + line(XS)) + 2.0 + line(XS);
     let rect = Rect::from_min_size(pos2(list.left(), top), vec2(list.width(), 8.0 + content + 8.0 + 1.0));
     // Its place in the list too: the critical ticket is listed twice.
-    let response = ui.interact(rect, ui.scope_id().with(("row", &ticket.project, ticket.id, top as i32)), Sense::click());
+    let response = ui
+        .interact(rect, ui.scope_id().with(("row", &ticket.project, ticket.id, top as i32)), Sense::click())
+        .on_hover_cursor(egui::CursorIcon::PointingHand);
+    // A click opens it in the ticket panel, the list closing.
+    if response.clicked() {
+        set_open(ui.ctx(), false);
+        crate::detail::set_shown(ui.ctx(), Some(ticket.id));
+    }
     let cx = KitCx { painter: pen.painter, ppp: ui.ctx().pixels_per_point() };
     let body = Rect::from_min_max(rect.min, pos2(rect.right(), rect.bottom() - 1.0));
     kit.list_row.paint(&cx, &Part { rect: body, room: body, state: State::from_response(&response), label: None });
