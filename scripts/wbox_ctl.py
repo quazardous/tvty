@@ -146,9 +146,10 @@ def main():
         button = int(args[2]) if len(args) == 3 else 1
         _warm_up(comp, x, y)
         result = comp.click(x, y, button)
-    elif command == "move":
+    elif command == "move" and len(args) != 6:
+        # Two arguments: the pointer goes there; six: it glides (below).
         if len(args) != 2:
-            sys.exit("move needs X Y")
+            sys.exit("move needs X Y, or X1 Y1 X2 Y2 STEPS SECONDS")
         x, y = int(args[0]), int(args[1])
         _warm_up(comp, x, y)
         result = comp.mouse_move(x, y)
