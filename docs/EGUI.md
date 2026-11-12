@@ -149,5 +149,6 @@ Each has an issue on egui-pop (label `tvty`), under quazardous/egui-pop#1.
 | Tooltips at the pointer: no horizontal offset; at the end edge pushed back under the pointer instead of flipping | egui-pop#350 | open |
 | Menus: the link mark ↗ keeps the rows' size when keys are smaller | egui-pop#351 | open |
 | Layers: a side area lying over the centre covers the app's overlays (the tips card); no per-window z-order group | egui-pop#352 | done: `layers::area` with `Rank::Overlay` for the tips card, the full list and the message popover |
+| Folded strips: only the grip square unfolds; the drag-out band gives a narrow strip a resize cursor and takes its clicks | egui-pop#363 | open |
 | Shell panels: no least or largest width set by the application | egui-pop#258 | done: `shell_panel_min_size`, `shell_panel_max_size`, `centre_min_size` |
 | Menus: row height, padding, width, separators not themeable; no note on an item | egui-pop#260 | done: `menu-item.height`, `padding-x`, `width`, `separator-inset`, `CommandSpec::menu_note`, `opens_link` |
