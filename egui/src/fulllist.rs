@@ -15,6 +15,7 @@ use egui_pop::egui::{self, Color32, Pos2, Rect, Sense, pos2, vec2};
 use egui_pop::prelude::Tokens;
 use egui_pop::core::ui::UiPop;
 
+use egui_pop::i18n::tr;
 use crate::board::{self, Alerts, Band, Glyph, RowState, Stripe, Ticket, Turn};
 use crate::row::font;
 use crate::scene::Scene;
@@ -46,6 +47,72 @@ pub fn is_open(ctx: &egui::Context) -> bool {
 
 pub fn set_open(ctx: &egui::Context, open: bool) {
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique(OPEN), open));
+}
+
+/// How the list is narrowed and ordered, as the side column sets it.
+#[derive(Clone, Default, PartialEq)]
+struct View {
+    /// One project, else all.
+    scope: Option<String>,
+    band: Option<Band>,
+    sort: Sort,
+    reversed: bool,
+    /// Closed tickets too ("All"), else the open ones ("Open").
+    with_closed: bool,
+    unread_only: bool,
+    search: String,
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Sort {
+    #[default]
+    Activity,
+    Turn,
+    Priority,
+    Created,
+    Number,
+}
+
+impl Sort {
+    const ALL: [Sort; 5] = [Sort::Activity, Sort::Turn, Sort::Priority, Sort::Created, Sort::Number];
+
+    fn title(self) -> String {
+        match self {
+            Sort::Activity => tr!("fulllist-sort-activity"),
+            Sort::Turn => tr!("fulllist-sort-turn"),
+            Sort::Priority => tr!("fulllist-sort-priority"),
+            Sort::Created => tr!("fulllist-sort-created"),
+            Sort::Number => tr!("fulllist-sort-number"),
+        }
+    }
+}
+
+const VIEW: &str = "tvty.full-list.view";
+
+fn view(ctx: &egui::Context) -> View {
+    ctx.data(|d| d.get_temp::<View>(egui::Id::unique(VIEW))).unwrap_or_default()
+}
+
+fn set_view(ctx: &egui::Context, view: View) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(VIEW), view));
+}
+
+fn priority_rank(priority: Option<&str>) -> u8 {
+    match priority {
+        Some("urgent") => 3,
+        Some("high") => 2,
+        Some("low") => 0,
+        _ => 1,
+    }
+}
+
+/// The open tickets of one project, else of all.
+fn open_in<'a, 'b>(scene: &'a Scene, project: Option<&'b str>) -> impl Iterator<Item = &'a Ticket> + use<'a, 'b> {
+    scene.projects.iter().filter(move |q| project.is_none_or(|p| q.name == p)).flat_map(|q| q.tickets.iter()).filter(|t| !t.closed)
+}
+
+fn band_rank(band: Band) -> usize {
+    Band::ALL.iter().position(|b| *b == band).unwrap_or(usize::MAX)
 }
 
 /// The colours of the GPUI build's palette the list draws with.
@@ -179,25 +246,54 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
     let pen = Pen { painter: &painter };
     let user = scene.user.as_str();
 
-    // The open tickets, the most recent activity first.
+    let mut v = view(ui.ctx());
+    let before = v.clone();
+    let query = v.search.trim().to_lowercase();
+    // The scope's tickets, closed ones with "All", in the chosen order:
+    // what the side column counts, before the band, unread and search.
     let mut rows: Vec<(RowState, &Ticket)> = scene
         .projects
         .iter()
-        .flat_map(|p| p.tickets.iter())
-        .filter(|t| !t.closed)
+        .filter(|q| v.scope.as_ref().is_none_or(|p| q.name == *p))
+        .flat_map(|q| q.tickets.iter())
+        .filter(|t| v.with_closed || !t.closed)
         .map(|t| (board::state_of(t, user), t))
         .collect();
-    rows.sort_by(|(_, a), (_, b)| b.last_activity.cmp(&a.last_activity));
-    let criticals: Vec<&Ticket> = rows.iter().map(|(_, t)| *t).filter(|t| t.critical.is_some()).collect();
-    let alerts = Alerts::of(rows.iter().map(|(_, t)| *t));
+    let recent = |a: &Ticket, b: &Ticket| b.last_activity.cmp(&a.last_activity);
+    rows.sort_by(|(sa, a), (sb, b)| {
+        let order = match v.sort {
+            Sort::Activity => recent(a, b),
+            Sort::Turn => band_rank(sa.band).cmp(&band_rank(sb.band)).then_with(|| recent(a, b)),
+            Sort::Priority => priority_rank(b.priority.as_deref()).cmp(&priority_rank(a.priority.as_deref())).then_with(|| recent(a, b)),
+            Sort::Created => b.created_at.cmp(&a.created_at),
+            Sort::Number => b.id.cmp(&a.id),
+        };
+        if v.reversed { order.reverse() } else { order }
+    });
+    let matches = |t: &Ticket| query.is_empty() || t.title.to_lowercase().contains(&query);
+    let shown: Vec<(RowState, &Ticket)> = rows
+        .iter()
+        .filter(|(s, t)| v.band.is_none_or(|b| s.band == b) && (!v.unread_only || t.unread) && matches(t))
+        .copied()
+        .collect();
+    // What holds the most back heads the whole list (no band, no filter).
+    let criticals: Vec<&Ticket> = if v.band.is_none() && !v.unread_only && query.is_empty() {
+        open_in(scene, v.scope.as_deref()).filter(|t| t.critical.is_some()).collect()
+    } else {
+        Vec::new()
+    };
+    let alerts = Alerts::of(open_in(scene, v.scope.as_deref()));
 
     // ── The header: 40 high, 16 from the sides, a line under it.
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), 40.0));
     painter.hline(header.x_range(), header.bottom() + 0.5, egui::Stroke::new(1.0, p.border));
     let mid = header.center().y;
     let mut x = header.left() + 16.0;
-    let title = "Tickets — all projects";
-    x += pen.text(x, mid - line(LG) / 2.0, title, LG, Weight::BOLD, p.text);
+    let title = match &v.scope {
+        Some(project) => tr!("fulllist-title", project = project.as_str()),
+        None => tr!("fulllist-title-all"),
+    };
+    x += pen.text(x, mid - line(LG) / 2.0, &title, LG, Weight::BOLD, p.text);
     let cx = KitCx { painter: &painter, ppp: ui.ctx().pixels_per_point() };
     // GPUI's badges there sit a pixel under the header's middle.
     draw_badges(&kit, &pen, &cx, pos2(x + 12.0, mid + 1.0), &alerts);
@@ -220,17 +316,17 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
     end -= 4.0;
     painter.vline(end - 0.5, egui::Rangef::new(mid - 6.0, mid + 6.0), egui::Stroke::new(1.0, p.border));
     end -= 1.0 + 4.0;
-    link(&mut end, "+ New ticket", SM, p.accent);
-    let shown = format!("{} shown", rows.len());
-    let w = pen.width(&shown, XS, Weight::REGULAR);
+    link(&mut end, &tr!("fulllist-new"), SM, p.accent);
+    let shown_n = tr!("fulllist-shown", count = shown.len());
+    let w = pen.width(&shown_n, XS, Weight::REGULAR);
     end -= 16.0 + w;
-    pen.text(end, mid - line(XS) / 2.0, &shown, XS, Weight::REGULAR, p.muted);
+    pen.text(end, mid - line(XS) / 2.0, &shown_n, XS, Weight::REGULAR, p.muted);
 
     // ── The side column, its 5 wide edge, the list.
     let body = Rect::from_min_max(pos2(rect.left(), header.bottom() + 1.0), rect.max);
     let side = Rect::from_min_size(body.min, vec2(side_width(body.width()), body.height()));
     painter.rect_filled(Rect::from_min_size(pos2(side.right(), body.top()), vec2(5.0, body.height())), 0.0, p.border);
-    side_column(ui, &kit, &pen, &p, side, &rows, &alerts);
+    side_column(ui, &kit, &pen, &p, side, scene, &rows, &query, &mut v);
     let list = Rect::from_min_max(pos2(side.right() + 5.0, body.top()), body.max);
     // The rows scroll; the scroll bar is the kit's (`scroll-bar`).
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(list));
@@ -241,18 +337,25 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
         let area = Rect::from_min_size(ui.cursor().min, vec2(list.width(), 0.0));
         let mut y = area.top();
         if !criticals.is_empty() {
-            y = group(&pen, &p, area.left() + 16.0, y, "Critical — what holds the most back");
+            y = group(&pen, &p, area.left() + 16.0, y, &tr!("fulllist-critical"));
             for ticket in &criticals {
                 y = row(ui, &kit, &pen, &p, area, y, ticket, board::state_of(ticket, user), user);
             }
-            y = group(&pen, &p, area.left() + 16.0, y, "All");
+            y = group(&pen, &p, area.left() + 16.0, y, &tr!("fulllist-all-group"));
         }
-        for (state, ticket) in &rows {
+        for (state, ticket) in &shown {
             y = row(ui, &kit, &pen, &p, area, y, ticket, *state, user);
+        }
+        if shown.is_empty() {
+            pen.text(area.left() + 16.0, y + 16.0, &tr!("fulllist-none"), SM, Weight::REGULAR, p.muted);
+            y += 16.0 + line(SM);
         }
         // GPUI's 16 under the last row.
         ui.allocate_rect(Rect::from_min_max(area.min, pos2(area.right(), y + 16.0)), Sense::hover());
     });
+    if v != before {
+        set_view(ui.ctx(), v);
+    }
 }
 
 /// A group's title: 12 above, 4 under, small, bold, muted, in capitals.
@@ -262,81 +365,126 @@ fn group(pen: &Pen<'_>, p: &Palette, x: f32, top: f32, title: &str) -> f32 {
     top + line(XS) + 4.0
 }
 
-fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: Rect, rows: &[(RowState, &Ticket)], alerts: &Alerts) {
+#[allow(clippy::too_many_arguments)]
+fn side_column(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, p: &Palette, side: Rect, scene: &Scene, rows: &[(RowState, &Ticket)], query: &str, v: &mut View) {
     let inner = side.shrink(12.0);
     let mut y = side.top() + 12.0;
     let cx = KitCx { painter: pen.painter, ppp: ui.ctx().pixels_per_point() };
     // A choice: 8 from its sides, 4 above and under its text, 2 apart.
-    let choice = |ui: &mut egui::Ui, y: &mut f32, label: &str, chosen: bool, trailing: &dyn Fn(f32, f32) -> f32| {
+    let choice = |ui: &mut egui::Ui, y: &mut f32, label: &str, chosen: bool, trailing: &dyn Fn(f32, f32) -> f32| -> bool {
         let h = line(SM) + 8.0;
         let rect = Rect::from_min_size(pos2(inner.left(), *y), vec2(inner.width(), h));
-        let response = ui.interact(rect, ui.scope_id().with(("choice", label)), Sense::click());
+        let response = ui
+            .interact(rect, ui.scope_id().with(("choice", label)), Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
         let state = State::from_response(&response).with(State::SELECTED, chosen);
         kit.selectable_row.paint(&cx, &Part { rect, room: rect, state, label: None });
         let text = kit.selectable_row.style(state).text;
         pen.text(rect.left() + 8.0, rect.top() + 4.0, label, SM, Weight::REGULAR, text);
         trailing(rect.right() - 8.0, rect.center().y);
         *y += h + 2.0;
+        response.clicked()
     };
-    y = group(pen, p, inner.left(), y, "Projects") + 2.0;
-    let projects: Vec<&str> = {
-        let mut v: Vec<&str> = rows.iter().map(|(_, t)| t.project.as_str()).collect();
-        v.sort();
-        v.dedup();
-        v
-    };
-    choice(ui, &mut y, "All projects", true, &|end, mid| {
-        let w = badges_width(kit, pen, alerts);
-        draw_badges(kit, pen, &cx, pos2(end - w, mid), alerts)
-    });
-    for project in &projects {
-        let a = Alerts::of(rows.iter().map(|(_, t)| *t).filter(|t| t.project == *project));
-        choice(ui, &mut y, project, false, &|end, mid| {
+    y = group(pen, p, inner.left(), y, &tr!("fulllist-projects")) + 2.0;
+    let all = Alerts::of(open_in(scene, None));
+    if choice(ui, &mut y, &tr!("fulllist-all-projects"), v.scope.is_none(), &|end, mid| {
+        let w = badges_width(kit, pen, &all);
+        draw_badges(kit, pen, &cx, pos2(end - w, mid), &all)
+    }) {
+        v.scope = None;
+        v.band = None;
+    }
+    for project in scene.projects.iter().map(|q| q.name.as_str()) {
+        let a = Alerts::of(open_in(scene, Some(project)));
+        let chosen = v.scope.as_deref() == Some(project);
+        if choice(ui, &mut y, project, chosen, &|end, mid| {
             let w = badges_width(kit, pen, &a);
             draw_badges(kit, pen, &cx, pos2(end - w, mid), &a)
-        });
+        }) {
+            v.scope = Some(project.to_string());
+            v.band = None;
+        }
     }
-    y = group(pen, p, inner.left(), y, "Bands") + 2.0;
+    y = group(pen, p, inner.left(), y, &tr!("fulllist-bands")) + 2.0;
     for band in Band::ALL {
-        if band == Band::Closed {
+        if band == Band::Closed && !v.with_closed {
             continue;
         }
-        let n = rows.iter().filter(|(s, _)| s.band == band).count().to_string();
-        choice(ui, &mut y, band.title(), false, &|end, mid| {
+        let n = rows
+            .iter()
+            .filter(|(s, t)| s.band == band && (query.is_empty() || t.title.to_lowercase().contains(query)))
+            .count()
+            .to_string();
+        if choice(ui, &mut y, &band.title(), v.band == Some(band), &|end, mid| {
             let w = pen.width(&n, XS, Weight::REGULAR);
             pen.text(end - w, mid - line(XS) / 2.0, &n, XS, Weight::REGULAR, p.muted)
-        });
+        }) {
+            v.band = if v.band == Some(band) { None } else { Some(band) };
+        }
     }
-    y = group(pen, p, inner.left(), y, "Sort") + 2.0;
-    for (i, sort) in ["Last activity", "Whose turn (bands)", "Priority", "Created", "Number"].iter().enumerate() {
-        let arrow = if i == 0 { "↓" } else { "" };
-        choice(ui, &mut y, sort, i == 0, &|end, mid| {
+    y = group(pen, p, inner.left(), y, &tr!("fulllist-sort")) + 2.0;
+    for sort in Sort::ALL {
+        let chosen = v.sort == sort;
+        let arrow = if !chosen { "" } else if v.reversed { "↑" } else { "↓" };
+        if choice(ui, &mut y, &sort.title(), chosen, &|end, mid| {
             let w = pen.width(arrow, XS, Weight::REGULAR);
             pen.text(end - w, mid - line(XS) / 2.0, arrow, XS, Weight::REGULAR, p.muted)
-        });
+        }) {
+            if chosen {
+                v.reversed = !v.reversed;
+            } else {
+                v.sort = sort;
+                v.reversed = false;
+            }
+        }
     }
-    y = group(pen, p, inner.left(), y, "Filters") + 2.0;
+    y = group(pen, p, inner.left(), y, &tr!("fulllist-filters")) + 2.0;
     // The filters: chips 4 apart, small text, 6 from their sides.
     let mut x = inner.left();
     let h = line(XS) + 4.0 + 2.0;
-    for (label, on) in [("Open", true), ("All", false), ("Unread", false)] {
+    for (key, label, on) in [("open", tr!("fulllist-open"), !v.with_closed), ("all", tr!("fulllist-all"), v.with_closed), ("unread", tr!("fulllist-unread"), v.unread_only)] {
+        let label = label.as_str();
         let w = pen.width(label, XS, Weight::REGULAR) + 12.0 + 2.0;
         let rect = Rect::from_min_size(pos2(x, y), vec2(w, h));
-        let response = ui.interact(rect, ui.scope_id().with(("filter", label)), Sense::click());
+        let response = ui
+            .interact(rect, ui.scope_id().with(("filter", key)), Sense::click())
+            .on_hover_cursor(egui::CursorIcon::PointingHand);
         let state = State::from_response(&response).with(State::SELECTED, on);
         kit.toggle_chip.paint(&cx, &Part { rect, room: rect, state, label: None });
         let color = if on { kit.toggle_chip.style(state).text } else { p.muted };
         pen.text(rect.left() + 7.0, rect.top() + 3.0, label, XS, Weight::REGULAR, color);
         x = rect.right() + 4.0;
+        if response.clicked() {
+            match key {
+                "open" => v.with_closed = false,
+                "all" => v.with_closed = true,
+                _ => v.unread_only = !v.unread_only,
+            }
+            if !v.with_closed && v.band == Some(Band::Closed) {
+                v.band = None;
+            }
+        }
     }
     // The field, 4 under them.
     y += h + 2.0 + 4.0;
-    // The search field: 32 high, the width of the column.
+    // The search field: 32 high, the width of the column; the text edit
+    // inside it, frameless, 12 from its sides.
     let rect = Rect::from_min_size(pos2(inner.left(), y), vec2(inner.width(), 32.0));
-    let response = ui.interact(rect, ui.scope_id().with("search"), Sense::click());
-    let state = State::from_response(&response);
+    let edit_id = ui.scope_id().with("search");
+    let focused = ui.memory(|m| m.has_focus(edit_id));
+    let hovered = ui.rect_contains_pointer(rect);
+    let state = State::REST.with(State::HOVER, hovered).with(State::FOCUS, focused);
     kit.search_field.paint(&cx, &Part { rect, room: rect, state, label: None });
-    pen.text(rect.left() + 12.0, rect.center().y - line(SM) / 2.0, "Search titles…", SM, Weight::REGULAR, p.muted);
+    let field = Rect::from_min_max(pos2(rect.left() + 12.0, rect.center().y - line(SM) / 2.0), pos2(rect.right() - 12.0, rect.center().y + line(SM) / 2.0));
+    let edit = egui::TextEdit::singleline(&mut v.search)
+        .id(edit_id)
+        .frame(egui::Frame::NONE)
+        .margin(egui::Margin::ZERO)
+        .font(font(SM, Weight::REGULAR))
+        .text_color(p.text)
+        .hint_text(egui::RichText::new(tr!("fulllist-search")).color(p.muted).font(font(SM, Weight::REGULAR)))
+        .desired_width(field.width());
+    ui.put(field, edit);
 }
 
 pub(crate) fn badges_width(kit: &Kit, pen: &Pen<'_>, alerts: &Alerts) -> f32 {
@@ -534,10 +682,10 @@ pub(crate) fn comments(p: &Palette, ticket: &Ticket, user: &str) -> Option<(Opti
 /// then what is said of it, joined by " · ".
 #[allow(clippy::too_many_arguments)]
 fn facts(pen: &Pen<'_>, p: &Palette, x: f32, top: f32, right: f32, ticket: &Ticket, state: &RowState, user: &str) {
-    let who = |name: &str| if name == user { "you".to_string() } else { name.to_string() };
+    let who = |name: &str| if name == user { tr!("tickets-you") } else { name.to_string() };
     let mut said: Vec<String> = Vec::new();
     if state.glyph == Some(Glyph::Rejected) {
-        said.push("rejected".into());
+        said.push(tr!("fulllist-rejected"));
     }
     if let Some(intent) = &ticket.intent {
         said.push(intent.clone());
@@ -547,24 +695,24 @@ fn facts(pen: &Pen<'_>, p: &Palette, x: f32, top: f32, right: f32, ticket: &Tick
     }
     if let Some(holder) = &ticket.holder {
         let assigned = ticket.held_as.as_deref() == Some("assigned");
-        said.push(format!("{} {}", if assigned { "assigned to" } else { "claimed by" }, who(holder)));
+        said.push(if assigned { tr!("fulllist-assigned-to", who = who(holder)) } else { tr!("fulllist-claimed-by", who = who(holder)) });
     }
     if let Some(speaker) = &ticket.last_speaker {
-        said.push(if speaker == user { "you spoke last".into() } else { format!("{speaker} spoke last") });
+        said.push(if speaker == user { tr!("fulllist-you-spoke-last") } else { tr!("fulllist-spoke-last", who = speaker) });
     }
     if ticket.blocked {
-        said.push("blocked".into());
+        said.push(tr!("fulllist-blocked"));
     }
     if let Some(until) = ticket.postponed_until.as_deref() {
-        said.push(format!("snoozed until {}", until.get(..10).unwrap_or(until)));
+        said.push(tr!("tickets-snoozed-until", until = until.get(..10).unwrap_or(until)));
     }
     if ticket.has_payload {
-        said.push("payload".into());
+        said.push(tr!("fulllist-payload"));
     }
     if let Some(scope) = ticket.scope.as_deref().filter(|s| *s != "default") {
         said.push(scope.to_string());
     }
-    said.push(format!("by {} · {}", who(&ticket.by_agent), ticket.created_at.get(..10).unwrap_or("")));
+    said.push(tr!("fulllist-by", who = who(&ticket.by_agent), date = ticket.created_at.get(..10).unwrap_or("")));
 
     let mid = top + line(XS) / 2.0;
     let mut x = x;

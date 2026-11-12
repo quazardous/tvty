@@ -1,6 +1,7 @@
 //! The shell: the title bar's own part, the sessions on the start side,
 //! the terminal's place in the centre, the tickets on the end side.
 
+use egui_pop::i18n::tr;
 use egui_pop::core::tooltip::TooltipExt as _;
 use egui_pop::egui;
 use egui_pop::prelude::*;
@@ -61,7 +62,7 @@ impl Plugin for Shell {
                 ui.painter().text(
                     egui::pos2((left + right) / 2.0, area.center().y),
                     egui::Align2::CENTER_CENTER,
-                    "Pick a terminal on the left · ctrl+shift+space shows them all",
+                    tr!("sessions-pick"),
                     font(16.0, Weight::REGULAR),
                     muted,
                 );
@@ -84,7 +85,7 @@ impl Plugin for Shell {
                 let muted = Tokens::of(ui.ctx()).text.muted;
                 egui::Frame::new().inner_margin(12).show(ui, |ui| {
                     ui.label(
-                        egui::RichText::new("No aiball project on this terminal.")
+                        egui::RichText::new(tr!("tickets-no-project"))
                             .size(14.0)
                             .color(muted),
                     );
@@ -160,7 +161,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     match project {
         Some(name) => crate::panel::header_title(ui, scene, name, row.start(), row.mid()),
         None => {
-            row.text(From::Start, "Tickets", font(14.0, bold), t.text.default, 8.0);
+            row.text(From::Start, &tr!("tickets-title"), font(14.0, bold), t.text.default, 8.0);
         }
     }
     let slot = under();
@@ -173,7 +174,7 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
     let mid = row.mid();
     painter.vline(sep.center().x, egui::Rangef::new(mid - 6.0, mid + 6.0), line);
     // "+ New": a chip, 6 and a border on each side of its label.
-    let label = painter.layout_no_wrap("+ New".into(), font(12.0, regular), t.accent.default);
+    let label = painter.layout_no_wrap(tr!("tickets-new"), font(12.0, regular), t.accent.default);
     let chip = row
         .room(From::End, label.size().x.ceil() + 14.0, 8.0)
         .with_min_y(mid - 10.5)
@@ -235,9 +236,26 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     if crate::row::button(ui, &painter, slot, megaphone.shrink2(egui::vec2(2.0, 0.0)), "message-all").tip("A message to every running agent: send, send & hold, release holds").clicked() {
         crate::message::toggled(ui.ctx());
     }
+    // The language: a click lists them, the system's first.
     let slot = under();
-    let language = row.glyph(From::End, "EN", font(12.0, regular), muted, 8.0);
-    crate::row::button(ui, &painter, slot, language.expand(4.0), "language");
+    let code = crate::i18n::spoken(ui.ctx()).to_uppercase();
+    let language = row.glyph(From::End, &code, font(12.0, regular), muted, 8.0);
+    let response = crate::row::button(ui, &painter, slot, language.expand(4.0), "language");
+    egui::Popup::menu(&response).show(|ui| {
+        let chosen = crate::i18n::chosen(app);
+        let system = crate::i18n::LANGS[crate::i18n::system()].1;
+        let auto = egui_pop::i18n::tr!("setting-language-auto", lang = system);
+        if ui.add(egui_pop::core::widgets::SelectableRow::new(chosen == egui_pop::i18n::plugin::SYSTEM, auto)).clicked() {
+            crate::i18n::choose(app, egui_pop::i18n::plugin::SYSTEM);
+            ui.close();
+        }
+        for (code, name) in crate::i18n::LANGS {
+            if ui.add(egui_pop::core::widgets::SelectableRow::new(chosen == *code, *name)).clicked() {
+                crate::i18n::choose(app, code);
+                ui.close();
+            }
+        }
+    });
     // The theme: a click lists the themes, egui-pop's own after tvty's.
     let slot = under();
     let chip = row.glyph(From::End, &label, font(12.0, regular), muted, 8.0);

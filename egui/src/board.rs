@@ -119,13 +119,14 @@ impl Band {
         }
     }
 
-    pub fn title(self) -> &'static str {
+    pub fn title(self) -> String {
+        use egui_pop::i18n::tr;
         match self {
-            Band::Moderate => "To moderate",
-            Band::Decide => "Waiting on you",
-            Band::AgentOnIt => "Agents on it",
-            Band::Open => "Open",
-            Band::Closed => "Closed",
+            Band::Moderate => tr!("tickets-band-moderate"),
+            Band::Decide => tr!("tickets-band-decide"),
+            Band::AgentOnIt => tr!("tickets-band-working"),
+            Band::Open => tr!("tickets-band-open"),
+            Band::Closed => tr!("tickets-band-closed"),
         }
     }
 }

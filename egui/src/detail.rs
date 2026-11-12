@@ -4,6 +4,7 @@
 //! Drawn with the kit's components (`button`, `radio`, `field`, `card`,
 //! `tag-chip`), set to GPUI's look by the theme.
 
+use egui_pop::i18n::tr;
 use egui_pop::core::fonts::Weight;
 use egui_pop::core::kit::{Kit, KitCx, Part, State, Tone};
 use egui_pop::core::widgets::RadioButton;
@@ -71,7 +72,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
 
     // ── The way back, and the thread's own buttons on its line.
     let mut y = rect.top() + 8.0;
-    let w = pen.text(left + 4.0, y, "← Tickets", SM, Weight::REGULAR, p.accent);
+    let w = pen.text(left + 4.0, y, &tr!("tickets-back"), SM, Weight::REGULAR, p.accent);
     let back = Rect::from_min_size(pos2(left, y), vec2(w + 8.0, line(SM)));
     if ui.interact(back, ui.scope_id().with("back"), Sense::click()).clicked() {
         set_shown(ui.ctx(), None);
@@ -113,7 +114,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
     // Held by, and the priority.
     let mut x = left;
     if let Some(holder) = ticket["holder"].as_str() {
-        x += pen.text(x, y, &format!("held by {holder}"), XS, Weight::REGULAR, p.muted) + 12.0;
+        x += pen.text(x, y, &tr!("tickets-held-by", holder = holder), XS, Weight::REGULAR, p.muted) + 12.0;
     }
     if let Some(priority) = ticket["priority"].as_str().filter(|p| *p != "normal") {
         if let Some(icon) = crate::icons::of_priority(priority) {
@@ -129,7 +130,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
         kit.card.paint(&cx, &Part { rect: card, room: card, state: State::REST, label: None });
         let mid = card.center().y;
         pen.text(card.left() + 9.0, mid - line(XS) / 2.0, "▸", XS, Weight::REGULAR, p.accent);
-        pen.text(card.left() + 22.0, mid - line(XS) / 2.0, &format!("Where it stands · {by}"), XS, Weight::REGULAR, p.muted);
+        pen.text(card.left() + 22.0, mid - line(XS) / 2.0, &tr!("tickets-where-it-stands", who = by), XS, Weight::REGULAR, p.muted);
         y = card.bottom() + 8.0;
     }
     painter.hline(rect.x_range(), y + 0.5, egui::Stroke::new(1.0, p.border));
@@ -190,18 +191,23 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, project: &str, id: u64) {
         let w = pen.width(text, XS, Weight::REGULAR);
         pen.text(r.center().x - w / 2.0, r.center().y - line(XS) / 2.0, text, XS, Weight::REGULAR, p.muted);
     };
-    let reply = Rect::from_min_max(pos2(right - 77.0, bottom - 37.0), pos2(right, bottom - 14.0));
-    button(reply, "Reply  ▾", State::REST.toned(Tone::Accent));
-    small(Rect::from_min_max(pos2(reply.left() - 113.0, bottom - 37.0), pos2(reply.left() - 5.0, bottom - 14.0)), "without notifying");
+    // GPUI's widths in English, grown or shrunk by the words' own.
+    let wider = |en: &str, said: &str, size: f32| pen.width(said, size, Weight::REGULAR) - pen.width(en, size, Weight::REGULAR);
+    let said = format!("{}  ▾", tr!("tickets-reply"));
+    let reply = Rect::from_min_max(pos2(right - 77.0 - wider("Reply  ▾", &said, SM), bottom - 37.0), pos2(right, bottom - 14.0));
+    button(reply, &said, State::REST.toned(Tone::Accent));
+    let quiet = tr!("tickets-without-notifying");
+    small(Rect::from_min_max(pos2(reply.left() - 113.0 - wider("without notifying", &quiet, XS), bottom - 37.0), pos2(reply.left() - 5.0, bottom - 14.0)), &quiet);
     let row_y = bottom - 69.0;
     let mut bx = left;
-    for (text, w) in [("Close", 56.0), ("Snooze ▾", 79.0), ("Assign ▾", 74.0)] {
-        button(Rect::from_min_size(pos2(bx, row_y), vec2(w, 24.0)), text, State::REST);
+    for (en, text, w) in [("Close", tr!("tickets-close"), 56.0), ("Snooze ▾", tr!("tickets-snooze"), 79.0), ("Assign ▾", tr!("tickets-assign"), 74.0)] {
+        let w = w + wider(en, &text, SM);
+        button(Rect::from_min_size(pos2(bx, row_y), vec2(w, 24.0)), &text, State::REST);
         bx += w + 8.0;
     }
     let field = Rect::from_min_max(pos2(left, row_y - 11.0 - 57.0), pos2(right, row_y - 11.0));
     kit.field.paint(&cx, &Part { rect: field, room: field, state: State::REST, label: None });
-    pen.text(field.left() + 10.0, field.top() + 9.0, "Reply… (ctrl+enter sends)", SM, Weight::REGULAR, p.muted);
+    pen.text(field.left() + 10.0, field.top() + 9.0, &tr!("tickets-reply-placeholder"), SM, Weight::REGULAR, p.muted);
 
     // A pending plan with options: the choice, above the reply box.
     let Some((by, options)) = pending_plan(thread) else { return };

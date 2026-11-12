@@ -13,6 +13,7 @@ pub(crate) const THEME: &str = "tvty-default-dark";
 mod board;
 mod detail;
 mod fulllist;
+mod i18n;
 mod panel;
 mod icons;
 mod menu;
@@ -76,6 +77,7 @@ fn main() -> eframe::Result {
         .shell_panel_size(egui_pop::api::workbench::PANEL_INSPECTOR, 427.0)
         .plugins(MinimalPlugins)
         .plugin(FramePlugin::own())
+        .plugin(i18n::plugin())
         .plugin(shell::Shell::new(scene))
         .persist(dir)
         .run_native(shell::NAME, options)

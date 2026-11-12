@@ -3,7 +3,7 @@
 # (default: ../../dev/scene.json, dumped by ../scripts/scene.py).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
-bin="${CARGO_TARGET_DIR:-$here/../target}/debug/tvty-egui"
+bin="${CARGO_TARGET_DIR:-$here/../target}/${TVTY_EGUI_PROFILE:-debug}/tvty-egui"
 export TVTY_EGUI_SCENE="${TVTY_EGUI_SCENE:-$here/../../dev/scene.json}"
 export TVTY_EGUI_STATE="${TVTY_EGUI_STATE:-$here/state}"
 mkdir -p "$here/log"

@@ -9,6 +9,7 @@
 //! components (`tab`, `field`, `list-row`, `indicator-badge`, `pill`);
 //! the sections' headers are painted: the kit has no such component.
 
+use egui_pop::i18n::tr;
 use egui_pop::core::tooltip::TooltipExt as _;
 use std::collections::BTreeMap;
 
@@ -115,14 +116,15 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     // Sessions or Workspaces: the tab chosen, kept for the session.
     let tab_id = egui::Id::unique("tvty.sidebar.tab");
     let workspaces = ui.data(|d| d.get_temp::<bool>(tab_id)).unwrap_or(false);
-    for (label, on) in [("Sessions", !workspaces), ("Workspaces", workspaces)] {
+    for (key, label, on) in [("sessions", tr!("sessions-tab-sessions"), !workspaces), ("workspaces", tr!("sessions-tab-workspaces"), workspaces)] {
+        let label = label.as_str();
         // A tab: 4 from its sides, its text and the 2 of its underline.
         let w = pen.width(label, SM, Weight::REGULAR) + 8.0;
         let h = line(SM) + 2.0;
         let tab = Rect::from_min_size(pos2(x, mid - h / 2.0), vec2(w, h));
-        let response = ui.interact(tab, ui.scope_id().with(("tab", label)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+        let response = ui.interact(tab, ui.scope_id().with(("tab", key)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
         if response.clicked() {
-            ui.data_mut(|d| d.insert_temp(tab_id, label == "Workspaces"));
+            ui.data_mut(|d| d.insert_temp(tab_id, key == "workspaces"));
         }
         let state = State::from_response(&response).with(State::SELECTED, on);
         kit.tab.paint(&cx, &Part { rect: tab, room: tab, state, label: None });
@@ -166,13 +168,14 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     // Each where it fits, after the tabs: the first to go when the list is
     // narrow is the order, then "+ project", as items GPUI's row clips.
     let tabs_end = x;
-    for s in [">_", "+ project", "⇅"] {
+    for (key, s) in [("terminal", ">_".to_string()), ("project", tr!("sessions-new-project")), ("order", "⇅".to_string())] {
+        let s = s.as_str();
         if end - (pen.width(s, XS, Weight::REGULAR) + 8.0) < tabs_end + 4.0 {
             break;
         }
-        let tip = match s {
-            ">_" => "a terminal of its own, which outlives tvty",
-            "+ project" => "a folder made an aiball project (aiball init), then its first session",
+        let tip = match key {
+            "terminal" => "a terminal of its own, which outlives tvty",
+            "project" => "a folder made an aiball project (aiball init), then its first session",
             _ => "alphabetical; a click: your order (drag a project)",
         };
         glyph(&mut end, s, XS, p.accent, 0.0).tip(tip);
@@ -184,7 +187,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     let field = Rect::from_min_size(pos2(rect.left() + 8.0, filter.top() + 6.0), vec2(rect.width() - 16.0, 24.0));
     let response = ui.interact(field, ui.scope_id().with("filter"), Sense::click());
     kit.field.paint(&cx, &Part { rect: field, room: field, state: State::from_response(&response), label: None });
-    pen.text(field.left() + 8.0, field.center().y - line(SM) / 2.0, "Filter…  ctrl+shift+f", SM, Weight::REGULAR, p.muted);
+    pen.text(field.left() + 8.0, field.center().y - line(SM) / 2.0, &tr!("sessions-filter"), SM, Weight::REGULAR, p.muted);
 
     // ── The sections.
     let projects = live(scene);
@@ -202,7 +205,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     let (kit, p) = (&kit, &p);
     let projects = &projects;
     Sections::new("tvty.sessions").grab_titles(true).fill(crate::sections_fill()).show(&mut child, |stack| {
-        stack.bare(Section::new("live", "Live").count(running as u64).open(!FOLDED.contains(&"live")), move |ui| {
+        stack.bare(Section::new("live", tr!("sessions-group-live")).count(running as u64).open(!FOLDED.contains(&"live")), move |ui| {
             let painter = ui.painter().clone();
             let pen = Pen { painter: &painter };
             let cx = KitCx { painter: &painter, ppp: ui.ctx().pixels_per_point() };
@@ -213,14 +216,14 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
             }
             ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
         });
-        stack.bare(Section::new("idle", "Idle").count(0).open(!FOLDED.contains(&"idle")), move |ui| {
+        stack.bare(Section::new("idle", tr!("sessions-group-idle")).count(0).open(!FOLDED.contains(&"idle")), move |ui| {
             let painter = ui.painter().clone();
             let rect = ui.max_rect();
             let y = empty(&Pen { painter: &painter }, p, rect, rect.top(), "No stopped loop");
             ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
         });
         let none = shut.is_empty();
-        stack.bare(Section::new("shut", "Shut").count(shut.len() as u64).open(!FOLDED.contains(&"shut")), move |ui| {
+        stack.bare(Section::new("shut", tr!("sessions-group-shut")).count(shut.len() as u64).open(!FOLDED.contains(&"shut")), move |ui| {
             let painter = ui.painter().clone();
             let rect = ui.max_rect();
             let mut y = rect.top();
@@ -267,7 +270,7 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
             link(&mut end, "▶", p.accent, 0.0);
         }
         link(&mut end, "⚙", p.muted, 20.0);
-        link(&mut end, "+ session", p.accent, 0.0);
+        link(&mut end, &tr!("sessions-new-session"), p.accent, 0.0);
     }
     let w = badges_width(kit, pen, &alerts);
     if w > 0.0 {
@@ -324,7 +327,7 @@ fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &
     let label_x = x + 7.0 + 8.0;
     pen.text_max(label_x, line_top, &session.label, SM, Weight::REGULAR, p.text, Some(end - 8.0 - label_x));
     if session.agent.is_some() && !online {
-        pen.text(x, line_top + line(SM) + 2.0, "offline", 11.0, Weight::REGULAR, p.muted);
+        pen.text(x, line_top + line(SM) + 2.0, &tr!("sessions-offline"), 11.0, Weight::REGULAR, p.muted);
     }
     row.bottom()
 }
