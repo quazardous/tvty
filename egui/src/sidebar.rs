@@ -156,7 +156,9 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
         let top = header.bottom() + 8.0;
         let slot = painter.add(egui::Shape::Noop);
         let w = pen.text(x + 4.0, top, "+ workspace", SM, Weight::REGULAR, p.accent);
-        crate::row::button(ui, &painter, slot, Rect::from_min_size(pos2(x, top), vec2(w + 8.0, line(SM))), "new-workspace");
+        if crate::row::button(ui, &painter, slot, Rect::from_min_size(pos2(x, top), vec2(w + 8.0, line(SM))), "new-workspace").clicked() {
+            crate::notice::not_here(app, "A new workspace");
+        }
         let said = "No workspace yet: a workspace keeps some groups, and how each of their sessions runs.";
         let galley = painter.layout(said.into(), crate::row::font(SM, Weight::REGULAR), p.muted, rect.width() - 24.0);
         for (i, row) in galley.rows.iter().enumerate() {
@@ -168,29 +170,57 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
     // Each where it fits, after the tabs: the first to go when the list is
     // narrow is the order, then "+ project", as items GPUI's row clips.
     let tabs_end = x;
+    let order = order(ui.ctx());
     for (key, s) in [("terminal", ">_".to_string()), ("project", tr!("sessions-new-project")), ("order", "⇅".to_string())] {
         let s = s.as_str();
         if end - (pen.width(s, XS, Weight::REGULAR) + 8.0) < tabs_end + 4.0 {
             break;
         }
         let tip = match key {
-            "terminal" => "a terminal of its own, which outlives tvty",
-            "project" => "a folder made an aiball project (aiball init), then its first session",
-            _ => "alphabetical; a click: your order (drag a project)",
+            "terminal" => "a terminal of its own, which outlives tvty".to_string(),
+            "project" => "a folder made an aiball project (aiball init), then its first session".to_string(),
+            _ => order.said(),
         };
-        glyph(&mut end, s, XS, p.accent, 0.0).tip(tip);
+        if glyph(&mut end, s, XS, p.accent, 0.0).tip(tip).clicked() {
+            match key {
+                "terminal" => crate::notice::not_here(app, "A terminal of its own"),
+                "project" => crate::notice::not_here(app, "A new project"),
+                _ => set_order(ui.ctx(), order.next()),
+            }
+        }
     }
 
     // ── The filter: a small field, 8 from the sides, 6 above and under.
     let filter = Rect::from_min_size(pos2(rect.left(), header.bottom()), vec2(rect.width(), 6.0 + 24.0 + 6.0 + 1.0));
     painter.hline(filter.x_range(), filter.bottom() - 0.5, egui::Stroke::new(1.0, p.border));
     let field = Rect::from_min_size(pos2(rect.left() + 8.0, filter.top() + 6.0), vec2(rect.width() - 16.0, 24.0));
-    let response = ui.interact(field, ui.scope_id().with("filter"), Sense::click());
-    kit.field.paint(&cx, &Part { rect: field, room: field, state: State::from_response(&response), label: None });
-    pen.text(field.left() + 8.0, field.center().y - line(SM) / 2.0, &tr!("sessions-filter"), SM, Weight::REGULAR, p.muted);
+    // A text field: the sessions whose name holds it; Esc clears it.
+    let edit_id = egui::Id::unique("tvty.sessions.filter");
+    let focused = ui.memory(|m| m.has_focus(edit_id));
+    let hovered = ui.rect_contains_pointer(field);
+    kit.field.paint(&cx, &Part { rect: field, room: field, state: State::REST.with(State::HOVER, hovered).with(State::FOCUS, focused), label: None });
+    let mut query = query(ui.ctx());
+    if focused && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        query.clear();
+    }
+    let inner = Rect::from_min_max(pos2(field.left() + 8.0, field.center().y - line(SM) / 2.0), pos2(field.right() - 8.0, field.center().y + line(SM) / 2.0));
+    let edit = egui::TextEdit::singleline(&mut query)
+        .id(edit_id)
+        .frame(egui::Frame::NONE)
+        .margin(egui::Margin::ZERO)
+        .font(crate::row::font(SM, Weight::REGULAR))
+        .text_color(p.text)
+        .hint_text(egui::RichText::new(tr!("sessions-filter")).color(p.muted).font(crate::row::font(SM, Weight::REGULAR)))
+        .desired_width(inner.width());
+    ui.put(inner, edit);
+    set_query(ui.ctx(), query);
 
     // ── The sections.
-    let projects = live(scene);
+    let mut projects = live(scene);
+    if order != Order::Alpha {
+        // Recent and yours: the scene's order (its open terminals first).
+        projects.sort_by_key(|q| scene.open.iter().position(|o| scene.order.get(&q.name).is_some_and(|ord| ord.contains(o))).unwrap_or(usize::MAX));
+    }
     let running: usize = projects.iter().map(|p| p.sessions.len()).sum();
     let placed: Vec<&str> = projects.iter().flat_map(|p| p.sessions.iter().filter_map(|s| s.agent.map(|a| a.consumer_id.as_str()))).collect();
     let shut: Vec<&Consumer> = scene
@@ -212,7 +242,7 @@ pub fn show(ui: &mut egui::Ui, scene: &Scene, app: &egui_pop::api::AppHandle) {
             let rect = ui.max_rect();
             let mut y = rect.top();
             for project in projects {
-                y = project_block(ui, kit, &pen, &cx, p, rect, y, project, scene);
+                y = project_block(ui, kit, &pen, &cx, p, rect, y, project, scene, app);
             }
             ui.allocate_rect(Rect::from_min_max(rect.min, pos2(rect.right(), y)), Sense::hover());
         });
@@ -245,7 +275,7 @@ fn empty(pen: &Pen<'_>, p: &Palette, rect: Rect, top: f32, said: &str) -> f32 {
 /// A project's heading (its name, its badges, "+ session", its options,
 /// ">_"), then its sessions.
 #[allow(clippy::too_many_arguments)]
-fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, project: &Project<'_>, scene: &Scene) -> f32 {
+fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, project: &Project<'_>, scene: &Scene, app: &egui_pop::api::AppHandle) -> f32 {
     let tickets: Vec<&Ticket> = scene.projects.iter().filter(|q| q.name == project.name).flat_map(|q| q.tickets.iter()).filter(|t| !t.closed).collect();
     let alerts = Alerts::of(tickets.iter().copied());
     // 8 above, 4 under: the middle of what is left.
@@ -259,18 +289,24 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
             *end -= w;
             pen.text(*end + (w - tw) / 2.0, mid - line(XS) / 2.0, s, XS, Weight::REGULAR, color);
             let rect = Rect::from_min_size(pos2(*end, mid - 10.0), vec2(w, 20.0));
-            crate::row::button(ui, pen.painter, slot, rect, &format!("{}-{s}", project.name));
             *end -= 4.0;
+            crate::row::button(ui, pen.painter, slot, rect, &format!("{}-{s}", project.name)).clicked()
         };
-        link(&mut end, ">_", p.accent, 0.0);
+        if link(&mut end, ">_", p.accent, 0.0) {
+            crate::notice::not_here(app, "A terminal in the project");
+        }
         // ▶ while no loop of the project runs here: none of its agents is
         // present (the scene's stand-in for GPUI's running loops).
         let running = project.sessions.iter().any(|s| s.agent.and_then(|a| a.present).unwrap_or(false));
-        if !running {
-            link(&mut end, "▶", p.accent, 0.0);
+        if !running && link(&mut end, "▶", p.accent, 0.0) {
+            crate::notice::not_here(app, "Starting the project's loops");
         }
-        link(&mut end, "⚙", p.muted, 20.0);
-        link(&mut end, &tr!("sessions-new-session"), p.accent, 0.0);
+        if link(&mut end, "⚙", p.muted, 20.0) {
+            crate::notice::not_here(app, "The project's options");
+        }
+        if link(&mut end, &tr!("sessions-new-session"), p.accent, 0.0) {
+            crate::notice::not_here(app, "A new session");
+        }
     }
     let w = badges_width(kit, pen, &alerts);
     if w > 0.0 {
@@ -281,8 +317,9 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
     pen.text_max(x, mid - line(XS) / 2.0, &project.name.to_uppercase(), XS, Weight::BOLD, p.muted, Some(end - x));
     let mut y = top + HEADING;
     let critical_holder = tickets.iter().find(|t| t.critical.is_some()).and_then(|t| t.holder.clone());
-    for session in &project.sessions {
-        y = session_row(ui, kit, pen, cx, p, rect, y, session, critical_holder.as_deref());
+    let query = query(ui.ctx()).to_lowercase();
+    for session in project.sessions.iter().filter(|s| query.is_empty() || s.label.to_lowercase().contains(&query)) {
+        y = session_row(ui, kit, pen, cx, p, rect, y, &project.name, session, critical_holder.as_deref());
     }
     y
 }
@@ -291,10 +328,16 @@ fn project_block(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p:
 /// a terminal open in tvty, its name, ⇄ for a loop in tmux, its counters;
 /// under them its state.
 #[allow(clippy::too_many_arguments)]
-fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, session: &Session<'_>, critical: Option<&str>) -> f32 {
+fn session_row(ui: &mut egui::Ui, kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, p: &Palette, rect: Rect, top: f32, project: &str, session: &Session<'_>, critical: Option<&str>) -> f32 {
     let row = Rect::from_min_size(pos2(rect.left(), top), vec2(rect.width(), if session.shell { SHELL } else { ROW }));
-    let response = ui.interact(row, ui.scope_id().with(("session", &session.label)), Sense::click());
-    kit.list_row.paint(cx, &Part { rect: row, room: row, state: State::from_response(&response), label: None });
+    let response = ui.interact(row, ui.scope_id().with(("session", &session.label)), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand);
+    // A click makes it the terminal shown: its project in the ticket panel.
+    if response.clicked() {
+        set_current(ui.ctx(), Some((project.to_string(), session.label.clone())));
+        crate::detail::set_shown(ui.ctx(), None);
+    }
+    let chosen = current(ui.ctx()).is_some_and(|(_, label)| label == session.label);
+    kit.list_row.paint(cx, &Part { rect: row, room: row, state: State::from_response(&response).with(State::SELECTED, chosen), label: None });
     let online = session.agent.and_then(|a| a.present).unwrap_or(false);
     // The loop's state: working, starting, idle; nothing offline.
     if let Some(color) = session.agent.filter(|_| online).map(|a| match a.state.as_deref() {
@@ -364,4 +407,57 @@ fn counters(kit: &Kit, pen: &Pen<'_>, cx: &KitCx<'_>, end: f32, mid: f32, agent:
         draw_badges(kit, pen, cx, pos2(x, mid), &alerts);
     }
     x
+}
+
+/// How the projects are listed: ⇅ goes from one to the next.
+#[derive(Clone, Copy, Default, PartialEq)]
+enum Order {
+    #[default]
+    Recent,
+    Alpha,
+    Yours,
+}
+
+impl Order {
+    fn next(self) -> Self {
+        match self {
+            Order::Recent => Order::Alpha,
+            Order::Alpha => Order::Yours,
+            Order::Yours => Order::Recent,
+        }
+    }
+
+    /// What ⇅ says: the order now, what a click gives.
+    fn said(self) -> String {
+        match self {
+            Order::Recent => tr!("sessions-order-recent"),
+            Order::Alpha => tr!("sessions-order-alpha"),
+            Order::Yours => tr!("sessions-order-yours"),
+        }
+    }
+}
+
+fn order(ctx: &egui::Context) -> Order {
+    ctx.data(|d| d.get_temp::<Order>(egui::Id::unique("tvty.sessions.order"))).unwrap_or_default()
+}
+
+fn set_order(ctx: &egui::Context, order: Order) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.sessions.order"), order));
+}
+
+fn query(ctx: &egui::Context) -> String {
+    ctx.data(|d| d.get_temp::<String>(egui::Id::unique("tvty.sessions.query"))).unwrap_or_default()
+}
+
+fn set_query(ctx: &egui::Context, query: String) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.sessions.query"), query));
+}
+
+/// The terminal shown: its project and its session, once one is clicked.
+pub fn current(ctx: &egui::Context) -> Option<(String, String)> {
+    ctx.data(|d| d.get_temp::<Option<(String, String)>>(egui::Id::unique("tvty.sessions.current"))).flatten()
+}
+
+fn set_current(ctx: &egui::Context, current: Option<(String, String)>) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique("tvty.sessions.current"), current));
 }

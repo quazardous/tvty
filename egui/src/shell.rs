@@ -72,11 +72,12 @@ impl Plugin for Shell {
         ctx.block(
             zones::INSPECTOR,
             Block::add(BlockId::from_static("tvty.tickets"), 0, move |ui, app| {
-                let project = crate::panel::project(&panel_scene);
+                let panel_scene = crate::newticket::merged(ui.ctx(), &panel_scene);
+                let project = crate::sidebar::current(ui.ctx()).map(|(p, _)| p).or_else(|| crate::panel::project(&panel_scene));
                 tickets_header(ui, &panel_scene, project.as_deref(), app);
                 if let Some(name) = &project {
                     match crate::detail::shown(ui.ctx()) {
-                        Some(id) => crate::detail::show(ui, &panel_scene, name, id),
+                        Some(id) => crate::detail::show(ui, &panel_scene, name, id, app),
                         None => crate::panel::show(ui, &panel_scene, name),
                     }
                     return;
@@ -96,7 +97,10 @@ impl Plugin for Shell {
         ctx.block(
             zones::OVERLAYS,
             Block::add(BlockId::from_static("tvty.full-list"), 0, move |ui, _| {
-                crate::fulllist::show(ui.ctx(), &scene)
+                crate::audit::start(ui.ctx());
+                let scene = crate::newticket::merged(ui.ctx(), &scene);
+                crate::fulllist::show(ui.ctx(), &scene);
+                crate::newticket::show(ui.ctx(), &scene);
             }),
         );
         // tvty's icon where the shell puts its menu button and name: the
@@ -180,7 +184,9 @@ fn tickets_header(ui: &mut egui::Ui, scene: &crate::scene::Scene, project: Optio
         .with_min_y(mid - 10.5)
         .with_max_y(mid + 10.5);
     let slot = under();
-    crate::row::button(ui, painter, slot, chip, "new").tip("A new ticket · Ctrl+Shift+N");
+    if crate::row::button(ui, painter, slot, chip, "new").tip("A new ticket · Ctrl+Shift+N").clicked() {
+        crate::newticket::open(ui.ctx(), project);
+    }
     painter.rect_stroke(chip, 4.0, line, egui::StrokeKind::Inside);
     painter.galley(
         egui::pos2(chip.left() + 7.0, mid - label.size().y / 2.0),
@@ -228,7 +234,7 @@ fn caption(ui: &mut egui::Ui, user: &str, app: &egui_pop::api::AppHandle) {
     let slot = under();
     let cog = row.glyph(From::End, "⚙", font(14.0, regular), muted, 8.0);
     if crate::row::button(ui, &painter, slot, cog.expand(4.0), "settings").tip("Settings · Ctrl+,").clicked() {
-        crate::settings::set_open(ui.ctx(), true);
+        crate::notice::not_here(app, "The settings page");
     }
     // The megaphone: the message to every agent, a popover.
     let slot = under();

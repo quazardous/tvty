@@ -316,7 +316,11 @@ fn draw(ui: &mut egui::Ui, rect: Rect, scene: &Scene) {
     end -= 4.0;
     painter.vline(end - 0.5, egui::Rangef::new(mid - 6.0, mid + 6.0), egui::Stroke::new(1.0, p.border));
     end -= 1.0 + 4.0;
-    link(&mut end, &tr!("fulllist-new"), SM, p.accent);
+    let slot = painter.add(egui::Shape::Noop);
+    let new = link(&mut end, &tr!("fulllist-new"), SM, p.accent);
+    if crate::row::button(ui, &painter, slot, new, "full-list-new").clicked() {
+        crate::newticket::open(ui.ctx(), v.scope.as_deref());
+    }
     let shown_n = tr!("fulllist-shown", count = shown.len());
     let w = pen.width(&shown_n, XS, Weight::REGULAR);
     end -= 16.0 + w;

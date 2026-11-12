@@ -94,6 +94,9 @@ window-close:
       $value: {value: 14, unit: "px"}
 glyph:
   $type: "string"
+  # GPUI's selects end on a chevron, not egui's triangle.
+  dropdown:
+    $value: "chevron-down"
   window-minimize:
     $value: "tvty.window_minimize"
   window-maximize:
@@ -209,6 +212,15 @@ side-area:
     $type: "dimension"
     $value: {value: 0, unit: "px"}
   rest:
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+  # Nor while the sash is hovered or dragged: GPUI shows only its grip.
+  hover:
+    border-width:
+      $type: "dimension"
+      $value: {value: 0, unit: "px"}
+  active:
     border-width:
       $type: "dimension"
       $value: {value: 0, unit: "px"}

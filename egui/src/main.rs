@@ -10,6 +10,7 @@ use egui_pop::prelude::*;
 /// The theme tvty starts in: the kit's Default Dark, as GPUI draws it.
 pub(crate) const THEME: &str = "tvty-default-dark";
 
+mod audit;
 mod board;
 mod detail;
 mod fulllist;
@@ -17,6 +18,8 @@ mod i18n;
 mod panel;
 mod icons;
 mod menu;
+mod notice;
+mod newticket;
 mod message;
 mod row;
 mod tip;
@@ -78,6 +81,7 @@ fn main() -> eframe::Result {
         .plugins(MinimalPlugins)
         .plugin(FramePlugin::own())
         .plugin(i18n::plugin())
+        .plugin(egui_pop::api::toasts::ToastsPlugin)
         .plugin(shell::Shell::new(scene))
         .persist(dir)
         .run_native(shell::NAME, options)

@@ -25,7 +25,8 @@ centre, as GPUI lays it), `TVTY_EGUI_TIPS=0` without the tip card, as
 the tests' tvty has tips off. `TVTY_EGUI_FULL=1` opens the full ticket list at start (the panel's ⤢
 opens it too, Escape closes it). `egui/scripts/install-desktop` puts
 "tvty-egui Dev" in the desktop's launcher, on the debug build and
-`dev/scene.json`. The fake board moves on its own (a ticket stops being
+`dev/scene.json` (`TVTY_EGUI_PROFILE=release`: the optimised build, which
+`scripts/bench egui-binary profile=release` makes on the bench box). The fake board moves on its own (a ticket stops being
 "hot"): dump the scene again right before comparing.
 
 ## Comparing
@@ -35,6 +36,26 @@ opens it too, Escape closes it). `egui/scripts/install-desktop` puts
 side, cropped and enlarged, the differences framed in red and numbered;
 the images the issues show live on the `egui-shots` branch (images only,
 no shared history).
+
+## Dead controls
+
+What looks clickable must do something. `egui/scripts/audit.py` (run
+with wbox's Python, from `egui/`) starts tvty-egui in wbox with
+`TVTY_EGUI_AUDIT=<file>`: at each pass tvty-egui writes there the widgets
+that take a click (egui's widget rectangles) and the texts painted in the
+link colour (`src/audit.rs`). The script reports at once the links no
+click widget covers; with `--click` it clicks each widget it can see and
+compares the window before and after, a click that changes nothing being
+a dead button (what is dragged, a sash, a text field, the title bar, is
+left out). `--open X,Y` reaches a view first: `--open 1257,60` audits
+the full list. An action tvty-egui cannot do (it reads a scene: no
+aiball, no tmux) says so in a toast rather than doing nothing.
+
+## Languages
+
+tvty's words are the GPUI build's own catalogues (`assets/locales`),
+built in by `egui/build.rs` and read through egui-pop's translations
+(`egui_pop::i18n`); the title bar's menu chooses, `TVTY_LANG` overrides.
 
 ## Text
 
